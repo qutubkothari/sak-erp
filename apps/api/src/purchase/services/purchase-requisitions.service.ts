@@ -574,7 +574,10 @@ export class PurchaseRequisitionsService {
       .eq('tenant_id', tenantId)
       .eq('pr_id', id)
       .order('created_at', { ascending: true });
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      console.warn(`Failed to load requisition approval history for ${id}: ${error.message}`);
+      return [];
+    }
 
     const rows = data || [];
     const actorIds = Array.from(new Set(rows.map((row: any) => String(row.actor_id || '')).filter(Boolean)));
