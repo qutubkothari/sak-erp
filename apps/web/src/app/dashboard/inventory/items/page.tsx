@@ -1451,7 +1451,7 @@ export default function ItemsPage() {
       sortable: false,
       hideable: false,
       align: 'right',
-      minWidth: 420,
+      minWidth: 360,
       cell: (item) => (
         <div className="flex items-center justify-end gap-1.5 whitespace-nowrap text-xs font-medium">
           <button type="button" onClick={() => setViewingItem(item)} className="inline-flex items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-[#5E4635] hover:bg-[#F5EFE3]">
@@ -1526,7 +1526,7 @@ export default function ItemsPage() {
     <div className="min-h-screen bg-[#FAF9F6] text-[#2F241D]">
       <div className="flex min-h-screen w-full max-w-none flex-col">
         <section className="border-b border-[#E8DCC4] bg-white px-6 py-4">
-        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+        <div className="flex flex-col gap-3">
           <div className="min-w-0">
             <div className="text-xs font-bold uppercase tracking-wide text-[#8B6F47]">Inventory Master Data</div>
             <div className="mt-1 flex flex-wrap items-center gap-3">
@@ -1539,7 +1539,7 @@ export default function ItemsPage() {
               Material master list for SAS part numbers, UOM, HSN, UID control, drawings, vendors, variants, and verification.
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap justify-start gap-2 2xl:justify-end">
+          <div className="flex flex-wrap items-center justify-start gap-2 border-t border-[#F0E7D7] pt-3">
             {canExport && (
               <button
                 onClick={() => {
@@ -1581,21 +1581,21 @@ export default function ItemsPage() {
               className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               <Tags className="h-4 w-4" />
-              Manage Categories
+              Categories
             </button>
             <button
               onClick={() => setShowNomenclatureManager(true)}
               className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               <Settings className="h-4 w-4" />
-              Manage SAS Part Numbers
+              SAS Numbering
             </button>
             <button
               onClick={initBulkInventory}
               className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               <Boxes className="h-4 w-4" />
-              Bulk Inventory
+              Bulk Stock
             </button>
             {canCreate && (
               <>
