@@ -248,7 +248,9 @@ function PRContent() {
   const router = useRouter();
   const { user: currentUser, hydrate: hydrateAuth } = useAuthStore();
   const [todayDate, setTodayDate] = useState('');
+  const [isMounted, setIsMounted] = useState(false);
   useEffect(() => {
+    setIsMounted(true);
     hydrateAuth();
     setTodayDate(getTodayDateInputValue());
   }, [hydrateAuth]);
@@ -888,6 +890,16 @@ function PRContent() {
     resetItemEntry();
   };
 
+  const fetchApprovalHistorySafely = async (prId: string): Promise<ApprovalHistoryEntry[]> => {
+    try {
+      const history = await apiClient.get(`/purchase/requisitions/${prId}/approval-history`);
+      return Array.isArray(history) ? history : [];
+    } catch (error) {
+      console.warn('[PR] Approval history unavailable:', error);
+      return [];
+    }
+  };
+
   const handleViewDetails = async (prId: string) => {
     setSelectedPR(null);
     setLoadingDetail(true);
@@ -905,12 +917,9 @@ function PRContent() {
       fetchMasterItems();
     }
     try {
-      const [data, history] = await Promise.all([
-        apiClient.get(`/purchase/requisitions/${prId}`),
-        apiClient.get(`/purchase/requisitions/${prId}/approval-history`),
-      ]);
+      const data = await apiClient.get(`/purchase/requisitions/${prId}`);
       setSelectedPR(data);
-      setApprovalHistory(Array.isArray(history) ? history : []);
+      setApprovalHistory(await fetchApprovalHistorySafely(prId));
     } catch (error) {
       alert('Failed to load PR details');
       setShowDetailModal(false);
@@ -921,12 +930,9 @@ function PRContent() {
 
   const refreshSelectedPRDetail = async (prId: string) => {
     try {
-      const [data, history] = await Promise.all([
-        apiClient.get(`/purchase/requisitions/${prId}`),
-        apiClient.get(`/purchase/requisitions/${prId}/approval-history`),
-      ]);
+      const data = await apiClient.get(`/purchase/requisitions/${prId}`);
       setSelectedPR(data);
-      setApprovalHistory(Array.isArray(history) ? history : []);
+      setApprovalHistory(await fetchApprovalHistorySafely(prId));
     } catch {
     }
   };
@@ -2103,7 +2109,7 @@ function PRContent() {
         )}
 
         {/* Full-screen PR workspace */}
-        {showDetailModal && typeof document !== 'undefined' && createPortal(
+        {showDetailModal && isMounted && createPortal(
           <div className="fixed inset-0 z-[1000] h-[100dvh] w-screen overflow-hidden bg-[#FAF9F6]">
             <div className="flex h-full w-full flex-col bg-white">
               {loadingDetail ? (
