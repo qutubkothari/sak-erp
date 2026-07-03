@@ -15,6 +15,7 @@ import {
   Route,
   Settings,
   Tags,
+  Trash2,
   CheckCircle,
   XCircle,
 } from 'lucide-react';
@@ -1451,39 +1452,60 @@ export default function ItemsPage() {
       sortable: false,
       hideable: false,
       align: 'right',
-      minWidth: 360,
+      minWidth: 260,
       cell: (item) => (
         <div className="flex items-center justify-end gap-1.5 whitespace-nowrap text-xs font-medium">
-          <button type="button" onClick={() => setViewingItem(item)} className="inline-flex items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-[#5E4635] hover:bg-[#F5EFE3]">
+          <button
+            type="button"
+            onClick={() => setViewingItem(item)}
+            title="Open item"
+            aria-label="Open item"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
+          >
             <Eye className="h-3.5 w-3.5" />
-            Open
           </button>
-          <button type="button" onClick={() => void openStockTrail(item)} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-800 hover:bg-emerald-100">
+          <button
+            type="button"
+            onClick={() => void openStockTrail(item)}
+            title="View stock trail"
+            aria-label="View stock trail"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+          >
             <Route className="h-3.5 w-3.5" />
-            Trail
           </button>
           {item.is_active ? (
             <>
               {canEdit && (
-                <button type="button" onClick={() => handleEdit(item)} className="inline-flex items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-[#5E4635] hover:bg-[#F5EFE3]">
+                <button
+                  type="button"
+                  onClick={() => handleEdit(item)}
+                  title="Edit item"
+                  aria-label="Edit item"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
+                >
                   <Pencil className="h-3.5 w-3.5" />
-                  Edit
                 </button>
               )}
               {canVerify && (
                 <button
                   type="button"
                   onClick={() => handleVerification(item, !item.is_verified)}
-                  className={item.is_verified ? 'inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-gray-700 hover:bg-gray-50' : 'inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-800 hover:bg-emerald-100'}
+                  title={item.is_verified ? 'Remove verification' : 'Verify item'}
+                  aria-label={item.is_verified ? 'Remove verification' : 'Verify item'}
+                  className={item.is_verified ? 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50' : 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'}
                 >
                   {item.is_verified ? <BadgeX className="h-3.5 w-3.5" /> : <BadgeCheck className="h-3.5 w-3.5" />}
-                  {item.is_verified ? 'Unverify' : 'Verify'}
                 </button>
               )}
               {!item.is_variant && (
-                <button type="button" onClick={() => openVariantManager(item)} className="inline-flex items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-[#5E4635] hover:bg-[#F5EFE3]" title="Manage variants/brands">
+                <button
+                  type="button"
+                  onClick={() => openVariantManager(item)}
+                  title="Manage variants and brands"
+                  aria-label="Manage variants and brands"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
+                >
                   <Layers className="h-3.5 w-3.5" />
-                  Variants
                 </button>
               )}
               <button
@@ -1492,21 +1514,33 @@ export default function ItemsPage() {
                   setSelectedItemForDrawing(item);
                   setShowDrawingManager(true);
                 }}
-                className="inline-flex items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-[#5E4635] hover:bg-[#F5EFE3]"
+                title="Manage drawings"
+                aria-label="Manage drawings"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
               >
                 <FileText className="h-3.5 w-3.5" />
-                Drawings
               </button>
               {canDelete && (
-                <button type="button" onClick={() => handleDelete(item.id)} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-red-700 hover:bg-red-100">
-                  Delete
+                <button
+                  type="button"
+                  onClick={() => handleDelete(item.id)}
+                  title="Delete item"
+                  aria-label="Delete item"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
                 </button>
               )}
             </>
           ) : (
-            <button type="button" onClick={() => handleRestore(item.id)} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-800 hover:bg-emerald-100">
+            <button
+              type="button"
+              onClick={() => handleRestore(item.id)}
+              title="Restore item"
+              aria-label="Restore item"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+            >
               <Archive className="h-3.5 w-3.5" />
-              Restore
             </button>
           )}
         </div>
