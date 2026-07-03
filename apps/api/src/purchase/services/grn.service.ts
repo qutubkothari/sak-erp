@@ -122,13 +122,32 @@ export class GrnService {
   private async resolveGrnItemStockIdentity(
     tenantId: string,
     grnItem: any,
-  ): Promise<{ itemId: string; itemCode?: string; category?: string } | null> {
+  ): Promise<{
+    itemId: string;
+    itemCode?: string;
+    category?: string;
+    name?: string;
+    uid_tracking?: boolean;
+    uid_strategy?: string;
+    batch_quantity?: number;
+    batch_uom?: string;
+  } | null> {
     const grnItemId = String(grnItem?.id || '').trim();
     const storedItemId = String(grnItem?.item_id || grnItem?.item?.id || '').trim();
     const itemCode = String(grnItem?.item_code || grnItem?.itemCode || grnItem?.item?.code || '').trim();
     const poItemId = String(grnItem?.po_item_id || grnItem?.poItemId || '').trim();
 
-    const candidates = new Map<string, { itemId: string; itemCode?: string; category?: string; source: string }>();
+    const candidates = new Map<string, {
+      itemId: string;
+      itemCode?: string;
+      category?: string;
+      name?: string;
+      uid_tracking?: boolean;
+      uid_strategy?: string;
+      batch_quantity?: number;
+      batch_uom?: string;
+      source: string;
+    }>();
 
     const addCandidate = (source: string, row: any) => {
       const itemId = String(row?.id || row?.item_id || '').trim();
@@ -137,6 +156,11 @@ export class GrnService {
         itemId,
         itemCode: row?.code ? String(row.code).trim() : undefined,
         category: row?.category ? String(row.category).trim() : undefined,
+        name: row?.name ? String(row.name).trim() : undefined,
+        uid_tracking: row?.uid_tracking,
+        uid_strategy: row?.uid_strategy,
+        batch_quantity: row?.batch_quantity,
+        batch_uom: row?.batch_uom,
         source,
       });
     };
@@ -144,7 +168,7 @@ export class GrnService {
     if (storedItemId) {
       const { data: storedItem, error } = await this.supabase
         .from('items')
-        .select('id, code, category')
+        .select('id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom')
         .eq('tenant_id', tenantId)
         .eq('id', storedItemId)
         .maybeSingle();
@@ -159,7 +183,7 @@ export class GrnService {
     if (itemCode) {
       const { data: codeMatches, error } = await this.supabase
         .from('items')
-        .select('id, code, category')
+        .select('id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom')
         .eq('tenant_id', tenantId)
         .eq('code', itemCode)
         .limit(2);
@@ -176,7 +200,7 @@ export class GrnService {
     if (poItemId) {
       const { data: poItem, error } = await this.supabase
         .from('purchase_order_items')
-        .select('item_id, item:items(id, code, category)')
+        .select('item_id, item:items(id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom)')
         .eq('id', poItemId)
         .maybeSingle();
 
@@ -242,6 +266,11 @@ export class GrnService {
       itemId: resolved.itemId,
       itemCode: resolved.itemCode || itemCode || undefined,
       category: resolved.category,
+      name: resolved.name,
+      uid_tracking: resolved.uid_tracking,
+      uid_strategy: resolved.uid_strategy,
+      batch_quantity: resolved.batch_quantity,
+      batch_uom: resolved.batch_uom,
     };
   }
 
@@ -1144,12 +1173,19 @@ export class GrnService {
         return [];
       }
 
-      // Get item details including UID strategy
-      const { data: item } = await this.supabase
-        .from('items')
-        .select('id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom')
-        .eq('code', grnItem.item_code)
-        .single();
+      const resolvedItem = await this.resolveGrnItemStockIdentity(tenantId, grnItem);
+      const item = resolvedItem
+        ? {
+            id: resolvedItem.itemId,
+            code: resolvedItem.itemCode || grnItem.item_code,
+            name: resolvedItem.name,
+            category: resolvedItem.category,
+            uid_tracking: resolvedItem.uid_tracking,
+            uid_strategy: resolvedItem.uid_strategy,
+            batch_quantity: resolvedItem.batch_quantity,
+            batch_uom: resolvedItem.batch_uom,
+          }
+        : null;
 
       console.log('Item found:', item ? item.code : 'NOT FOUND');
       if (!item) return; // Skip if item not found
@@ -1162,9 +1198,10 @@ export class GrnService {
 
       // Calculate number of UIDs to generate based on strategy
       let uidsToGenerate = acceptedQty;
-      if (item.uid_strategy === 'BATCHED' && item.batch_quantity) {
-        uidsToGenerate = Math.ceil(acceptedQty / item.batch_quantity);
-        console.log(`BATCHED strategy: ${acceptedQty} pcs / ${item.batch_quantity} per ${item.batch_uom || 'container'} = ${uidsToGenerate} UIDs`);
+      const batchQuantity = this.toNumber(item.batch_quantity);
+      if (item.uid_strategy === 'BATCHED' && batchQuantity > 0) {
+        uidsToGenerate = Math.ceil(acceptedQty / batchQuantity);
+        console.log(`BATCHED strategy: ${acceptedQty} pcs / ${batchQuantity} per ${item.batch_uom || 'container'} = ${uidsToGenerate} UIDs`);
       } else {
         console.log(`SERIALIZED strategy: Generating ${uidsToGenerate} UIDs (one per piece)`);
       }
@@ -2747,15 +2784,22 @@ export class GrnService {
       throw new BadRequestException('No accepted quantity to generate UIDs for');
     }
 
-    // Get existing UID count for this item in this GRN
-    const { data: item } = await this.supabase
-      .from('items')
-      .select('id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom')
-      .eq('code', grnItem.item_code)
-      .single();
+    const resolvedItem = await this.resolveGrnItemStockIdentity(tenantId, grnItem);
+    const item = resolvedItem
+      ? {
+          id: resolvedItem.itemId,
+          code: resolvedItem.itemCode || grnItem.item_code,
+          name: resolvedItem.name,
+          category: resolvedItem.category,
+          uid_tracking: resolvedItem.uid_tracking,
+          uid_strategy: resolvedItem.uid_strategy,
+          batch_quantity: resolvedItem.batch_quantity,
+          batch_uom: resolvedItem.batch_uom,
+        }
+      : null;
 
     if (!item) {
-      throw new NotFoundException('Item not found');
+      throw new NotFoundException(`Item not found for GRN line ${grnItem.item_code || grnItem.id}`);
     }
 
     console.log('[generateMissingUIDs] Item:', { id: item.id, code: item.code, uid_strategy: item.uid_strategy, batch_quantity: item.batch_quantity });
@@ -2775,11 +2819,15 @@ export class GrnService {
 
     console.log('[generateMissingUIDs] Existing UIDs count:', existingCount, 'error:', countError, 'sample data:', existingUIDs?.slice(0, 3));
 
-    // Calculate missing UIDs based on accepted quantity (generate one UID per accepted item)
+    // Calculate missing UIDs using the item's UID strategy.
     const currentCount = existingCount || 0;
-    const missingCount = acceptedQty - currentCount;
+    const batchQuantity = this.toNumber(item.batch_quantity);
+    const targetUidCount = item.uid_strategy === 'BATCHED' && batchQuantity > 0
+      ? Math.ceil(acceptedQty / batchQuantity)
+      : acceptedQty;
+    const missingCount = targetUidCount - currentCount;
 
-    console.log('[generateMissingUIDs] Calculation:', { currentCount, acceptedQty, missingCount, willGenerate: missingCount > 0 });
+    console.log('[generateMissingUIDs] Calculation:', { currentCount, acceptedQty, targetUidCount, missingCount, willGenerate: missingCount > 0 });
 
     // Always sync uid_count in grn_items to match actual UID registry count
     if (grnItem.uid_count !== currentCount) {
@@ -2792,7 +2840,7 @@ export class GrnService {
 
     if (missingCount <= 0) {
       console.log('[generateMissingUIDs] Returning early - no UIDs to generate');
-      return { generated: 0, message: 'No additional UIDs needed', current: currentCount, target: acceptedQty };
+      return { generated: 0, message: 'No additional UIDs needed', current: currentCount, target: targetUidCount };
     }
     console.log('[generateMissingUIDs] Will generate', missingCount, 'UIDs');
 
