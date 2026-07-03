@@ -216,6 +216,32 @@ function getPrWorkflowLabel(pr: Pick<Requisition, 'workflow_status_label' | 'sta
   return String(pr?.workflow_status_label || pr?.status || 'UNKNOWN').trim();
 }
 
+function formatPrDate(value: string | null | undefined): string {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata',
+  }).format(parsed);
+}
+
+function formatPrDateTime(value: string | null | undefined): string {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  }).format(parsed);
+}
+
 function normalizeDateInputValue(value: string | null | undefined): string {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -254,11 +280,12 @@ function PRContent() {
     hydrateAuth();
     setTodayDate(getTodayDateInputValue());
   }, [hydrateAuth]);
-  const currentUserId = String((currentUser as any)?.id || (currentUser as any)?.userId || '');
-  const canApprovePR = hasModulePermission(currentUser, 'Purchase Management', 'approve');
-  const canCreatePR = hasModulePermission(currentUser, 'Purchase Management', 'create');
-  const canEditPR = hasModulePermission(currentUser, 'Purchase Management', 'edit');
-  const canDeletePR = hasModulePermission(currentUser, 'Purchase Management', 'delete');
+  const permissionUser = isMounted ? currentUser : null;
+  const currentUserId = String((permissionUser as any)?.id || (permissionUser as any)?.userId || '');
+  const canApprovePR = hasModulePermission(permissionUser, 'Purchase Management', 'approve');
+  const canCreatePR = hasModulePermission(permissionUser, 'Purchase Management', 'create');
+  const canEditPR = hasModulePermission(permissionUser, 'Purchase Management', 'edit');
+  const canDeletePR = hasModulePermission(permissionUser, 'Purchase Management', 'delete');
   const itemEntryRef = useRef<HTMLDivElement>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [items, setItems] = useState<PRItem[]>([]);
@@ -373,7 +400,7 @@ function PRContent() {
       label: 'Required Date',
       accessor: (r) => r.required_date,
       sortAccessor: (r) => new Date(r.required_date).getTime(),
-      cell: (r) => <span>{new Date(r.required_date).toLocaleDateString()}</span>,
+      cell: (r) => <span>{formatPrDate(r.required_date)}</span>,
     },
     {
       id: 'status',
@@ -388,7 +415,7 @@ function PRContent() {
       label: 'Created',
       accessor: (r) => r.created_at,
       sortAccessor: (r) => new Date(r.created_at).getTime(),
-      cell: (r) => <span>{new Date(r.created_at).toLocaleDateString()}</span>,
+      cell: (r) => <span>{formatPrDate(r.created_at)}</span>,
     },
     {
       id: 'purpose',
@@ -2254,7 +2281,7 @@ function PRContent() {
                     </div>
                     <div>
                       <p className="text-sm text-[#7A6555]">Required Date</p>
-                      <p className="font-semibold">{new Date(selectedPR.required_date).toLocaleDateString()}</p>
+                      <p className="font-semibold">{formatPrDate(selectedPR.required_date)}</p>
                     </div>
                     <div>
                       <p className="text-sm text-[#7A6555]">Priority</p>
@@ -2266,7 +2293,7 @@ function PRContent() {
                     </div>
                     <div>
                       <p className="text-sm text-[#7A6555]">Request Date</p>
-                      <p className="font-semibold">{new Date(selectedPR.request_date).toLocaleDateString()}</p>
+                      <p className="font-semibold">{formatPrDate(selectedPR.request_date)}</p>
                     </div>
                     <div className="sm:col-span-2 lg:col-span-4">
                       <p className="text-sm text-[#7A6555]">Delivery Address</p>
@@ -2282,7 +2309,7 @@ function PRContent() {
                     {selectedPR.approved_at && (
                       <div>
                         <p className="text-sm text-[#7A6555]">Approved At</p>
-                        <p className="font-semibold">{new Date(selectedPR.approved_at).toLocaleDateString()}</p>
+                        <p className="font-semibold">{formatPrDate(selectedPR.approved_at)}</p>
                       </div>
                     )}
                     <div>
@@ -2296,7 +2323,7 @@ function PRContent() {
                     {selectedPR.rfq_summary?.nextFollowUpDate && (
                       <div>
                         <p className="text-sm text-[#7A6555]">Next Follow-up</p>
-                        <p className="font-semibold">{new Date(selectedPR.rfq_summary.nextFollowUpDate).toLocaleDateString()}</p>
+                        <p className="font-semibold">{formatPrDate(selectedPR.rfq_summary.nextFollowUpDate)}</p>
                       </div>
                     )}
                     {selectedPR.edit_count && selectedPR.edit_count > 0 && (
@@ -2308,7 +2335,7 @@ function PRContent() {
                     {selectedPR.last_edited_at && (
                       <div>
                         <p className="text-sm text-[#7A6555]">Last Edited</p>
-                        <p className="font-semibold">{new Date(selectedPR.last_edited_at).toLocaleDateString()} {new Date(selectedPR.last_edited_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                        <p className="font-semibold">{formatPrDateTime(selectedPR.last_edited_at)}</p>
                       </div>
                     )}
                   </div>
@@ -2323,7 +2350,7 @@ function PRContent() {
                         {approvalHistory.map((entry) => (
                           <li key={entry.id} className="border-l-2 border-[#D8C8AA] pl-3">
                             <p className="text-sm font-semibold text-[#4A3426]">{entry.action.replaceAll('_', ' ')}</p>
-                            <p className="text-xs text-[#7A6555]">{entry.actor_name} · {new Date(entry.created_at).toLocaleString()}</p>
+                            <p className="text-xs text-[#7A6555]">{entry.actor_name} · {formatPrDateTime(entry.created_at)}</p>
                             {entry.reason ? <p className="mt-1 whitespace-pre-wrap text-sm text-red-700">{entry.reason}</p> : null}
                           </li>
                         ))}
@@ -2588,9 +2615,9 @@ function PRContent() {
                                 {String(rfq.status || '').toUpperCase()}
                               </span>
                             </td>
-                            <td className="px-3 py-2">{rfq.sent_at ? new Date(rfq.sent_at).toLocaleDateString() : '-'}</td>
-                            <td className="px-3 py-2">{rfq.vendor_quote_received_at ? new Date(rfq.vendor_quote_received_at).toLocaleDateString() : '-'}</td>
-                            <td className="px-3 py-2">{rfq.follow_up_date ? new Date(rfq.follow_up_date).toLocaleDateString() : '-'}</td>
+                            <td className="px-3 py-2">{rfq.sent_at ? formatPrDate(rfq.sent_at) : '-'}</td>
+                            <td className="px-3 py-2">{rfq.vendor_quote_received_at ? formatPrDate(rfq.vendor_quote_received_at) : '-'}</td>
+                            <td className="px-3 py-2">{rfq.follow_up_date ? formatPrDate(rfq.follow_up_date) : '-'}</td>
                             <td className="px-3 py-2 text-right">
                               <button
                                 type="button"
@@ -3064,3 +3091,4 @@ function PRContent() {
 export default function PurchaseRequisitionsPage() {
   return <PRContent />;
 }
+
