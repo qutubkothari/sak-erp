@@ -1164,6 +1164,10 @@ export default function ItemsPage() {
     const matchesActiveStatus = showDeleted ? !item.is_active : item.is_active;
     return matchesType && matchesActiveStatus;
   });
+  const activeItemCount = items.filter((item) => item.is_active).length;
+  const inactiveItemCount = items.filter((item) => !item.is_active).length;
+  const verifiedItemCount = items.filter((item) => item.is_active && item.is_verified).length;
+  const uidTrackedItemCount = items.filter((item) => item.is_active && item.uid_tracking).length;
 
   // Sorting
   const sortedItems = [...filteredItems].sort((a, b) => {
@@ -1497,13 +1501,18 @@ export default function ItemsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 px-3 py-4 lg:px-4">
-      <div className="w-full max-w-none">
-        <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="min-h-screen bg-[#FAF9F6] px-4 py-4 text-[#2F241D] lg:px-6">
+      <div className="flex min-h-[calc(100vh-2rem)] w-full max-w-none flex-col gap-4">
+        <section className="border-b border-[#E8DCC4] bg-white px-5 py-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-amber-900">Stock Master</h1>
+            <div className="text-xs font-bold uppercase tracking-wide text-[#8B6F47]">Inventory Master Data</div>
+            <h1 className="mt-1 text-3xl font-bold text-[#4A3426]">Stock Master</h1>
+            <p className="mt-2 max-w-3xl text-sm text-[#7A6555]">
+              Maintain SAS part numbers, item identity, UOM, HSN, UID controls, drawings, variants, vendors, and verification status.
+            </p>
           </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <div className="flex shrink-0 flex-wrap justify-start gap-2 xl:justify-end">
             {canExport && (
               <button
                 onClick={() => {
@@ -1535,26 +1544,26 @@ export default function ItemsPage() {
                     `Items_${new Date().toISOString().slice(0, 10)}.csv`
                   );
                 }}
-                className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-800"
+                className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
               >
                 ⬇ Download Excel
               </button>
             )}
             <button
               onClick={() => setShowCategoryManager(true)}
-              className="rounded-md bg-[#8B6F47] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#6F4E37]"
+              className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               Manage Categories
             </button>
             <button
               onClick={() => setShowNomenclatureManager(true)}
-              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+              className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               Manage SAS Part Numbers
             </button>
             <button
               onClick={initBulkInventory}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               Bulk Inventory
             </button>
@@ -1562,13 +1571,13 @@ export default function ItemsPage() {
               <>
                 <button
                   onClick={downloadItemTemplate}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                  className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                 >
                   ⬇ CSV Template
                 </button>
                 <button
                   onClick={() => { setShowImportModal(true); setImportPreview([]); setImportResult(null); setImportFile(null); }}
-                  className="rounded-md bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
+                  className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                 >
                   ⬆ Import Items
                 </button>
@@ -1581,13 +1590,54 @@ export default function ItemsPage() {
                   resetForm();
                   setShowForm(true);
                 }}
-                className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                className="rounded-md border border-[#8B6F47] bg-[#8B6F47] px-4 py-2 text-sm font-bold text-white hover:bg-[#6F4E37]"
               >
                 + Add Item
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setShowDeleted((prev) => !prev)}
+              className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+            >
+              {showDeleted ? 'Show Active' : 'Show Inactive'}
+            </button>
           </div>
         </div>
+        </section>
+
+        <section className="overflow-hidden rounded-md border border-[#E8DCC4] bg-white">
+          <div className="grid divide-y divide-[#E8DCC4] md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-5">
+            <div className="p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Active Items</div>
+              <div className="mt-2 text-2xl font-bold text-[#4A3426]">{activeItemCount}</div>
+            </div>
+            <div className="p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Verified</div>
+              <div className="mt-2 text-2xl font-bold text-emerald-700">{verifiedItemCount}</div>
+            </div>
+            <div className="p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Pending Verification</div>
+              <div className="mt-2 text-2xl font-bold text-amber-700">{Math.max(activeItemCount - verifiedItemCount, 0)}</div>
+            </div>
+            <div className="p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">UID Controlled</div>
+              <div className="mt-2 text-2xl font-bold text-[#4A3426]">{uidTrackedItemCount}</div>
+            </div>
+            <div className="p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Inactive</div>
+              <div className="mt-2 text-2xl font-bold text-red-700">{inactiveItemCount}</div>
+            </div>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-md border border-[#E8DCC4] bg-white">
+          <div className="border-b border-[#E8DCC4] bg-[#FFFCF5] px-5 py-4">
+            <h2 className="text-xl font-bold text-[#4A3426]">{showDeleted ? 'Inactive Item Register' : 'Item Register'}</h2>
+            <p className="mt-1 text-sm text-[#7A6555]">
+              {filteredItems.length} records shown. Use saved table views and columns for repeated master-data checks.
+            </p>
+          </div>
 
         <ListTable
           storageKey="stockMasterTable:poStyle:v1"
@@ -1600,13 +1650,13 @@ export default function ItemsPage() {
           exportFilename={`stock-master-${new Date().toISOString().slice(0, 10)}`}
           toolbarRight={
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">Type:</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Type</span>
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
-                className="w-40 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-amber-500"
+                className="min-h-10 w-56 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
               >
-                <option value="">All</option>
+                <option value="">All categories</option>
                 {ITEM_CATEGORY_OPTIONS.map((cat) => (
                   <option key={cat.value} value={cat.value}>{cat.label}</option>
                 ))}
@@ -1615,11 +1665,12 @@ export default function ItemsPage() {
           }
           emptyState={
             <div className="p-12 text-center">
-              <div className="mb-2 text-lg font-semibold text-gray-700">No items found</div>
-              <p className="text-sm text-gray-500">Create your first item to get started</p>
+              <div className="mb-2 text-lg font-semibold text-[#4A3426]">No items found</div>
+              <p className="text-sm text-[#7A6555]">Create your first item or adjust the category/status filter.</p>
             </div>
           }
         />
+        </section>
       </div>
 
       {/* Create/Edit Form Modal */}
