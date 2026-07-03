@@ -19,6 +19,8 @@
   .erp-list-table-scroll {
     overflow-x: scroll !important;
     overflow-y: visible;
+    max-width: 100%;
+    overscroll-behavior-x: contain;
     scrollbar-width: thin;
     scrollbar-color: #9ca3af #f3f4f6;
   }
@@ -137,9 +139,10 @@
     overflow-x: hidden;
   }
 
-  /* Horizontal scrollbars are hidden across ERP screens; tables should fit the page width. */
+  /* Wide ERP grids use visible horizontal scrolling, matching SAP list-report behavior. */
   .overflow-x-auto {
-    scrollbar-width: none;
+    scrollbar-width: thin;
+    scrollbar-color: #9ca3af #f3f4f6;
   }
 
   .overflow-x-auto {
@@ -147,8 +150,18 @@
   }
   
   .overflow-x-auto::-webkit-scrollbar {
-    display: none;
-    height: 0;
+    display: block;
+    height: 12px;
+  }
+
+  .overflow-x-auto::-webkit-scrollbar-track {
+    background: #f3f4f6;
+  }
+
+  .overflow-x-auto::-webkit-scrollbar-thumb {
+    background: #9ca3af;
+    border: 2px solid #f3f4f6;
+    border-radius: 9999px;
   }
 
   /* Sticky table headers (global) */

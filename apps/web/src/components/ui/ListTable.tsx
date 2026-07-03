@@ -114,7 +114,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
     emptyState,
     className = '',
     exportFilename,
-    fitToContainer = true,
+    fitToContainer = false,
     selectable = false,
     selectedRowIds,
     onSelectionChange,
@@ -265,16 +265,18 @@ export function ListTable<T>(props: ListTableProps<T>) {
   }, [orderedColumns, visibleById]);
 
   const tableMinWidth = useMemo(() => {
+    const selectableWidth = selectable ? 44 : 0;
     return visibleColumns.reduce((total, col) => {
       const width = getColumnWidth(col);
       return total + width;
-    }, 0);
-  }, [getColumnWidth, visibleColumns]);
+    }, selectableWidth);
+  }, [getColumnWidth, selectable, visibleColumns]);
 
   const scrollTableWidth = useMemo(() => {
-    const perColumnWidth = visibleColumns.reduce((total, col) => total + getColumnWidth(col), 0);
+    const selectableWidth = selectable ? 44 : 0;
+    const perColumnWidth = visibleColumns.reduce((total, col) => total + getColumnWidth(col), selectableWidth);
     return Math.max(perColumnWidth, tableMinWidth, 720);
-  }, [getColumnWidth, tableMinWidth, visibleColumns]);
+  }, [getColumnWidth, selectable, tableMinWidth, visibleColumns]);
 
   const filteredRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -714,7 +716,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               {selectable && (
                 <th
                   style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
-                  className="sticky top-0 z-10 bg-[#FAF9F6]/90 px-3 py-3 text-center"
+                  className={`${fitToContainer ? 'sticky top-0' : 'sticky left-0 top-0'} z-30 bg-[#FAF9F6] px-3 py-3 text-center shadow-[1px_0_0_#E8DCC4]`}
                 >
                   <input
                     type="checkbox"
@@ -734,15 +736,20 @@ export function ListTable<T>(props: ListTableProps<T>) {
                   align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
                 const width = getColumnWidth(col);
                 const resizable = col.resizable !== false;
+                const stickyActions = !fitToContainer && col.id === 'actions';
 
                 return (
                   <th
                     key={col.id}
                     style={fitToContainer
                       ? { width: `${width}px` }
-                      : { width: `${width}px`, minWidth: `${width}px` }}
+                      : {
+                          width: `${width}px`,
+                          minWidth: `${width}px`,
+                          ...(stickyActions ? { right: 0 } : {}),
+                        }}
                     className={
-                      `relative sticky top-0 z-10 bg-transparent px-3 py-2 text-[11px] font-semibold uppercase text-[#6F4E37] ` +
+                      `relative sticky top-0 ${stickyActions ? 'z-30 bg-[#FAF9F6] shadow-[-1px_0_0_#E8DCC4]' : 'z-10 bg-transparent'} px-3 py-2 text-[11px] font-semibold uppercase text-[#6F4E37] ` +
                       headerAlignClass +
                       ` ${sortable ? 'cursor-pointer hover:bg-[#F5EFE3] transition-colors' : ''} ` +
                       (col.headerClassName || '')
@@ -788,7 +795,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                   {selectable && (
                     <td
                       style={{ width: '44px', minWidth: '44px', maxWidth: '44px' }}
-                      className="px-3 py-2.5 text-center"
+                      className={`${fitToContainer ? '' : 'sticky left-0 z-20 bg-white shadow-[1px_0_0_#E8DCC4] group-hover:bg-[#F5EFE3]'} px-3 py-2.5 text-center`}
                     >
                       <input
                         type="checkbox"
@@ -803,12 +810,19 @@ export function ListTable<T>(props: ListTableProps<T>) {
                     const align = col.align || 'left';
                     const cellAlignClass =
                       align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+                    const stickyActions = !fitToContainer && col.id === 'actions';
 
                     return (
                       <td
                         key={col.id}
-                        style={fitToContainer ? undefined : { width: `${getColumnWidth(col)}px`, minWidth: `${getColumnWidth(col)}px` }}
-                        className={`min-w-0 px-3 py-2 text-[13px] leading-5 text-gray-700 align-middle ${cellAlignClass} ${col.cellClassName || ''}`}
+                        style={fitToContainer
+                          ? undefined
+                          : {
+                              width: `${getColumnWidth(col)}px`,
+                              minWidth: `${getColumnWidth(col)}px`,
+                              ...(stickyActions ? { right: 0 } : {}),
+                            }}
+                        className={`min-w-0 px-3 py-2 text-[13px] leading-5 text-gray-700 align-middle ${stickyActions ? 'sticky z-20 bg-white shadow-[-1px_0_0_#E8DCC4] group-hover:bg-[#F5EFE3]' : ''} ${cellAlignClass} ${col.cellClassName || ''}`}
                       >
                         {col.cell ? col.cell(row) : normalizeForSearch(col.accessor ? col.accessor(row) : '')}
                       </td>
