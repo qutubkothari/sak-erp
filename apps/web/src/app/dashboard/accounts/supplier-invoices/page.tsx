@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
-import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { hasModulePermission, readStoredUser, type StoredUser } from '@/lib/rbac';
 
 interface SupplierInvoice {
   id: string;
@@ -35,16 +35,21 @@ function formatDate(val?: string | null) {
   if (!val) return '-';
   const d = new Date(val);
   if (isNaN(d.getTime())) return '-';
-  return d.toLocaleDateString('en-IN');
+  return new Intl.DateTimeFormat('en-IN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata',
+  }).format(d);
 }
 
 function formatAmount(val?: number | null) {
   const n = Number(val ?? 0);
-  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+  return `Rs. ${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 }
 
 export default function SupplierInvoicesPage() {
-  const currentUser = readStoredUser();
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
   const canApprove = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const canEdit = hasModulePermission(currentUser, 'Purchase Management', 'edit') || canApprove;
 
@@ -62,34 +67,22 @@ export default function SupplierInvoicesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  useEffect(() => { fetchInvoices(); }, []);
+  useEffect(() => {
+    setCurrentUser(readStoredUser());
+    fetchInvoices();
+  }, []);
 
   const fetchInvoices = async () => {
     try {
       setLoading(true);
-      // Use unified payment status API - single source of truth
       const grnsWithStatus = await apiClient.get<any[]>('/purchase/debit-notes/grns-with-payment-status?status=COMPLETED');
-      console.log('[INVOICES] all grns count:', (grnsWithStatus || []).length);
 
-      // Filter to only show unpaid/partially paid GRNs
       const completed = (grnsWithStatus || []).filter((g: any) => {
         const calc = g._payment_calculation || {};
         const netPayable = calc.net_payable || 0;
         const isFullyPaid = calc.is_fully_paid || false;
-
-        // Check if PO is fully invoiced (total invoices = PO grand_total)
-        // This requires fetching PO data separately for this specific check
         return netPayable > 0 && !isFullyPaid;
       });
-
-      console.log('[INVOICES] completed grns:', completed.map((g: any) => ({
-        id: g.id,
-        grn_number: g.grn_number,
-        invoice_approved: g.invoice_approved,
-        net_payable: g._payment_calculation?.net_payable,
-        outstanding: g._payment_calculation?.outstanding,
-        payment_status: g._payment_calculation?.payment_status
-      })));
       setInvoices(completed);
     } catch (e) {
       console.error('[INVOICES] fetch error:', e);
@@ -162,10 +155,7 @@ export default function SupplierInvoicesPage() {
   const handleApprove = async (inv: SupplierInvoice) => {
     if (!window.confirm(`Sanction payment for ${inv.grn_number}? This will move it to Accounts Payable.`)) return;
     try {
-      console.log('[APPROVE] calling POST /purchase/grn/' + inv.id + '/approve-invoice');
-      const result = await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, {});
-      console.log('[APPROVE] response:', result);
-      console.log('[APPROVE] invoice_approved on result:', (result as any)?.invoice_approved);
+      await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, {});
       // Remove from selection if it was selected
       setSelectedInvoiceIds(prev => {
         const next = new Set(prev);
@@ -189,8 +179,8 @@ export default function SupplierInvoicesPage() {
     
     const totalAmount = selected.reduce((sum, inv) => sum + Number(inv.net_payable_amount || 0), 0);
     const confirmMsg = `Sanction payment for ${selected.length} invoice${selected.length > 1 ? 's' : ''}?\n\n` +
-      selected.map(inv => `• ${inv.grn_number}: ₹${formatAmount(inv.net_payable_amount)}`).join('\n') +
-      `\n\nTotal: ₹${formatAmount(totalAmount)}\n\nThese will move to Accounts Payable.`;
+      selected.map(inv => `- ${inv.grn_number}: ${formatAmount(inv.net_payable_amount)}`).join('\n') +
+      `\n\nTotal: ${formatAmount(totalAmount)}\n\nThese will move to Accounts Payable.`;
     
     if (!window.confirm(confirmMsg)) return;
     
@@ -211,9 +201,9 @@ export default function SupplierInvoicesPage() {
     await fetchInvoices();
     
     if (results.failed.length === 0) {
-      alert(`✓ Successfully sanctioned ${results.success.length} invoice${results.success.length > 1 ? 's' : ''}`);
+      alert(`Successfully sanctioned ${results.success.length} invoice${results.success.length > 1 ? 's' : ''}`);
     } else {
-      alert(`Sanction Results:\n✓ Success: ${results.success.length}\n✗ Failed: ${results.failed.length}\n\nFailed items:\n${results.failed.join('\n')}`);
+      alert(`Sanction Results:\nSuccess: ${results.success.length}\nFailed: ${results.failed.length}\n\nFailed items:\n${results.failed.join('\n')}`);
     }
   };
 
@@ -338,7 +328,7 @@ export default function SupplierInvoicesPage() {
       accessor: (r) => r.invoice_approved ? 'Payment Sanctioned' : 'Payment Due',
       cell: (r) => r.invoice_approved ? (
         <div className="text-center">
-          <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">✓ Payment Sanctioned</span>
+          <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">Payment Sanctioned</span>
           {r.invoice_approved_at && <div className="text-[10px] text-gray-400 mt-0.5">{formatDate(r.invoice_approved_at)}</div>}
         </div>
       ) : (
@@ -388,45 +378,46 @@ export default function SupplierInvoicesPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-amber-900 mb-2">Supplier Invoices</h1>
-          <p className="text-amber-700">Review, edit and sanction supplier invoices before they appear in Accounts Payable</p>
+    <div className="min-h-screen bg-[#FAF9F6] p-6 text-[#2F241D]">
+      <div className="w-full max-w-none space-y-5">
+        <div className="rounded-md border border-[#E8DCC4] bg-white p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">Accounts</div>
+          <h1 className="mt-1 text-3xl font-bold text-[#3F2D20]">Supplier Invoices</h1>
+          <p className="mt-1 text-sm text-[#6F4E37]">Review GRN supplier invoices, correct amounts, sanction liability, and move approved invoices to Accounts Payable.</p>
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow-md p-5 border-t-4 border-orange-500">
-            <div className="text-sm text-amber-700 font-semibold mb-1">Total Invoices</div>
-            <div className="text-3xl font-bold text-amber-900">{invoices.length}</div>
+        <div className="grid grid-cols-2 overflow-hidden rounded-md border border-[#E8DCC4] bg-white md:grid-cols-4">
+          <div className="border-r border-[#E8DCC4] p-4">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">Total Invoices</div>
+            <div className="mt-1 text-2xl font-bold text-[#3F2D20]">{invoices.length}</div>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-5 border-t-4 border-amber-400">
-            <div className="text-sm text-amber-700 font-semibold mb-1">Payment Due</div>
-            <div className="text-3xl font-bold text-amber-600">{pendingApprovalCount}</div>
+          <div className="border-r border-[#E8DCC4] p-4">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">Payment Due</div>
+            <div className="mt-1 text-2xl font-bold text-[#9A5B00]">{pendingApprovalCount}</div>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-5 border-t-4 border-green-500">
-            <div className="text-sm text-amber-700 font-semibold mb-1">Payment Sanctioned → AP</div>
-            <div className="text-3xl font-bold text-green-600">{approvedCount}</div>
+          <div className="border-r border-[#E8DCC4] p-4">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">Sanctioned To AP</div>
+            <div className="mt-1 text-2xl font-bold text-green-700">{approvedCount}</div>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-5 border-t-4 border-orange-400">
-            <div className="text-sm text-amber-700 font-semibold mb-1">Total Payable (filtered)</div>
-            <div className="text-xl font-bold text-orange-600">{formatAmount(totalPayable)}</div>
+          <div className="p-4">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">Filtered Payable</div>
+            <div className="mt-1 text-xl font-bold text-[#3F2D20]">{formatAmount(totalPayable)}</div>
           </div>
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex gap-2 mb-4 flex-wrap">
+        <div className="flex flex-wrap gap-2 rounded-md border border-[#E8DCC4] bg-white p-3">
           {([
             { key: 'ALL', label: 'All' },
-            { key: 'PENDING_APPROVAL', label: `⏳ Payment Due (${pendingApprovalCount})` },
-            { key: 'APPROVED', label: `✓ Payment Sanctioned (${approvedCount})` },
+            { key: 'PENDING_APPROVAL', label: `Payment Due (${pendingApprovalCount})` },
+            { key: 'APPROVED', label: `Sanctioned (${approvedCount})` },
           ] as const).map((f) => (
             <button key={f.key} onClick={() => setStatusFilter(f.key as any)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
                 statusFilter === f.key
-                  ? 'bg-orange-600 text-white'
-                  : 'bg-white text-amber-800 border border-amber-300 hover:bg-amber-50'
+                  ? 'bg-[#8B6F47] text-white'
+                  : 'border border-[#E8DCC4] bg-white text-[#6F4E37] hover:bg-[#F6EFE2]'
               }`}>
               {f.label}
             </button>
@@ -434,20 +425,20 @@ export default function SupplierInvoicesPage() {
         </div>
 
         {/* Info Banner */}
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-          <strong>Workflow:</strong> Review each invoice → Edit amounts if there&apos;s a discrepancy → Sanction → Invoice moves to <strong>Accounts Payable</strong> for payment.
+        <div className="rounded-md border border-[#E8DCC4] bg-[#FFFDF7] p-3 text-sm text-[#6F4E37]">
+          <strong>Workflow:</strong> Review invoice, correct discrepancies, sanction liability, then process payment from Accounts Payable.
         </div>
 
         {/* Bulk Actions Bar */}
         {canApprove && selectedInvoiceIds.size > 0 && (
-          <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
+          <div className="rounded-md border border-[#D9C9AD] bg-white p-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="text-sm font-semibold text-orange-800">
+              <span className="text-sm font-semibold text-[#3F2D20]">
                 {selectedSanctionableCount} invoice{selectedSanctionableCount !== 1 ? 's' : ''} selected
               </span>
               {selectedSanctionableCount > 0 && (
-                <span className="text-xs text-orange-600">
-                  Total: ₹{formatAmount(
+                <span className="text-xs text-[#7A6756]">
+                  Total: {formatAmount(
                     invoices
                       .filter(inv => selectedInvoiceIds.has(inv.id) && !inv.invoice_approved)
                       .reduce((sum, inv) => sum + Number(inv.net_payable_amount || 0), 0)
@@ -460,22 +451,22 @@ export default function SupplierInvoicesPage() {
                 <button
                   onClick={handleBulkSanction}
                   disabled={bulkSanctionSubmitting}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-semibold disabled:opacity-60 flex items-center gap-2">
+                  className="px-4 py-2 bg-[#8B6F47] text-white rounded-md hover:bg-[#745A37] text-sm font-semibold disabled:opacity-60 flex items-center gap-2">
                   {bulkSanctionSubmitting ? (
                     <>
-                      <span className="animate-spin">⏳</span>
-                      Sanctioning…
+                      <span className="animate-spin">...</span>
+                      Sanctioning...
                     </>
                   ) : (
                     <>
-                      ✓ Sanction {selectedSanctionableCount > 1 ? `(${selectedSanctionableCount})` : ''}
+                      Sanction {selectedSanctionableCount > 1 ? `(${selectedSanctionableCount})` : ''}
                     </>
                   )}
                 </button>
               )}
               <button
                 onClick={() => setSelectedInvoiceIds(new Set())}
-                className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm text-gray-600">
+                className="px-3 py-2 border border-[#D9C9AD] rounded-md hover:bg-[#F6EFE2] text-sm text-[#6F4E37]">
                 Clear
               </button>
             </div>
@@ -483,12 +474,12 @@ export default function SupplierInvoicesPage() {
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="bg-white rounded-md border border-[#E8DCC4] overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-gray-500">Loading invoices...</div>
           ) : filtered.length === 0 ? (
             <div className="p-12 text-center">
-              <div className="text-5xl mb-4">🧾</div>
+              <div className="mx-auto mb-4 h-10 w-10 rounded-full border border-[#E8DCC4] bg-[#FFFDF7]" />
               <h3 className="text-xl font-semibold text-gray-700 mb-2">No invoices found</h3>
               <p className="text-gray-500">Completed GRNs will appear here for review and approval</p>
             </div>
@@ -500,7 +491,7 @@ export default function SupplierInvoicesPage() {
               getRowId={(r) => r.id}
               defaultPageSize={25}
               pageSizeOptions={[10, 25, 50, 100]}
-              searchPlaceholder="Search vendor, GRN, invoice no…"
+              searchPlaceholder="Search vendor, GRN, invoice no..."
               selectable={canApprove}
               selectedRowIds={Array.from(selectedInvoiceIds)}
               onSelectionChange={(ids) => setSelectedInvoiceIds(new Set(ids))}
@@ -509,121 +500,183 @@ export default function SupplierInvoicesPage() {
         </div>
       </div>
 
-      {/* Edit Invoice Amounts Modal */}
+      {/* Edit Invoice Amounts Workspace */}
       {editingInvoice && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
-            <div className="p-6 border-b">
-              <h2 className="text-xl font-bold text-gray-900">Edit Invoice Amounts</h2>
-              <p className="text-sm text-gray-500 mt-1">{editingInvoice.grn_number} — {editingInvoice.vendor?.name}</p>
-            </div>
-            <div className="p-6 space-y-4">
-              {editError && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{editError}</div>}
-              <div className="grid grid-cols-2 gap-3">
+        <div className="fixed inset-0 z-50 bg-white text-[#2F241D]">
+          <div className="flex h-full flex-col bg-[#FAF9F6]">
+            <div className="border-b border-[#E8DCC4] bg-white px-6 py-4">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Gross Amount (₹)</label>
-                  <input type="number" step="0.01" min="0"
-                    value={editForm.gross_amount}
-                    onChange={(e) => {
-                      const gross = parseFloat(e.target.value) || 0;
-                      const tax = parseFloat(editForm.tax_amount) || 0;
-                      const freight = parseFloat(editForm.freight_amount) || 0;
-                      const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
-                      setEditForm(prev => ({ ...prev, gross_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500" />
+                  <div className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">Supplier Invoice</div>
+                  <h2 className="mt-1 text-2xl font-bold text-[#3F2D20]">Edit Invoice Amounts</h2>
+                  <p className="mt-1 text-sm text-[#6F4E37]">{editingInvoice.grn_number} - {editingInvoice.vendor?.name}</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">GST % <span className="text-gray-400 font-normal">(auto-calc tax)</span></label>
-                  <input type="number" step="0.01" min="0" max="100"
-                    value={editForm.gst_percentage}
-                    onChange={(e) => {
-                      const gstPct = e.target.value;
-                      const gross = parseFloat(editForm.gross_amount) || 0;
-                      const tax = gstPct !== '' ? Math.round(gross * (parseFloat(gstPct) || 0) / 100 * 100) / 100 : parseFloat(editForm.tax_amount) || 0;
-                      const freight = parseFloat(editForm.freight_amount) || 0;
-                      const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
-                      setEditForm(prev => ({
-                        ...prev,
-                        gst_percentage: gstPct,
-                        tax_amount: gstPct !== '' ? String(tax) : prev.tax_amount,
-                        net_payable_amount: String(gross + tax + freight + freightGst),
-                      }));
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Tax / GST Amount (₹)</label>
-                <input type="number" step="0.01" min="0"
-                  value={editForm.tax_amount}
-                  onChange={(e) => {
-                    const tax = parseFloat(e.target.value) || 0;
-                    const gross = parseFloat(editForm.gross_amount) || 0;
-                    const freight = parseFloat(editForm.freight_amount) || 0;
-                    const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
-                    setEditForm(prev => ({ ...prev, tax_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500" />
-              </div>
-              <div className="border-t pt-3">
-                <div className="text-xs font-semibold text-blue-700 mb-2">Freight / Transportation Charges</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Freight Value (₹)</label>
-                    <input type="number" step="0.01" min="0"
-                      value={editForm.freight_amount}
-                      onChange={(e) => {
-                        const freight = parseFloat(e.target.value) || 0;
-                        const gross = parseFloat(editForm.gross_amount) || 0;
-                        const tax = parseFloat(editForm.tax_amount) || 0;
-                        const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
-                        setEditForm(prev => ({ ...prev, freight_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400" />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Freight GST (₹)</label>
-                    <input type="number" step="0.01" min="0"
-                      value={editForm.freight_gst_amount}
-                      onChange={(e) => {
-                        const freightGst = parseFloat(e.target.value) || 0;
-                        const gross = parseFloat(editForm.gross_amount) || 0;
-                        const tax = parseFloat(editForm.tax_amount) || 0;
-                        const freight = parseFloat(editForm.freight_amount) || 0;
-                        setEditForm(prev => ({ ...prev, freight_gst_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400" />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Leave 0 if freight is on a different invoice. Pre-filled from PO if applicable.</p>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Net Payable (₹)</label>
-                <input type="number" step="0.01" min="0"
-                  value={editForm.net_payable_amount}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, net_payable_amount: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500" />
-                <p className="text-xs text-gray-400 mt-1">Auto-calculated from Gross + Tax + Freight, but can be overridden</p>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Notes / Reason for Change</label>
-                <textarea rows={2}
-                  value={editForm.notes}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Optional: explain any discrepancy..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500" />
+                <button
+                  type="button"
+                  onClick={() => setEditingInvoice(null)}
+                  disabled={submitting}
+                  className="rounded-md border border-[#D9C9AD] px-3 py-2 text-sm font-semibold text-[#6F4E37] hover:bg-[#F6EFE2] disabled:opacity-60"
+                >
+                  Close
+                </button>
               </div>
             </div>
-            <div className="p-6 border-t flex justify-end gap-3">
-              <button onClick={() => setEditingInvoice(null)} disabled={submitting}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-                Cancel
-              </button>
-              <button onClick={handleEditAmounts} disabled={submitting}
-                className="px-4 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold disabled:opacity-50">
-                {submitting ? 'Saving...' : 'Save Changes'}
-              </button>
+
+            <div className="flex-1 overflow-auto px-6 py-5">
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+                <div className="space-y-5">
+                  {editError && <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{editError}</div>}
+
+                  <section className="rounded-md border border-[#E8DCC4] bg-white">
+                    <div className="border-b border-[#E8DCC4] px-5 py-3">
+                      <h3 className="text-sm font-bold uppercase tracking-wide text-[#3F2D20]">Invoice Values</h3>
+                      <p className="mt-1 text-xs text-[#7A6756]">Amounts posted here feed Accounts Payable after sanction.</p>
+                    </div>
+                    <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+                      <div>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Gross Amount (Rs.)</label>
+                        <input type="number" step="0.01" min="0"
+                          value={editForm.gross_amount}
+                          onChange={(e) => {
+                            const gross = parseFloat(e.target.value) || 0;
+                            const tax = parseFloat(editForm.tax_amount) || 0;
+                            const freight = parseFloat(editForm.freight_amount) || 0;
+                            const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
+                            setEditForm(prev => ({ ...prev, gross_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
+                          }}
+                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">GST % <span className="text-[#9B8A79] font-normal">(auto-calc tax)</span></label>
+                        <input type="number" step="0.01" min="0" max="100"
+                          value={editForm.gst_percentage}
+                          onChange={(e) => {
+                            const gstPct = e.target.value;
+                            const gross = parseFloat(editForm.gross_amount) || 0;
+                            const tax = gstPct !== '' ? Math.round(gross * (parseFloat(gstPct) || 0) / 100 * 100) / 100 : parseFloat(editForm.tax_amount) || 0;
+                            const freight = parseFloat(editForm.freight_amount) || 0;
+                            const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
+                            setEditForm(prev => ({
+                              ...prev,
+                              gst_percentage: gstPct,
+                              tax_amount: gstPct !== '' ? String(tax) : prev.tax_amount,
+                              net_payable_amount: String(gross + tax + freight + freightGst),
+                            }));
+                          }}
+                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Tax / GST Amount (Rs.)</label>
+                        <input type="number" step="0.01" min="0"
+                          value={editForm.tax_amount}
+                          onChange={(e) => {
+                            const tax = parseFloat(e.target.value) || 0;
+                            const gross = parseFloat(editForm.gross_amount) || 0;
+                            const freight = parseFloat(editForm.freight_amount) || 0;
+                            const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
+                            setEditForm(prev => ({ ...prev, tax_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
+                          }}
+                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-md border border-[#E8DCC4] bg-white">
+                    <div className="border-b border-[#E8DCC4] px-5 py-3">
+                      <h3 className="text-sm font-bold uppercase tracking-wide text-[#3F2D20]">Freight / Transportation</h3>
+                      <p className="mt-1 text-xs text-[#7A6756]">Leave zero when freight is billed separately. PO freight is pre-filled when available.</p>
+                    </div>
+                    <div className="grid gap-4 p-5 md:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Freight Value (Rs.)</label>
+                        <input type="number" step="0.01" min="0"
+                          value={editForm.freight_amount}
+                          onChange={(e) => {
+                            const freight = parseFloat(e.target.value) || 0;
+                            const gross = parseFloat(editForm.gross_amount) || 0;
+                            const tax = parseFloat(editForm.tax_amount) || 0;
+                            const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
+                            setEditForm(prev => ({ ...prev, freight_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
+                          }}
+                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Freight GST (Rs.)</label>
+                        <input type="number" step="0.01" min="0"
+                          value={editForm.freight_gst_amount}
+                          onChange={(e) => {
+                            const freightGst = parseFloat(e.target.value) || 0;
+                            const gross = parseFloat(editForm.gross_amount) || 0;
+                            const tax = parseFloat(editForm.tax_amount) || 0;
+                            const freight = parseFloat(editForm.freight_amount) || 0;
+                            setEditForm(prev => ({ ...prev, freight_gst_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
+                          }}
+                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-md border border-[#E8DCC4] bg-white p-5">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Net Payable (Rs.)</label>
+                        <input type="number" step="0.01" min="0"
+                          value={editForm.net_payable_amount}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, net_payable_amount: e.target.value }))}
+                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm font-semibold focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
+                        <p className="mt-1 text-xs text-[#7A6756]">Auto-calculated from Gross + Tax + Freight, but can be overridden.</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Notes / Reason for Change</label>
+                        <textarea rows={4}
+                          value={editForm.notes}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                          placeholder="Optional: explain any discrepancy..."
+                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
+                      </div>
+                    </div>
+                  </section>
+                </div>
+
+                <aside className="rounded-md border border-[#E8DCC4] bg-white p-5 xl:sticky xl:top-5 xl:self-start">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-[#3F2D20]">Posting Summary</h3>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="flex justify-between gap-4 border-b border-[#EFE5D2] pb-2">
+                      <span className="text-[#7A6756]">GRN</span>
+                      <span className="font-semibold text-right">{editingInvoice.grn_number}</span>
+                    </div>
+                    <div className="flex justify-between gap-4 border-b border-[#EFE5D2] pb-2">
+                      <span className="text-[#7A6756]">Vendor</span>
+                      <span className="font-semibold text-right">{editingInvoice.vendor?.name ?? '-'}</span>
+                    </div>
+                    <div className="flex justify-between gap-4 border-b border-[#EFE5D2] pb-2">
+                      <span className="text-[#7A6756]">Invoice</span>
+                      <span className="font-semibold text-right">{editingInvoice.invoice_number ?? '-'}</span>
+                    </div>
+                    <div className="flex justify-between gap-4 border-b border-[#EFE5D2] pb-2">
+                      <span className="text-[#7A6756]">Current Net</span>
+                      <span className="font-semibold text-right">{formatAmount(editingInvoice.net_payable_amount)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4 text-base">
+                      <span className="font-semibold text-[#3F2D20]">Revised Net</span>
+                      <span className="font-bold text-[#8B4A00]">{formatAmount(parseFloat(editForm.net_payable_amount) || 0)}</span>
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+
+            <div className="border-t border-[#E8DCC4] bg-white px-6 py-4">
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setEditingInvoice(null)} disabled={submitting}
+                  className="rounded-md border border-[#D9C9AD] px-4 py-2 text-sm font-semibold text-[#6F4E37] hover:bg-[#F6EFE2] disabled:opacity-60">
+                  Cancel
+                </button>
+                <button onClick={handleEditAmounts} disabled={submitting}
+                  className="rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#745A37] disabled:opacity-60">
+                  {submitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -631,3 +684,4 @@ export default function SupplierInvoicesPage() {
     </div>
   );
 }
+
