@@ -8,7 +8,7 @@ import DuplicateWarning, { useDuplicateDetection } from '../../../components/Dup
 import { getTodayDateInputValue } from '@/lib/date';
 import { buildDocumentBranding, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
-import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { hasModulePermission, readStoredUser, type StoredUser } from '@/lib/rbac';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
 
 type TabType = 'customers' | 'quotations' | 'orders' | 'dispatch' | 'warranties';
@@ -123,9 +123,12 @@ interface UIDRecord {
   created_at?: string;
 }
 
+const formatSalesAmount = (value: number | null | undefined) =>
+  `Rs. ${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+
 export default function SalesPage() {
   const todayDate = getTodayDateInputValue();
-  const currentUser = readStoredUser();
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
   const canCreate = hasModulePermission(currentUser, 'Sales Management', 'create');
   const canEdit = hasModulePermission(currentUser, 'Sales Management', 'edit');
   const canDelete = hasModulePermission(currentUser, 'Sales Management', 'delete');
@@ -146,6 +149,10 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sendingSOEmailId, setSendingSOEmailId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCurrentUser(readStoredUser());
+  }, []);
 
   // Sales Order edit
   const [showOrderEditForm, setShowOrderEditForm] = useState(false);
@@ -1490,37 +1497,74 @@ export default function SalesPage() {
   };
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Sales & Dispatch Management</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Manage customers, quotations, sales orders, dispatch, and warranties
-        </p>
-      </div>
+    <div className="min-h-screen bg-[#FAF9F6] p-6 text-[#2F241D]">
+      <div className="w-full max-w-none space-y-5">
+        <div className="rounded-md border border-[#E8DCC4] bg-white p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">Sales & Dispatch</div>
+          <div className="mt-1 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-[#3F2D20]">Sales Management</h1>
+              <p className="mt-1 text-sm text-[#6F4E37]">
+                Maintain customers, quotations, sales orders, dispatch notes, and warranty records.
+              </p>
+            </div>
+            {canCreate && activeTab === 'orders' && (
+              <button
+                onClick={() => setShowDirectSOForm(true)}
+                className="rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#745A37]"
+              >
+                New Sales Order
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 overflow-hidden rounded-md border border-[#E8DCC4] bg-white md:grid-cols-5">
+          <div className="border-r border-[#E8DCC4] p-4">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">Customers</div>
+            <div className="mt-1 text-2xl font-bold text-[#3F2D20]">{customers.length}</div>
+          </div>
+          <div className="border-r border-[#E8DCC4] p-4">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">Quotations</div>
+            <div className="mt-1 text-2xl font-bold text-[#3F2D20]">{quotations.length}</div>
+          </div>
+          <div className="border-r border-[#E8DCC4] p-4">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">Sales Orders</div>
+            <div className="mt-1 text-2xl font-bold text-[#3F2D20]">{orders.length}</div>
+          </div>
+          <div className="border-r border-[#E8DCC4] p-4">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">Dispatches</div>
+            <div className="mt-1 text-2xl font-bold text-[#3F2D20]">{dispatches.length}</div>
+          </div>
+          <div className="p-4">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">Warranties</div>
+            <div className="mt-1 text-2xl font-bold text-[#3F2D20]">{warranties.length}</div>
+          </div>
+        </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+        <div className="rounded-md border border-red-200 bg-red-50 p-4">
           <p className="text-sm text-red-800">{error}</p>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex flex-wrap gap-x-8 gap-y-2">
+      <div className="rounded-md border border-[#E8DCC4] bg-white p-2">
+        <nav className="flex flex-wrap gap-2">
           {[
-            { id: 'customers', label: 'Customers' },
-            { id: 'quotations', label: 'Quotations' },
-            { id: 'orders', label: 'Sales Orders' },
-            { id: 'dispatch', label: 'Dispatch' },
-            { id: 'warranties', label: 'Warranties' },
+            { id: 'customers', label: `Customers (${customers.length})` },
+            { id: 'quotations', label: `Quotations (${quotations.length})` },
+            { id: 'orders', label: `Sales Orders (${orders.length})` },
+            { id: 'dispatch', label: `Dispatch (${dispatches.length})` },
+            { id: 'warranties', label: `Warranties (${warranties.length})` },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as TabType)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`rounded-md px-4 py-2 text-sm font-semibold ${
                 activeTab === tab.id
-                  ? 'border-amber-500 text-amber-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'bg-[#8B6F47] text-white'
+                  : 'border border-[#E8DCC4] bg-white text-[#6F4E37] hover:bg-[#F6EFE2]'
               }`}
             >
               {tab.label}
@@ -1531,62 +1575,67 @@ export default function SalesPage() {
 
       {/* Customers Tab */}
       {activeTab === 'customers' && (
-        <div>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Customer List</h2>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-[#3F2D20]">Customer Register</h2>
+              <p className="text-sm text-[#6F4E37]">Business partners used for quotations, sales orders, dispatch, credit, and warranty tracking.</p>
+            </div>
             {canCreate && (
             <button
               onClick={() => {
                 resetCustomerForm();
                 setShowCustomerForm(true);
               }}
-              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              className="rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#745A37]"
             >
-              + Add Customer
+              New Customer
             </button>
             )}
           </div>
 
           {loading ? (
-            <p className="text-gray-600">Loading customers...</p>
+            <div className="rounded-md border border-[#E8DCC4] bg-white p-8 text-center text-[#7A6756]">Loading customers...</div>
           ) : (
             <>
-            <div className="bg-white rounded-lg shadow overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <div className="overflow-x-auto rounded-md border border-[#E8DCC4] bg-white">
+              <table className="min-w-[1120px] divide-y divide-[#E8DCC4]">
+                <thead className="bg-[#F6EFE2]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">City</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Credit Limit</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th className="sticky left-0 z-10 bg-[#F6EFE2] px-4 py-3 text-left text-xs font-bold uppercase text-[#5C4738]">Code</th>
+                    <th className="sticky left-[120px] z-10 bg-[#F6EFE2] px-4 py-3 text-left text-xs font-bold uppercase text-[#5C4738]">Customer</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-[#5C4738]">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-[#5C4738]">Contact</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-[#5C4738]">Location</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold uppercase text-[#5C4738]">Credit Limit</th>
+                    <th className="px-4 py-3 text-center text-xs font-bold uppercase text-[#5C4738]">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase text-[#5C4738]">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-[#EFE5D2] bg-white">
                   {(() => {
                     const { paginatedData, totalPages, totalItems } = getPaginatedAndSortedData(customers, 'customer_code');
                     return (
                       <>
                         {paginatedData.map((customer) => (
-                          <tr key={customer.id}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          <tr key={customer.id} className="hover:bg-[#FFFDF7]">
+                            <td className="sticky left-0 z-10 whitespace-nowrap bg-inherit px-4 py-3 text-sm font-semibold text-[#8B6F47]">
                               {customer.customer_code}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{customer.customer_name}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{customer.customer_type}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                              {customer.contact_person || '-'}
-                              <br />
-                              <span className="text-xs">{customer.mobile || customer.phone || '-'}</span>
+                            <td className="sticky left-[120px] z-10 min-w-[260px] bg-inherit px-4 py-3 text-sm">
+                              <div className="font-semibold text-[#1F2937]">{customer.customer_name}</div>
+                              <div className="text-xs text-[#7A6756]">{customer.gst_number || customer.pan_number || '-'}</div>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{customer.city || '-'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                              ₹{customer.credit_limit.toLocaleString()}
+                            <td className="whitespace-nowrap px-4 py-3 text-sm text-[#5C4738]">{customer.customer_type}</td>
+                            <td className="whitespace-nowrap px-4 py-3 text-sm text-[#5C4738]">
+                              <div>{customer.contact_person || '-'}</div>
+                              <div className="text-xs text-[#7A6756]">{customer.mobile || customer.phone || customer.email || '-'}</div>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="whitespace-nowrap px-4 py-3 text-sm text-[#5C4738]">{[customer.city, customer.state].filter(Boolean).join(', ') || '-'}</td>
+                            <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-[#3F2D20]">
+                              {formatSalesAmount(customer.credit_limit)}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-center">
                               <span
                                 className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                                   customer.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
@@ -1595,13 +1644,13 @@ export default function SalesPage() {
                                 {customer.is_active ? 'Active' : 'Inactive'}
                               </span>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <td className="whitespace-nowrap px-4 py-3 text-sm">
                               <div className="flex flex-wrap items-center gap-2">
                                 {canEdit && (
                                 <button
                                   type="button"
                                   onClick={() => handleEditCustomer(customer)}
-                                  className="text-amber-600 hover:text-amber-800"
+                                  className="rounded-md border border-[#D9C9AD] px-3 py-1 text-xs font-semibold text-[#6F4E37] hover:bg-[#F6EFE2]"
                                 >
                                   Edit
                                 </button>
@@ -1610,7 +1659,7 @@ export default function SalesPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteCustomer(customer)}
-                                  className="text-red-600 hover:text-red-800"
+                                  className="rounded-md border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
                                 >
                                   Delete
                                 </button>
@@ -1632,13 +1681,32 @@ export default function SalesPage() {
             </>
           )}
 
-          {/* Customer Form Modal */}
+          {/* Customer Form Workspace */}
           {showCustomerForm && (
-            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <h3 className="text-lg font-semibold mb-4">{editingCustomerId ? 'Edit Customer' : 'Add New Customer'}</h3>
-                <form onSubmit={handleSaveCustomer}>
-                  <div className="grid grid-cols-2 gap-4">
+            <div className="fixed inset-0 z-50 bg-white text-[#2F241D]">
+              <div className="flex h-full flex-col bg-[#FAF9F6]">
+                <div className="border-b border-[#E8DCC4] bg-white px-6 py-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">Customer Master</div>
+                      <h3 className="mt-1 text-2xl font-bold text-[#3F2D20]">{editingCustomerId ? 'Edit Customer' : 'New Customer'}</h3>
+                      <p className="mt-1 text-sm text-[#6F4E37]">Maintain customer identity, statutory details, addresses, contact, and credit controls.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCustomerForm(false);
+                        resetCustomerForm();
+                      }}
+                      className="rounded-md border border-[#D9C9AD] px-3 py-2 text-sm font-semibold text-[#6F4E37] hover:bg-[#F6EFE2]"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+                <form onSubmit={handleSaveCustomer} className="flex min-h-0 flex-1 flex-col">
+                  <div className="flex-1 overflow-auto px-6 py-5">
+                  <div className="grid gap-4 rounded-md border border-[#E8DCC4] bg-white p-5 md:grid-cols-2 xl:grid-cols-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name *</label>
                       <input
@@ -1716,7 +1784,7 @@ export default function SalesPage() {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Billing Address</label>
                       <textarea
                         value={customerForm.billing_address}
@@ -1725,7 +1793,7 @@ export default function SalesPage() {
                         rows={2}
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Shipping Address</label>
                       <textarea
                         value={customerForm.shipping_address}
@@ -1791,21 +1859,23 @@ export default function SalesPage() {
                       />
                     </div>
                   </div>
-                  <div className="mt-6 flex justify-end space-x-3">
+                  </div>
+                  <div className="border-t border-[#E8DCC4] bg-white px-6 py-4">
+                  <div className="flex justify-end space-x-3">
                     <button
                       type="button"
                       onClick={() => {
                         setShowCustomerForm(false);
                         resetCustomerForm();
                       }}
-                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                      className="rounded-md border border-[#D9C9AD] px-4 py-2 text-sm font-semibold text-[#6F4E37] hover:bg-[#F6EFE2]"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={loading}
-                      className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                      className="rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#745A37] disabled:opacity-50"
                     >
                       {loading
                         ? editingCustomerId
@@ -1815,6 +1885,7 @@ export default function SalesPage() {
                           ? 'Save Changes'
                           : 'Create Customer'}
                     </button>
+                  </div>
                   </div>
                 </form>
               </div>
@@ -3665,6 +3736,7 @@ export default function SalesPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
