@@ -2,7 +2,22 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle, XCircle } from 'lucide-react';
+import {
+  Archive,
+  BadgeCheck,
+  BadgeX,
+  Boxes,
+  Eye,
+  FileText,
+  Layers,
+  PackagePlus,
+  Pencil,
+  Route,
+  Settings,
+  Tags,
+  CheckCircle,
+  XCircle,
+} from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DrawingManager from '../../../../components/DrawingManager';
@@ -1436,19 +1451,22 @@ export default function ItemsPage() {
       sortable: false,
       hideable: false,
       align: 'right',
-      minWidth: 250,
+      minWidth: 420,
       cell: (item) => (
-        <div className="flex items-center justify-end gap-3 whitespace-nowrap text-xs font-medium">
-          <button type="button" onClick={() => setViewingItem(item)} className="text-blue-600 hover:text-blue-900">
-            View
+        <div className="flex items-center justify-end gap-1.5 whitespace-nowrap text-xs font-medium">
+          <button type="button" onClick={() => setViewingItem(item)} className="inline-flex items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-[#5E4635] hover:bg-[#F5EFE3]">
+            <Eye className="h-3.5 w-3.5" />
+            Open
           </button>
-          <button type="button" onClick={() => void openStockTrail(item)} className="text-green-700 hover:text-green-900">
+          <button type="button" onClick={() => void openStockTrail(item)} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-800 hover:bg-emerald-100">
+            <Route className="h-3.5 w-3.5" />
             Trail
           </button>
           {item.is_active ? (
             <>
               {canEdit && (
-                <button type="button" onClick={() => handleEdit(item)} className="text-amber-600 hover:text-amber-900">
+                <button type="button" onClick={() => handleEdit(item)} className="inline-flex items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-[#5E4635] hover:bg-[#F5EFE3]">
+                  <Pencil className="h-3.5 w-3.5" />
                   Edit
                 </button>
               )}
@@ -1456,13 +1474,15 @@ export default function ItemsPage() {
                 <button
                   type="button"
                   onClick={() => handleVerification(item, !item.is_verified)}
-                  className={item.is_verified ? 'text-gray-600 hover:text-gray-900' : 'text-emerald-700 hover:text-emerald-900'}
+                  className={item.is_verified ? 'inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-gray-700 hover:bg-gray-50' : 'inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-800 hover:bg-emerald-100'}
                 >
+                  {item.is_verified ? <BadgeX className="h-3.5 w-3.5" /> : <BadgeCheck className="h-3.5 w-3.5" />}
                   {item.is_verified ? 'Unverify' : 'Verify'}
                 </button>
               )}
               {!item.is_variant && (
-                <button type="button" onClick={() => openVariantManager(item)} className="text-[#8B6F47] hover:text-[#6F4E37]" title="Manage variants/brands">
+                <button type="button" onClick={() => openVariantManager(item)} className="inline-flex items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-[#5E4635] hover:bg-[#F5EFE3]" title="Manage variants/brands">
+                  <Layers className="h-3.5 w-3.5" />
                   Variants
                 </button>
               )}
@@ -1472,18 +1492,20 @@ export default function ItemsPage() {
                   setSelectedItemForDrawing(item);
                   setShowDrawingManager(true);
                 }}
-                className="text-blue-600 hover:text-blue-900"
+                className="inline-flex items-center gap-1 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-[#5E4635] hover:bg-[#F5EFE3]"
               >
+                <FileText className="h-3.5 w-3.5" />
                 Drawings
               </button>
               {canDelete && (
-                <button type="button" onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">
+                <button type="button" onClick={() => handleDelete(item.id)} className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-red-700 hover:bg-red-100">
                   Delete
                 </button>
               )}
             </>
           ) : (
-            <button type="button" onClick={() => handleRestore(item.id)} className="text-green-600 hover:text-green-900">
+            <button type="button" onClick={() => handleRestore(item.id)} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-800 hover:bg-emerald-100">
+              <Archive className="h-3.5 w-3.5" />
               Restore
             </button>
           )}
@@ -1494,25 +1516,30 @@ export default function ItemsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-xl">Loading...</div>
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF9F6] text-[#4A3426]">
+        <div className="rounded-md border border-[#E8DCC4] bg-white px-6 py-4 text-sm font-semibold shadow-sm">Loading stock master...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] px-4 py-4 text-[#2F241D] lg:px-6">
-      <div className="flex min-h-[calc(100vh-2rem)] w-full max-w-none flex-col gap-4">
-        <section className="border-b border-[#E8DCC4] bg-white px-5 py-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div>
+    <div className="min-h-screen bg-[#FAF9F6] text-[#2F241D]">
+      <div className="flex min-h-screen w-full max-w-none flex-col">
+        <section className="border-b border-[#E8DCC4] bg-white px-6 py-4">
+        <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+          <div className="min-w-0">
             <div className="text-xs font-bold uppercase tracking-wide text-[#8B6F47]">Inventory Master Data</div>
-            <h1 className="mt-1 text-3xl font-bold text-[#4A3426]">Stock Master</h1>
-            <p className="mt-2 max-w-3xl text-sm text-[#7A6555]">
-              Maintain SAS part numbers, item identity, UOM, HSN, UID controls, drawings, variants, vendors, and verification status.
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-bold text-[#4A3426]">Stock Master</h1>
+              <span className="rounded-full border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#7A6555]">
+                {showDeleted ? 'Inactive View' : 'Active View'}
+              </span>
+            </div>
+            <p className="mt-1 max-w-4xl text-sm text-[#7A6555]">
+              Material master list for SAS part numbers, UOM, HSN, UID control, drawings, vendors, variants, and verification.
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap justify-start gap-2 xl:justify-end">
+          <div className="flex shrink-0 flex-wrap justify-start gap-2 2xl:justify-end">
             {canExport && (
               <button
                 onClick={() => {
@@ -1544,40 +1571,43 @@ export default function ItemsPage() {
                     `Items_${new Date().toISOString().slice(0, 10)}.csv`
                   );
                 }}
-                className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+                className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
               >
                 ⬇ Download Excel
               </button>
             )}
             <button
               onClick={() => setShowCategoryManager(true)}
-              className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+              className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
+              <Tags className="h-4 w-4" />
               Manage Categories
             </button>
             <button
               onClick={() => setShowNomenclatureManager(true)}
-              className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+              className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
+              <Settings className="h-4 w-4" />
               Manage SAS Part Numbers
             </button>
             <button
               onClick={initBulkInventory}
-              className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+              className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
+              <Boxes className="h-4 w-4" />
               Bulk Inventory
             </button>
             {canCreate && (
               <>
                 <button
                   onClick={downloadItemTemplate}
-                  className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+                  className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                 >
                   ⬇ CSV Template
                 </button>
                 <button
                   onClick={() => { setShowImportModal(true); setImportPreview([]); setImportResult(null); setImportFile(null); }}
-                  className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+                  className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                 >
                   ⬆ Import Items
                 </button>
@@ -1590,53 +1620,65 @@ export default function ItemsPage() {
                   resetForm();
                   setShowForm(true);
                 }}
-                className="rounded-md border border-[#8B6F47] bg-[#8B6F47] px-4 py-2 text-sm font-bold text-white hover:bg-[#6F4E37]"
+                className="inline-flex items-center gap-2 rounded-md border border-[#8B6F47] bg-[#8B6F47] px-4 py-2 text-sm font-bold text-white hover:bg-[#6F4E37]"
               >
-                + Add Item
+                <PackagePlus className="h-4 w-4" />
+                New Item
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => setShowDeleted((prev) => !prev)}
-              className="rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
-            >
-              {showDeleted ? 'Show Active' : 'Show Inactive'}
-            </button>
           </div>
         </div>
         </section>
 
-        <section className="overflow-hidden rounded-md border border-[#E8DCC4] bg-white">
+        <section className="border-b border-[#E8DCC4] bg-[#FFFCF5] px-6">
           <div className="grid divide-y divide-[#E8DCC4] md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-5">
-            <div className="p-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Active Items</div>
-              <div className="mt-2 text-2xl font-bold text-[#4A3426]">{activeItemCount}</div>
+            <div className="py-3 pr-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Active Materials</div>
+              <div className="mt-1 text-2xl font-bold text-[#4A3426]">{activeItemCount}</div>
             </div>
-            <div className="p-4">
+            <div className="px-4 py-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Verified</div>
-              <div className="mt-2 text-2xl font-bold text-emerald-700">{verifiedItemCount}</div>
+              <div className="mt-1 text-2xl font-bold text-emerald-700">{verifiedItemCount}</div>
             </div>
-            <div className="p-4">
+            <div className="px-4 py-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Pending Verification</div>
-              <div className="mt-2 text-2xl font-bold text-amber-700">{Math.max(activeItemCount - verifiedItemCount, 0)}</div>
+              <div className="mt-1 text-2xl font-bold text-amber-700">{Math.max(activeItemCount - verifiedItemCount, 0)}</div>
             </div>
-            <div className="p-4">
+            <div className="px-4 py-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">UID Controlled</div>
-              <div className="mt-2 text-2xl font-bold text-[#4A3426]">{uidTrackedItemCount}</div>
+              <div className="mt-1 text-2xl font-bold text-[#4A3426]">{uidTrackedItemCount}</div>
             </div>
-            <div className="p-4">
+            <div className="py-3 pl-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Inactive</div>
-              <div className="mt-2 text-2xl font-bold text-red-700">{inactiveItemCount}</div>
+              <div className="mt-1 text-2xl font-bold text-red-700">{inactiveItemCount}</div>
             </div>
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-md border border-[#E8DCC4] bg-white">
-          <div className="border-b border-[#E8DCC4] bg-[#FFFCF5] px-5 py-4">
-            <h2 className="text-xl font-bold text-[#4A3426]">{showDeleted ? 'Inactive Item Register' : 'Item Register'}</h2>
-            <p className="mt-1 text-sm text-[#7A6555]">
-              {filteredItems.length} records shown. Use saved table views and columns for repeated master-data checks.
-            </p>
+        <section className="flex min-h-0 flex-1 flex-col bg-white px-6 py-4">
+          <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-[#4A3426]">{showDeleted ? 'Inactive Item Register' : 'Item Register'}</h2>
+              <p className="mt-1 text-sm text-[#7A6555]">
+                {filteredItems.length} records shown. Freeze columns, saved views, CSV export, and stock trail are available from the grid.
+              </p>
+            </div>
+            <div className="inline-flex w-fit rounded-md border border-[#D8C8AA] bg-white p-1">
+              <button
+                type="button"
+                onClick={() => setShowDeleted(false)}
+                className={`rounded px-3 py-1.5 text-sm font-semibold ${!showDeleted ? 'bg-[#8B6F47] text-white' : 'text-[#5E4635] hover:bg-[#F5EFE3]'}`}
+              >
+                Active
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleted(true)}
+                className={`rounded px-3 py-1.5 text-sm font-semibold ${showDeleted ? 'bg-[#8B6F47] text-white' : 'text-[#5E4635] hover:bg-[#F5EFE3]'}`}
+              >
+                Inactive
+              </button>
+            </div>
           </div>
 
         <ListTable
@@ -1648,13 +1690,18 @@ export default function ItemsPage() {
           pageSizeOptions={[10, 25, 50, 100]}
           searchPlaceholder="Search by code, name, OEM part no., HSN, category…"
           exportFilename={`stock-master-${new Date().toISOString().slice(0, 10)}`}
+          toolbarLayout="singleLine"
+          variantContext={{ category: typeFilter, status: showDeleted ? 'inactive' : 'active' }}
+          onApplyVariantContext={(context) => {
+            setTypeFilter(context.category || '');
+            setShowDeleted(context.status === 'inactive');
+          }}
           toolbarRight={
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">Type</span>
+            <div className="flex min-w-0 items-center gap-2">
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
-                className="min-h-10 w-56 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
+                className="min-h-9 w-52 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
               >
                 <option value="">All categories</option>
                 {ITEM_CATEGORY_OPTIONS.map((cat) => (
@@ -1675,12 +1722,31 @@ export default function ItemsPage() {
 
       {/* Create/Edit Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <h2 className="text-2xl font-bold mb-6">
-                {editingItem ? 'Edit Item' : 'Create New Item'}
-              </h2>
+        <div className="fixed inset-0 z-50 bg-[#FAF9F6] text-[#2F241D]">
+          <div className="flex h-screen flex-col">
+            <div className="sticky top-0 z-20 border-b border-[#E8DCC4] bg-white px-6 py-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-[#8B6F47]">Material Master</div>
+                  <h2 className="mt-1 text-2xl font-bold text-[#4A3426]">
+                    {editingItem ? 'Edit Item' : 'Create New Item'}
+                  </h2>
+                  {editingItem && <div className="mt-1 text-sm font-medium text-[#7A6555]">{editingItem.code}</div>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForm(false);
+                    setEditingItem(null);
+                    resetForm();
+                  }}
+                  className="inline-flex items-center justify-center rounded-md border border-[#D8C8AA] bg-white px-4 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-5">
               
               <form onSubmit={handleSubmit} className="space-y-4">
 
