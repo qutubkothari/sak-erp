@@ -277,6 +277,28 @@ function compactJoin(values: any[], separator = ', '): string | undefined {
   return parts.length > 0 ? parts.join(separator) : undefined;
 }
 
+const VENDOR_ATTACHMENT_TYPES = new Set(['GST', 'PAN', 'MSME', 'CANCELLED_CHEQUE', 'OTHER']);
+
+function normalizeVendorApprovalStatus(value: any): 'PENDING' | 'APPROVED' | 'REJECTED' {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'APPROVED') return 'APPROVED';
+  if (normalized === 'REJECTED') return 'REJECTED';
+  return 'PENDING';
+}
+
+function normalizeAttachmentType(value: any): string {
+  const normalized = String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_');
+  return VENDOR_ATTACHMENT_TYPES.has(normalized) ? normalized : 'OTHER';
+}
+
+function normalizeIfsc(value: any): string {
+  return String(value || '').trim().toUpperCase();
+}
+
+function isValidIfsc(value: string): boolean {
+  return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(value);
+}
+
 function extractGstinPortalAddress(data: any): GstinPortalAddress | undefined {
   const source =
     data?.pradr?.addr ||
@@ -453,13 +475,23 @@ export class VendorsService {
       salutation: metadata.salutation || '',
       billing_line2: vendor.billing_line2 || metadata.billingLine2 || '',
       gst_verification: metadata.gstinVerification || null,
-      approval_status: vendor.is_verified === true
-        ? 'APPROVED'
-        : String(metadata.vendorApproval?.status || 'PENDING').toUpperCase(),
-      approval_reason: metadata.vendorApproval?.reason || null,
+      approval_status: normalizeVendorApprovalStatus(
+        vendor.approval_status ||
+          metadata.vendorApproval?.status ||
+          (vendor.is_verified ? 'APPROVED' : 'PENDING'),
+      ),
+      approval_reason: vendor.approval_reason || metadata.vendorApproval?.reason || null,
       approval_trail: Array.isArray(metadata.vendorApprovalTrail)
         ? metadata.vendorApprovalTrail
         : [],
+      created_by: vendor.created_by || metadata.createdBy || null,
+      approved_at: vendor.approved_at || vendor.verified_at || null,
+      approved_by: vendor.approved_by || vendor.verified_by || null,
+      rejected_at: vendor.rejected_at || metadata.vendorApproval?.rejectedAt || null,
+      rejected_by: vendor.rejected_by || metadata.vendorApproval?.rejectedBy || null,
+      bank_verification_status: vendor.bank_verification_status || metadata.bankVerification?.status || 'PENDING',
+      bank_verification: metadata.bankVerification || null,
+      attachments: metadata.vendorAttachments || [],
       is_verified: vendor.is_verified === true,
       contact_person: vendor.contact_person || defaultContact?.name || '',
       email: vendor.email || defaultContact?.email || '',
@@ -499,7 +531,75 @@ export class VendorsService {
     }
   }
 
-  async create(tenantId: string, data: any) {
+  private async fetchVendorAttachments(tenantId: string, vendorId: string) {
+    const { data, error } = await this.supabase
+      .from('vendor_attachments')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('vendor_id', vendorId)
+      .order('uploaded_at', { ascending: false });
+
+    if (error) {
+      const message = String(error.message || '');
+      if (message.includes('vendor_attachments') || message.includes('schema cache')) return [];
+      throw new BadRequestException(error.message);
+    }
+    return data || [];
+  }
+
+  private async fetchVendorApprovalHistory(tenantId: string, vendorId: string) {
+    const { data, error } = await this.supabase
+      .from('vendor_approval_history')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('vendor_id', vendorId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      const message = String(error.message || '');
+      if (message.includes('vendor_approval_history') || message.includes('schema cache')) return [];
+      throw new BadRequestException(error.message);
+    }
+    return data || [];
+  }
+
+  private async logApprovalHistory(params: {
+    tenantId: string;
+    vendorId: string;
+    actorId: string;
+    action: string;
+    fromStatus?: string | null;
+    toStatus?: string | null;
+    reason?: string | null;
+    metadata?: Record<string, any>;
+  }) {
+    const { error } = await this.supabase.from('vendor_approval_history').insert({
+      tenant_id: params.tenantId,
+      vendor_id: params.vendorId,
+      actor_id: params.actorId,
+      action: params.action,
+      from_status: params.fromStatus || null,
+      to_status: params.toStatus || null,
+      reason: params.reason || null,
+      metadata: params.metadata || {},
+    });
+
+    if (error) {
+      const message = String(error.message || '');
+      if (message.includes('vendor_approval_history') || message.includes('schema cache')) return;
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  private assertMakerChecker(vendor: any, userId: string, action: string) {
+    const metadata = safeObject(vendor?.metadata);
+    const createdBy = String(vendor?.created_by || metadata.createdBy || '').trim();
+    if (createdBy && String(userId) === createdBy) {
+      throw new BadRequestException(`Maker-checker violation: the vendor creator cannot ${action} this vendor.`);
+    }
+  }
+
+  async create(tenantId: string, userId: string, data: any) {
     // Generate vendor code if not provided
     const code = data.code || await this.generateVendorCode(tenantId);
     const payload = this.buildVendorPayload({ ...data, code });
@@ -512,12 +612,31 @@ export class VendorsService {
         tenant_id: tenantId,
         ...payload,
         is_verified: false,
+        created_by: userId,
+        approval_status: 'PENDING',
+        approval_reason: null,
+        metadata: {
+          ...payload.metadata,
+          createdBy: userId,
+          vendorApproval: {
+            status: 'PENDING',
+            submittedAt: new Date().toISOString(),
+            submittedBy: userId,
+          },
+        },
       })
       .select()
       .single();
 
     if (error) throw new BadRequestException(error.message);
-    return this.hydrateVendor(vendor);
+    await this.logApprovalHistory({
+      tenantId,
+      vendorId: vendor.id,
+      actorId: userId,
+      action: 'CREATED',
+      toStatus: 'PENDING',
+    });
+    return this.findOne(tenantId, vendor.id);
   }
 
   async findAll(tenantId: string, filters?: any) {
@@ -568,12 +687,24 @@ export class VendorsService {
       .single();
 
     if (error) throw new NotFoundException('Vendor not found');
-    return this.hydrateVendor(data);
+    const vendor = this.hydrateVendor(data);
+    const [attachments, approvalHistory] = await Promise.all([
+      this.fetchVendorAttachments(tenantId, id),
+      this.fetchVendorApprovalHistory(tenantId, id),
+    ]);
+    return {
+      ...vendor,
+      attachments,
+      approval_history: approvalHistory,
+    };
   }
 
-  async update(tenantId: string, id: string, data: any) {
+  async update(tenantId: string, userId: string, id: string, data: any) {
     const existing = await this.findOne(tenantId, id);
     const payload = this.buildVendorPayload(data, existing);
+    const fromStatus = normalizeVendorApprovalStatus(existing.approval_status);
+    const approvedVendorChanged = existing.is_verified === true || fromStatus === 'APPROVED';
+    const now = new Date().toISOString();
 
     await this.assertUniqueTaxId(tenantId, payload.tax_id, id);
 
@@ -581,7 +712,24 @@ export class VendorsService {
       .from('vendors')
       .update({
         ...payload,
-        updated_at: new Date().toISOString(),
+        is_verified: approvedVendorChanged ? false : existing.is_verified,
+        approval_status: approvedVendorChanged ? 'PENDING' : fromStatus,
+        approval_reason: approvedVendorChanged ? 'Approved vendor edited; reapproval required.' : existing.approval_reason || null,
+        approved_at: approvedVendorChanged ? null : existing.approved_at || null,
+        approved_by: approvedVendorChanged ? null : existing.approved_by || null,
+        metadata: {
+          ...payload.metadata,
+          vendorApproval: approvedVendorChanged
+            ? {
+                status: 'PENDING',
+                submittedAt: now,
+                submittedBy: userId,
+                reason: 'Approved vendor edited; reapproval required.',
+                previousStatus: fromStatus,
+              }
+            : payload.metadata.vendorApproval,
+        },
+        updated_at: now,
       })
       .eq('tenant_id', tenantId)
       .eq('id', id)
@@ -590,13 +738,24 @@ export class VendorsService {
 
     if (error) throw new BadRequestException(error.message);
     if (!vendor) throw new NotFoundException('Vendor not found or not updated');
-    return this.hydrateVendor(vendor);
+    await this.logApprovalHistory({
+      tenantId,
+      vendorId: id,
+      actorId: userId,
+      action: approvedVendorChanged ? 'EDITED_REAPPROVAL_REQUIRED' : 'UPDATED',
+      fromStatus,
+      toStatus: approvedVendorChanged ? 'PENDING' : fromStatus,
+      reason: approvedVendorChanged ? 'Approved vendor edited; reapproval required.' : null,
+    });
+    return this.findOne(tenantId, id);
   }
 
   async setVerification(tenantId: string, userId: string, id: string, isVerified: boolean) {
     const existing = await this.findOne(tenantId, id);
+    this.assertMakerChecker(existing, userId, isVerified ? 'approve' : 'reset approval for');
     const metadata = safeObject(existing?.metadata);
     const now = new Date().toISOString();
+    const fromStatus = normalizeVendorApprovalStatus(existing.approval_status);
     const action = isVerified ? 'APPROVED' : 'RESET_TO_PENDING';
     const vendorApproval = isVerified
       ? {
@@ -624,6 +783,12 @@ export class VendorsService {
           is_verified: true,
           verified_at: now,
           verified_by: userId,
+          approval_status: 'APPROVED',
+          approval_reason: null,
+          approved_at: now,
+          approved_by: userId,
+          rejected_at: null,
+          rejected_by: null,
           updated_at: now,
           metadata: {
             ...metadata,
@@ -635,6 +800,10 @@ export class VendorsService {
           is_verified: false,
           verified_at: null,
           verified_by: null,
+          approval_status: 'PENDING',
+          approval_reason: null,
+          approved_at: null,
+          approved_by: null,
           updated_at: now,
           metadata: {
             ...metadata,
@@ -650,6 +819,14 @@ export class VendorsService {
       .eq('id', id);
 
     if (error) throw new BadRequestException(error.message);
+    await this.logApprovalHistory({
+      tenantId,
+      vendorId: id,
+      actorId: userId,
+      action,
+      fromStatus,
+      toStatus: isVerified ? 'APPROVED' : 'PENDING',
+    });
     return this.findOne(tenantId, id);
   }
 
@@ -660,8 +837,10 @@ export class VendorsService {
     }
 
     const existing = await this.findOne(tenantId, id);
+    this.assertMakerChecker(existing, userId, 'reject');
     const metadata = safeObject(existing?.metadata);
     const now = new Date().toISOString();
+    const fromStatus = normalizeVendorApprovalStatus(existing.approval_status);
     const vendorApproval = {
       status: 'REJECTED',
       rejectedAt: now,
@@ -684,6 +863,12 @@ export class VendorsService {
         is_verified: false,
         verified_at: null,
         verified_by: null,
+        approval_status: 'REJECTED',
+        approval_reason: normalizedReason,
+        approved_at: null,
+        approved_by: null,
+        rejected_at: now,
+        rejected_by: userId,
         updated_at: now,
         metadata: {
           ...metadata,
@@ -695,6 +880,15 @@ export class VendorsService {
       .eq('id', id);
 
     if (error) throw new BadRequestException(error.message);
+    await this.logApprovalHistory({
+      tenantId,
+      vendorId: id,
+      actorId: userId,
+      action: 'REJECTED',
+      fromStatus,
+      toStatus: 'REJECTED',
+      reason: normalizedReason,
+    });
     return this.findOne(tenantId, id);
   }
 
@@ -714,6 +908,107 @@ export class VendorsService {
     if (data.is_active === false) throw new BadRequestException(`Vendor ${data.name || data.code || ''} is inactive and cannot be used.`);
     // Verification check disabled - causing too many errors
     // if (data.is_verified !== true) throw new BadRequestException(`Vendor ${data.name || data.code || ''} is not verified by admin and cannot be used.`);
+  }
+
+  async verifyBank(tenantId: string, userId: string, id: string) {
+    const existing = await this.findOne(tenantId, id);
+    this.assertMakerChecker(existing, userId, 'verify bank details for');
+    const metadata = safeObject(existing?.metadata);
+    const ifsc = normalizeIfsc(existing.bank_ifsc_code || metadata.bankIfscCode);
+    const accountNumber = String(existing.bank_account_number || metadata.bankAccountNumber || '').trim();
+
+    if (!accountNumber) throw new BadRequestException('Bank account number is required before bank verification.');
+    if (!isValidIfsc(ifsc)) throw new BadRequestException('Valid IFSC code is required before bank verification.');
+
+    let bankDetails: Record<string, any> | null = null;
+    try {
+      const response = await fetch(`https://ifsc.razorpay.com/${encodeURIComponent(ifsc)}`, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(7000),
+      });
+      if (response.ok) bankDetails = await response.json();
+    } catch {
+      bankDetails = null;
+    }
+
+    const now = new Date().toISOString();
+    const bankVerification = {
+      status: bankDetails ? 'VERIFIED' : 'FORMAT_VERIFIED',
+      verifiedAt: now,
+      verifiedBy: userId,
+      ifsc,
+      bankName: bankDetails?.BANK || existing.bank_name || metadata.bankName || null,
+      branch: bankDetails?.BRANCH || existing.bank_branch || metadata.bankBranch || null,
+      source: bankDetails ? 'razorpay-ifsc' : 'format-check',
+      message: bankDetails
+        ? 'IFSC verified against public bank directory. Account number captured for manual confirmation.'
+        : 'IFSC format verified. Public bank directory lookup was unavailable.',
+    };
+
+    const { error } = await this.supabase
+      .from('vendors')
+      .update({
+        bank_verification_status: bankVerification.status,
+        bank_verified_at: now,
+        bank_verified_by: userId,
+        metadata: {
+          ...metadata,
+          bankVerification,
+        },
+        updated_at: now,
+      })
+      .eq('tenant_id', tenantId)
+      .eq('id', id);
+
+    if (error) throw new BadRequestException(error.message);
+    await this.logApprovalHistory({
+      tenantId,
+      vendorId: id,
+      actorId: userId,
+      action: 'BANK_VERIFIED',
+      fromStatus: normalizeVendorApprovalStatus(existing.approval_status),
+      toStatus: normalizeVendorApprovalStatus(existing.approval_status),
+      metadata: bankVerification,
+    });
+    return this.findOne(tenantId, id);
+  }
+
+  async uploadAttachment(tenantId: string, userId: string, id: string, rawType: any, file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('file is required');
+    await this.findOne(tenantId, id);
+    const documentType = normalizeAttachmentType(rawType);
+    const destination = String((file as any).destination || '').replace(/\\/g, '/');
+    const uploadsMarker = '/uploads/';
+    const markerIndex = destination.lastIndexOf(uploadsMarker);
+    const relativeDir = markerIndex >= 0 ? destination.slice(markerIndex + uploadsMarker.length) : '';
+    const fileName = (file as any).filename || file.originalname;
+    const fileUrl = `/uploads/${relativeDir ? `${relativeDir}/` : ''}${fileName}`;
+
+    const { data, error } = await this.supabase
+      .from('vendor_attachments')
+      .insert({
+        tenant_id: tenantId,
+        vendor_id: id,
+        document_type: documentType,
+        file_name: file.originalname || fileName,
+        file_url: fileUrl,
+        mime_type: file.mimetype,
+        file_size: file.size,
+        uploaded_by: userId,
+        status: 'UPLOADED',
+      })
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    await this.logApprovalHistory({
+      tenantId,
+      vendorId: id,
+      actorId: userId,
+      action: 'ATTACHMENT_UPLOADED',
+      metadata: { documentType, fileName: data.file_name },
+    });
+    return data;
   }
 
   async delete(tenantId: string, userId: string, id: string) {

@@ -11,14 +11,59 @@ import {
   Request,
   Res,
   Header,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
 import { Response } from 'express';
+import { extname, join, resolve } from 'path';
+import { mkdirSync } from 'fs';
+import { randomUUID } from 'crypto';
 import * as ExcelJS from 'exceljs';
 import { VendorsService } from '../services/vendors.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+
+function getUploadsRoot(): string {
+  return process.env.UPLOAD_ROOT_DIR || resolve(process.cwd(), '..', '..', 'uploads');
+}
+
+function buildVendorAttachmentStorage() {
+  return diskStorage({
+    destination: (req, _file, cb) => {
+      try {
+        const user = (req as any)?.user;
+        const vendorId = (req as any)?.params?.id;
+        if (!user?.tenantId || !user?.userId || !vendorId) {
+          cb(new BadRequestException('Missing auth context for upload') as any, '');
+          return;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        const relativeDir = `vendors/${today}/${user.tenantId}/${vendorId}`;
+        (req as any).__vendorUploadRelativeDir = relativeDir;
+        const targetDir = join(getUploadsRoot(), relativeDir);
+        mkdirSync(targetDir, { recursive: true });
+        cb(null, targetDir);
+      } catch (error) {
+        cb(error as any, '');
+      }
+    },
+    filename: (req, file, cb) => {
+      try {
+        const extension = extname(file.originalname || '').toLowerCase() || '';
+        const fileName = `${randomUUID()}${extension.length <= 10 ? extension : ''}`;
+        (req as any).__vendorUploadFileName = fileName;
+        cb(null, fileName);
+      } catch (error) {
+        cb(error as any, '');
+      }
+    },
+  });
+}
 
 @Controller('purchase/vendors')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -52,7 +97,7 @@ export class VendorsController {
   @Post()
   @RequireCreate('vendors')
   async create(@Request() req: any, @Body() body: any) {
-    return this.vendorsService.create(req.user.tenantId, body);
+    return this.vendorsService.create(req.user.tenantId, req.user.userId, body);
   }
 
   @Post('verify-gstin')
@@ -73,7 +118,7 @@ export class VendorsController {
   @Put(':id')
   @RequireUpdate('vendors')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.vendorsService.update(req.user.tenantId, id, body);
+    return this.vendorsService.update(req.user.tenantId, req.user.userId, id, body);
   }
 
   @Put(':id/verify')
@@ -97,6 +142,31 @@ export class VendorsController {
       id,
       body?.reason,
     );
+  }
+
+  @Put(':id/bank/verify')
+  @RequireApprove('vendors')
+  async verifyBank(@Request() req: any, @Param('id') id: string) {
+    return this.vendorsService.verifyBank(req.user.tenantId, req.user.userId, id);
+  }
+
+  @Post(':id/attachments/:type')
+  @RequireUpdate('vendors')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: buildVendorAttachmentStorage(),
+      limits: {
+        fileSize: 10 * 1024 * 1024,
+      },
+    }),
+  )
+  async uploadAttachment(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('type') type: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.vendorsService.uploadAttachment(req.user.tenantId, req.user.userId, id, type, file);
   }
 
   @Delete(':id')

@@ -9,6 +9,8 @@ import {
   Eye,
   Plus,
   Save,
+  Landmark,
+  Paperclip,
   ShieldCheck,
   ShieldOff,
   Trash2,
@@ -97,6 +99,25 @@ interface Vendor {
   approval_status?: string;
   approval_reason?: string | null;
   approval_trail?: Array<Record<string, any>>;
+  approval_history?: Array<Record<string, any>>;
+  attachments?: Array<{
+    id: string;
+    document_type: string;
+    file_name: string;
+    file_url: string;
+    uploaded_at?: string;
+    status?: string;
+  }>;
+  created_by?: string | null;
+  bank_verification_status?: string;
+  bank_verification?: {
+    status?: string;
+    message?: string;
+    bankName?: string | null;
+    branch?: string | null;
+    source?: string;
+    verifiedAt?: string;
+  } | null;
   contacts?: VendorContact[];
   gst_verification?: GstVerificationResult | null;
   salutation?: string;
@@ -224,6 +245,13 @@ const FILTER_VERIFICATION_OPTIONS = [
   { value: "VERIFIED", label: "Verified" },
   { value: "PENDING", label: "Pending verification" },
   { value: "REJECTED", label: "Rejected" },
+];
+
+const VENDOR_DOCUMENT_CHECKLIST = [
+  { type: "GST", label: "GST Certificate" },
+  { type: "PAN", label: "PAN" },
+  { type: "MSME", label: "MSME" },
+  { type: "CANCELLED_CHEQUE", label: "Cancelled Cheque" },
 ];
 
 const inputClass =
@@ -362,6 +390,14 @@ function getVendorApprovalReason(vendor: Vendor): string {
       vendor.metadata?.vendorApproval?.reason ||
       "",
   ).trim();
+}
+
+function isVendorCreator(vendor: Vendor, user: any): boolean {
+  return Boolean(vendor.created_by && user?.id && String(vendor.created_by) === String(user.id));
+}
+
+function getAttachmentForType(vendor: Vendor, type: string) {
+  return (vendor.attachments || []).find((attachment) => attachment.document_type === type);
 }
 
 function DetailField({
@@ -603,6 +639,10 @@ export default function VendorsPage() {
   };
 
   const handleVerification = async (vendor: Vendor, verify: boolean) => {
+    if (verify && isVendorCreator(vendor, user)) {
+      toast.error("Maker-checker: vendor creator cannot approve their own vendor");
+      return;
+    }
     const confirmed = await confirmDialog({
       title: verify ? "Verify Vendor" : "Remove Verification",
       message: verify
@@ -626,6 +666,10 @@ export default function VendorsPage() {
   };
 
   const handleRejectVendor = async (vendor: Vendor) => {
+    if (isVendorCreator(vendor, user)) {
+      toast.error("Maker-checker: vendor creator cannot reject their own vendor");
+      return;
+    }
     const reason = window.prompt(
       `Enter rejection reason for ${vendor.name}. This will be saved in the vendor approval trail.`,
     );
@@ -654,6 +698,46 @@ export default function VendorsPage() {
       await fetchVendors();
     } catch (error: any) {
       toast.error(error?.message || "Failed to reject vendor");
+    }
+  };
+
+  const handleVerifyBank = async (vendor: Vendor) => {
+    if (isVendorCreator(vendor, user)) {
+      toast.error("Maker-checker: vendor creator cannot verify bank details");
+      return;
+    }
+    try {
+      const updated = await apiClient.put<Vendor>(
+        `/purchase/vendors/${vendor.id}/bank/verify`,
+        {},
+      );
+      toast.success(updated.bank_verification?.message || "Bank verification updated");
+      if (viewingVendor?.id === vendor.id) setViewingVendor(updated);
+      await fetchVendors();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to verify bank details");
+    }
+  };
+
+  const handleVendorAttachmentUpload = async (
+    vendor: Vendor,
+    documentType: string,
+    file: File | null,
+  ) => {
+    if (!file) return;
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      await apiClient.postForm(
+        `/purchase/vendors/${vendor.id}/attachments/${documentType}`,
+        formData,
+      );
+      toast.success("Document uploaded");
+      const refreshed = await apiClient.get<Vendor>(`/purchase/vendors/${vendor.id}`);
+      setViewingVendor(refreshed);
+      await fetchVendors();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to upload document");
     }
   };
 
@@ -1141,6 +1225,7 @@ export default function VendorsPage() {
                       variant={
                         viewingVendor.is_verified ? "secondary" : "approve"
                       }
+                      disabled={!viewingVendor.is_verified && isVendorCreator(viewingVendor, user)}
                       onClick={() =>
                         handleVerification(
                           viewingVendor,
@@ -1158,6 +1243,7 @@ export default function VendorsPage() {
                     {!viewingVendor.is_verified ? (
                       <ErpButton
                         variant="danger"
+                        disabled={isVendorCreator(viewingVendor, user)}
                         onClick={() => handleRejectVendor(viewingVendor)}
                       >
                         <XCircle className="h-4 w-4" />
@@ -1338,9 +1424,139 @@ export default function VendorsPage() {
                       viewingVendor.metadata?.bankBranch
                     }
                   />
+                  <DetailField
+                    label="Bank Verification"
+                    value={viewingVendor.bank_verification_status || "PENDING"}
+                  />
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {viewingVendor.bank_verification?.message ? (
+                    <span className="text-xs text-[#7A6555]">
+                      {viewingVendor.bank_verification.message}
+                    </span>
+                  ) : null}
+                  {canVerify ? (
+                    <ErpButton
+                      variant="secondary"
+                      disabled={isVendorCreator(viewingVendor, user)}
+                      onClick={() => handleVerifyBank(viewingVendor)}
+                    >
+                      <Landmark className="h-4 w-4" />
+                      Verify Bank
+                    </ErpButton>
+                  ) : null}
                 </div>
               </section>
             </div>
+
+            <section>
+              <SectionTitle
+                title="Onboarding Documents"
+                description="GST, PAN, MSME, and cancelled cheque checklist for supplier onboarding."
+              />
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {VENDOR_DOCUMENT_CHECKLIST.map((document) => {
+                  const attachment = getAttachmentForType(viewingVendor, document.type);
+                  return (
+                    <div
+                      key={document.type}
+                      className="rounded-md border border-[#E8DCC4] bg-white p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-semibold text-[#4A3426]">
+                            {document.label}
+                          </div>
+                          <div className="mt-1 text-xs text-[#7A6555]">
+                            {attachment ? "Uploaded" : "Missing"}
+                          </div>
+                        </div>
+                        <ErpStatusBadge
+                          status={attachment ? "APPROVED" : "AWAITING_APPROVAL"}
+                          label={attachment ? "Available" : "Required"}
+                          tone={attachment ? "success" : "warning"}
+                        />
+                      </div>
+                      {attachment ? (
+                        <a
+                          href={attachment.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#6F4E37] underline"
+                        >
+                          <Paperclip className="h-3.5 w-3.5" />
+                          {attachment.file_name}
+                        </a>
+                      ) : null}
+                      {canEdit ? (
+                        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md border border-[#D8C8AA] px-3 py-2 text-xs font-semibold text-[#6F4E37] hover:bg-[#F5EFE3]">
+                          <Paperclip className="h-3.5 w-3.5" />
+                          Upload
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept=".pdf,.png,.jpg,.jpeg"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0] || null;
+                              event.target.value = "";
+                              handleVendorAttachmentUpload(viewingVendor, document.type, file);
+                            }}
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section>
+              <SectionTitle
+                title="Approval History"
+                description="Maker-checker and vendor master change trail."
+              />
+              <div className="overflow-x-auto rounded-md border border-[#E8DCC4]">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-[#FAF9F6] text-left text-xs uppercase text-[#7A6555]">
+                    <tr>
+                      <th className="px-3 py-2">Action</th>
+                      <th className="px-3 py-2">From</th>
+                      <th className="px-3 py-2">To</th>
+                      <th className="px-3 py-2">Reason</th>
+                      <th className="px-3 py-2">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F5EFE3]">
+                    {(viewingVendor.approval_history?.length
+                      ? viewingVendor.approval_history
+                      : viewingVendor.approval_trail || []
+                    ).map((entry, index) => (
+                      <tr key={`${entry.id || entry.action}-${index}`}>
+                        <td className="px-3 py-2 font-semibold">
+                          {entry.action || "-"}
+                        </td>
+                        <td className="px-3 py-2">{entry.from_status || "-"}</td>
+                        <td className="px-3 py-2">{entry.to_status || "-"}</td>
+                        <td className="px-3 py-2">{entry.reason || "-"}</td>
+                        <td className="px-3 py-2">
+                          {entry.created_at || entry.at
+                            ? new Date(entry.created_at || entry.at).toLocaleString()
+                            : "-"}
+                        </td>
+                      </tr>
+                    ))}
+                    {!viewingVendor.approval_history?.length &&
+                    !viewingVendor.approval_trail?.length ? (
+                      <tr>
+                        <td className="px-3 py-4 text-[#7A6555]" colSpan={5}>
+                          No approval history recorded yet.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </div>
         ) : null}
       </SlidePanel>
