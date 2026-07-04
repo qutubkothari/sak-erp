@@ -761,6 +761,10 @@ export class PurchaseRequisitionsService {
     if (currentStatus === 'SUBMITTED') {
       updateData.approved_by = null;
       updateData.approved_at = null;
+      updateData.rejected_by = null;
+      updateData.rejected_at = null;
+      updateData.rejection_reason = null;
+      updateData.current_approval_level = 0;
     }
 
     const { error } = await this.supabase
@@ -846,6 +850,13 @@ export class PurchaseRequisitionsService {
       .from('purchase_requisitions')
       .update({
         status: 'SUBMITTED',
+        submitted_at: new Date().toISOString(),
+        rejected_by: null,
+        rejected_at: null,
+        rejection_reason: null,
+        approved_by: null,
+        approved_at: null,
+        current_approval_level: 0,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
@@ -883,6 +894,7 @@ export class PurchaseRequisitionsService {
         status: nextStatus,
         approved_by: finalApproval ? userId : null,
         approved_at: finalApproval ? new Date().toISOString() : null,
+        current_approval_level: currentLevel + 1,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
@@ -915,6 +927,10 @@ export class PurchaseRequisitionsService {
         status: 'REJECTED',
         approved_by: null,
         approved_at: null,
+        rejected_by: userId,
+        rejected_at: new Date().toISOString(),
+        rejection_reason: normalizedReason,
+        current_approval_level: 0,
         updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)

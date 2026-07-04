@@ -128,6 +128,7 @@ interface PRDetail {
   approved_by?: string;
   approved_by_name?: string;
   approved_at?: string;
+  submitted_at?: string | null;
   updated_by?: string;
   edit_count?: number;
   last_edited_at?: string;
@@ -1447,8 +1448,9 @@ function PRContent() {
       toast.success('PR approved successfully!');
       setShowDetailModal(false);
       fetchRequisitions();
-    } catch (error) {
-      toast.error('Failed to approve PR');
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || 'Failed to approve PR';
+      toast.error(message);
     }
   };
 
@@ -1480,8 +1482,9 @@ function PRContent() {
       toast.success('PR rejected successfully!');
       setShowDetailModal(false);
       fetchRequisitions();
-    } catch (error) {
-      toast.error('Failed to reject PR');
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || 'Failed to reject PR';
+      toast.error(message);
     }
   };
 
@@ -2310,6 +2313,24 @@ function PRContent() {
                       <div>
                         <p className="text-sm text-[#7A6555]">Approved At</p>
                         <p className="font-semibold">{formatPrDate(selectedPR.approved_at)}</p>
+                      </div>
+                    )}
+                    {selectedPR.submitted_at && (
+                      <div>
+                        <p className="text-sm text-[#7A6555]">Submitted At</p>
+                        <p className="font-semibold">{formatPrDateTime(selectedPR.submitted_at)}</p>
+                      </div>
+                    )}
+                    {selectedPR.rejected_at && (
+                      <div>
+                        <p className="text-sm text-[#7A6555]">Rejected At</p>
+                        <p className="font-semibold">{formatPrDateTime(selectedPR.rejected_at)}</p>
+                      </div>
+                    )}
+                    {selectedPR.rejection_reason && (
+                      <div className="sm:col-span-2 lg:col-span-4">
+                        <p className="text-sm text-[#7A6555]">Rejection Reason</p>
+                        <p className="whitespace-pre-wrap font-semibold text-red-700">{selectedPR.rejection_reason}</p>
                       </div>
                     )}
                     <div>

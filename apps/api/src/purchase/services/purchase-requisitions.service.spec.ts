@@ -104,5 +104,80 @@ describe('PurchaseRequisitionsService controls', () => {
     await expect(service.submit('tenant-1', 'pr-1', 'requester-1')).resolves.toMatchObject({
       status: 'SUBMITTED',
     });
+    expect(updateQuery.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'SUBMITTED',
+      submitted_at: expect.any(String),
+      current_approval_level: 0,
+      approved_by: null,
+      approved_at: null,
+      rejection_reason: null,
+    }));
+  });
+
+  it('advances approval level for a non-final approval step', async () => {
+    const service = makeService();
+    const updateQuery: any = {
+      update: jest.fn(() => updateQuery),
+      eq: jest.fn(() => updateQuery),
+    };
+    (service as any).supabase = {
+      from: jest.fn((table: string) => table === 'purchase_requisition_approval_history'
+        ? { insert: jest.fn().mockResolvedValue({ error: null }) }
+        : updateQuery),
+    };
+    jest.spyOn(service as any, 'getRequisitionForTransition').mockResolvedValue({
+      status: 'SUBMITTED',
+      requested_by: 'requester-1',
+      department: 'PRODUCTION',
+      current_approval_level: 0,
+      purchase_requisition_items: [{ requested_qty: 2, estimated_rate: 100 }],
+    });
+    jest.spyOn(service as any, 'getMatchingApprovalRules').mockResolvedValue([
+      { id: 'rule-1' },
+      { id: 'rule-2' },
+    ]);
+    jest.spyOn(service as any, 'assertRuleApprover').mockResolvedValue(undefined);
+    jest.spyOn(service, 'findOne').mockResolvedValue({ id: 'pr-1', status: 'SUBMITTED' } as any);
+
+    await expect(service.approve('tenant-1', 'pr-1', 'approver-1')).resolves.toMatchObject({
+      status: 'SUBMITTED',
+    });
+    expect(updateQuery.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'SUBMITTED',
+      approved_by: null,
+      approved_at: null,
+      current_approval_level: 1,
+    }));
+  });
+
+  it('stores rejection details and resets approval level', async () => {
+    const service = makeService();
+    const updateQuery: any = {
+      update: jest.fn(() => updateQuery),
+      eq: jest.fn(() => updateQuery),
+    };
+    (service as any).supabase = {
+      from: jest.fn((table: string) => table === 'purchase_requisition_approval_history'
+        ? { insert: jest.fn().mockResolvedValue({ error: null }) }
+        : updateQuery),
+    };
+    jest.spyOn(service as any, 'getRequisitionForTransition').mockResolvedValue({
+      status: 'SUBMITTED',
+      requested_by: 'requester-1',
+    });
+    jest.spyOn(service, 'findOne').mockResolvedValue({ id: 'pr-1', status: 'REJECTED' } as any);
+
+    await expect(service.reject('tenant-1', 'pr-1', 'approver-1', 'Budget not approved')).resolves.toMatchObject({
+      status: 'REJECTED',
+    });
+    expect(updateQuery.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'REJECTED',
+      rejected_by: 'approver-1',
+      rejected_at: expect.any(String),
+      rejection_reason: 'Budget not approved',
+      current_approval_level: 0,
+      approved_by: null,
+      approved_at: null,
+    }));
   });
 });

@@ -2,6 +2,8 @@ BEGIN;
 
 ALTER TABLE purchase_requisitions
   ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'MEDIUM',
+  ADD COLUMN IF NOT EXISTS delivery_address TEXT,
+  ADD COLUMN IF NOT EXISTS notes TEXT,
   ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS rejection_reason TEXT,
   ADD COLUMN IF NOT EXISTS rejected_by UUID REFERENCES users(id),
@@ -50,5 +52,7 @@ CREATE TABLE IF NOT EXISTS purchase_requisition_approval_history (
 
 CREATE INDEX IF NOT EXISTS idx_pr_approval_history_pr
   ON purchase_requisition_approval_history(tenant_id, pr_id, created_at);
+
+NOTIFY pgrst, 'reload schema';
 
 COMMIT;
