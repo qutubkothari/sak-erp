@@ -482,6 +482,15 @@ export default function AccountsPayablePage() {
     const outstanding = selectedGRNDetail.outstanding_amount;
 
     if (isNaN(amount) || amount <= 0) { setPaymentError('Please enter a valid payment amount'); return; }
+    if (tds < 0 || short < 0) { setPaymentError('TDS and short payment cannot be negative'); return; }
+    if (short > 0 && !paymentForm.short_payment_reason.trim()) {
+      setPaymentError('Short payment reason is required');
+      return;
+    }
+    if (paymentForm.close_invoice && amount + tds + short < outstanding - 0.009) {
+      setPaymentError('Short payment amount must cover the remaining balance before closing the invoice');
+      return;
+    }
     if (amount + tds + short > outstanding + 0.009) {
       setPaymentError(`Total settlement ₹${(amount + tds + short).toFixed(2)} exceeds outstanding ₹${outstanding.toFixed(2)}`);
       return;
@@ -547,6 +556,11 @@ export default function AccountsPayablePage() {
     const newSettlement = amount + tds + short + otherPayments;
 
     if (isNaN(amount) || amount < 0) { setEditPaymentError('Please enter a valid payment amount'); return; }
+    if (tds < 0 || short < 0) { setEditPaymentError('TDS and short payment cannot be negative'); return; }
+    if (short > 0 && !editPaymentForm.short_payment_reason.trim()) {
+      setEditPaymentError('Short payment reason is required');
+      return;
+    }
     if (newSettlement > originalOutstanding + 0.009) {
       setEditPaymentError(`Total settlement ₹${newSettlement.toFixed(2)} exceeds net payable ₹${originalOutstanding.toFixed(2)}`);
       return;
@@ -653,6 +667,7 @@ export default function AccountsPayablePage() {
           amount: grnPayment,
           tds_amount: grnTds,
           short_payment_amount: grnShort,
+          short_payment_reason: grnShort > 0 ? settlementForm.payment_notes || 'Bulk short payment settlement' : undefined,
           payment_method: settlementForm.payment_method,
           payment_reference: settlementForm.payment_reference || undefined,
           payment_date: settlementForm.payment_date,

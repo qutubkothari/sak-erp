@@ -263,6 +263,24 @@ export class DebitNoteService {
     return Math.max(0, netPayable - paid);
   }
 
+  private validateSettlementInput(amount: number, tdsAmount: number, shortAmount: number, shortReason?: string) {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than 0');
+    }
+
+    if (!Number.isFinite(tdsAmount) || tdsAmount < 0) {
+      throw new BadRequestException('TDS amount cannot be negative');
+    }
+
+    if (!Number.isFinite(shortAmount) || shortAmount < 0) {
+      throw new BadRequestException('Short payment amount cannot be negative');
+    }
+
+    if (shortAmount > 0 && !String(shortReason || '').trim()) {
+      throw new BadRequestException('Short payment reason is required');
+    }
+  }
+
   // Get vendor-wise payables summary (only GRNs with outstanding balance)
   async getVendorPayables(tenantId: string) {
     const { data: grnsData, error: grnsError } = await this.supabase
@@ -550,13 +568,21 @@ export class DebitNoteService {
     // Fetch GRN — look across all statuses (not just COMPLETED) to avoid false 404
     const { data: grn, error: grnError } = await this.supabase
       .from('grns')
-      .select('id, po_id, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, tds_amount, short_payment_amount, payment_status')
+      .select('id, po_id, status, invoice_approved, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, tds_amount, short_payment_amount, payment_status')
       .eq('id', grnId)
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
     if (grnError) throw new Error(`Database error: ${grnError.message}`);
     if (!grn) throw new NotFoundException(`GRN not found (id: ${grnId})`);
+
+    if (String(grn.status || '').toUpperCase() !== 'COMPLETED') {
+      throw new BadRequestException('Only completed GRNs can be paid');
+    }
+
+    if (!grn.invoice_approved) {
+      throw new BadRequestException('Supplier invoice must be sanctioned before payment');
+    }
 
     // Compute effective net payable (fallback if column is null)
     const gross = parseFloat(grn.gross_amount || 0);
@@ -569,6 +595,7 @@ export class DebitNoteService {
     const tdsAmount = parseFloat(String(paymentData.tds_amount || 0));
     const shortAmount = parseFloat(String(paymentData.short_payment_amount || 0));
     const entryAmount = parseFloat(String(paymentData.amount));
+    this.validateSettlementInput(entryAmount, tdsAmount, shortAmount, paymentData.short_payment_reason);
 
     const poSettlement = grn.po_id ? await this.getPoSettlement(tenantId, grn.po_id) : null;
     const allocatedInvoice = poSettlement?.invoices.find((invoice: any) => invoice.grn_id === grnId)?.settlement;
@@ -577,11 +604,14 @@ export class DebitNoteService {
       : Math.max(0, netPayable - Number(grn.paid_amount || 0) - Number(grn.tds_amount || 0) - Number(grn.short_payment_amount || 0));
     console.log('[recordPayment]', { grnId, netPayable, outstanding, advanceApplied: allocatedInvoice?.advanceApplied || 0 });
 
-    if (entryAmount <= 0) throw new Error('Payment amount must be greater than 0');
     if (entryAmount + tdsAmount + shortAmount > outstanding + 0.009) {
-      throw new Error(
-        `Total settlement (₹${(entryAmount + tdsAmount + shortAmount).toFixed(2)}) exceeds outstanding balance (₹${outstanding.toFixed(2)})`,
+      throw new BadRequestException(
+        `Total settlement (Rs. ${(entryAmount + tdsAmount + shortAmount).toFixed(2)}) exceeds outstanding balance (Rs. ${outstanding.toFixed(2)})`,
       );
+    }
+
+    if (paymentData.close_invoice && entryAmount + tdsAmount + shortAmount < outstanding - 0.009) {
+      throw new BadRequestException('Short payment amount must cover the remaining balance before closing the invoice');
     }
 
     // Insert payment entry record
@@ -685,19 +715,30 @@ export class DebitNoteService {
 
       if (fetchError) throw new Error(`Database error: ${fetchError.message}`);
       if (!existingEntry) throw new NotFoundException(`Payment entry not found (id: ${paymentEntryId})`);
+      if (['ADVANCE', 'ADVANCE_APPLIED', 'VENDOR_ADVANCE'].includes(String(existingEntry.entry_type || '').toUpperCase())) {
+        throw new BadRequestException('System advance entries cannot be edited from Accounts Payable');
+      }
+
+      const nextAmount = paymentData.amount !== undefined ? Number(paymentData.amount) : Number(existingEntry.amount || 0);
+      const nextTds = paymentData.tds_amount !== undefined ? Number(paymentData.tds_amount) : Number(existingEntry.tds_amount || 0);
+      const nextShort = paymentData.short_payment_amount !== undefined ? Number(paymentData.short_payment_amount) : Number(existingEntry.short_payment_amount || 0);
+      const nextShortReason = paymentData.short_payment_reason !== undefined
+        ? paymentData.short_payment_reason
+        : existingEntry.short_payment_reason;
+      this.validateSettlementInput(nextAmount, nextTds, nextShort, nextShortReason);
 
       // Update the payment entry
       const { error: updateError } = await this.supabase
         .from('grn_payment_entries')
         .update({
-          amount: paymentData.amount !== undefined ? paymentData.amount : existingEntry.amount,
+          amount: nextAmount,
           payment_method: paymentData.payment_method || existingEntry.payment_method,
           payment_reference: paymentData.payment_reference !== undefined ? paymentData.payment_reference : existingEntry.payment_reference,
           payment_date: paymentData.payment_date || existingEntry.payment_date,
           payment_notes: paymentData.payment_notes !== undefined ? paymentData.payment_notes : existingEntry.payment_notes,
-          tds_amount: paymentData.tds_amount !== undefined ? paymentData.tds_amount : existingEntry.tds_amount,
-          short_payment_amount: paymentData.short_payment_amount !== undefined ? paymentData.short_payment_amount : existingEntry.short_payment_amount,
-          short_payment_reason: paymentData.short_payment_reason !== undefined ? paymentData.short_payment_reason : existingEntry.short_payment_reason,
+          tds_amount: nextTds,
+          short_payment_amount: nextShort,
+          short_payment_reason: nextShortReason,
         })
         .eq('id', paymentEntryId)
         .eq('tenant_id', tenantId);

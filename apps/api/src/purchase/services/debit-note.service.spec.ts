@@ -222,3 +222,82 @@ describe('DebitNoteService GRN payment-status register', () => {
     }));
   });
 });
+
+describe('DebitNoteService accounts payable payment posting controls', () => {
+  function mockServiceWithPayableGrn(grn: any) {
+    const service = new DebitNoteService({} as any);
+    const grnQuery: any = {
+      select: jest.fn(() => grnQuery),
+      eq: jest.fn(() => grnQuery),
+      maybeSingle: jest.fn().mockResolvedValue({ data: grn, error: null }),
+    };
+    const entryQuery: any = {
+      insert: jest.fn(() => entryQuery),
+      select: jest.fn(() => entryQuery),
+      eq: jest.fn(() => entryQuery),
+    };
+
+    (service as any).supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'grns') return grnQuery;
+        if (table === 'grn_payment_entries') return entryQuery;
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    };
+
+    return { service, entryQuery };
+  }
+
+  it('blocks payment before supplier invoice sanction', async () => {
+    const { service } = mockServiceWithPayableGrn({
+      id: 'grn-1',
+      status: 'COMPLETED',
+      invoice_approved: false,
+      net_payable_amount: 1000,
+      paid_amount: 0,
+      tds_amount: 0,
+      short_payment_amount: 0,
+    });
+
+    await expect(service.recordPayment('tenant-1', 'grn-1', {
+      amount: 100,
+      payment_method: 'NEFT',
+    })).rejects.toThrow('Supplier invoice must be sanctioned before payment');
+  });
+
+  it('requires a reason for short payment', async () => {
+    const { service } = mockServiceWithPayableGrn({
+      id: 'grn-1',
+      status: 'COMPLETED',
+      invoice_approved: true,
+      net_payable_amount: 1000,
+      paid_amount: 0,
+      tds_amount: 0,
+      short_payment_amount: 0,
+    });
+
+    await expect(service.recordPayment('tenant-1', 'grn-1', {
+      amount: 900,
+      short_payment_amount: 100,
+      payment_method: 'NEFT',
+    })).rejects.toThrow('Short payment reason is required');
+  });
+
+  it('blocks closing an invoice without settling the remaining balance', async () => {
+    const { service } = mockServiceWithPayableGrn({
+      id: 'grn-1',
+      status: 'COMPLETED',
+      invoice_approved: true,
+      net_payable_amount: 1000,
+      paid_amount: 0,
+      tds_amount: 0,
+      short_payment_amount: 0,
+    });
+
+    await expect(service.recordPayment('tenant-1', 'grn-1', {
+      amount: 900,
+      payment_method: 'NEFT',
+      close_invoice: true,
+    })).rejects.toThrow('Short payment amount must cover the remaining balance before closing the invoice');
+  });
+});
