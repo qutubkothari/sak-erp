@@ -10,6 +10,18 @@ import { buildDocumentBranding, renderStandardLetterheadHtml } from '@/lib/docum
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 import { hasModulePermission, readStoredUser, type StoredUser } from '@/lib/rbac';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
+import {
+  Briefcase,
+  CheckCircle,
+  Eye,
+  Mail,
+  PackageCheck,
+  Pencil,
+  Plus,
+  Printer,
+  Send,
+  Trash2,
+} from 'lucide-react';
 
 type TabType = 'customers' | 'quotations' | 'orders' | 'dispatch' | 'warranties';
 
@@ -125,6 +137,57 @@ interface UIDRecord {
 
 const formatSalesAmount = (value: number | null | undefined) =>
   `Rs. ${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+
+const registerShellClass = 'overflow-x-auto rounded-md border border-[#E8DCC4] bg-white';
+const registerTableClass = 'min-w-[1180px] divide-y divide-[#E8DCC4]';
+const registerHeadClass = 'bg-[#F6EFE2]';
+const registerHeaderCellClass = 'px-4 py-3 text-left text-xs font-bold uppercase text-[#5C4738]';
+const registerBodyClass = 'divide-y divide-[#EFE5D2] bg-white';
+const registerCellClass = 'whitespace-nowrap px-4 py-3 text-sm text-[#5C4738]';
+const stickyFirstHeaderClass = 'sticky left-0 z-20 bg-[#F6EFE2] px-4 py-3 text-left text-xs font-bold uppercase text-[#5C4738]';
+const stickySecondHeaderClass = 'sticky left-[170px] z-20 bg-[#F6EFE2] px-4 py-3 text-left text-xs font-bold uppercase text-[#5C4738]';
+const stickyFirstCellClass = 'sticky left-0 z-10 w-[170px] whitespace-nowrap bg-inherit px-4 py-3 text-sm font-semibold text-[#8B6F47]';
+const stickySecondCellClass = 'sticky left-[170px] z-10 min-w-[260px] bg-inherit px-4 py-3 text-sm';
+
+function ActionIconButton({
+  title,
+  onClick,
+  disabled,
+  children,
+  tone = 'neutral',
+  type = 'button',
+}: {
+  title: string;
+  onClick?: () => void | Promise<void>;
+  disabled?: boolean;
+  children: React.ReactNode;
+  tone?: 'neutral' | 'primary' | 'success' | 'danger' | 'warning';
+  type?: 'button' | 'submit';
+}) {
+  const toneClass =
+    tone === 'success'
+      ? 'border-green-200 text-green-700 hover:bg-green-50'
+      : tone === 'danger'
+        ? 'border-red-200 text-red-700 hover:bg-red-50'
+        : tone === 'warning'
+          ? 'border-[#E0C99F] text-[#8B5E16] hover:bg-[#FFF8EA]'
+          : tone === 'primary'
+            ? 'border-blue-200 text-blue-700 hover:bg-blue-50'
+            : 'border-[#D9C9AD] text-[#6F4E37] hover:bg-[#F6EFE2]';
+
+  return (
+    <button
+      type={type}
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-md border bg-white transition ${toneClass} disabled:cursor-not-allowed disabled:opacity-40`}
+    >
+      {children}
+    </button>
+  );
+}
 
 export default function SalesPage() {
   const todayDate = getTodayDateInputValue();
@@ -1438,15 +1501,15 @@ export default function SalesPage() {
     if (totalPages <= 1) return null;
     
     return (
-      <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-3 bg-gray-50 border-t">
-        <div className="text-sm text-gray-700">
+      <div className="mt-3 flex flex-col items-center justify-between gap-4 rounded-md border border-[#E8DCC4] bg-white px-4 py-3 sm:flex-row">
+        <div className="text-sm text-[#6F4E37]">
           Showing {Math.min((currentPage - 1) * itemsPerPage + 1, totalItems)} to {Math.min(currentPage * itemsPerPage, totalItems)} of {totalItems} entries
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             disabled={currentPage === 1}
-            className="px-3 py-1 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-md border border-[#D9C9AD] px-3 py-1 text-sm font-semibold text-[#6F4E37] hover:bg-[#F6EFE2] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Previous
           </button>
@@ -1465,7 +1528,11 @@ export default function SalesPage() {
               <button
                 key={pageNum}
                 onClick={() => setCurrentPage(pageNum)}
-                className={`px-3 py-1 border rounded ${currentPage === pageNum ? 'bg-amber-600 text-white' : 'hover:bg-gray-100'}`}
+                className={`rounded-md border px-3 py-1 text-sm font-semibold ${
+                  currentPage === pageNum
+                    ? 'border-[#8B6F47] bg-[#8B6F47] text-white'
+                    : 'border-[#D9C9AD] text-[#6F4E37] hover:bg-[#F6EFE2]'
+                }`}
               >
                 {pageNum}
               </button>
@@ -1474,7 +1541,7 @@ export default function SalesPage() {
           <button
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
-            className="px-3 py-1 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-md border border-[#D9C9AD] px-3 py-1 text-sm font-semibold text-[#6F4E37] hover:bg-[#F6EFE2] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Next
           </button>
@@ -1484,7 +1551,7 @@ export default function SalesPage() {
               setItemsPerPage(Number(e.target.value));
               setCurrentPage(1);
             }}
-            className="ml-2 px-2 py-1 border rounded"
+            className="ml-2 rounded-md border border-[#D9C9AD] bg-white px-2 py-1 text-sm text-[#3F2D20]"
           >
             <option value={10}>10 / page</option>
             <option value={25}>25 / page</option>
@@ -1647,22 +1714,21 @@ export default function SalesPage() {
                             <td className="whitespace-nowrap px-4 py-3 text-sm">
                               <div className="flex flex-wrap items-center gap-2">
                                 {canEdit && (
-                                <button
-                                  type="button"
+                                <ActionIconButton
+                                  title="Edit customer"
                                   onClick={() => handleEditCustomer(customer)}
-                                  className="rounded-md border border-[#D9C9AD] px-3 py-1 text-xs font-semibold text-[#6F4E37] hover:bg-[#F6EFE2]"
                                 >
-                                  Edit
-                                </button>
+                                  <Pencil size={16} />
+                                </ActionIconButton>
                                 )}
                                 {canDelete && (
-                                <button
-                                  type="button"
+                                <ActionIconButton
+                                  title="Delete customer"
                                   onClick={() => handleDeleteCustomer(customer)}
-                                  className="rounded-md border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                                  tone="danger"
                                 >
-                                  Delete
-                                </button>
+                                  <Trash2 size={16} />
+                                </ActionIconButton>
                                 )}
                               </div>
                             </td>
@@ -1896,106 +1962,102 @@ export default function SalesPage() {
 
       {/* Quotations Tab */}
       {activeTab === 'quotations' && (
-        <div>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Quotations</h2>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-[#3F2D20]">Quotation Register</h2>
+              <p className="text-sm text-[#6F4E37]">Customer offers, approval status, conversion balance, and commercial value.</p>
+            </div>
             {canCreate && (
             <button
               onClick={() => {
                 resetQuotationForm();
                 setShowQuotationForm(true);
               }}
-              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              className="inline-flex items-center gap-2 rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#745A37]"
             >
-              + Create Quotation
+              <Plus size={16} /> Create Quotation
             </button>
             )}
           </div>
 
           {loading ? (
-            <p className="text-gray-600">Loading quotations...</p>
+            <div className="rounded-md border border-[#E8DCC4] bg-white p-8 text-center text-[#7A6756]">Loading quotations...</div>
           ) : (
             <>
-            <div className="bg-white rounded-lg shadow overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <div className={registerShellClass}>
+              <table className={registerTableClass}>
+                <thead className={registerHeadClass}>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">QT Number</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Valid Until</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th className={stickyFirstHeaderClass}>QT Number</th>
+                    <th className={stickySecondHeaderClass}>Customer</th>
+                    <th className={registerHeaderCellClass}>Date</th>
+                    <th className={registerHeaderCellClass}>Valid Until</th>
+                    <th className={`${registerHeaderCellClass} text-right`}>Amount</th>
+                    <th className={registerHeaderCellClass}>Status</th>
+                    <th className={registerHeaderCellClass}>Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className={registerBodyClass}>
                   {(() => {
                     const { paginatedData, totalPages, totalItems } = getPaginatedAndSortedData(quotations, 'quotation_date');
                     return (
                       <>
                         {paginatedData.map((quotation) => (
-                          <tr key={quotation.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          <tr key={quotation.id} className="hover:bg-[#FFFDF7]">
+                      <td className={stickyFirstCellClass}>
                         {quotation.quotation_number}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {quotation.customer_name || '-'}
+                      <td className={stickySecondCellClass}>
+                        <div className="font-semibold text-[#1F2937]">{quotation.customer_name || '-'}</div>
+                        <div className="text-xs text-[#7A6756]">{quotation.customer_id}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {new Date(quotation.quotation_date).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {new Date(quotation.valid_until).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ₹{quotation.net_amount.toLocaleString()}
+                      <td className={`${registerCellClass} text-right font-semibold text-[#3F2D20]`}>
+                        {formatSalesAmount(quotation.net_amount)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="whitespace-nowrap px-4 py-3">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(quotation.status)}`}>
                           {quotation.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
                         <div className="flex flex-wrap items-center gap-2">
-                          <button
+                          <ActionIconButton
+                            title="View quotation"
                             onClick={() => handleViewQuotation(quotation.id)}
-                            className="text-blue-600 hover:text-blue-900"
+                            tone="primary"
                           >
-                            View
-                          </button>
+                            <Eye size={16} />
+                          </ActionIconButton>
                           {canEdit && (
-                          <button
-                            type="button"
+                          <ActionIconButton
+                            title={quotation.status !== 'DRAFT' ? 'Only DRAFT quotations can be edited' : 'Edit quotation'}
                             onClick={() => handleEditQuotation(quotation.id)}
                             disabled={quotation.status !== 'DRAFT'}
-                            title={quotation.status !== 'DRAFT' ? 'Only DRAFT quotations can be edited' : 'Edit quotation'}
-                            className={
-                              quotation.status === 'DRAFT'
-                                ? 'text-amber-600 hover:text-amber-900'
-                                : 'text-gray-400 cursor-not-allowed'
-                            }
+                            tone="warning"
                           >
-                            Edit
-                          </button>
+                            <Pencil size={16} />
+                          </ActionIconButton>
                           )}
                           {canDelete && (
-                          <button
-                            type="button"
+                          <ActionIconButton
+                            title={quotation.status !== 'DRAFT' ? 'Only DRAFT quotations can be deleted' : 'Delete quotation'}
                             onClick={() => handleDeleteQuotation(quotation)}
                             disabled={quotation.status !== 'DRAFT'}
-                            title={quotation.status !== 'DRAFT' ? 'Only DRAFT quotations can be deleted' : 'Delete quotation'}
-                            className={
-                              quotation.status === 'DRAFT'
-                                ? 'text-red-600 hover:text-red-900'
-                                : 'text-gray-400 cursor-not-allowed'
-                            }
+                            tone="danger"
                           >
-                            Delete
-                          </button>
+                            <Trash2 size={16} />
+                          </ActionIconButton>
                           )}
                           {quotation.status === 'DRAFT' && (
-                            <button
+                            <ActionIconButton
+                              title="Approve quotation"
                               onClick={async () => {
                                 try {
                                   await apiClient.put(`/sales/quotations/${quotation.id}/approve`);
@@ -2005,26 +2067,28 @@ export default function SalesPage() {
                                   alert('Failed to approve: ' + err.message);
                                 }
                               }}
-                              className="text-green-600 hover:text-green-900"
+                              tone="success"
                             >
-                              Approve
-                            </button>
+                              <CheckCircle size={16} />
+                            </ActionIconButton>
                           )}
                           {quotation.status === 'APPROVED' && (
-                            <button
+                            <ActionIconButton
+                              title="Convert to sales order"
                               onClick={() => handleOpenSOConversion(quotation)}
-                              className="text-amber-600 hover:text-amber-900"
+                              tone="warning"
                             >
-                              Convert to SO
-                            </button>
+                              <Send size={16} />
+                            </ActionIconButton>
                           )}
                           {quotation.status === 'PARTIALLY_CONVERTED' && (
-                            <button
+                            <ActionIconButton
+                              title="Convert remaining quantity"
                               onClick={() => handleOpenSOConversion(quotation)}
-                              className="text-blue-600 hover:text-blue-900"
+                              tone="primary"
                             >
-                              Convert Remaining
-                            </button>
+                              <Send size={16} />
+                            </ActionIconButton>
                           )}
                         </div>
                       </td>
@@ -2554,101 +2618,108 @@ export default function SalesPage() {
 
       {/* Sales Orders Tab */}
       {activeTab === 'orders' && (
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold">Sales Orders</h2>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-[#3F2D20]">Sales Order Register</h2>
+              <p className="text-sm text-[#6F4E37]">Confirmed customer commitments, fulfilment status, advances, and outstanding balance.</p>
+            </div>
             <button
               onClick={() => setShowDirectSOForm(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="inline-flex items-center gap-2 rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#745A37]"
             >
-              + Create Direct Order
+              <Plus size={16} /> Create Direct Order
             </button>
           </div>
           {loading ? (
-            <p className="text-gray-600">Loading sales orders...</p>
+            <div className="rounded-md border border-[#E8DCC4] bg-white p-8 text-center text-[#7A6756]">Loading sales orders...</div>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <div className={registerShellClass}>
+              <table className="min-w-[1360px] divide-y divide-[#E8DCC4]">
+                <thead className={registerHeadClass}>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SO Number</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Project</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Delivery Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th className={stickyFirstHeaderClass}>SO Number</th>
+                    <th className={stickySecondHeaderClass}>Customer</th>
+                    <th className={registerHeaderCellClass}>Project</th>
+                    <th className={registerHeaderCellClass}>Order Date</th>
+                    <th className={registerHeaderCellClass}>Delivery Date</th>
+                    <th className={`${registerHeaderCellClass} text-right`}>Amount</th>
+                    <th className={`${registerHeaderCellClass} text-right`}>Balance</th>
+                    <th className={registerHeaderCellClass}>Status</th>
+                    <th className={registerHeaderCellClass}>Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className={registerBodyClass}>
                   {orders.map((order) => (
-                    <tr key={order.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <tr key={order.id} className="hover:bg-[#FFFDF7]">
+                      <td className={stickyFirstCellClass}>
                         {order.so_number}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {order.customer_name || '-'}
+                      <td className={stickySecondCellClass}>
+                        <div className="font-semibold text-[#1F2937]">{order.customer_name || '-'}</div>
+                        <div className="text-xs text-[#7A6756]">{order.source_type || (order.is_direct_order ? 'DIRECT' : 'QUOTATION')}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {order.project || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {new Date(order.order_date).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {order.expected_delivery_date ? new Date(order.expected_delivery_date).toLocaleDateString() : '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ₹{order.net_amount.toLocaleString()}
+                      <td className={`${registerCellClass} text-right font-semibold text-[#3F2D20]`}>
+                        {formatSalesAmount(order.net_amount)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ₹{order.balance_amount.toLocaleString()}
+                      <td className={`${registerCellClass} text-right font-semibold text-[#3F2D20]`}>
+                        {formatSalesAmount(order.balance_amount)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="whitespace-nowrap px-4 py-3">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(order.status)}`}>
                           {order.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
                         <div className="flex flex-wrap items-center gap-2">
-                          <button
+                          <ActionIconButton
+                            title={order.status === 'DISPATCHED' || order.status === 'DELIVERED' ? 'Cannot create job order - sales order is fully dispatched' : 'Create smart job order'}
                             onClick={() => openSmartJOForSO(order)}
-                            className="text-amber-600 hover:text-amber-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={order.status === 'DISPATCHED' || order.status === 'DELIVERED' ? 'Cannot create job order - sales order is fully dispatched' : 'Create a Smart Job Order from this Sales Order'}
                             disabled={smartJOLoading || order.status === 'DISPATCHED' || order.status === 'DELIVERED'}
+                            tone="warning"
                           >
-                            {smartJOLoading ? 'Loading…' : 'Create Job Order'}
-                          </button>
+                            <Briefcase size={16} />
+                          </ActionIconButton>
                           {canEdit && (
-                          <button
+                          <ActionIconButton
+                            title="Edit sales order"
                             onClick={() => handleEditSalesOrder(order.id)}
-                            className="text-amber-600 hover:text-amber-900"
+                            tone="warning"
                           >
-                            Edit
-                          </button>
+                            <Pencil size={16} />
+                          </ActionIconButton>
                           )}
                           {canDelete && (
-                          <button
+                          <ActionIconButton
+                            title="Delete sales order"
                             onClick={() => handleDeleteSalesOrder(order)}
-                            className="text-red-600 hover:text-red-900"
+                            tone="danger"
                           >
-                            Delete
-                          </button>
+                            <Trash2 size={16} />
+                          </ActionIconButton>
                           )}
                           {(order.status === 'READY_TO_DISPATCH' || order.status === 'CONFIRMED') && (
-                            <button
+                            <ActionIconButton
+                              title="Create dispatch"
                               onClick={async () => {
                                 setSelectedOrderForDispatch(order);
                                 setDispatchForm({ ...dispatchForm, sales_order_id: order.id });
                                 await fetchSalesOrderItems(order.id);
                                 setShowDispatchForm(true);
                               }}
-                              className="text-amber-600 hover:text-amber-900"
+                              tone="success"
                             >
-                              Create Dispatch
-                            </button>
+                              <PackageCheck size={16} />
+                            </ActionIconButton>
                           )}
                           {(order.status === 'DISPATCHED' || order.status === 'DELIVERED') && (
                             <span className="text-xs text-gray-500 italic">
@@ -2656,13 +2727,14 @@ export default function SalesPage() {
                             </span>
                           )}
 
-                          <button
+                          <ActionIconButton
+                            title={sendingSOEmailId === order.id ? 'Sending sales order email' : 'Send sales order email'}
                             onClick={() => handleSendSalesOrderEmail(order.id)}
                             disabled={sendingSOEmailId === order.id}
-                            className="text-amber-600 hover:text-amber-900 disabled:opacity-50"
+                            tone="warning"
                           >
-                            {sendingSOEmailId === order.id ? 'Sending...' : 'Send SO Email'}
-                          </button>
+                            <Mail size={16} />
+                          </ActionIconButton>
                         </div>
                       </td>
                     </tr>
@@ -3026,64 +3098,67 @@ export default function SalesPage() {
 
       {/* Dispatch Tab */}
       {activeTab === 'dispatch' && (
-        <div>
-          <h2 className="text-lg font-semibold mb-4">Dispatch Notes</h2>
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-xl font-bold text-[#3F2D20]">Dispatch Register</h2>
+            <p className="text-sm text-[#6F4E37]">Outbound deliveries, transporter details, vehicle references, and dispatch control.</p>
+          </div>
           {loading ? (
-            <p className="text-gray-600">Loading dispatch notes...</p>
+            <div className="rounded-md border border-[#E8DCC4] bg-white p-8 text-center text-[#7A6756]">Loading dispatch notes...</div>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <div className={registerShellClass}>
+              <table className={registerTableClass}>
+                <thead className={registerHeadClass}>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">DN Number</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SO Number</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dispatch Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Transporter</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vehicle No.</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th className={stickyFirstHeaderClass}>DN Number</th>
+                    <th className={stickySecondHeaderClass}>SO Number</th>
+                    <th className={registerHeaderCellClass}>Customer</th>
+                    <th className={registerHeaderCellClass}>Dispatch Date</th>
+                    <th className={registerHeaderCellClass}>Transporter</th>
+                    <th className={registerHeaderCellClass}>Vehicle No.</th>
+                    <th className={registerHeaderCellClass}>Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className={registerBodyClass}>
                   {dispatches.map((dispatch) => (
-                    <tr key={dispatch.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <tr key={dispatch.id} className="hover:bg-[#FFFDF7]">
+                      <td className={stickyFirstCellClass}>
                         {dispatch.dn_number}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className={stickySecondCellClass}>
                         {dispatch.so_number || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className={registerCellClass}>
                         {dispatch.customer_name || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {new Date(dispatch.dispatch_date).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {dispatch.transporter_name || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {dispatch.vehicle_number || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
                         <div className="flex flex-wrap items-center gap-2">
                           {canEdit && (
-                          <button
-                            type="button"
+                          <ActionIconButton
+                            title="Edit dispatch"
                             onClick={() => handleEditDispatch(dispatch)}
-                            className="text-amber-600 hover:text-amber-900"
+                            tone="warning"
                           >
-                            Edit
-                          </button>
+                            <Pencil size={16} />
+                          </ActionIconButton>
                           )}
                           {canDelete && (
-                          <button
-                            type="button"
+                          <ActionIconButton
+                            title="Delete dispatch"
                             onClick={() => handleDeleteDispatch(dispatch)}
-                            className="text-red-600 hover:text-red-900"
+                            tone="danger"
                           >
-                            Delete
-                          </button>
+                            <Trash2 size={16} />
+                          </ActionIconButton>
                           )}
                         </div>
                       </td>
@@ -3200,89 +3275,92 @@ export default function SalesPage() {
 
       {/* Warranties Tab */}
       {activeTab === 'warranties' && (
-        <div>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Warranties</h2>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-[#3F2D20]">Warranty Register</h2>
+              <p className="text-sm text-[#6F4E37]">UID-linked warranty certificates, coverage dates, claim count, and status.</p>
+            </div>
             <button
               onClick={() => setShowWarrantyForm(true)}
-              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+              className="inline-flex items-center gap-2 rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#745A37]"
             >
-              + Register Warranty
+              <Plus size={16} /> Register Warranty
             </button>
           </div>
           {loading ? (
-            <p className="text-gray-600">Loading warranties...</p>
+            <div className="rounded-md border border-[#E8DCC4] bg-white p-8 text-center text-[#7A6756]">Loading warranties...</div>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <div className={registerShellClass}>
+              <table className="min-w-[1320px] divide-y divide-[#E8DCC4]">
+                <thead className={registerHeadClass}>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Warranty No.</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">UID</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">End Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Claims</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th className={stickyFirstHeaderClass}>Warranty No.</th>
+                    <th className={stickySecondHeaderClass}>UID</th>
+                    <th className={registerHeaderCellClass}>Customer</th>
+                    <th className={registerHeaderCellClass}>Start Date</th>
+                    <th className={registerHeaderCellClass}>Duration</th>
+                    <th className={registerHeaderCellClass}>End Date</th>
+                    <th className={registerHeaderCellClass}>Status</th>
+                    <th className={registerHeaderCellClass}>Claims</th>
+                    <th className={registerHeaderCellClass}>Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className={registerBodyClass}>
                   {warranties.map((warranty) => (
-                    <tr key={warranty.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <tr key={warranty.id} className="hover:bg-[#FFFDF7]">
+                      <td className={stickyFirstCellClass}>
                         {warranty.warranty_number}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-900">
+                      <td className={`${stickySecondCellClass} font-mono`}>
                         {warranty.uid}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className={registerCellClass}>
                         {warranty.customer_name || '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {new Date(warranty.warranty_start_date).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {warranty.warranty_duration_months} months
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {new Date(warranty.warranty_end_date).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="whitespace-nowrap px-4 py-3">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(warranty.status)}`}>
                           {warranty.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className={registerCellClass}>
                         {warranty.claim_count}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
                         <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
+                          <ActionIconButton
+                            title="Print warranty"
                             onClick={() => handlePrintWarranty(warranty.id)}
-                            className="text-blue-600 hover:text-blue-900"
+                            tone="primary"
                           >
-                            Print
-                          </button>
+                            <Printer size={16} />
+                          </ActionIconButton>
                           {canEdit && (
-                            <button
-                              type="button"
+                            <ActionIconButton
+                              title="Edit warranty"
                               onClick={() => handleEditWarranty(warranty)}
-                              className="text-amber-600 hover:text-amber-900"
+                              tone="warning"
                             >
-                              Edit
-                            </button>
+                              <Pencil size={16} />
+                            </ActionIconButton>
                           )}
                           {canDelete && (
-                            <button
-                              type="button"
+                            <ActionIconButton
+                              title="Delete warranty"
                               onClick={() => handleDeleteWarranty(warranty)}
-                              className="text-red-600 hover:text-red-900"
+                              tone="danger"
                             >
-                              Delete
-                            </button>
+                              <Trash2 size={16} />
+                            </ActionIconButton>
                           )}
                         </div>
                       </td>
