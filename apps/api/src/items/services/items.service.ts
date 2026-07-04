@@ -63,6 +63,66 @@ export class ItemsService {
     return trimmed || null;
   }
 
+  private normalizeApprovalStatus(value: any): 'PENDING' | 'APPROVED' | 'REJECTED' {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === 'APPROVED') return 'APPROVED';
+    if (normalized === 'REJECTED') return 'REJECTED';
+    return 'PENDING';
+  }
+
+  private async fetchApprovalHistory(tenantId: string, itemId: string) {
+    const { data, error } = await this.supabase
+      .from('item_approval_history')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('item_id', itemId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      const message = String(error.message || '');
+      if (message.includes('item_approval_history') || message.includes('schema cache')) return [];
+      throw new BadRequestException(error.message);
+    }
+
+    return data || [];
+  }
+
+  private async logApprovalHistory(params: {
+    tenantId: string;
+    itemId: string;
+    actorId?: string | null;
+    action: string;
+    fromStatus?: string | null;
+    toStatus?: string | null;
+    reason?: string | null;
+    metadata?: Record<string, any>;
+  }) {
+    const { error } = await this.supabase.from('item_approval_history').insert({
+      tenant_id: params.tenantId,
+      item_id: params.itemId,
+      actor_id: params.actorId || null,
+      action: params.action,
+      from_status: params.fromStatus || null,
+      to_status: params.toStatus || null,
+      reason: params.reason || null,
+      metadata: params.metadata || {},
+    });
+
+    if (error) {
+      const message = String(error.message || '');
+      if (message.includes('item_approval_history') || message.includes('schema cache')) return;
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  private assertMakerChecker(item: any, userId: string, action: string) {
+    const metadata = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+    const createdBy = String(item?.created_by || metadata.createdBy || '').trim();
+    if (createdBy && String(userId) === createdBy) {
+      throw new BadRequestException(`Maker-checker violation: the item creator cannot ${action} this item.`);
+    }
+  }
+
   private async getLedgerStockTotals(tenantId: string, itemIds: string[]) {
     const itemIdSet = new Set(itemIds);
     const totals: Record<string, number> = {};
@@ -322,10 +382,21 @@ export class ItemsService {
       throw new Error(`Failed to fetch item: ${error.message}`);
     }
 
-    return data;
+    const approvalHistory = await this.fetchApprovalHistory(tenantId, id);
+    return {
+      ...data,
+      approval_status: this.normalizeApprovalStatus(
+        data.approval_status || data.metadata?.itemApproval?.status || (data.is_verified ? 'APPROVED' : 'PENDING'),
+      ),
+      approval_reason: data.approval_reason || data.metadata?.itemApproval?.reason || null,
+      created_by: data.created_by || data.metadata?.createdBy || null,
+      approved_at: data.approved_at || data.verified_at || null,
+      approved_by: data.approved_by || data.verified_by || null,
+      approval_history: approvalHistory,
+    };
   }
 
-  async create(tenantId: string, itemData: any) {
+  async create(tenantId: string, userId: string, itemData: any) {
     console.log('[ItemsService.create] Creating item with data:', JSON.stringify(itemData, null, 2));
     
     // HSN is required unless this is a variant (variants can inherit empty HSN)
@@ -413,8 +484,19 @@ export class ItemsService {
         purchase_currency: purchaseCurrency,
         foreign_unit_price: purchaseCurrency === 'INR' ? null : foreignUnitPrice,
         is_active: true,
-        is_verified: true,
-        metadata: itemData.metadata || {},
+        is_verified: false,
+        created_by: userId,
+        approval_status: 'PENDING',
+        approval_reason: null,
+        metadata: {
+          ...(itemData.metadata || {}),
+          createdBy: userId,
+          itemApproval: {
+            status: 'PENDING',
+            submittedAt: new Date().toISOString(),
+            submittedBy: userId,
+          },
+        },
       })
       .select()
       .single();
@@ -433,6 +515,13 @@ export class ItemsService {
     }
 
     console.log('[ItemsService.create] Successfully created item:', data?.id);
+    await this.logApprovalHistory({
+      tenantId,
+      itemId: data.id,
+      actorId: userId,
+      action: 'CREATED',
+      toStatus: 'PENDING',
+    });
     return data;
   }
 
@@ -549,10 +638,59 @@ export class ItemsService {
   }
 
   async update(tenantId: string, id: string, itemData: any, userId?: string) {
+    const existingItem = await this.findOne(tenantId, id);
     const hsnProvided = itemData.hsnCode !== undefined || itemData.hsn_code !== undefined;
     const validatedHsn = hsnProvided
       ? this.normalizeAndValidateHsn(itemData.hsnCode ?? itemData.hsn_code, { required: true })
       : null;
+    const fromStatus = this.normalizeApprovalStatus(existingItem.approval_status || (existingItem.is_verified ? 'APPROVED' : 'PENDING'));
+    const approvalSensitiveKeys = [
+      'code',
+      'name',
+      'oem_part_no',
+      'oemPartNo',
+      'oem_part_number',
+      'oemPartNumber',
+      'oem_name',
+      'oemName',
+      'description',
+      'category',
+      'product_category',
+      'productCategory',
+      'uom',
+      'standard_cost',
+      'standardCost',
+      'reorder_level',
+      'reorderLevel',
+      'reorder_quantity',
+      'reorderQuantity',
+      'lead_time_days',
+      'leadTimeDays',
+      'hsnCode',
+      'hsn_code',
+      'purchase_currency',
+      'purchaseCurrency',
+      'foreign_unit_price',
+      'foreignUnitPrice',
+      'parent_item_id',
+      'is_variant',
+      'is_default_variant',
+      'variant_name',
+      'item_type',
+      'drawing_required',
+      'drawingRequired',
+      'uid_tracking',
+      'uidTracking',
+      'uid_strategy',
+      'uidStrategy',
+      'batch_uom',
+      'batchUom',
+      'batch_quantity',
+      'batchQuantity',
+    ];
+    const approvedItemChanged =
+      (existingItem.is_verified === true || fromStatus === 'APPROVED') &&
+      approvalSensitiveKeys.some((key) => itemData[key] !== undefined);
 
     const updateData: any = {
       updated_at: new Date().toISOString(),
@@ -610,7 +748,7 @@ export class ItemsService {
     // (SERVICE is excluded because services do not maintain inventory stock.)
     const category = itemData.category !== undefined
       ? normalizeInventoryCategory(itemData.category)
-      : normalizeInventoryCategory((await this.findOne(tenantId, id)).category);
+      : normalizeInventoryCategory(existingItem.category);
     const requiresReorderLevel =
       category === 'RAW_MATERIAL' ||
       category === 'CAPITAL_GOODS' ||
@@ -700,6 +838,27 @@ export class ItemsService {
     const uidFields = this.normalizeUidFields(itemData);
     Object.assign(updateData, uidFields);
 
+    if (approvedItemChanged) {
+      const metadata = existingItem.metadata && typeof existingItem.metadata === 'object' ? existingItem.metadata : {};
+      updateData.is_verified = false;
+      updateData.verified_at = null;
+      updateData.verified_by = null;
+      updateData.approval_status = 'PENDING';
+      updateData.approval_reason = 'Verified item edited; re-verification required.';
+      updateData.approved_at = null;
+      updateData.approved_by = null;
+      updateData.metadata = {
+        ...(updateData.metadata && typeof updateData.metadata === 'object' ? updateData.metadata : metadata),
+        itemApproval: {
+          status: 'PENDING',
+          submittedAt: new Date().toISOString(),
+          submittedBy: userId || null,
+          previousStatus: fromStatus,
+          reason: 'Verified item edited; re-verification required.',
+        },
+      };
+    }
+
     const { data, error } = await this.supabase
       .from('items')
       .update(updateData)
@@ -712,22 +871,61 @@ export class ItemsService {
       throw new Error(`Failed to update item: ${error.message}`);
     }
 
+    await this.logApprovalHistory({
+      tenantId,
+      itemId: id,
+      actorId: userId || null,
+      action: approvedItemChanged ? 'EDITED_REVERIFICATION_REQUIRED' : 'UPDATED',
+      fromStatus,
+      toStatus: approvedItemChanged ? 'PENDING' : fromStatus,
+      reason: approvedItemChanged ? 'Verified item edited; re-verification required.' : null,
+    });
+
     return data;
   }
 
   async setVerification(tenantId: string, userId: string, id: string, isVerified: boolean) {
+    const existing = await this.findOne(tenantId, id);
+    this.assertMakerChecker(existing, userId, isVerified ? 'verify' : 'remove verification for');
+    const fromStatus = this.normalizeApprovalStatus(existing.approval_status || (existing.is_verified ? 'APPROVED' : 'PENDING'));
+    const now = new Date().toISOString();
+    const metadata = existing.metadata && typeof existing.metadata === 'object' ? existing.metadata : {};
     const updateData = isVerified
       ? {
           is_verified: true,
-          verified_at: new Date().toISOString(),
+          verified_at: now,
           verified_by: userId,
-          updated_at: new Date().toISOString(),
+          approval_status: 'APPROVED',
+          approval_reason: null,
+          approved_at: now,
+          approved_by: userId,
+          updated_at: now,
+          metadata: {
+            ...metadata,
+            itemApproval: {
+              status: 'APPROVED',
+              approvedAt: now,
+              approvedBy: userId,
+            },
+          },
         }
       : {
           is_verified: false,
           verified_at: null,
           verified_by: null,
-          updated_at: new Date().toISOString(),
+          approval_status: 'PENDING',
+          approval_reason: null,
+          approved_at: null,
+          approved_by: null,
+          updated_at: now,
+          metadata: {
+            ...metadata,
+            itemApproval: {
+              status: 'PENDING',
+              submittedAt: now,
+              submittedBy: userId,
+            },
+          },
         };
 
     const { data, error } = await this.supabase
@@ -739,6 +937,14 @@ export class ItemsService {
       .single();
 
     if (error) throw new BadRequestException(`Failed to update item verification: ${error.message}`);
+    await this.logApprovalHistory({
+      tenantId,
+      itemId: id,
+      actorId: userId,
+      action: isVerified ? 'VERIFIED' : 'VERIFICATION_REMOVED',
+      fromStatus,
+      toStatus: isVerified ? 'APPROVED' : 'PENDING',
+    });
     return data;
   }
 

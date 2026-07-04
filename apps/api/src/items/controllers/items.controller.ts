@@ -67,7 +67,7 @@ export class ItemsController {
   @Post()
   @RequireCreate('items')
   async create(@Request() req: any, @Body() body: any) {
-    return this.itemsService.create(req.user.tenantId, body);
+    return this.itemsService.create(req.user.tenantId, req.user.userId, body);
   }
 
   @Post('bulk')

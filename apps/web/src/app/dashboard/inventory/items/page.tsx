@@ -7,6 +7,7 @@ import {
   BadgeCheck,
   BadgeX,
   Boxes,
+  Download,
   Eye,
   FileText,
   Layers,
@@ -18,6 +19,8 @@ import {
   Trash2,
   CheckCircle,
   XCircle,
+  Upload,
+  X,
 } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
@@ -51,6 +54,12 @@ interface Item {
   is_verified?: boolean;
   verified_at?: string | null;
   verified_by?: string | null;
+  created_by?: string | null;
+  approval_status?: string;
+  approval_reason?: string | null;
+  approval_history?: Array<Record<string, any>>;
+  approved_at?: string | null;
+  approved_by?: string | null;
   created_at: string;
   total_stock?: number;
   uid_tracking?: boolean;
@@ -139,6 +148,7 @@ interface NomenclaturePrimary { label: string; acronym: string; hint?: string; s
 export default function ItemsPage() {
   const router = useRouter();
   const currentUser = readStoredUser();
+  const currentUserId = String((currentUser as any)?.id || (currentUser as any)?.userId || '').trim();
   const canCreate = hasModulePermission(currentUser, 'Inventory', 'create');
   const canEdit = hasModulePermission(currentUser, 'Inventory', 'edit');
   const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
@@ -187,6 +197,20 @@ export default function ItemsPage() {
       setStockTrail(prev => ({ ...prev, loading: false, data }));
     } catch (err: any) {
       setStockTrail(prev => ({ ...prev, loading: false, data: { error: String(err?.message || err) } }));
+    }
+  };
+
+  const openItemDetail = async (item: Item) => {
+    setViewingItem(item);
+    try {
+      const detail = await apiClient.get<Item>(`/inventory/items/${item.id}`);
+      setViewingItem({
+        ...item,
+        ...detail,
+        total_stock: item.total_stock,
+      });
+    } catch {
+      // Keep the list row open if detail hydration fails.
     }
   };
   const [drawingAttachmentMessage, setDrawingAttachmentMessage] = useState<{
@@ -925,6 +949,10 @@ export default function ItemsPage() {
       alert('Only admin users with approval permission can verify items');
       return;
     }
+    if (shouldVerify && item.created_by && currentUserId && String(item.created_by) === currentUserId) {
+      alert('Maker-checker rule: item creator cannot verify their own material master.');
+      return;
+    }
 
     const confirmed = await confirmDialog({
       title: shouldVerify ? 'Verify Item' : 'Remove Item Verification',
@@ -1452,15 +1480,15 @@ export default function ItemsPage() {
       sortable: false,
       hideable: false,
       align: 'right',
-      minWidth: 260,
+      minWidth: 224,
       cell: (item) => (
-        <div className="flex items-center justify-end gap-1.5 whitespace-nowrap text-xs font-medium">
+        <div className="flex items-center justify-end gap-1 whitespace-nowrap text-xs font-medium">
           <button
             type="button"
-            onClick={() => setViewingItem(item)}
+            onClick={() => void openItemDetail(item)}
             title="Open item"
             aria-label="Open item"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
           >
             <Eye className="h-3.5 w-3.5" />
           </button>
@@ -1469,7 +1497,7 @@ export default function ItemsPage() {
             onClick={() => void openStockTrail(item)}
             title="View stock trail"
             aria-label="View stock trail"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
           >
             <Route className="h-3.5 w-3.5" />
           </button>
@@ -1481,7 +1509,7 @@ export default function ItemsPage() {
                   onClick={() => handleEdit(item)}
                   title="Edit item"
                   aria-label="Edit item"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
@@ -1492,7 +1520,8 @@ export default function ItemsPage() {
                   onClick={() => handleVerification(item, !item.is_verified)}
                   title={item.is_verified ? 'Remove verification' : 'Verify item'}
                   aria-label={item.is_verified ? 'Remove verification' : 'Verify item'}
-                  className={item.is_verified ? 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50' : 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'}
+                  disabled={!item.is_verified && Boolean(item.created_by && currentUserId && String(item.created_by) === currentUserId)}
+                  className={item.is_verified ? 'inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40' : 'inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 disabled:opacity-40'}
                 >
                   {item.is_verified ? <BadgeX className="h-3.5 w-3.5" /> : <BadgeCheck className="h-3.5 w-3.5" />}
                 </button>
@@ -1503,7 +1532,7 @@ export default function ItemsPage() {
                   onClick={() => openVariantManager(item)}
                   title="Manage variants and brands"
                   aria-label="Manage variants and brands"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
                 >
                   <Layers className="h-3.5 w-3.5" />
                 </button>
@@ -1516,7 +1545,7 @@ export default function ItemsPage() {
                 }}
                 title="Manage drawings"
                 aria-label="Manage drawings"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]"
               >
                 <FileText className="h-3.5 w-3.5" />
               </button>
@@ -1526,7 +1555,7 @@ export default function ItemsPage() {
                   onClick={() => handleDelete(item.id)}
                   title="Delete item"
                   aria-label="Delete item"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -1538,7 +1567,7 @@ export default function ItemsPage() {
               onClick={() => handleRestore(item.id)}
               title="Restore item"
               aria-label="Restore item"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
             >
               <Archive className="h-3.5 w-3.5" />
             </button>
@@ -1559,21 +1588,21 @@ export default function ItemsPage() {
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-[#2F241D]">
       <div className="flex min-h-screen w-full max-w-none flex-col">
-        <section className="border-b border-[#E8DCC4] bg-white px-6 py-4">
-        <div className="flex flex-col gap-3">
+        <section className="border-b border-[#E8DCC4] bg-white px-6 py-3">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
-            <div className="text-xs font-bold uppercase tracking-wide text-[#8B6F47]">Inventory Master Data</div>
-            <div className="mt-1 flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-bold text-[#4A3426]">Stock Master</h1>
-              <span className="rounded-full border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#7A6555]">
-                {showDeleted ? 'Inactive View' : 'Active View'}
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[#8B6F47]">Inventory Master Data</div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold leading-tight text-[#4A3426]">Stock Master</h1>
+              <span className="rounded-full border border-[#E8DCC4] bg-[#FFFCF5] px-2.5 py-0.5 text-[11px] font-semibold uppercase text-[#7A6555]">
+                {showDeleted ? 'Inactive' : 'Active'}
               </span>
             </div>
-            <p className="mt-1 max-w-4xl text-sm text-[#7A6555]">
-              Material master list for SAS part numbers, UOM, HSN, UID control, drawings, vendors, variants, and verification.
+            <p className="mt-0.5 max-w-5xl text-sm text-[#7A6555]">
+              Material master, SAS part numbers, UOM, HSN, UID control, drawings, vendors, variants, stock trail, and verification.
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-start gap-2 border-t border-[#F0E7D7] pt-3">
+          <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
             {canExport && (
               <button
                 onClick={() => {
@@ -1605,28 +1634,29 @@ export default function ItemsPage() {
                     `Items_${new Date().toISOString().slice(0, 10)}.csv`
                   );
                 }}
-                className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
               >
-                ⬇ Download Excel
+                <Download className="h-4 w-4" />
+                Export
               </button>
             )}
             <button
               onClick={() => setShowCategoryManager(true)}
-              className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               <Tags className="h-4 w-4" />
               Categories
             </button>
             <button
               onClick={() => setShowNomenclatureManager(true)}
-              className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               <Settings className="h-4 w-4" />
               SAS Numbering
             </button>
             <button
               onClick={initBulkInventory}
-              className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
               <Boxes className="h-4 w-4" />
               Bulk Stock
@@ -1635,15 +1665,17 @@ export default function ItemsPage() {
               <>
                 <button
                   onClick={downloadItemTemplate}
-                  className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                 >
-                  ⬇ CSV Template
+                  <Download className="h-4 w-4" />
+                  Template
                 </button>
                 <button
                   onClick={() => { setShowImportModal(true); setImportPreview([]); setImportResult(null); setImportFile(null); }}
-                  className="inline-flex items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                 >
-                  ⬆ Import Items
+                  <Upload className="h-4 w-4" />
+                  Import
                 </button>
               </>
             )}
@@ -1654,7 +1686,7 @@ export default function ItemsPage() {
                   resetForm();
                   setShowForm(true);
                 }}
-                className="inline-flex items-center gap-2 rounded-md border border-[#8B6F47] bg-[#8B6F47] px-4 py-2 text-sm font-bold text-white hover:bg-[#6F4E37]"
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-[#8B6F47] bg-[#8B6F47] px-4 text-sm font-bold text-white hover:bg-[#6F4E37]"
               >
                 <PackagePlus className="h-4 w-4" />
                 New Item
@@ -3061,12 +3093,13 @@ export default function ItemsPage() {
 
       {/* Item View Modal */}
       {viewingItem && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-10 overflow-auto">
-          <div className="w-full max-w-3xl rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-[#FAF9F6] text-[#2F241D]">
+          <div className="flex h-screen flex-col bg-white">
             {/* Header */}
-            <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-[#F7F1E6] px-6 py-4 rounded-t-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[#E8DCC4] bg-white px-6 py-4">
               <div>
-                <h2 className="text-xl font-bold text-[#36454F]">{viewingItem.code}</h2>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-[#8B6F47]">Material Master</div>
+                <h2 className="mt-1 text-2xl font-bold text-[#4A3426]">{viewingItem.code}</h2>
                 <p className="text-sm text-[#6F4E37] mt-0.5">{viewingItem.name}</p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
@@ -3074,29 +3107,32 @@ export default function ItemsPage() {
                   <button
                     type="button"
                     onClick={() => { setViewingItem(null); handleEdit(viewingItem); }}
-                    className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+                    className="inline-flex h-9 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                   >
+                    <Pencil className="h-4 w-4" />
                     Edit
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => setViewingItem(null)}
-                  className="rounded-md px-2 py-1 text-sm font-semibold text-gray-500 hover:bg-white hover:text-gray-700"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md text-[#7A6555] hover:bg-[#F5EFE3]"
+                  title="Close"
+                  aria-label="Close"
                 >
-                  Close
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            <div className="px-6 py-5 space-y-6">
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
               {/* Status badges */}
               <div className="flex flex-wrap gap-2">
                 <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${viewingItem.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
                   {viewingItem.is_active ? 'Active' : 'Inactive'}
                 </span>
                 <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${viewingItem.is_verified ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
-                  {viewingItem.is_verified ? 'Verified' : 'Pending Verification'}
+                  {viewingItem.is_verified ? 'Verified' : viewingItem.approval_status || 'Pending Verification'}
                 </span>
                 {viewingItem.uid_tracking && (
                   <span className="inline-flex items-center rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-800">
@@ -3179,6 +3215,44 @@ export default function ItemsPage() {
                   </dl>
                 </div>
               )}
+
+              {/* Approval history */}
+              <div>
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Approval History</h3>
+                <div className="overflow-x-auto rounded-md border border-[#E8DCC4]">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-[#FAF9F6] text-left text-xs uppercase text-[#7A6555]">
+                      <tr>
+                        <th className="px-3 py-2">Action</th>
+                        <th className="px-3 py-2">From</th>
+                        <th className="px-3 py-2">To</th>
+                        <th className="px-3 py-2">Reason</th>
+                        <th className="px-3 py-2">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#F5EFE3]">
+                      {(viewingItem.approval_history || []).map((entry, index) => (
+                        <tr key={`${entry.id || entry.action}-${index}`}>
+                          <td className="px-3 py-2 font-semibold">{entry.action || "-"}</td>
+                          <td className="px-3 py-2">{entry.from_status || "-"}</td>
+                          <td className="px-3 py-2">{entry.to_status || "-"}</td>
+                          <td className="px-3 py-2">{entry.reason || "-"}</td>
+                          <td className="px-3 py-2">
+                            {entry.created_at ? new Date(entry.created_at).toLocaleString("en-IN") : "-"}
+                          </td>
+                        </tr>
+                      ))}
+                      {!viewingItem.approval_history?.length ? (
+                        <tr>
+                          <td className="px-3 py-4 text-[#7A6555]" colSpan={5}>
+                            No approval history recorded yet.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
               {/* Audit */}
               <div className="border-t border-gray-100 pt-4">
