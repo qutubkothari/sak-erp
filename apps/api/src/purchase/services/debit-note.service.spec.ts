@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { DebitNoteService } from './debit-note.service';
 
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
@@ -80,5 +80,105 @@ describe('DebitNoteService payment reversal controls', () => {
       payment_status: 'UNPAID',
       paid_amount: 0,
     }));
+  });
+});
+
+describe('DebitNoteService debit note approval controls', () => {
+  it('prevents the creator from approving their own debit note', async () => {
+    const service = new DebitNoteService({} as any);
+    const fetchQuery: any = {
+      select: jest.fn(() => fetchQuery),
+      eq: jest.fn(() => fetchQuery),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: {
+          id: 'dn-1',
+          debit_note_number: 'DN-1',
+          status: 'DRAFT',
+          created_by: 'user-1',
+        },
+        error: null,
+      }),
+    };
+
+    (service as any).supabase = {
+      from: jest.fn(() => fetchQuery),
+    };
+
+    await expect(
+      service.approve('tenant-1', 'dn-1', 'user-1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('approves only draft debit notes and records approver metadata', async () => {
+    const service = new DebitNoteService({} as any);
+    const fetchQuery: any = {
+      select: jest.fn(() => fetchQuery),
+      eq: jest.fn(() => fetchQuery),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: {
+          id: 'dn-1',
+          debit_note_number: 'DN-1',
+          status: 'DRAFT',
+          created_by: 'maker-1',
+        },
+        error: null,
+      }),
+    };
+    const updateQuery: any = {
+      update: jest.fn(() => updateQuery),
+      eq: jest.fn(() => updateQuery),
+      select: jest.fn(() => updateQuery),
+      single: jest.fn().mockResolvedValue({
+        data: {
+          id: 'dn-1',
+          debit_note_number: 'DN-1',
+          status: 'APPROVED',
+          approved_by: 'checker-1',
+        },
+        error: null,
+      }),
+    };
+
+    (service as any).supabase = {
+      from: jest.fn()
+        .mockReturnValueOnce(fetchQuery)
+        .mockReturnValueOnce(updateQuery),
+    };
+
+    const result = await service.approve('tenant-1', 'dn-1', 'checker-1');
+
+    expect(updateQuery.update).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'APPROVED',
+      approved_by: 'checker-1',
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      id: 'dn-1',
+      status: 'APPROVED',
+    }));
+  });
+
+  it('blocks approval once a debit note has left draft status', async () => {
+    const service = new DebitNoteService({} as any);
+    const fetchQuery: any = {
+      select: jest.fn(() => fetchQuery),
+      eq: jest.fn(() => fetchQuery),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: {
+          id: 'dn-1',
+          debit_note_number: 'DN-1',
+          status: 'SENT',
+          created_by: 'maker-1',
+        },
+        error: null,
+      }),
+    };
+
+    (service as any).supabase = {
+      from: jest.fn(() => fetchQuery),
+    };
+
+    await expect(
+      service.approve('tenant-1', 'dn-1', 'checker-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

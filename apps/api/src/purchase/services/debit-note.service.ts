@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EmailService } from '../../email/email.service';
 import { allocatePoSettlement } from '../utils/po-settlement';
@@ -76,6 +76,22 @@ export class DebitNoteService {
 
   // Approve debit note
   async approve(tenantId: string, id: string, userId: string) {
+    const { data: existing, error: fetchError } = await this.supabase
+      .from('debit_notes')
+      .select('id, debit_note_number, status, created_by')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!existing) throw new NotFoundException('Debit note not found');
+    if (existing.created_by && existing.created_by === userId) {
+      throw new ForbiddenException('Creator cannot approve their own debit note');
+    }
+    if (existing.status !== 'DRAFT') {
+      throw new BadRequestException(`Only draft debit notes can be approved. Current status: ${existing.status}`);
+    }
+
     const { data, error } = await this.supabase
       .from('debit_notes')
       .update({

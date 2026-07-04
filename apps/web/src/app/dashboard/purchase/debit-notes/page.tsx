@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
@@ -53,6 +53,18 @@ export default function DebitNotesPage() {
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [sortColumn, setSortColumn] = useState<string>('debit_note_date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const debitNoteSummary = useMemo(() => {
+    return debitNotes.reduce((summary, note) => {
+      summary.total += 1;
+      summary.amount += Number(note.total_amount || 0);
+      if (note.status === 'DRAFT') summary.draft += 1;
+      if (note.status === 'APPROVED') summary.approved += 1;
+      if (note.status === 'SENT') summary.sent += 1;
+      if (note.status === 'ACKNOWLEDGED' || note.status === 'CLOSED') summary.closed += 1;
+      return summary;
+    }, { total: 0, draft: 0, approved: 0, sent: 0, closed: 0, amount: 0 });
+  }, [debitNotes]);
 
   useEffect(() => {
     fetchDebitNotes();
@@ -495,7 +507,7 @@ export default function DebitNotesPage() {
       cell: (dn) => (
         <button
           onClick={() => viewDebitNote(dn.id)}
-          className="text-amber-600 hover:text-amber-800 font-medium"
+          className="rounded-md border border-[#D8C7AA] px-3 py-1.5 text-sm font-semibold text-[#5E4635] hover:bg-[#FAF9F6]"
         >
           View Details →
         </button>
@@ -504,17 +516,32 @@ export default function DebitNotesPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-[#F7F3EA]">
+      <div className="mx-auto max-w-[calc(100vw-2rem)] px-6 py-6">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-5">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">📄 Debit Notes</h1>
           <p className="text-gray-600">Manage supplier debit notes for rejected materials</p>
         </div>
 
+        <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-[#D8C7AA] bg-[#D8C7AA] md:grid-cols-5">
+          {[
+            ['Total', debitNoteSummary.total],
+            ['Draft', debitNoteSummary.draft],
+            ['Approved', debitNoteSummary.approved],
+            ['Sent', debitNoteSummary.sent],
+            ['Closed', debitNoteSummary.closed],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="bg-white px-4 py-3">
+              <div className="text-xs font-semibold uppercase text-[#7A6555]">{label}</div>
+              <div className="mt-1 text-2xl font-bold tabular-nums text-[#3F2D20]">{value}</div>
+            </div>
+          ))}
+        </div>
+
         {loading ? (
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            <div className="p-8 text-center text-gray-500">Loading debit notes...</div>
+          <div className="overflow-hidden rounded-md border border-[#D8C7AA] bg-white">
+            <div className="p-8 text-center text-[#7A6555]">Loading debit notes...</div>
           </div>
         ) : (
           <ListTable
@@ -529,7 +556,7 @@ export default function DebitNotesPage() {
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-amber-500"
+                className="rounded-md border border-[#D8C7AA] bg-white px-3 py-2 text-sm text-[#3F2D20] focus:outline-none focus:ring-2 focus:ring-[#A78B62]"
               >
                 <option value="">All Status</option>
                 <option value="DRAFT">Draft</option>
@@ -542,8 +569,8 @@ export default function DebitNotesPage() {
             emptyState={
               <div className="p-12 text-center">
                 <div className="text-6xl mb-4">📄</div>
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">No Debit Notes Found</h3>
-                <p className="text-gray-500">Debit notes will be auto-created when materials are rejected during QC</p>
+                <h3 className="mb-2 text-xl font-semibold text-[#3F2D20]">No Debit Notes Found</h3>
+                <p className="text-[#7A6555]">Debit notes will be created when rejected material or supplier deductions are posted.</p>
               </div>
             }
           />
@@ -552,24 +579,24 @@ export default function DebitNotesPage() {
 
       {/* View Debit Note Modal */}
       {showViewModal && selectedDebitNote && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+        <div className="fixed inset-0 z-50 bg-white">
+          <div className="flex h-screen flex-col">
+            <div className="flex items-center justify-between border-b border-[#D8C7AA] bg-[#FAF9F6] px-6 py-4">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">{selectedDebitNote.debit_note_number}</h2>
-                <p className="text-sm text-gray-500 mt-1">
+                <h2 className="text-2xl font-bold text-[#3F2D20]">{selectedDebitNote.debit_note_number}</h2>
+                <p className="mt-1 text-sm text-[#7A6555]">
                   Created by {selectedDebitNote.creator?.name} on {new Date(selectedDebitNote.debit_note_date).toLocaleDateString()}
                 </p>
               </div>
               <button
                 onClick={() => setShowViewModal(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl"
+                className="rounded-md border border-[#D8C7AA] px-3 py-2 text-sm font-semibold text-[#5E4635] hover:bg-white"
               >
                 ×
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="flex-1 space-y-6 overflow-y-auto bg-[#F7F3EA] p-6">
               {/* Header Information */}
               <div className="grid grid-cols-2 gap-6">
                 <div>
@@ -684,24 +711,24 @@ export default function DebitNotesPage() {
             </div>
 
             {/* Footer Actions */}
-            <div className="p-6 border-t border-gray-200 flex justify-between items-center">
+            <div className="flex items-center justify-between border-t border-[#D8C7AA] bg-[#FAF9F6] px-6 py-4">
               <button
                 onClick={() => setShowViewModal(false)}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="rounded-md border border-[#D8C7AA] px-5 py-2 text-sm font-semibold text-[#5E4635] hover:bg-white"
               >
                 Close
               </button>
               <div className="flex gap-3">
                 <button
                   onClick={() => handlePrintDebitNote(selectedDebitNote)}
-                  className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                  className="rounded-md border border-[#D8C7AA] bg-white px-5 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F7F3EA]"
                 >
                   Print Debit Note
                 </button>
                 {selectedDebitNote.status === 'DRAFT' && canApproveDebitNotes && (
                   <button
                     onClick={() => approveDebitNote(selectedDebitNote.id)}
-                    className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    className="rounded-md bg-emerald-700 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
                   >
                     ✓ Approve Debit Note
                   </button>
@@ -709,7 +736,7 @@ export default function DebitNotesPage() {
                 {selectedDebitNote.status === 'APPROVED' && canEditDebitNotes && (
                   <button
                     onClick={() => sendEmailToSupplier(selectedDebitNote.id)}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    className="rounded-md bg-[#8B6F47] px-5 py-2 text-sm font-semibold text-white hover:bg-[#745A37]"
                   >
                     📧 Send Email to Supplier
                   </button>
@@ -717,7 +744,7 @@ export default function DebitNotesPage() {
                 {selectedDebitNote.status === 'SENT' && canEditDebitNotes && (
                   <button
                     onClick={() => updateStatus(selectedDebitNote.id, 'ACKNOWLEDGED')}
-                    className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                    className="rounded-md bg-[#8B6F47] px-5 py-2 text-sm font-semibold text-white hover:bg-[#745A37]"
                   >
                     ✓ Mark as Acknowledged
                   </button>
@@ -725,7 +752,7 @@ export default function DebitNotesPage() {
                 {selectedDebitNote.status === 'ACKNOWLEDGED' && canEditDebitNotes && (
                   <button
                     onClick={() => updateStatus(selectedDebitNote.id, 'CLOSED')}
-                    className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                    className="rounded-md bg-[#3F2D20] px-5 py-2 text-sm font-semibold text-white hover:bg-[#2E2118]"
                   >
                     🔒 Close Debit Note
                   </button>
