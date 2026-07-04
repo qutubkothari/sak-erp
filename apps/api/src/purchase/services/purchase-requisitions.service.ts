@@ -531,19 +531,25 @@ export class PurchaseRequisitionsService {
       .from('purchase_orders')
       .select(`
         id,
-        purchase_order_items(pr_item_id)
+        status,
+        purchase_order_items(pr_item_id, ordered_qty)
       `)
       .eq('tenant_id', tenantId)
       .eq('pr_id', id);
 
     if (poError) throw new BadRequestException(poError.message);
 
-    const usedPrItemIds = new Set<string>();
+    const orderedByPrItemId = new Map<string, number>();
     (poRows || []).forEach((po: any) => {
+      if (['REJECTED', 'CANCELLED'].includes(normalizeStatus(po?.status))) return;
       const items = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
       items.forEach((it: any) => {
         const prItemId = String(it?.pr_item_id || '').trim();
-        if (prItemId) usedPrItemIds.add(prItemId);
+        if (!prItemId) return;
+        orderedByPrItemId.set(
+          prItemId,
+          (orderedByPrItemId.get(prItemId) || 0) + Number(it?.ordered_qty || 0),
+        );
       });
     });
 
@@ -551,17 +557,25 @@ export class PurchaseRequisitionsService {
       ? (pr as any).purchase_requisition_items
       : [];
 
-    const availableItems = prItems.filter((it: any) => {
+    const availableItems = prItems.map((it: any) => {
       const prItemId = String(it?.id || '').trim();
-      if (!prItemId) return false;
-      return !usedPrItemIds.has(prItemId);
-    });
+      const requestedQty = Number(it?.requested_qty || 0);
+      const orderedQty = orderedByPrItemId.get(prItemId) || 0;
+      const remainingQty = Math.max(0, requestedQty - orderedQty);
+      return {
+        ...it,
+        total_ordered_qty: orderedQty,
+        remaining_qty: remainingQty,
+        requested_qty: remainingQty,
+        original_requested_qty: requestedQty,
+      };
+    }).filter((it: any) => Number(it?.remaining_qty || 0) > 0);
 
     return {
       ...pr,
       purchase_requisition_items: availableItems,
       _meta: {
-        excluded_pr_item_ids: Array.from(usedPrItemIds),
+        ordered_quantities_by_pr_item_id: Object.fromEntries(orderedByPrItemId.entries()),
       },
     };
   }

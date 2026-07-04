@@ -180,4 +180,49 @@ describe('PurchaseRequisitionsService controls', () => {
       approved_at: null,
     }));
   });
+
+  it('keeps the remaining PR quantity available for partial PO conversion', async () => {
+    const service = makeService();
+    jest.spyOn(service, 'findOne').mockResolvedValue({
+      id: 'pr-1',
+      purchase_requisition_items: [
+        {
+          id: 'pr-line-1',
+          item_code: 'ITEM-1',
+          requested_qty: 100,
+        },
+      ],
+    } as any);
+
+    const poQuery: any = {
+      select: jest.fn(() => poQuery),
+      eq: jest.fn(() => poQuery),
+      then: (resolve: any) => resolve({
+        data: [
+          {
+            id: 'po-1',
+            status: 'APPROVED',
+            purchase_order_items: [
+              { pr_item_id: 'pr-line-1', ordered_qty: 40 },
+            ],
+          },
+        ],
+        error: null,
+      }),
+    };
+    (service as any).supabase = {
+      from: jest.fn(() => poQuery),
+    };
+
+    const result: any = await service.findOneAvailableForPO('tenant-1', 'pr-1');
+
+    expect(result.purchase_requisition_items).toHaveLength(1);
+    expect(result.purchase_requisition_items[0]).toMatchObject({
+      id: 'pr-line-1',
+      original_requested_qty: 100,
+      total_ordered_qty: 40,
+      remaining_qty: 60,
+      requested_qty: 60,
+    });
+  });
 });

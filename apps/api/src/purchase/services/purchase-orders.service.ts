@@ -206,6 +206,74 @@ export class PurchaseOrdersService {
     }
   }
 
+  private async assertPrQuantitiesAvailable(tenantId: string, prId: any, items: any[], currentPoId?: string) {
+    const normalizedPrId = String(prId || '').trim();
+    if (!normalizedPrId || !Array.isArray(items) || items.length === 0) return;
+
+    const requestedByPrItemId = new Map<string, number>();
+    for (const item of items) {
+      const prItemId = String(item?.prItemId || item?.pr_item_id || '').trim();
+      if (!prItemId) continue;
+      const qty = this.safeNumber(item?.orderedQty ?? item?.ordered_qty ?? item?.quantity);
+      requestedByPrItemId.set(prItemId, (requestedByPrItemId.get(prItemId) || 0) + qty);
+    }
+    if (requestedByPrItemId.size === 0) return;
+
+    const prItemIds = Array.from(requestedByPrItemId.keys());
+    const { data: prItems, error: prItemsError } = await this.supabase
+      .from('purchase_requisition_items')
+      .select('id, item_code, item_name, requested_qty')
+      .eq('pr_id', normalizedPrId)
+      .in('id', prItemIds);
+    if (prItemsError) throw new BadRequestException(prItemsError.message);
+
+    const prItemById = new Map((prItems || []).map((row: any) => [String(row.id), row]));
+    const missingPrItem = prItemIds.find((prItemId) => !prItemById.has(prItemId));
+    if (missingPrItem) {
+      throw new BadRequestException('One or more PO lines are not valid for the selected purchase requisition.');
+    }
+
+    let poQuery = this.supabase
+      .from('purchase_orders')
+      .select('id, status, purchase_order_items(pr_item_id, ordered_qty)')
+      .eq('tenant_id', tenantId)
+      .eq('pr_id', normalizedPrId);
+
+    if (currentPoId) {
+      poQuery = poQuery.neq('id', currentPoId);
+    }
+
+    const { data: poRows, error: poError } = await poQuery;
+    if (poError) throw new BadRequestException(poError.message);
+
+    const alreadyOrderedByPrItemId = new Map<string, number>();
+    for (const po of poRows || []) {
+      if (['REJECTED', 'CANCELLED'].includes(String(po?.status || '').trim().toUpperCase())) continue;
+      const poItems = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
+      for (const poItem of poItems) {
+        const prItemId = String(poItem?.pr_item_id || '').trim();
+        if (!requestedByPrItemId.has(prItemId)) continue;
+        alreadyOrderedByPrItemId.set(
+          prItemId,
+          (alreadyOrderedByPrItemId.get(prItemId) || 0) + this.safeNumber(poItem?.ordered_qty),
+        );
+      }
+    }
+
+    for (const [prItemId, requestedQty] of requestedByPrItemId.entries()) {
+      const prItem: any = prItemById.get(prItemId);
+      const prQty = this.safeNumber(prItem?.requested_qty);
+      const alreadyOrdered = alreadyOrderedByPrItemId.get(prItemId) || 0;
+      const remaining = Math.max(0, prQty - alreadyOrdered);
+      if (requestedQty > remaining + 1e-9) {
+        const label = prItem?.item_code || prItem?.item_name || prItemId;
+        throw new BadRequestException(
+          `PO quantity for ${label} exceeds PR balance. Requested ${requestedQty}, available ${remaining}.`,
+        );
+      }
+    }
+  }
+
   private buildWorldClassPoPdfData(po: any) {
     const safeNumber = (value: any): number => this.toNumber(value);
     const poItems = Array.isArray(po?.purchase_order_items || po?.items) ? (po.purchase_order_items || po.items) : [];
@@ -805,6 +873,7 @@ export class PurchaseOrdersService {
     }
 
     this.assertNoDuplicatePoItems(data.items);
+    await this.assertPrQuantitiesAvailable(tenantId, data.prId, data.items);
     
     // VERIFICATION DISABLED TEMPORARILY - uncomment below to re-enable
     // const isDraftCreate = (data.status || 'DRAFT') === 'DRAFT';
@@ -1227,6 +1296,7 @@ export class PurchaseOrdersService {
     }
 
     this.assertNoDuplicatePoItems(data.items);
+    await this.assertPrQuantitiesAvailable(tenantId, data.prId, data.items, id);
 
     // VERIFICATION DISABLED TEMPORARILY - uncomment below to re-enable
     // const isDraftUpdate = (data.status || existingPO?.status || '') === 'DRAFT';
