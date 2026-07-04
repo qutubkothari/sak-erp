@@ -1343,7 +1343,7 @@ export class PurchaseOrdersService {
 
     const { data: currentPo } = await this.supabase
       .from('purchase_orders')
-      .select('po_number, status, terms_and_conditions')
+      .select('po_number, status, terms_and_conditions, created_by')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
@@ -1352,6 +1352,10 @@ export class PurchaseOrdersService {
       throw new BadRequestException(
         `Purchase Order must be Pending Approval before it can be ${normalizedStatus === 'APPROVED' ? 'approved' : 'rejected'}.`,
       );
+    }
+
+    if (['APPROVED', 'REJECTED'].includes(normalizedStatus) && String(currentPo?.created_by || '') === String(userId || '')) {
+      throw new BadRequestException(`You cannot ${normalizedStatus === 'APPROVED' ? 'approve' : 'reject'} your own purchase order.`);
     }
 
     // Assign the real sequential number when a pending draft is approved.

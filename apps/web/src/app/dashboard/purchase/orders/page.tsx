@@ -276,6 +276,7 @@ function PurchaseOrdersContent() {
   const prId = searchParams?.get('prId');
   const viewId = searchParams?.get('viewId');
   const [currentUser, setCurrentUser] = useState<ReturnType<typeof readStoredUser>>(null);
+  const currentUserId = String((currentUser as any)?.id || (currentUser as any)?.userId || '');
   const canApprovePO = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const canCreatePO = hasModulePermission(currentUser, 'Purchase Management', 'create');
   const canEditPO = hasModulePermission(currentUser, 'Purchase Management', 'edit');
@@ -4363,7 +4364,13 @@ function PurchaseOrdersContent() {
                   </>
                 )}
 
-                {selectedPO.status === 'PENDING' && canApprovePO && (
+                {selectedPO.status === 'PENDING' && String((selectedPO as any).created_by || '') === currentUserId && (
+                  <span className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+                    Awaiting manager approval
+                  </span>
+                )}
+
+                {selectedPO.status === 'PENDING' && canApprovePO && String((selectedPO as any).created_by || '') !== currentUserId && (
                   <>
                     <ErpButton
                       onClick={async () => {
