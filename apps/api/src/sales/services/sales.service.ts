@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Request } from 'express';
 import { EmailService } from '../../email/email.service';
@@ -182,25 +182,40 @@ export class SalesService {
         throw new BadRequestException(`Quotation item ${index + 1} is missing item selection`);
       }
 
-      const quantity = Number(item.quantity) || 0;
-      const unitPrice = Number(item.unit_price) || 0;
+      const quantity = Number(item.quantity);
+      const unitPrice = Number(item.unit_price);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new BadRequestException(`Quotation item ${index + 1} quantity must be greater than 0`);
+      }
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+        throw new BadRequestException(`Quotation item ${index + 1} unit price cannot be negative`);
+      }
       const baseAmount = quantity * unitPrice;
       const discountPercentage = item.discount_percentage !== undefined
         ? Number(item.discount_percentage)
         : 0;
+      if (!Number.isFinite(discountPercentage) || discountPercentage < 0 || discountPercentage > 100) {
+        throw new BadRequestException(`Quotation item ${index + 1} discount percentage must be between 0 and 100`);
+      }
 
       let discountAmount = item.discount_amount !== undefined
         ? Number(item.discount_amount)
         : (baseAmount * discountPercentage) / 100;
 
-      if (Number.isNaN(discountAmount)) {
-        discountAmount = 0;
+      if (!Number.isFinite(discountAmount) || discountAmount < 0) {
+        throw new BadRequestException(`Quotation item ${index + 1} discount amount cannot be negative`);
+      }
+      if (discountAmount > baseAmount) {
+        throw new BadRequestException(`Quotation item ${index + 1} discount cannot exceed line value`);
       }
 
       const lineTotal = Math.max(baseAmount - discountAmount, 0);
       const taxPercentage = item.tax_percentage !== undefined
         ? Number(item.tax_percentage)
         : 18;
+      if (!Number.isFinite(taxPercentage) || taxPercentage < 0) {
+        throw new BadRequestException(`Quotation item ${index + 1} tax percentage cannot be negative`);
+      }
       const taxAmount = (lineTotal * taxPercentage) / 100;
       totalAmount += lineTotal + taxAmount;
 
@@ -264,7 +279,13 @@ export class SalesService {
 
     const { preparedItems, totalAmount } = this.prepareQuotationItems(quotationData.items || []);
 
-    const discountAmount = quotationData.discount_amount || 0;
+    const discountAmount = Number(quotationData.discount_amount || 0);
+    if (!Number.isFinite(discountAmount) || discountAmount < 0) {
+      throw new BadRequestException('Quotation discount cannot be negative');
+    }
+    if (discountAmount > totalAmount) {
+      throw new BadRequestException('Quotation discount cannot exceed quotation value');
+    }
     const netAmount = totalAmount - discountAmount;
 
     const quotation = {
@@ -366,6 +387,12 @@ export class SalesService {
 
     const { preparedItems, totalAmount } = this.prepareQuotationItems(quotationData.items || []);
     const discountAmount = quotationData.discount_amount ? Number(quotationData.discount_amount) : 0;
+    if (!Number.isFinite(discountAmount) || discountAmount < 0) {
+      throw new BadRequestException('Quotation discount cannot be negative');
+    }
+    if (discountAmount > totalAmount) {
+      throw new BadRequestException('Quotation discount cannot exceed quotation value');
+    }
     const netAmount = totalAmount - discountAmount;
 
     const { data: updatedQuotation, error: quotationError } = await this.supabase
@@ -430,6 +457,25 @@ export class SalesService {
   async approveQuotation(req: Request, quotationId: string) {
     const { tenantId, userId } = req.user as any;
 
+    const { data: quotation, error: fetchError } = await this.supabase
+      .from('quotations')
+      .select('id, quotation_number, status, created_by, net_amount')
+      .eq('id', quotationId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (fetchError) throw new BadRequestException(fetchError.message);
+    if (!quotation) throw new NotFoundException('Quotation not found');
+    if (quotation.created_by === userId) {
+      throw new ForbiddenException('Creator cannot approve their own quotation');
+    }
+    if (quotation.status !== 'DRAFT') {
+      throw new BadRequestException('Only draft quotations can be approved');
+    }
+    if ((Number(quotation.net_amount) || 0) <= 0) {
+      throw new BadRequestException('Quotation must have a positive net amount before approval');
+    }
+
     const { error } = await this.supabase
       .from('quotations')
       .update({
@@ -438,7 +484,8 @@ export class SalesService {
         approved_at: new Date().toISOString(),
       })
       .eq('id', quotationId)
-      .eq('tenant_id', tenantId);
+      .eq('tenant_id', tenantId)
+      .eq('status', 'DRAFT');
 
     if (error) throw new BadRequestException(error.message);
     return { message: 'Quotation approved successfully' };
@@ -526,6 +573,9 @@ export class SalesService {
     const soNumber = await this.generateSONumber(req);
 
     const advanceAmount = Number(conversionData?.advance_amount || 0) || 0;
+    if (!Number.isFinite(advanceAmount) || advanceAmount < 0) {
+      throw new BadRequestException('Advance amount cannot be negative');
+    }
 
     // Calculate totals based on items being converted
     let soTotalAmount = 0;
@@ -554,6 +604,10 @@ export class SalesService {
         notes: quotItem.notes,
       };
     });
+
+    if (advanceAmount > soTotalAmount) {
+      throw new BadRequestException('Advance amount cannot exceed sales order value');
+    }
 
     const salesOrder = {
       tenant_id: tenantId,
@@ -701,8 +755,20 @@ export class SalesService {
     const { preparedItems, totalAmount, taxAmount } = this.prepareSalesOrderItems(soData.items || []);
 
     const discountAmount = Number(soData.discount_amount || 0);
+    if (!Number.isFinite(discountAmount) || discountAmount < 0) {
+      throw new BadRequestException('Sales order discount cannot be negative');
+    }
+    if (discountAmount > totalAmount + taxAmount) {
+      throw new BadRequestException('Sales order discount cannot exceed order value');
+    }
     const netAmount = totalAmount + taxAmount - discountAmount;
     const advanceAmount = Number(soData.advance_amount || 0);
+    if (!Number.isFinite(advanceAmount) || advanceAmount < 0) {
+      throw new BadRequestException('Advance amount cannot be negative');
+    }
+    if (advanceAmount > netAmount) {
+      throw new BadRequestException('Advance amount cannot exceed sales order net amount');
+    }
     const balanceAmount = netAmount - advanceAmount;
 
     // Create sales order
@@ -763,14 +829,35 @@ export class SalesService {
   }
 
   private prepareSalesOrderItems(items: any[]) {
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException('Sales order must include at least one item');
+    }
+
     let totalAmount = 0;
     let taxAmount = 0;
 
-    const preparedItems = items.map((item: any) => {
-      const quantity = Number(item.quantity) || 0;
-      const unitPrice = Number(item.unit_price) || 0;
-      const discountPercentage = Number(item.discount_percentage) || 0;
-      const taxPercentage = Number(item.tax_percentage) || 18;
+    const preparedItems = items.map((item: any, index: number) => {
+      if (!item.item_id) {
+        throw new BadRequestException(`Sales order item ${index + 1} is missing item selection`);
+      }
+
+      const quantity = Number(item.quantity);
+      const unitPrice = Number(item.unit_price);
+      const discountPercentage = Number(item.discount_percentage || 0);
+      const taxPercentage = item.tax_percentage !== undefined ? Number(item.tax_percentage) : 18;
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new BadRequestException(`Sales order item ${index + 1} quantity must be greater than 0`);
+      }
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+        throw new BadRequestException(`Sales order item ${index + 1} unit price cannot be negative`);
+      }
+      if (!Number.isFinite(discountPercentage) || discountPercentage < 0 || discountPercentage > 100) {
+        throw new BadRequestException(`Sales order item ${index + 1} discount percentage must be between 0 and 100`);
+      }
+      if (!Number.isFinite(taxPercentage) || taxPercentage < 0) {
+        throw new BadRequestException(`Sales order item ${index + 1} tax percentage cannot be negative`);
+      }
 
       const subtotal = quantity * unitPrice;
       const discountAmount = (subtotal * discountPercentage) / 100;

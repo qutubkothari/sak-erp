@@ -37,11 +37,13 @@ export class SalesController {
   }
 
   @Post('customers')
+  @RequireCreate('sales')
   async createCustomer(@Request() req: any, @Body() customerData: any) {
     return this.salesService.createCustomer(req, customerData);
   }
 
   @Put('customers/:id')
+  @RequireUpdate('sales')
   async updateCustomer(
     @Request() req: any,
     @Param('id') customerId: string,
@@ -51,6 +53,7 @@ export class SalesController {
   }
 
   @Delete('customers/:id')
+  @RequireDelete('sales')
   async deleteCustomer(@Request() req: any, @Param('id') customerId: string) {
     return this.salesService.deleteCustomer(req, customerId);
   }
@@ -109,11 +112,13 @@ export class SalesController {
   }
 
   @Post('quotations')
+  @RequireCreate('sales')
   async createQuotation(@Request() req: any, @Body() quotationData: any) {
     return this.salesService.createQuotation(req, quotationData);
   }
 
   @Put('quotations/:id')
+  @RequireUpdate('sales')
   async updateQuotation(
     @Request() req: any,
     @Param('id') quotationId: string,
@@ -129,11 +134,13 @@ export class SalesController {
   }
 
   @Delete('quotations/:id')
+  @RequireDelete('sales')
   async deleteQuotation(@Request() req: any, @Param('id') quotationId: string) {
     return this.salesService.deleteQuotation(req, quotationId);
   }
 
   @Post('quotations/:id/convert-to-so')
+  @RequireCreate('sales')
   async convertQuotationToSO(
     @Request() req: any, 
     @Param('id') quotationId: string,
@@ -196,11 +203,13 @@ export class SalesController {
   }
 
   @Post('orders')
+  @RequireCreate('sales')
   async createDirectSalesOrder(@Request() req: any, @Body() soData: any) {
     return this.salesService.createDirectSalesOrder(req, soData);
   }
 
   @Put('orders/:id')
+  @RequireUpdate('sales')
   async updateSalesOrder(
     @Request() req: any,
     @Param('id') soId: string,
@@ -210,6 +219,7 @@ export class SalesController {
   }
 
   @Delete('orders/:id')
+  @RequireDelete('sales')
   async deleteSalesOrder(@Request() req: any, @Param('id') soId: string) {
     return this.salesService.deleteSalesOrder(req, soId);
   }
