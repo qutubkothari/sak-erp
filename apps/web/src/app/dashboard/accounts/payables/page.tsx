@@ -100,6 +100,8 @@ const hydratePayableGrn = (grn: any) => {
 const getPayableNet = (grn: any) => +(grn?.net ?? grn?.net_payable_amount ?? 0);
 const getPayableSettled = (grn: any) => +(grn?.settled ?? 0);
 const getPayableOutstanding = (grn: any) => +(grn?.outstanding ?? grn?.outstanding_amount ?? Math.max(0, getPayableNet(grn) - getPayableSettled(grn)));
+const isSystemPaymentEntry = (entry?: PaymentEntry | null) =>
+  ['ADVANCE', 'ADVANCE_APPLIED', 'VENDOR_ADVANCE'].includes(String(entry?.entry_type || '').toUpperCase());
 
 const BLANK_FORM = {
   amount: '',
@@ -525,7 +527,7 @@ export default function AccountsPayablePage() {
     // Calculate what the new outstanding would be (original outstanding + old payment amount - new payment)
     const originalOutstanding = selectedGRNDetail.outstanding_amount + editingPayment.amount + (editingPayment.tds_amount || 0) + (editingPayment.short_payment_amount || 0);
     const otherPayments = selectedGRNDetail.payment_entries
-      .filter(e => e.id !== editingPayment.id && e.entry_type !== 'ADVANCE')
+      .filter(e => e.id !== editingPayment.id && !isSystemPaymentEntry(e))
       .reduce((sum, e) => sum + e.amount + (e.tds_amount || 0) + (e.short_payment_amount || 0), 0);
     const newSettlement = amount + tds + short + otherPayments;
 
@@ -564,19 +566,22 @@ export default function AccountsPayablePage() {
     }
   };
 
-  // Handle delete payment
-  const handleDeletePayment = async (paymentId: string) => {
-    if (!canRecordPayment) { alert('You do not have permission to delete payments'); return; }
+  // Handle payment reversal
+  const handleReversePayment = async (paymentId: string) => {
+    if (!canRecordPayment) { alert('You do not have permission to reverse payments'); return; }
     if (!selectedGRNDetail) return;
-    if (!window.confirm('Are you sure you want to delete this payment? This action cannot be undone.')) return;
+    const reason = window.prompt('Enter payment reversal reason');
+    if (!reason || !reason.trim()) return;
 
     try {
-      await apiClient.delete(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${paymentId}`);
+      await apiClient.post(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${paymentId}/reverse`, {
+        reason: reason.trim(),
+      });
       // Refresh data
       await viewGRNDetail(selectedGRNDetail);
       await Promise.all([fetchVendorPayables(), fetchPaidInvoices(), fetchPendingInvoices()]);
     } catch (e: any) {
-      alert(e.message || 'Failed to delete payment');
+      alert(e.message || 'Failed to reverse payment');
     }
   };
 
@@ -1257,10 +1262,10 @@ export default function AccountsPayablePage() {
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {selectedGRNDetail.payment_entries.map((e) => (
-                            <tr key={e.id} className={e.entry_type === 'ADVANCE' || e.entry_type === 'VENDOR_ADVANCE' ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}>
+                            <tr key={e.id} className={isSystemPaymentEntry(e) ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'}>
                               <td className="px-3 py-2 whitespace-nowrap">{new Date(e.payment_date).toLocaleDateString('en-IN')}</td>
                               <td className="px-3 py-2">
-                                {e.entry_type === 'ADVANCE'
+                                {e.entry_type === 'ADVANCE' || e.entry_type === 'ADVANCE_APPLIED'
                                   ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800">PO Advance</span>
                                   : e.entry_type === 'VENDOR_ADVANCE'
                                   ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-teal-100 text-teal-800">Vendor Advance</span>
@@ -1272,7 +1277,7 @@ export default function AccountsPayablePage() {
                               <td className="px-3 py-2 text-amber-700">{(e.short_payment_amount || 0) > 0 ? `₹${fmtINR(e.short_payment_amount)}` : '—'}</td>
                               <td className="px-3 py-2 text-xs text-gray-500">{e.payment_notes || (e.short_payment_reason ? `Short: ${e.short_payment_reason}` : '—')}</td>
                               <td className="px-3 py-2">
-                                {e.entry_type !== 'ADVANCE' && e.entry_type !== 'VENDOR_ADVANCE' && canRecordPayment && (
+                                {!isSystemPaymentEntry(e) && canRecordPayment && (
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() => openEditPayment(e)}
@@ -1282,11 +1287,11 @@ export default function AccountsPayablePage() {
                                       Edit
                                     </button>
                                     <button
-                                      onClick={() => handleDeletePayment(e.id)}
+                                      onClick={() => handleReversePayment(e.id)}
                                       className="text-red-600 hover:text-red-800 text-xs font-medium"
-                                      title="Delete payment"
+                                      title="Reverse payment"
                                     >
-                                      Delete
+                                      Reverse
                                     </button>
                                   </div>
                                 )}

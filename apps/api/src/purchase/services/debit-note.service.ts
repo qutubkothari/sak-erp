@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EmailService } from '../../email/email.service';
 import { allocatePoSettlement } from '../utils/po-settlement';
@@ -869,6 +869,61 @@ export class DebitNoteService {
       total_settled: totalSettled,
       remaining_amount: remaining,
       payment_status: paymentStatus,
+    };
+  }
+
+  async reversePayment(
+    tenantId: string,
+    grnId: string,
+    paymentEntryId: string,
+    userId: string,
+    body: { reason?: string; notes?: string } = {},
+  ) {
+    const reason = String(body?.reason || body?.notes || '').trim();
+    if (!reason) {
+      throw new BadRequestException('Payment reversal reason is required');
+    }
+
+    const { data: existingEntry, error: fetchError } = await this.supabase
+      .from('grn_payment_entries')
+      .select('*')
+      .eq('id', paymentEntryId)
+      .eq('grn_id', grnId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (fetchError) throw new Error(`Database error: ${fetchError.message}`);
+    if (!existingEntry) throw new NotFoundException(`Payment entry not found (id: ${paymentEntryId})`);
+
+    const { data: reversal, error: reversalError } = await this.supabase
+      .from('grn_payment_reversals')
+      .insert({
+        tenant_id: tenantId,
+        grn_id: grnId,
+        payment_entry_id: paymentEntryId,
+        original_payment_date: existingEntry.payment_date || null,
+        original_amount: parseFloat(existingEntry.amount || 0),
+        original_tds_amount: parseFloat(existingEntry.tds_amount || 0),
+        original_short_payment_amount: parseFloat(existingEntry.short_payment_amount || 0),
+        original_payment_method: existingEntry.payment_method || null,
+        original_payment_reference: existingEntry.payment_reference || null,
+        reversal_reason: reason,
+        reversed_by: userId || null,
+        original_entry: existingEntry,
+      })
+      .select('id')
+      .single();
+
+    if (reversalError) {
+      throw new Error(`Failed to record payment reversal audit: ${reversalError.message}`);
+    }
+
+    const recalculated = await this.deletePayment(tenantId, grnId, paymentEntryId);
+    return {
+      message: 'Payment reversed successfully',
+      reversal_id: reversal?.id,
+      reversed_payment_id: paymentEntryId,
+      ...recalculated,
     };
   }
 

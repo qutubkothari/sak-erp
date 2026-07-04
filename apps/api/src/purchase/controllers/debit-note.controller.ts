@@ -314,6 +314,18 @@ export class DebitNoteController {
     return this.debitNoteService.deletePayment(tenantId, grnId, paymentId);
   }
 
+  @Post('grn/:grnId/payment/:paymentId/reverse')
+  async reversePayment(
+    @Req() req: any,
+    @Param('grnId') grnId: string,
+    @Param('paymentId') paymentId: string,
+    @Body() body: { reason?: string; notes?: string },
+  ) {
+    const tenantId = req.user.tenantId;
+    const userId = req.user.userId;
+    return this.debitNoteService.reversePayment(tenantId, grnId, paymentId, userId, body);
+  }
+
   // Sync payment status for GRNs based on PO advance coverage
   @Post('sync-payment-status')
   async syncPaymentStatus(@Req() req: any) {
