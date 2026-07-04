@@ -1801,9 +1801,12 @@ function PurchaseOrdersContent() {
         (grnsData || []).map(async (grn: any) => {
           try {
             const authoritativeInvoice: any = settlementByGrn.get(grn.id);
+            const payableDetail = await apiClient.get<any>(`/purchase/debit-notes/grn/${grn.id}/payable-detail`).catch(() => null);
             const paymentEntries = authoritativeInvoice?.payment_entries
+              ?? payableDetail?.payment_entries?.filter((entry: any) => entry.entry_type !== 'ADVANCE_APPLIED')
               ?? await apiClient.get<any[]>(`/purchase/debit-notes/grn/${grn.id}/payment-entries`).catch(() => []);
             const normalizedEntries = Array.isArray(paymentEntries) ? [...paymentEntries] : [];
+            const paymentReversals = Array.isArray(payableDetail?.payment_reversals) ? payableDetail.payment_reversals : [];
             const recordedEntryAmount = normalizedEntries.reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0);
             const aggregatePaidAmount = Number(authoritativeInvoice?.settlement?.cashPaid ?? grn.paid_amount ?? 0);
 
@@ -1834,6 +1837,7 @@ function PurchaseOrdersContent() {
               ...grn,
               payment_status: authoritativeInvoice?.settlement?.paymentStatus || grn.payment_status,
               payment_entries: normalizedEntries.sort((a: any, b: any) => new Date(a.payment_date || 0).getTime() - new Date(b.payment_date || 0).getTime()),
+              payment_reversals: paymentReversals.sort((a: any, b: any) => new Date(b.reversed_at || 0).getTime() - new Date(a.reversed_at || 0).getTime()),
               debit_notes: debitNotes,
               settlement: {
                 net_payable: netPayable,
@@ -1860,6 +1864,15 @@ function PurchaseOrdersContent() {
         summary.advanceApplied += Number(settlement.advance_applied || 0);
         summary.outstanding += Number(settlement.outstanding || 0);
         summary.paymentCount += grn.payment_entries?.length || 0;
+        summary.paymentReversalCount += grn.payment_reversals?.length || 0;
+        summary.paymentReversals += (grn.payment_reversals || []).reduce(
+          (sum: number, reversal: any) =>
+            sum +
+            Number(reversal.original_amount || 0) +
+            Number(reversal.original_tds_amount || 0) +
+            Number(reversal.original_short_payment_amount || 0),
+          0,
+        );
         return summary;
       }, {
         poValue: Number((po as any).grand_total ?? po.total_amount ?? 0),
@@ -1869,6 +1882,8 @@ function PurchaseOrdersContent() {
         shortPayment: 0,
         outstanding: 0,
         paymentCount: 0,
+        paymentReversalCount: 0,
+        paymentReversals: 0,
         advanceApplied: 0,
       });
       const authoritativeSummary = poSettlementData?.summary;
@@ -1883,6 +1898,8 @@ function PurchaseOrdersContent() {
         advanceApplied: Number(authoritativeSummary?.advanceApplied || 0),
         advanceAvailable: Number(authoritativeSummary?.advanceAvailable || 0),
         debitNotes: poDebitNotes.reduce((sum: number, note: any) => sum + Number(note.total_amount || 0), 0),
+        paymentReversalCount: calculatedSummary.paymentReversalCount,
+        paymentReversals: calculatedSummary.paymentReversals,
       };
 
       setTrailData({
@@ -4820,11 +4837,12 @@ function PurchaseOrdersContent() {
                   {/* Financial reconciliation */}
                   <div className="border-l-4 border-[#8B6F47] pl-4">
                     <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-[#5E4635]">Financial Reconciliation</h3>
-                    <div className="grid grid-cols-2 gap-px overflow-hidden rounded border border-[#E8DCC4] bg-[#E8DCC4] md:grid-cols-4 xl:grid-cols-8">
+                    <div className="grid grid-cols-2 gap-px overflow-hidden rounded border border-[#E8DCC4] bg-[#E8DCC4] md:grid-cols-4 xl:grid-cols-5">
                       {[
                         ['PO Value', trailData.financialSummary?.poValue],
                         ['Invoiced', trailData.financialSummary?.invoiced],
                         ['Supplier Payments', trailData.financialSummary?.paid],
+                        ['Payment Reversals', trailData.financialSummary?.paymentReversals],
                         ['Advance Paid', trailData.financialSummary?.advancePaid],
                         ['Advance Applied', trailData.financialSummary?.advanceApplied],
                         ['Advance Available', trailData.financialSummary?.advanceAvailable],
@@ -5022,6 +5040,49 @@ function PurchaseOrdersContent() {
                                   <div className="text-sm text-[#7A6555]">No supplier payment has been recorded for this invoice.</div>
                                 )}
                               </div>
+
+                              {grn.payment_reversals?.length > 0 && (
+                                <div className="border-t border-red-100 px-4 py-3">
+                                  <div className="mb-2 flex items-center justify-between gap-3">
+                                    <div className="text-xs font-semibold uppercase text-red-700">Payment Reversals / Corrections</div>
+                                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">
+                                      {grn.payment_reversals.length} reversal{grn.payment_reversals.length === 1 ? '' : 's'}
+                                    </span>
+                                  </div>
+                                  <div className="overflow-x-auto">
+                                    <table className="min-w-full text-sm">
+                                      <thead className="bg-red-50 text-left text-xs text-red-700">
+                                        <tr>
+                                          <th className="px-3 py-2">Reversed On</th>
+                                          <th className="px-3 py-2">Original Date</th>
+                                          <th className="px-3 py-2">Method</th>
+                                          <th className="px-3 py-2">Reference</th>
+                                          <th className="px-3 py-2 text-right">Reversed Amount</th>
+                                          <th className="px-3 py-2">Reason</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-red-100">
+                                        {grn.payment_reversals.map((reversal: any) => (
+                                          <tr key={reversal.id}>
+                                            <td className="px-3 py-2 whitespace-nowrap">{fmtDate(reversal.reversed_at)}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap">{fmtDate(reversal.original_payment_date)}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap">{reversal.original_payment_method || '-'}</td>
+                                            <td className="px-3 py-2 whitespace-nowrap">{reversal.original_payment_reference || '-'}</td>
+                                            <td className="px-3 py-2 text-right font-semibold text-red-700 whitespace-nowrap">
+                                              -â‚¹{fmtINR(
+                                                Number(reversal.original_amount || 0) +
+                                                Number(reversal.original_tds_amount || 0) +
+                                                Number(reversal.original_short_payment_amount || 0)
+                                              )}
+                                            </td>
+                                            <td className="px-3 py-2 text-xs text-[#5E4635]">{reversal.reversal_reason || '-'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )}
 
                               {grn.debit_notes?.length > 0 && (
                                 <div className="border-t border-[#E8DCC4] px-4 py-3">
