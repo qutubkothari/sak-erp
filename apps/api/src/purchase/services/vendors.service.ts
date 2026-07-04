@@ -433,6 +433,10 @@ export class VendorsService {
         bankBranch,
         bankAccountType,
         salutation: String(data?.salutation ?? metadata.salutation ?? '').trim() || null,
+        vendorApproval: metadata.vendorApproval || {
+          status: existingVendor?.is_verified ? 'APPROVED' : 'PENDING',
+          submittedAt: existingVendor?.created_at || new Date().toISOString(),
+        },
       },
     };
   }
@@ -449,6 +453,13 @@ export class VendorsService {
       salutation: metadata.salutation || '',
       billing_line2: vendor.billing_line2 || metadata.billingLine2 || '',
       gst_verification: metadata.gstinVerification || null,
+      approval_status: vendor.is_verified === true
+        ? 'APPROVED'
+        : String(metadata.vendorApproval?.status || 'PENDING').toUpperCase(),
+      approval_reason: metadata.vendorApproval?.reason || null,
+      approval_trail: Array.isArray(metadata.vendorApprovalTrail)
+        ? metadata.vendorApprovalTrail
+        : [],
       is_verified: vendor.is_verified === true,
       contact_person: vendor.contact_person || defaultContact?.name || '',
       email: vendor.email || defaultContact?.email || '',
@@ -583,23 +594,103 @@ export class VendorsService {
   }
 
   async setVerification(tenantId: string, userId: string, id: string, isVerified: boolean) {
+    const existing = await this.findOne(tenantId, id);
+    const metadata = safeObject(existing?.metadata);
+    const now = new Date().toISOString();
+    const action = isVerified ? 'APPROVED' : 'RESET_TO_PENDING';
+    const vendorApproval = isVerified
+      ? {
+          status: 'APPROVED',
+          approvedAt: now,
+          approvedBy: userId,
+          reason: null,
+        }
+      : {
+          status: 'PENDING',
+          submittedAt: metadata.vendorApproval?.submittedAt || existing?.created_at || now,
+          reason: null,
+        };
+    const vendorApprovalTrail = [
+      ...(Array.isArray(metadata.vendorApprovalTrail) ? metadata.vendorApprovalTrail : []),
+      {
+        action,
+        userId,
+        at: now,
+      },
+    ];
+
     const updateData = isVerified
       ? {
           is_verified: true,
-          verified_at: new Date().toISOString(),
+          verified_at: now,
           verified_by: userId,
-          updated_at: new Date().toISOString(),
+          updated_at: now,
+          metadata: {
+            ...metadata,
+            vendorApproval,
+            vendorApprovalTrail,
+          },
         }
       : {
           is_verified: false,
           verified_at: null,
           verified_by: null,
-          updated_at: new Date().toISOString(),
+          updated_at: now,
+          metadata: {
+            ...metadata,
+            vendorApproval,
+            vendorApprovalTrail,
+          },
         };
 
     const { error } = await this.supabase
       .from('vendors')
       .update(updateData)
+      .eq('tenant_id', tenantId)
+      .eq('id', id);
+
+    if (error) throw new BadRequestException(error.message);
+    return this.findOne(tenantId, id);
+  }
+
+  async rejectVerification(tenantId: string, userId: string, id: string, reason: any) {
+    const normalizedReason = String(reason || '').trim();
+    if (!normalizedReason) {
+      throw new BadRequestException('A rejection reason is required.');
+    }
+
+    const existing = await this.findOne(tenantId, id);
+    const metadata = safeObject(existing?.metadata);
+    const now = new Date().toISOString();
+    const vendorApproval = {
+      status: 'REJECTED',
+      rejectedAt: now,
+      rejectedBy: userId,
+      reason: normalizedReason,
+    };
+    const vendorApprovalTrail = [
+      ...(Array.isArray(metadata.vendorApprovalTrail) ? metadata.vendorApprovalTrail : []),
+      {
+        action: 'REJECTED',
+        userId,
+        at: now,
+        reason: normalizedReason,
+      },
+    ];
+
+    const { error } = await this.supabase
+      .from('vendors')
+      .update({
+        is_verified: false,
+        verified_at: null,
+        verified_by: null,
+        updated_at: now,
+        metadata: {
+          ...metadata,
+          vendorApproval,
+          vendorApprovalTrail,
+        },
+      })
       .eq('tenant_id', tenantId)
       .eq('id', id);
 

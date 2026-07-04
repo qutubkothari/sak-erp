@@ -13,6 +13,7 @@ import {
   ShieldOff,
   Trash2,
   UserPlus,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "../../../../../lib/api-client";
@@ -93,6 +94,9 @@ interface Vendor {
   is_verified?: boolean;
   verified_at?: string | null;
   verified_by?: string | null;
+  approval_status?: string;
+  approval_reason?: string | null;
+  approval_trail?: Array<Record<string, any>>;
   contacts?: VendorContact[];
   gst_verification?: GstVerificationResult | null;
   salutation?: string;
@@ -219,6 +223,7 @@ const FILTER_VERIFICATION_OPTIONS = [
   { value: "ALL", label: "All verification" },
   { value: "VERIFIED", label: "Verified" },
   { value: "PENDING", label: "Pending verification" },
+  { value: "REJECTED", label: "Rejected" },
 ];
 
 const inputClass =
@@ -334,6 +339,31 @@ function formatCategory(value: string): string {
   );
 }
 
+function getVendorApprovalStatus(vendor: Vendor): "APPROVED" | "REJECTED" | "PENDING" {
+  if (vendor.is_verified) return "APPROVED";
+  const status = String(
+    vendor.approval_status ||
+      vendor.metadata?.vendorApproval?.status ||
+      "",
+  ).toUpperCase();
+  return status === "REJECTED" ? "REJECTED" : "PENDING";
+}
+
+function getVendorApprovalLabel(vendor: Vendor): string {
+  const status = getVendorApprovalStatus(vendor);
+  if (status === "APPROVED") return "Approved";
+  if (status === "REJECTED") return "Rejected";
+  return "Pending";
+}
+
+function getVendorApprovalReason(vendor: Vendor): string {
+  return String(
+    vendor.approval_reason ||
+      vendor.metadata?.vendorApproval?.reason ||
+      "",
+  ).trim();
+}
+
 function DetailField({
   label,
   value,
@@ -422,9 +452,12 @@ export default function VendorsPage() {
           return false;
         if (statusFilter === "ACTIVE" && !vendor.is_active) return false;
         if (statusFilter === "INACTIVE" && vendor.is_active) return false;
-        if (verificationFilter === "VERIFIED" && !vendor.is_verified)
+        const approvalStatus = getVendorApprovalStatus(vendor);
+        if (verificationFilter === "VERIFIED" && approvalStatus !== "APPROVED")
           return false;
-        if (verificationFilter === "PENDING" && vendor.is_verified)
+        if (verificationFilter === "PENDING" && approvalStatus !== "PENDING")
+          return false;
+        if (verificationFilter === "REJECTED" && approvalStatus !== "REJECTED")
           return false;
         return true;
       }),
@@ -441,13 +474,18 @@ export default function VendorsPage() {
       },
       {
         label: "Verified",
-        value: vendors.filter((vendor) => vendor.is_verified).length,
+        value: vendors.filter((vendor) => getVendorApprovalStatus(vendor) === "APPROVED").length,
         tone: "success" as const,
       },
       {
         label: "Pending Verification",
-        value: vendors.filter((vendor) => !vendor.is_verified).length,
+        value: vendors.filter((vendor) => getVendorApprovalStatus(vendor) === "PENDING").length,
         tone: "warning" as const,
+      },
+      {
+        label: "Rejected",
+        value: vendors.filter((vendor) => getVendorApprovalStatus(vendor) === "REJECTED").length,
+        tone: "danger" as const,
       },
     ],
     [vendors],
@@ -584,6 +622,38 @@ export default function VendorsPage() {
       await fetchVendors();
     } catch (error: any) {
       toast.error(error?.message || "Failed to update verification");
+    }
+  };
+
+  const handleRejectVendor = async (vendor: Vendor) => {
+    const reason = window.prompt(
+      `Enter rejection reason for ${vendor.name}. This will be saved in the vendor approval trail.`,
+    );
+    if (reason === null) return;
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) {
+      toast.error("A rejection reason is required");
+      return;
+    }
+
+    const confirmed = await confirmDialog({
+      title: "Reject Vendor",
+      message: `Reject ${vendor.name} and block it from verified purchasing?`,
+      confirmLabel: "Reject",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    try {
+      const updated = await apiClient.put<Vendor>(
+        `/purchase/vendors/${vendor.id}/reject`,
+        { reason: normalizedReason },
+      );
+      toast.success("Vendor rejected");
+      if (viewingVendor?.id === vendor.id) setViewingVendor(updated);
+      await fetchVendors();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to reject vendor");
     }
   };
 
@@ -798,16 +868,26 @@ export default function VendorsPage() {
       {
         id: "verification",
         label: "Verification",
-        accessor: (vendor) => (vendor.is_verified ? "Verified" : "Pending"),
+        accessor: (vendor) => getVendorApprovalLabel(vendor),
         sortable: true,
         minWidth: 125,
         align: "center",
-        cell: (vendor) => (
-          <ErpStatusBadge
-            status={vendor.is_verified ? "APPROVED" : "AWAITING_APPROVAL"}
-            label={vendor.is_verified ? "Verified" : "Pending"}
-          />
-        ),
+        cell: (vendor) => {
+          const approvalStatus = getVendorApprovalStatus(vendor);
+          return (
+            <ErpStatusBadge
+              status={
+                approvalStatus === "APPROVED"
+                  ? "APPROVED"
+                  : approvalStatus === "REJECTED"
+                    ? "REJECTED"
+                    : "AWAITING_APPROVAL"
+              }
+              label={getVendorApprovalLabel(vendor)}
+              tone={approvalStatus === "REJECTED" ? "danger" : undefined}
+            />
+          );
+        },
       },
       {
         id: "gst",
@@ -851,24 +931,38 @@ export default function VendorsPage() {
               </ErpButton>
             ) : null}
             {canVerify ? (
-              <ErpButton
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0"
-                title={
-                  vendor.is_verified ? "Remove verification" : "Verify vendor"
-                }
-                aria-label={
-                  vendor.is_verified ? "Remove verification" : "Verify vendor"
-                }
-                onClick={() => handleVerification(vendor, !vendor.is_verified)}
-              >
-                {vendor.is_verified ? (
-                  <ShieldOff className="h-4 w-4" />
-                ) : (
-                  <ShieldCheck className="h-4 w-4 text-emerald-700" />
-                )}
-              </ErpButton>
+              <>
+                <ErpButton
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  title={
+                    vendor.is_verified ? "Remove verification" : "Approve vendor"
+                  }
+                  aria-label={
+                    vendor.is_verified ? "Remove verification" : "Approve vendor"
+                  }
+                  onClick={() => handleVerification(vendor, !vendor.is_verified)}
+                >
+                  {vendor.is_verified ? (
+                    <ShieldOff className="h-4 w-4" />
+                  ) : (
+                    <ShieldCheck className="h-4 w-4 text-emerald-700" />
+                  )}
+                </ErpButton>
+                {!vendor.is_verified ? (
+                  <ErpButton
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-red-700"
+                    title="Reject vendor"
+                    aria-label="Reject vendor"
+                    onClick={() => handleRejectVendor(vendor)}
+                  >
+                    <XCircle className="h-4 w-4" />
+                  </ErpButton>
+                ) : null}
+              </>
             ) : null}
             {canDelete ? (
               <ErpButton
@@ -886,7 +980,7 @@ export default function VendorsPage() {
         ),
       },
     ],
-    [canDelete, canEdit, canVerify],
+    [canDelete, canEdit, canVerify, viewingVendor],
   );
 
   const sectionIndex = FORM_SECTIONS.findIndex(
@@ -1004,12 +1098,23 @@ export default function VendorsPage() {
                 />
                 <ErpStatusBadge
                   status={
-                    viewingVendor.is_verified ? "APPROVED" : "AWAITING_APPROVAL"
+                    getVendorApprovalStatus(viewingVendor) === "APPROVED"
+                      ? "APPROVED"
+                      : getVendorApprovalStatus(viewingVendor) === "REJECTED"
+                        ? "REJECTED"
+                        : "AWAITING_APPROVAL"
                   }
                   label={
-                    viewingVendor.is_verified
+                    getVendorApprovalStatus(viewingVendor) === "APPROVED"
                       ? "Verified for Purchasing"
-                      : "Verification Pending"
+                      : getVendorApprovalStatus(viewingVendor) === "REJECTED"
+                        ? "Rejected"
+                        : "Verification Pending"
+                  }
+                  tone={
+                    getVendorApprovalStatus(viewingVendor) === "REJECTED"
+                      ? "danger"
+                      : undefined
                   }
                 />
                 {viewingVendor.gst_verification?.valid ? (
@@ -1031,24 +1136,35 @@ export default function VendorsPage() {
                   </ErpButton>
                 ) : null}
                 {canVerify ? (
-                  <ErpButton
-                    variant={
-                      viewingVendor.is_verified ? "secondary" : "approve"
-                    }
-                    onClick={() =>
-                      handleVerification(
-                        viewingVendor,
-                        !viewingVendor.is_verified,
-                      )
-                    }
-                  >
-                    {viewingVendor.is_verified ? (
-                      <ShieldOff className="h-4 w-4" />
-                    ) : (
-                      <ShieldCheck className="h-4 w-4" />
-                    )}
-                    {viewingVendor.is_verified ? "Unverify" : "Verify"}
-                  </ErpButton>
+                  <>
+                    <ErpButton
+                      variant={
+                        viewingVendor.is_verified ? "secondary" : "approve"
+                      }
+                      onClick={() =>
+                        handleVerification(
+                          viewingVendor,
+                          !viewingVendor.is_verified,
+                        )
+                      }
+                    >
+                      {viewingVendor.is_verified ? (
+                        <ShieldOff className="h-4 w-4" />
+                      ) : (
+                        <ShieldCheck className="h-4 w-4" />
+                      )}
+                      {viewingVendor.is_verified ? "Unverify" : "Approve"}
+                    </ErpButton>
+                    {!viewingVendor.is_verified ? (
+                      <ErpButton
+                        variant="danger"
+                        onClick={() => handleRejectVendor(viewingVendor)}
+                      >
+                        <XCircle className="h-4 w-4" />
+                        Reject
+                      </ErpButton>
+                    ) : null}
+                  </>
                 ) : null}
               </div>
             </div>
@@ -1078,6 +1194,16 @@ export default function VendorsPage() {
                   label="Account Status"
                   value={viewingVendor.is_active ? "Active" : "Inactive"}
                 />
+                <DetailField
+                  label="Approval Status"
+                  value={getVendorApprovalLabel(viewingVendor)}
+                />
+                {getVendorApprovalReason(viewingVendor) ? (
+                  <DetailField
+                    label="Rejection Reason"
+                    value={getVendorApprovalReason(viewingVendor)}
+                  />
+                ) : null}
               </div>
             </section>
 

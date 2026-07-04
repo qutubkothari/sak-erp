@@ -88,6 +88,17 @@ export class VendorsController {
     return this.vendorsService.setVerification(req.user.tenantId, req.user.userId, id, false);
   }
 
+  @Put(':id/reject')
+  @RequireApprove('vendors')
+  async reject(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.vendorsService.rejectVerification(
+      req.user.tenantId,
+      req.user.userId,
+      id,
+      body?.reason,
+    );
+  }
+
   @Delete(':id')
   @RequireDelete('vendors')
   async delete(@Request() req: any, @Param('id') id: string) {
