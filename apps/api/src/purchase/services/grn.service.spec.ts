@@ -79,8 +79,9 @@ describe('GrnService commercial amount controls', () => {
 
     const settlement = allocatePoSettlement([{ id: 'grn-1', netPayable: 1062 }], 400);
     expect(settlement.invoiced).toBe(1062);
-    expect(settlement.advanceApplied).toBe(400);
-    expect(settlement.outstanding).toBe(662);
+    expect(settlement.advanceApplied).toBe(0);
+    expect(settlement.advanceAvailable).toBe(400);
+    expect(settlement.outstanding).toBe(1062);
   });
 });
 

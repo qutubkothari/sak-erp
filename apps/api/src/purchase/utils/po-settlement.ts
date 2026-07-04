@@ -7,6 +7,7 @@ export interface PoSettlementInvoiceInput {
   cashPaid?: number;
   tds?: number;
   shortPayment?: number;
+  advanceApplied?: number;
 }
 
 export interface PoSettlementInvoiceResult extends PoSettlementInvoiceInput {
@@ -38,8 +39,9 @@ const money = (value: unknown) => {
 };
 
 /**
- * Allocates one PO-level advance pool across invoices once, oldest invoice first.
- * Cash, TDS and approved short payment settle their own invoice before advance is used.
+ * Calculates invoice settlement for a PO.
+ * Advances are never auto-applied here; invoice.advanceApplied must be passed only
+ * after Accounts Payable explicitly adjusts an advance against that invoice.
  */
 export function allocatePoSettlement(
   invoices: PoSettlementInvoiceInput[],
@@ -63,7 +65,8 @@ export function allocatePoSettlement(
     const tds = Math.max(0, money(invoice.tds));
     const shortPayment = Math.max(0, money(invoice.shortPayment));
     const settledBeforeAdvance = Math.min(netPayable, money(cashPaid + tds + shortPayment));
-    const advanceApplied = Math.min(advanceAvailable, money(netPayable - settledBeforeAdvance));
+    const requestedAdvance = Math.max(0, money(invoice.advanceApplied));
+    const advanceApplied = Math.min(requestedAdvance, advanceAvailable, money(netPayable - settledBeforeAdvance));
     advanceAvailable = money(advanceAvailable - advanceApplied);
     const totalSettled = Math.min(netPayable, money(settledBeforeAdvance + advanceApplied));
     const outstanding = Math.max(0, money(netPayable - totalSettled));

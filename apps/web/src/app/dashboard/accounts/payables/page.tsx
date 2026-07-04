@@ -78,6 +78,8 @@ interface GRNDetail extends GRNPayable {
   computed_tds: number;
   computed_short: number;
   computed_advance?: number;
+  available_po_advance?: number;
+  available_vendor_advance?: number;
   outstanding_amount: number;
   payment_entries: PaymentEntry[];
   payment_reversals?: PaymentReversal[];
@@ -117,9 +119,13 @@ const getPayableSettled = (grn: any) => +(grn?.settled ?? 0);
 const getPayableOutstanding = (grn: any) => +(grn?.outstanding ?? grn?.outstanding_amount ?? Math.max(0, getPayableNet(grn) - getPayableSettled(grn)));
 const isSystemPaymentEntry = (entry?: PaymentEntry | null) =>
   ['ADVANCE', 'ADVANCE_APPLIED', 'VENDOR_ADVANCE'].includes(String(entry?.entry_type || '').toUpperCase());
+const getAvailableAdvance = (detail?: GRNDetail | null) =>
+  +(detail?.available_po_advance || 0) + +(detail?.available_vendor_advance || 0);
+const moneyInput = (value: number) => (Math.max(0, value).toFixed(2));
 
 const BLANK_FORM = {
   amount: '',
+  advance_adjustment_amount: '',
   tds_amount: '',
   short_payment_amount: '',
   short_payment_reason: '',
@@ -472,27 +478,61 @@ export default function AccountsPayablePage() {
     setShowPaymentModal(true);
   };
 
+  const updatePaymentBalance = (changes: Partial<typeof BLANK_FORM>) => {
+    setPaymentForm((current) => {
+      const next = { ...current, ...changes };
+      const shouldRecalculate =
+        Object.prototype.hasOwnProperty.call(changes, 'advance_adjustment_amount') ||
+        (parseFloat(String(next.advance_adjustment_amount || '0')) || 0) > 0;
+      if (!selectedGRNDetail || !shouldRecalculate) {
+        return next;
+      }
+
+      const availableAdvance = getAvailableAdvance(selectedGRNDetail);
+      const requestedAdvance = parseFloat(String(next.advance_adjustment_amount || '0')) || 0;
+      const clampedAdvance = Math.min(Math.max(0, requestedAdvance), availableAdvance, selectedGRNDetail.outstanding_amount);
+      const tds = parseFloat(next.tds_amount || '0') || 0;
+      const short = parseFloat(next.short_payment_amount || '0') || 0;
+      const cashBalance = Math.max(0, selectedGRNDetail.outstanding_amount - clampedAdvance - tds - short);
+
+      return {
+        ...next,
+        advance_adjustment_amount: clampedAdvance > 0 ? String(clampedAdvance) : '',
+        amount: moneyInput(cashBalance),
+      };
+    });
+  };
+
   const recordPayment = async () => {
     if (!selectedGRNDetail) return;
     setPaymentError(null);
 
-    const amount = parseFloat(paymentForm.amount);
+    const amount = parseFloat(paymentForm.amount || '0') || 0;
+    const advanceAdjustment = parseFloat(paymentForm.advance_adjustment_amount || '0') || 0;
     const tds = parseFloat(paymentForm.tds_amount || '0') || 0;
     const short = parseFloat(paymentForm.short_payment_amount || '0') || 0;
     const outstanding = selectedGRNDetail.outstanding_amount;
+    const availableAdvance = getAvailableAdvance(selectedGRNDetail);
+    const settlementTotal = amount + advanceAdjustment + tds + short;
 
-    if (isNaN(amount) || amount <= 0) { setPaymentError('Please enter a valid payment amount'); return; }
+    if (amount < 0) { setPaymentError('Payment amount cannot be negative'); return; }
+    if (advanceAdjustment < 0) { setPaymentError('Advance adjustment cannot be negative'); return; }
+    if (settlementTotal <= 0) { setPaymentError('Please enter a payment, advance adjustment, TDS, or short payment amount'); return; }
+    if (advanceAdjustment > availableAdvance + 0.009) {
+      setPaymentError(`Advance adjustment exceeds available advance Rs. ${availableAdvance.toFixed(2)}`);
+      return;
+    }
     if (tds < 0 || short < 0) { setPaymentError('TDS and short payment cannot be negative'); return; }
     if (short > 0 && !paymentForm.short_payment_reason.trim()) {
       setPaymentError('Short payment reason is required');
       return;
     }
-    if (paymentForm.close_invoice && amount + tds + short < outstanding - 0.009) {
+    if (paymentForm.close_invoice && settlementTotal < outstanding - 0.009) {
       setPaymentError('Short payment amount must cover the remaining balance before closing the invoice');
       return;
     }
-    if (amount + tds + short > outstanding + 0.009) {
-      setPaymentError(`Total settlement ₹${(amount + tds + short).toFixed(2)} exceeds outstanding ₹${outstanding.toFixed(2)}`);
+    if (settlementTotal > outstanding + 0.009) {
+      setPaymentError(`Total settlement Rs. ${settlementTotal.toFixed(2)} exceeds outstanding Rs. ${outstanding.toFixed(2)}`);
       return;
     }
 
@@ -503,6 +543,7 @@ export default function AccountsPayablePage() {
         tds_amount: tds,
         short_payment_amount: short,
         short_payment_reason: paymentForm.short_payment_reason || undefined,
+        advance_adjustment_amount: advanceAdjustment,
         payment_method: paymentForm.payment_method,
         payment_reference: paymentForm.payment_reference || undefined,
         payment_date: paymentForm.payment_date,
@@ -528,6 +569,7 @@ export default function AccountsPayablePage() {
     setEditPaymentError(null);
     setEditPaymentForm({
       amount: entry.amount.toString(),
+      advance_adjustment_amount: '',
       tds_amount: (entry.tds_amount || 0).toString(),
       short_payment_amount: (entry.short_payment_amount || 0).toString(),
       short_payment_reason: entry.short_payment_reason || '',
@@ -1427,6 +1469,31 @@ export default function AccountsPayablePage() {
                 </div>
               )}
 
+              {getAvailableAdvance(selectedGRNDetail) > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-3">
+                  <div className="text-xs font-semibold text-green-800">Supplier Advance Available</div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-md bg-white border border-green-100 px-3 py-2">
+                      <div className="text-xs text-gray-500">PO advance</div>
+                      <div className="font-semibold text-green-800">Rs. {fmtINR(selectedGRNDetail.available_po_advance || 0)}</div>
+                    </div>
+                    <div className="rounded-md bg-white border border-green-100 px-3 py-2">
+                      <div className="text-xs text-gray-500">Vendor advance</div>
+                      <div className="font-semibold text-green-800">Rs. {fmtINR(selectedGRNDetail.available_vendor_advance || 0)}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Advance to Adjust</label>
+                    <input type="number" step="0.01" min="0" max={Math.min(getAvailableAdvance(selectedGRNDetail), selectedGRNDetail.outstanding_amount)}
+                      value={paymentForm.advance_adjustment_amount}
+                      onChange={(e) => updatePaymentBalance({ advance_adjustment_amount: e.target.value })}
+                      className="w-full px-3 py-2 border border-green-300 rounded-lg text-sm focus:ring-2 focus:ring-green-400"
+                      placeholder="0.00" />
+                    <p className="text-xs text-gray-500 mt-1">Advance is applied only when you enter an adjustment amount here.</p>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Amount <span className="text-red-500">*</span></label>
@@ -1469,7 +1536,7 @@ export default function AccountsPayablePage() {
                   <div>
                     <label className="block text-xs font-semibold text-blue-700 mb-1">TDS Amount</label>
                     <input type="number" step="0.01" min="0" value={paymentForm.tds_amount}
-                      onChange={(e) => setPaymentForm(f => ({ ...f, tds_amount: e.target.value }))}
+                      onChange={(e) => updatePaymentBalance({ tds_amount: e.target.value })}
                       className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm"
                       placeholder="0.00" />
                     <p className="text-xs text-blue-500 mt-0.5">Tax deducted at source</p>
@@ -1477,7 +1544,7 @@ export default function AccountsPayablePage() {
                   <div>
                     <label className="block text-xs font-semibold text-amber-700 mb-1">Short Payment</label>
                     <input type="number" step="0.01" min="0" value={paymentForm.short_payment_amount}
-                      onChange={(e) => setPaymentForm(f => ({ ...f, short_payment_amount: e.target.value }))}
+                      onChange={(e) => updatePaymentBalance({ short_payment_amount: e.target.value })}
                       className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm"
                       placeholder="0.00" />
                     <p className="text-xs text-amber-500 mt-0.5">Amount deducted for other reason</p>
@@ -1495,13 +1562,14 @@ export default function AccountsPayablePage() {
                 {/* Settlement preview */}
                 {(() => {
                   const a = parseFloat(paymentForm.amount || '0') || 0;
+                  const adv = parseFloat(paymentForm.advance_adjustment_amount || '0') || 0;
                   const t = parseFloat(paymentForm.tds_amount || '0') || 0;
                   const s = parseFloat(paymentForm.short_payment_amount || '0') || 0;
-                  const total = a + t + s;
+                  const total = a + adv + t + s;
                   const rem = Math.max(0, selectedGRNDetail.outstanding_amount - total);
                   return total > 0 ? (
                     <div className="text-xs text-gray-700 bg-white rounded border border-gray-200 p-2">
-                      <span className="font-semibold">Settlement preview:</span> Cash ₹{fmtINR(a)} + TDS ₹{fmtINR(t)} + Short ₹{fmtINR(s)} = <strong>₹{fmtINR(total)}</strong> · Remaining: <strong className={rem > 0.009 ? 'text-orange-600' : 'text-green-600'}>₹{fmtINR(rem)}</strong>
+                      <span className="font-semibold">Settlement preview:</span> Cash Rs. {fmtINR(a)} + Advance Rs. {fmtINR(adv)} + TDS Rs. {fmtINR(t)} + Short Rs. {fmtINR(s)} = <strong>Rs. {fmtINR(total)}</strong> - Remaining: <strong className={rem > 0.009 ? 'text-orange-600' : 'text-green-600'}>Rs. {fmtINR(rem)}</strong>
                     </div>
                   ) : null;
                 })()}

@@ -1007,7 +1007,7 @@ export class GrnService {
     const { data: paymentEntries } = grnIds.length > 0
       ? await this.supabase
         .from('grn_payment_entries')
-        .select('grn_id, amount, tds_amount, short_payment_amount')
+        .select('grn_id, amount, tds_amount, short_payment_amount, entry_type')
         .eq('tenant_id', tenantId)
         .in('grn_id', grnIds)
       : { data: [] };
@@ -1020,16 +1020,19 @@ export class GrnService {
 
     const settlement = allocatePoSettlement((poGrns || []).map((invoice: any) => {
       const entries = entriesByGrn.get(invoice.id) || [];
+      const isAdvanceEntry = (entry: any) =>
+        ['ADVANCE', 'ADVANCE_APPLIED', 'VENDOR_ADVANCE'].includes(String(entry?.entry_type || '').toUpperCase());
       const hasCashEvidence = entries.length > 0 || Boolean(invoice.payment_method || invoice.payment_reference);
       return {
         id: invoice.id,
         date: invoice.invoice_date || invoice.receipt_date || invoice.created_at,
         netPayable: this.toNumber(invoice.net_payable_amount ?? invoice.gross_amount),
         cashPaid: entries.length > 0
-          ? entries.reduce((sum: number, entry: any) => sum + this.toNumber(entry.amount), 0)
+          ? entries.reduce((sum: number, entry: any) => sum + (isAdvanceEntry(entry) ? 0 : this.toNumber(entry.amount)), 0)
           : hasCashEvidence
             ? this.toNumber(invoice.paid_amount)
             : 0,
+        advanceApplied: entries.reduce((sum: number, entry: any) => sum + (isAdvanceEntry(entry) ? this.toNumber(entry.amount) : 0), 0),
         tds: entries.length > 0
           ? entries.reduce((sum: number, entry: any) => sum + this.toNumber(entry.tds_amount), 0)
           : this.toNumber(invoice.tds_amount),
