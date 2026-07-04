@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
 import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
@@ -2963,12 +2963,45 @@ export class GrnService {
   }
 
   async approveInvoice(tenantId: string, grnId: string, userId: string, data: any) {
+    const { data: currentGrn, error: fetchError } = await this.supabase
+      .from('grns')
+      .select('id, grn_number, status, qc_completed, invoice_approved, received_by, net_payable_amount')
+      .eq('id', grnId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (fetchError || !currentGrn) {
+      throw new NotFoundException('GRN not found');
+    }
+
+    if (currentGrn.received_by && currentGrn.received_by === userId) {
+      throw new ForbiddenException('Receiver cannot sanction their own supplier invoice');
+    }
+
+    if (String(currentGrn.status || '').toUpperCase() !== 'COMPLETED') {
+      throw new BadRequestException('Only completed GRNs can be sanctioned for Accounts Payable');
+    }
+
+    if (!currentGrn.qc_completed) {
+      throw new BadRequestException('QC must be completed before supplier invoice sanction');
+    }
+
+    if (currentGrn.invoice_approved) {
+      throw new BadRequestException('Supplier invoice is already sanctioned');
+    }
+
+    if (this.toNumber(currentGrn.net_payable_amount) <= 0) {
+      throw new BadRequestException('Supplier invoice has no payable amount to sanction');
+    }
+
+    const approvalNotes = String(data?.notes || '').trim() || null;
     const { error } = await this.supabase
       .from('grns')
       .update({
         invoice_approved: true,
         invoice_approved_by: userId,
         invoice_approved_at: new Date().toISOString(),
+        invoice_approval_notes: approvalNotes,
         updated_at: new Date().toISOString(),
       })
       .eq('id', grnId)
@@ -2978,13 +3011,36 @@ export class GrnService {
     return this.findOne(tenantId, grnId);
   }
 
-  async unapproveInvoice(tenantId: string, grnId: string) {
+  async unapproveInvoice(tenantId: string, grnId: string, userId?: string, data?: any) {
+    const { data: currentGrn, error: fetchError } = await this.supabase
+      .from('grns')
+      .select('id, grn_number, invoice_approved, paid_amount, payment_status')
+      .eq('id', grnId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (fetchError || !currentGrn) {
+      throw new NotFoundException('GRN not found');
+    }
+
+    if (!currentGrn.invoice_approved) {
+      throw new BadRequestException('Supplier invoice is already marked as payment due');
+    }
+
+    if (this.toNumber(currentGrn.paid_amount) > 0 || String(currentGrn.payment_status || '').toUpperCase() === 'PAID') {
+      throw new BadRequestException('Cannot revert supplier invoice sanction after payment is recorded');
+    }
+
+    const reversalNote = String(data?.notes || '').trim();
     const { error } = await this.supabase
       .from('grns')
       .update({
         invoice_approved: false,
         invoice_approved_by: null,
         invoice_approved_at: null,
+        invoice_approval_notes: reversalNote
+          ? `Sanction reverted${userId ? ` by ${userId}` : ''}: ${reversalNote}`
+          : null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', grnId)

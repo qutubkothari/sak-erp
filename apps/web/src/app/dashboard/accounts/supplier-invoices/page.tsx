@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { hasModulePermission, readStoredUser, type StoredUser } from '@/lib/rbac';
+import { CheckCircle, Pencil, RotateCcw } from 'lucide-react';
 
 interface SupplierInvoice {
   id: string;
@@ -154,8 +155,9 @@ export default function SupplierInvoicesPage() {
 
   const handleApprove = async (inv: SupplierInvoice) => {
     if (!window.confirm(`Sanction payment for ${inv.grn_number}? This will move it to Accounts Payable.`)) return;
+    const notes = window.prompt('Approval notes / reference (optional)', inv.invoice_approval_notes ?? '') ?? '';
     try {
-      await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, {});
+      await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, { notes: notes.trim() || null });
       // Remove from selection if it was selected
       setSelectedInvoiceIds(prev => {
         const next = new Set(prev);
@@ -189,7 +191,9 @@ export default function SupplierInvoicesPage() {
     
     for (const inv of selected) {
       try {
-        await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, {});
+        await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, {
+          notes: `Bulk sanctioned from Supplier Invoices on ${new Date().toISOString()}`,
+        });
         results.success.push(inv.grn_number);
       } catch (e: any) {
         results.failed.push(`${inv.grn_number}: ${e.message || 'Failed'}`);
@@ -209,8 +213,14 @@ export default function SupplierInvoicesPage() {
 
   const handleUnapprove = async (inv: SupplierInvoice) => {
     if (!window.confirm(`Mark as Payment Due for ${inv.grn_number}? It will be removed from Accounts Payable.`)) return;
+    const notes = window.prompt('Reason for reverting sanction');
+    if (notes === null) return;
+    if (!notes.trim()) {
+      alert('Reason is required to revert a supplier invoice sanction.');
+      return;
+    }
     try {
-      await apiClient.post(`/purchase/grn/${inv.id}/unapprove-invoice`, {});
+      await apiClient.post(`/purchase/grn/${inv.id}/unapprove-invoice`, { notes: notes.trim() });
       await fetchInvoices();
     } catch (e: any) {
       alert(e.message || 'Failed to revert payment sanction');
@@ -355,20 +365,26 @@ export default function SupplierInvoicesPage() {
         <div className="flex gap-1 flex-wrap">
           {canEdit && !r.invoice_approved && (
             <button onClick={() => openEdit(r)}
-              className="px-2 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 font-medium">
-              Edit
+              title="Edit invoice values"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#D9C9AD] text-[#6F4E37] hover:bg-[#F6EFE2]">
+              <Pencil className="h-4 w-4" />
+              <span className="sr-only">Edit</span>
             </button>
           )}
           {canApprove && !r.invoice_approved && (
             <button onClick={() => handleApprove(r)}
-              className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 font-medium">
-              Sanction
+              title="Sanction to Accounts Payable"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-green-700 text-white hover:bg-green-800">
+              <CheckCircle className="h-4 w-4" />
+              <span className="sr-only">Sanction</span>
             </button>
           )}
           {canApprove && r.invoice_approved && (
             <button onClick={() => handleUnapprove(r)}
-              className="px-2 py-1 text-xs bg-gray-100 text-gray-600 border border-gray-200 rounded hover:bg-gray-200 font-medium">
-              Payment Due
+              title="Revert sanction"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#D9C9AD] text-[#6F4E37] hover:bg-[#F6EFE2]">
+              <RotateCcw className="h-4 w-4" />
+              <span className="sr-only">Payment Due</span>
             </button>
           )}
         </div>

@@ -182,3 +182,43 @@ describe('DebitNoteService debit note approval controls', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('DebitNoteService GRN payment-status register', () => {
+  it('keeps the register usable when one PO settlement lookup fails', async () => {
+    const service = new DebitNoteService({} as any);
+    const grnQuery: any = {
+      select: jest.fn(() => grnQuery),
+      eq: jest.fn(() => grnQuery),
+    };
+    grnQuery.then = (resolve: any) => resolve({
+      data: [
+        {
+          id: 'grn-1',
+          po_id: 'po-1',
+          status: 'COMPLETED',
+          net_payable_amount: 1000,
+          paid_amount: 100,
+          tds_amount: 0,
+          short_payment_amount: 0,
+          payment_status: 'PARTIAL',
+        },
+      ],
+      error: null,
+    });
+
+    (service as any).supabase = {
+      from: jest.fn(() => grnQuery),
+    };
+    jest.spyOn(service, 'getPoSettlement').mockRejectedValue(new Error('Failed to fetch PO invoices: fetch failed'));
+
+    const result = await service.getGrnsWithPaymentStatus('tenant-1', { status: 'COMPLETED' });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]._payment_calculation).toEqual(expect.objectContaining({
+      net_payable: 1000,
+      paid_amount: 100,
+      outstanding: 900,
+      payment_status: 'PARTIAL',
+    }));
+  });
+});

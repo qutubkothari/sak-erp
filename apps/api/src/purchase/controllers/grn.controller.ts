@@ -237,8 +237,8 @@ export class GrnController {
 
   @Post(':id/unapprove-invoice')
   @RequireApprove('grns')
-  async unapproveInvoice(@Request() req: any, @Param('id') id: string) {
-    return this.grnService.unapproveInvoice(req.user.tenantId, id);
+  async unapproveInvoice(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.grnService.unapproveInvoice(req.user.tenantId, id, req.user.userId, body);
   }
 
   @Post(':id/rebuild-stock')

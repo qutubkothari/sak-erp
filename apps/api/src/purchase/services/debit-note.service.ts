@@ -284,9 +284,9 @@ export class DebitNoteService {
     const poIds = [...new Set(grnsData.filter((g: any) => g.po_id).map((g: any) => g.po_id))];
     console.log('[AP] unique po_ids for advance lookup:', poIds.length);
 
-    const poSettlements = await Promise.all(poIds.map((poId) => this.getPoSettlement(tenantId, poId)));
+    const poSettlements = await this.getPoSettlementsSafely(tenantId, poIds, 'getVendorPayables');
     const settlementByGrn = new Map<string, any>();
-    for (const settlement of poSettlements) {
+    for (const { settlement } of poSettlements) {
       for (const invoice of settlement.invoices) {
         settlementByGrn.set(invoice.grn_id, invoice.settlement);
       }
@@ -1559,6 +1559,31 @@ export class DebitNoteService {
     };
   }
 
+  private async getPoSettlementsSafely(tenantId: string, poIds: string[], context: string) {
+    const settlements: Array<{ poId: string; settlement: Awaited<ReturnType<DebitNoteService['getPoSettlement']>> }> = [];
+    const concurrency = 6;
+
+    for (let index = 0; index < poIds.length; index += concurrency) {
+      const batch = poIds.slice(index, index + concurrency);
+      const batchSettlements = await Promise.all(batch.map(async (poId) => {
+        try {
+          const settlement = await this.getPoSettlement(tenantId, poId);
+          return { poId, settlement };
+        } catch (error: any) {
+          console.error(`[${context}] skipped PO settlement lookup`, {
+            poId,
+            message: error?.message || String(error),
+          });
+          return null;
+        }
+      }));
+
+      settlements.push(...batchSettlements.filter((entry): entry is { poId: string; settlement: Awaited<ReturnType<DebitNoteService['getPoSettlement']>> } => Boolean(entry)));
+    }
+
+    return settlements;
+  }
+
   async getUnifiedAdvances(
     tenantId: string,
     filters?: {
@@ -1607,8 +1632,8 @@ export class DebitNoteService {
 
     // Allocate each PO's utilized amount across its advance records once.
     const poIds = [...new Set(advances.filter((a: any) => a.po_id).map((a: any) => a.po_id as string))];
-    const settlements = await Promise.all(poIds.map((poId) => this.getPoSettlement(tenantId, poId)));
-    const remainingApplied = new Map(poIds.map((poId, index) => [poId, settlements[index].summary.advanceApplied]));
+    const settlements = await this.getPoSettlementsSafely(tenantId, poIds, 'getUnifiedAdvances');
+    const remainingApplied = new Map(settlements.map(({ poId, settlement }) => [poId, settlement.summary.advanceApplied]));
     const utilizationById = new Map<string, number>();
 
     [...advances]
@@ -1749,9 +1774,9 @@ export class DebitNoteService {
     if (error) throw error;
 
     const poIds = [...new Set((grns || []).filter((g: any) => g.po_id).map((g: any) => g.po_id))];
-    const poSettlements = await Promise.all(poIds.map((poId) => this.getPoSettlement(tenantId, poId)));
+    const poSettlements = await this.getPoSettlementsSafely(tenantId, poIds, 'getGrnsWithPaymentStatus');
     const settlementByGrn = new Map<string, any>();
-    for (const settlement of poSettlements) {
+    for (const { settlement } of poSettlements) {
       for (const invoice of settlement.invoices) {
         settlementByGrn.set(invoice.grn_id, invoice.settlement);
       }
