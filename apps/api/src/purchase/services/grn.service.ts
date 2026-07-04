@@ -464,6 +464,27 @@ export class GrnService {
     // User assigns freight manually via the Supplier Invoice edit form.
     // poFreightAmount and poFreightGstAmount remain 0.
 
+    if (data.items && data.items.length > 0) {
+      // Validate partial receipt rules before creating the GRN header. A failed
+      // validation must not leave an orphan GRN without line items.
+      const receivedByPoItemId = new Map<string, number>();
+      const poItemIds: string[] = [];
+      for (const item of data.items) {
+        const poItemId = String(item.poItemId || '').trim();
+        if (!poItemId) continue;
+        const receiveNow = this.toNumber(item.receivedQty);
+        if (receiveNow <= 0) continue;
+        poItemIds.push(poItemId);
+        receivedByPoItemId.set(poItemId, (receivedByPoItemId.get(poItemId) ?? 0) + receiveNow);
+      }
+
+      const poItemQtyMap = await this.getPoItemQtyMap(poItemIds);
+      await this.validateReceiptsDoNotExceedRemaining({
+        poItemQtyMap,
+        receivedByPoItemId,
+      });
+    }
+
     // Generate GRN number
     const grnNumber = await this.generateGRNNumber(tenantId);
 
@@ -511,23 +532,12 @@ export class GrnService {
 
     // Insert GRN items
     if (data.items && data.items.length > 0) {
-      // Enforce partial receipt rules server-side (do not rely on UI caps)
-      const receivedByPoItemId = new Map<string, number>();
       const poItemIds: string[] = [];
       for (const item of data.items) {
         const poItemId = String(item.poItemId || '').trim();
         if (!poItemId) continue;
-        const receiveNow = this.toNumber(item.receivedQty);
-        if (receiveNow <= 0) continue;
         poItemIds.push(poItemId);
-        receivedByPoItemId.set(poItemId, (receivedByPoItemId.get(poItemId) ?? 0) + receiveNow);
       }
-
-      const poItemQtyMap = await this.getPoItemQtyMap(poItemIds);
-      await this.validateReceiptsDoNotExceedRemaining({
-        poItemQtyMap,
-        receivedByPoItemId,
-      });
 
       // Filter and validate items - ensure valid UUIDs for po_item_id and item_id
       const validItem = (id: any) => {
@@ -1408,10 +1418,31 @@ export class GrnService {
   }
 
   async delete(tenantId: string, id: string) {
+    const { data: grn, error: grnError } = await this.supabase
+      .from('grns')
+      .select('status, qc_completed, invoice_approved')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .single();
+
+    if (grnError || !grn) {
+      throw new NotFoundException('GRN not found');
+    }
+
+    if (
+      String((grn as any).status || '').toUpperCase() === 'COMPLETED' ||
+      (grn as any).qc_completed ||
+      (grn as any).invoice_approved
+    ) {
+      throw new BadRequestException(
+        'Completed, QC-posted, or invoice-approved GRNs cannot be deleted. Use a GRN reversal/void flow to preserve stock and AP audit history.',
+      );
+    }
+
     // Roll back PO received quantities before deleting
     const { data: grnItems, error: grnItemsError } = await this.supabase
       .from('grn_items')
-      .select('po_item_id, received_qty, received_quantity')
+      .select('po_item_id, received_qty')
       .eq('grn_id', id);
 
     if (grnItemsError) {
@@ -1422,7 +1453,7 @@ export class GrnService {
     for (const row of grnItems ?? []) {
       const poItemId = String((row as any).po_item_id || '').trim();
       if (!poItemId) continue;
-      const qty = this.toNumber((row as any).received_qty ?? (row as any).received_quantity);
+      const qty = this.toNumber((row as any).received_qty);
       if (qty <= 0) continue;
       rollbackByPoItemId.set(poItemId, (rollbackByPoItemId.get(poItemId) ?? 0) + qty);
     }
