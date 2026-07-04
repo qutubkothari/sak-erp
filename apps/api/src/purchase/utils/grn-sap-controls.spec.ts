@@ -77,4 +77,23 @@ describe('buildSapGrnControls', () => {
     expect(controls.items[0].stockType).toBe('BLOCKED');
     expect(controls.threeWayMatchStatus).toBe('OK');
   });
+
+  it('marks reversed GRNs with a reversed material document status', () => {
+    const controls = buildSapGrnControls({
+      grnNumber: 'GRN-2026-07-004',
+      status: 'REJECTED',
+      qcCompleted: false,
+      items: [
+        {
+          itemCode: 'RM-REV',
+          orderedQty: 5,
+          receivedQty: 5,
+          acceptedQty: 5,
+          rejectedQty: 0,
+        },
+      ],
+    });
+
+    expect(controls.reversalStatus).toBe('REVERSED');
+  });
 });

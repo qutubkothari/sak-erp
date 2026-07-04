@@ -246,6 +246,12 @@ export class GrnController {
     return this.grnService.rebuildStockEntries(req.user.tenantId, id);
   }
 
+  @Post(':id/reverse')
+  @RequireApprove('grns')
+  async reverse(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.grnService.reverse(req.user.tenantId, id, req.user.userId, body);
+  }
+
   @Post('items/:itemId/generate-uids')
   async generateUIDs(@Request() req: any, @Param('itemId') itemId: string, @Body() body: any) {
     return this.grnService.generateUIDs(req.user.tenantId, itemId, body);

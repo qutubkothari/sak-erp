@@ -11,7 +11,7 @@ import DateInput from '../../../../components/ui/DateInput';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
-import { Eye, FileText, Pencil, Plus, Printer, Search, X, ChevronDown } from 'lucide-react';
+import { Eye, FileText, Pencil, Plus, Printer, RotateCcw, Search, X, ChevronDown } from 'lucide-react';
 
 interface SearchableSelectOption {
   value: string;
@@ -1660,6 +1660,27 @@ function GRNContent() {
       fetchGRNs();
     } catch (error) {
       setAlertMessage({ type: 'error', message: 'Failed to update GRN. Please try again.' });
+    }
+  };
+
+  const handleReverseGRN = async (grn: GRN) => {
+    const reason = window.prompt('Enter GRN reversal reason');
+    if (!reason || !reason.trim()) return;
+
+    try {
+      setSubmitting(true);
+      await apiClient.post(`/purchase/grn/${grn.id}/reverse`, { reason: reason.trim() });
+      const refreshed = await apiClient.get<GRN>(`/purchase/grn/${grn.id}`);
+      setSelectedGRN(refreshed);
+      setAlertMessage({ type: 'success', message: 'GRN reversed successfully.' });
+      fetchGRNs();
+    } catch (error: any) {
+      setAlertMessage({
+        type: 'error',
+        message: error?.message || 'Failed to reverse GRN. Please check stock/AP status and try again.',
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -3359,6 +3380,16 @@ function GRNContent() {
                       <ErpButton variant="secondary" onClick={() => startEditGRN(selectedGRN)}>
                         <Pencil className="h-4 w-4" />
                         Edit
+                      </ErpButton>
+                    )}
+                    {canApproveGRN && selectedGRN.status === 'COMPLETED' && selectedGRN.sap_controls?.reversal_status !== 'REVERSED' && (
+                      <ErpButton
+                        variant="secondary"
+                        onClick={() => handleReverseGRN(selectedGRN)}
+                        disabled={submitting}
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                        Reverse
                       </ErpButton>
                     )}
                     {canEditGRN && (

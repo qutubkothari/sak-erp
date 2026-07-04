@@ -45,7 +45,7 @@ export type SapGrnControl = {
   qcGateStatus: SapQcGateStatus;
   threeWayMatchStatus: SapToleranceStatus;
   toleranceStatus: SapToleranceStatus;
-  reversalStatus: 'NOT_REVERSED';
+  reversalStatus: 'NOT_REVERSED' | 'REVERSED';
   stockPostingPolicy: 'POST_ACCEPTED_ONLY';
   items: SapGrnItemControl[];
   messages: string[];
@@ -150,6 +150,7 @@ export function buildSapGrnControls(input: SapGrnInput): SapGrnControl {
           ? 'REJECTED'
           : 'ACCEPTED'
       : 'PENDING_INSPECTION';
+  const isReversed = String(input.status || '').toUpperCase() === 'REJECTED';
 
   const threeWayMatchStatus: SapToleranceStatus =
     itemToleranceStatus === 'OK' && qcGateStatus !== 'PENDING_INSPECTION' ? 'OK' : itemToleranceStatus;
@@ -164,7 +165,7 @@ export function buildSapGrnControls(input: SapGrnInput): SapGrnControl {
     qcGateStatus,
     threeWayMatchStatus,
     toleranceStatus: itemToleranceStatus,
-    reversalStatus: 'NOT_REVERSED',
+    reversalStatus: isReversed ? 'REVERSED' : 'NOT_REVERSED',
     stockPostingPolicy: 'POST_ACCEPTED_ONLY',
     items,
     messages,

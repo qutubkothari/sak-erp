@@ -1500,6 +1500,227 @@ export class GrnService {
     return { message: 'Stock rebuild triggered', grnId };
   }
 
+  async reverse(tenantId: string, grnId: string, userId: string, body: any = {}) {
+    const reason = String(body?.reason || body?.remarks || '').trim();
+    if (!reason) {
+      throw new BadRequestException('Reversal reason is required');
+    }
+
+    const { data: grn, error } = await this.supabase
+      .from('grns')
+      .select(`
+        id,
+        tenant_id,
+        grn_number,
+        status,
+        qc_completed,
+        invoice_approved,
+        payment_status,
+        paid_amount,
+        debit_note_amount,
+        warehouse_id,
+        notes,
+        grn_items(
+          id,
+          item_id,
+          item_code,
+          po_item_id,
+          received_qty,
+          accepted_qty,
+          debit_note_id,
+          item:items(id, code, category)
+        )
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('id', grnId)
+      .single();
+
+    if (error || !grn) {
+      throw new NotFoundException('GRN not found');
+    }
+
+    const status = String((grn as any).status || '').toUpperCase();
+    if (status === 'REJECTED') {
+      throw new BadRequestException('GRN is already reversed/rejected');
+    }
+    if (status !== 'COMPLETED' && !(grn as any).qc_completed) {
+      throw new BadRequestException('Only completed/QC-posted GRNs can be reversed. Draft GRNs can be deleted.');
+    }
+    if ((grn as any).invoice_approved) {
+      throw new BadRequestException('Cannot reverse GRN because the supplier invoice is approved. Reverse/credit the invoice first.');
+    }
+    const paidAmount = this.toNumber((grn as any).paid_amount);
+    const paymentStatus = String((grn as any).payment_status || '').toUpperCase();
+    if (paidAmount > 0 || paymentStatus === 'PAID' || paymentStatus === 'PARTIAL') {
+      throw new BadRequestException('Cannot reverse GRN because supplier payment exists. Reverse the payment/AP settlement first.');
+    }
+    if (this.toNumber((grn as any).debit_note_amount) > 0) {
+      throw new BadRequestException('Cannot reverse GRN because debit note value exists. Reverse/void the debit note first.');
+    }
+
+    const items = Array.isArray((grn as any).grn_items) ? (grn as any).grn_items : [];
+    if (items.some((item: any) => item?.debit_note_id)) {
+      throw new BadRequestException('Cannot reverse GRN because one or more lines are linked to debit notes.');
+    }
+
+    const warehouseId = String((grn as any).warehouse_id || '').trim();
+    if (!warehouseId) {
+      throw new BadRequestException('Cannot reverse GRN without warehouse reference');
+    }
+
+    const reversalLines = items
+      .map((item: any) => ({
+        grnItemId: String(item?.id || '').trim(),
+        itemId: String(item?.item_id || item?.item?.id || '').trim(),
+        itemCode: String(item?.item_code || item?.item?.code || '').trim(),
+        category: normalizeInventoryCategory(item?.item?.category, 'RAW_MATERIAL'),
+        poItemId: String(item?.po_item_id || '').trim(),
+        receivedQty: this.toNumber(item?.received_qty),
+        acceptedQty: this.toNumber(item?.accepted_qty),
+      }))
+      .filter((line) => line.grnItemId && line.itemId && (line.acceptedQty > 0 || line.receivedQty > 0));
+
+    const stockLines = reversalLines.filter((line) => line.acceptedQty > 0);
+    for (const line of stockLines) {
+      const { data: stockRows, error: stockError } = await this.supabase
+        .from('inventory_stock')
+        .select('available_quantity, quantity')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', line.itemId)
+        .eq('warehouse_id', warehouseId)
+        .eq('category', line.category);
+
+      if (stockError) {
+        throw new BadRequestException(stockError.message);
+      }
+
+      const available = (stockRows || []).reduce(
+        (sum: number, row: any) => sum + this.toNumber(row?.available_quantity ?? row?.quantity),
+        0,
+      );
+
+      if (available + 1e-9 < line.acceptedQty) {
+        throw new BadRequestException(
+          `Cannot reverse GRN line ${line.itemCode || line.itemId}; available stock ${available} is less than accepted quantity ${line.acceptedQty}.`,
+        );
+      }
+    }
+
+    const insertedStockEntryIds: string[] = [];
+    const adjustedStockLines: typeof stockLines = [];
+    const poRollbackStates: Array<{ poItemId: string; previousReceivedQty: number }> = [];
+    try {
+      for (const line of stockLines) {
+        const { error: adjustError } = await this.supabase.rpc('adjust_inventory_stock', {
+          p_tenant_id: tenantId,
+          p_item_id: line.itemId,
+          p_warehouse_id: warehouseId,
+          p_location_id: null,
+          p_quantity_change: -line.acceptedQty,
+          p_category: line.category,
+        });
+        if (adjustError) {
+          throw new BadRequestException(adjustError.message);
+        }
+        adjustedStockLines.push(line);
+
+        const { data: reversalEntry, error: stockEntryError } = await this.supabase
+          .from('stock_entries')
+          .insert({
+            tenant_id: tenantId,
+            item_id: line.itemId,
+            warehouse_id: warehouseId,
+            quantity: -line.acceptedQty,
+            available_quantity: -line.acceptedQty,
+            allocated_quantity: 0,
+            metadata: {
+              created_from: 'GRN_REVERSAL',
+              grn_id: grnId,
+              grn_number: (grn as any).grn_number,
+              grn_item_id: line.grnItemId,
+              item_code: line.itemCode || null,
+              reversal_reason: reason,
+              reversed_by: userId || null,
+              reversed_at: new Date().toISOString(),
+            },
+          })
+          .select('id')
+          .single();
+
+        if (stockEntryError) {
+          throw new BadRequestException(stockEntryError.message);
+        }
+        if (reversalEntry?.id) insertedStockEntryIds.push(reversalEntry.id);
+      }
+
+      const receivedRollbackByPoItemId = new Map<string, number>();
+      for (const line of reversalLines) {
+        if (!line.poItemId || line.receivedQty <= 0) continue;
+        receivedRollbackByPoItemId.set(
+          line.poItemId,
+          (receivedRollbackByPoItemId.get(line.poItemId) ?? 0) + line.receivedQty,
+        );
+      }
+
+      const poQtyMap = await this.getPoItemQtyMap(Array.from(receivedRollbackByPoItemId.keys()));
+      for (const [poItemId, rollbackQty] of receivedRollbackByPoItemId.entries()) {
+        const currentReceived = this.toNumber(poQtyMap.get(poItemId)?.receivedQty);
+        poRollbackStates.push({ poItemId, previousReceivedQty: currentReceived });
+        await this.supabase
+          .from('purchase_order_items')
+          .update({ received_qty: Math.max(0, currentReceived - rollbackQty) })
+          .eq('id', poItemId);
+      }
+
+      const previousNotes = String((grn as any).notes || '').trim();
+      const reversalNote = `Reversed on ${new Date().toISOString()} by ${userId || 'system'}: ${reason}`;
+      const { error: grnUpdateError } = await this.supabase
+        .from('grns')
+        .update({
+          status: 'REJECTED',
+          qc_completed: false,
+          notes: previousNotes ? `${previousNotes}\n${reversalNote}` : reversalNote,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', tenantId)
+        .eq('id', grnId);
+
+      if (grnUpdateError) {
+        throw new BadRequestException(grnUpdateError.message);
+      }
+
+      await this.refreshSapControlsForGrn(tenantId, grnId, userId);
+
+      return {
+        message: 'GRN reversed successfully',
+        grnId,
+        grnNumber: (grn as any).grn_number,
+        reversedStockLines: stockLines.length,
+      };
+    } catch (reversalError) {
+      for (const line of adjustedStockLines.reverse()) {
+        await this.supabase.rpc('adjust_inventory_stock', {
+          p_tenant_id: tenantId,
+          p_item_id: line.itemId,
+          p_warehouse_id: warehouseId,
+          p_location_id: null,
+          p_quantity_change: line.acceptedQty,
+          p_category: line.category,
+        });
+      }
+      if (insertedStockEntryIds.length > 0) {
+        await this.supabase.from('stock_entries').delete().in('id', insertedStockEntryIds);
+      }
+      for (const state of poRollbackStates.reverse()) {
+        await this.supabase
+          .from('purchase_order_items')
+          .update({ received_qty: state.previousReceivedQty })
+          .eq('id', state.poItemId);
+      }
+      throw reversalError;
+    }
+  }
+
   async qcAccept(tenantId: string, grnId: string, userId: string, body: any) {
     // body contains: items array with { itemId, acceptedQty, rejectedQty, qcNotes, rejectionReason }
     console.log('=== QC ACCEPT START ===');
