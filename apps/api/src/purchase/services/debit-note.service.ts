@@ -943,6 +943,21 @@ export class DebitNoteService {
     return data || [];
   }
 
+  async getPaymentReversals(tenantId: string, grnId: string) {
+    const { data, error } = await this.supabase
+      .from('grn_payment_reversals')
+      .select('*')
+      .eq('grn_id', grnId)
+      .eq('tenant_id', tenantId)
+      .order('reversed_at', { ascending: false });
+
+    if (error) {
+      console.error('[getPaymentReversals] error:', error.message);
+      return [];
+    }
+    return data || [];
+  }
+
   // Get full payable detail for a single GRN (used by frontend detail modal)
   async getGrnPayableDetail(tenantId: string, grnId: string) {
     const { data: grn, error } = await this.supabase
@@ -959,6 +974,7 @@ export class DebitNoteService {
     if (!grn) throw new NotFoundException(`GRN not found (id: ${grnId})`);  
 
     const entries = await this.getPaymentEntries(tenantId, grnId);
+    const reversals = await this.getPaymentReversals(tenantId, grnId);
 
     // Fetch advance payments for this GRN's PO
     const poId = grn.po_id || grn.purchase_order?.id;
@@ -1031,6 +1047,7 @@ export class DebitNoteService {
       available_vendor_advance: vendorAdvanceAmount,
       outstanding_amount: outstanding,
       payment_entries: allEntries,
+      payment_reversals: reversals,
     };
   }
 

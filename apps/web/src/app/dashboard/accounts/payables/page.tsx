@@ -59,6 +59,20 @@ interface PaymentEntry {
   entry_type?: string;
 }
 
+interface PaymentReversal {
+  id: string;
+  payment_entry_id: string;
+  original_payment_date?: string | null;
+  original_amount: number;
+  original_tds_amount?: number;
+  original_short_payment_amount?: number;
+  original_payment_method?: string | null;
+  original_payment_reference?: string | null;
+  reversal_reason: string;
+  reversed_by?: string | null;
+  reversed_at: string;
+}
+
 interface GRNDetail extends GRNPayable {
   computed_paid: number;
   computed_tds: number;
@@ -66,6 +80,7 @@ interface GRNDetail extends GRNPayable {
   computed_advance?: number;
   outstanding_amount: number;
   payment_entries: PaymentEntry[];
+  payment_reversals?: PaymentReversal[];
 }
 
 const fmtINR = (n: number | null | undefined) =>
@@ -1302,6 +1317,45 @@ export default function AccountsPayablePage() {
                       </table>
                     )}
                   </div>
+
+                  {(selectedGRNDetail.payment_reversals || []).length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-700 mb-2">
+                        Reversal History ({selectedGRNDetail.payment_reversals?.length || 0})
+                      </h3>
+                      <table className="w-full text-sm border border-red-100 rounded-lg overflow-hidden">
+                        <thead className="bg-red-50">
+                          <tr>
+                            {['Reversed On','Original Date','Method','Ref','Amount','Reason'].map(h => (
+                              <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-red-700">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-red-100">
+                          {(selectedGRNDetail.payment_reversals || []).map((reversal) => (
+                            <tr key={reversal.id} className="bg-white hover:bg-red-50">
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {new Date(reversal.reversed_at).toLocaleString('en-IN')}
+                              </td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {reversal.original_payment_date ? new Date(reversal.original_payment_date).toLocaleDateString('en-IN') : '—'}
+                              </td>
+                              <td className="px-3 py-2">{reversal.original_payment_method || '—'}</td>
+                              <td className="px-3 py-2 text-gray-500 text-xs">{reversal.original_payment_reference || '—'}</td>
+                              <td className="px-3 py-2 font-semibold text-red-700">
+                                -₹{fmtINR(
+                                  +(reversal.original_amount || 0) +
+                                  +(reversal.original_tds_amount || 0) +
+                                  +(reversal.original_short_payment_amount || 0)
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-600">{reversal.reversal_reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="text-center text-gray-400">Could not load details</div>
