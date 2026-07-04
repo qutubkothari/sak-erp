@@ -1862,7 +1862,7 @@ function PurchaseOrdersContent() {
         summary.paymentCount += grn.payment_entries?.length || 0;
         return summary;
       }, {
-        poValue: Number(po.total_amount || 0),
+        poValue: Number((po as any).grand_total ?? po.total_amount ?? 0),
         invoiced: 0,
         paid: 0,
         tds: 0,
@@ -4784,7 +4784,7 @@ function PurchaseOrdersContent() {
                         </div>
                         <div>
                           <span className="text-gray-500">Amount:</span>
-                          <p className="font-semibold text-[#4A3426]">₹{fmtINR(trailPO.total_amount)}</p>
+                          <p className="font-semibold text-[#4A3426]">₹{fmtINR(Number((trailPO as any).grand_total ?? trailPO.total_amount ?? 0))}</p>
                         </div>
                         <div>
                           <span className="text-gray-500">Status:</span>
