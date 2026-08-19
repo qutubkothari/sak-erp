@@ -5,6 +5,7 @@ This folder is a holding area for files that are safe to remove from their forme
 ## Moved automatically
 
 `generated-qa/` contains untracked browser QA screenshots and the untracked web-build error log. They are retained here for audit and have not been deleted.
+It also contains the ignored `qa-results` output folder (39 generated test reports), moved out of the workspace root intact.
 
 `deploy-archives/` contains ignored root-level deployment bundles and transient build/test logs. These are historical artifacts, not application runtime inputs. They remain available here for review and rollback investigation.
 
