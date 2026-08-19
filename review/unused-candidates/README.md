@@ -9,6 +9,8 @@ It also contains the ignored `qa-results` output folder (39 generated test repor
 
 `deploy-archives/` contains ignored root-level deployment bundles and transient build/test logs. These are historical artifacts, not application runtime inputs. They remain available here for review and rollback investigation.
 
+`legacy-outputs/` contains four root-level, tracked generated test/import output files with no static references. They were moved rather than deleted so their content remains recoverable.
+
 ## Scripts and code
 
 No executable code or operational script has been moved yet. Static reference searches cannot prove a script is unused: many deployment, migration, recovery, and QA scripts are intentionally run manually or by external operators. Each script needs an owner and a confirmed replacement or retirement decision before it is quarantined.
