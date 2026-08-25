@@ -43,7 +43,13 @@ async function request(method, path, token, body, expected = [200, 201]) {
 
   const tools = await request('GET', '/intelligence/tools', token);
   const toolList = Array.isArray(tools) ? tools : tools.tools;
-  assert(Array.isArray(toolList) && toolList.length === 7, 'Expected exactly seven governed tools.', tools);
+  assert(Array.isArray(toolList) && toolList.length === 13, 'Expected exactly thirteen governed tools.', tools);
+  for (const code of ['CREATE_PURCHASE_ORDER_DRAFT','APPLY_SALES_ORDER_HOLD','CREATE_QUALITY_CONTAINMENT','CREATE_BANK_RECONCILIATION_REVIEW']) {
+    assert(toolList.some((tool) => tool.code === code), `Governed tool ${code} is unavailable.`, toolList);
+  }
+
+  const documentIntakes = await request('GET', '/intelligence/document-intakes', token);
+  assert(Array.isArray(documentIntakes), 'Document-intelligence queue failed to load.', documentIntakes);
 
   const observability = await request('GET', '/intelligence/observability', token);
   assert(observability && typeof observability === 'object', 'Observability response is missing.', observability);
@@ -78,6 +84,7 @@ async function request(method, path, token, body, expected = [200, 201]) {
     raw_material_options: inventoryItems.length,
     subcontract_orders: subcontractOrders.length,
     governed_tools: toolList.length,
+    document_intakes: documentIntakes.length,
     onboarding_batch: onboarding.batch?.id,
     graph_nodes_sampled: graph.nodes.length,
     graph_edges_sampled: graph.edges.length,
