@@ -316,8 +316,10 @@ ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS processing_amo
 ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS tax_percent NUMERIC(8, 3) DEFAULT 0;
 ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(18, 2) DEFAULT 0;
 ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS payable_amount NUMERIC(18, 2) DEFAULT 0;
+ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(18, 2) DEFAULT 0;
 ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(120);
 ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS invoice_date DATE;
+ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS invoice_status VARCHAR(30) DEFAULT 'NOT_RECEIVED';
 ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS issue_movement_id UUID REFERENCES public.subcontract_movements(id);
 ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS remaining_qty NUMERIC(18,4);
 ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS balance_status VARCHAR(30) DEFAULT 'OPEN';

@@ -32,6 +32,15 @@ async function request(method, path, token, body, expected = [200, 201]) {
   assert(login.accessToken, 'Login did not return an access token.');
   const token = login.accessToken;
 
+  const inventoryResponse = await request('GET', '/inventory/items', token);
+  const inventoryItems = Array.isArray(inventoryResponse)
+    ? inventoryResponse
+    : (inventoryResponse?.data || inventoryResponse?.items || []);
+  assert(Array.isArray(inventoryItems) && inventoryItems.length > 0, 'Raw-material selector has no inventory items.', inventoryResponse);
+
+  const subcontractOrders = await request('GET', '/production/subcontracting/orders', token);
+  assert(Array.isArray(subcontractOrders), 'Subcontract order list failed to load.', subcontractOrders);
+
   const tools = await request('GET', '/intelligence/tools', token);
   const toolList = Array.isArray(tools) ? tools : tools.tools;
   assert(Array.isArray(toolList) && toolList.length === 7, 'Expected exactly seven governed tools.', tools);
@@ -66,6 +75,8 @@ async function request(method, path, token, body, expected = [200, 201]) {
 
   console.log(JSON.stringify({
     result: 'PASS',
+    raw_material_options: inventoryItems.length,
+    subcontract_orders: subcontractOrders.length,
     governed_tools: toolList.length,
     onboarding_batch: onboarding.batch?.id,
     graph_nodes_sampled: graph.nodes.length,
