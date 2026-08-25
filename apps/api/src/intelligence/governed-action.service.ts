@@ -4,7 +4,9 @@ import { createHash } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { PlantMaintenanceService } from '../plant-maintenance/plant-maintenance.service';
 import { PurchaseRequisitionsService } from '../purchase/services/purchase-requisitions.service';
+import { PurchaseOrdersService } from '../purchase/services/purchase-orders.service';
 import { QualityService } from '../quality/services/quality.service';
+import { SalesService } from '../sales/services/sales.service';
 import { GovernedToolRegistryService } from './governed-tool-registry.service';
 import { OperatingEventsService } from './operating-events.service';
 
@@ -14,8 +16,10 @@ export class GovernedActionService {
   constructor(
     private readonly registry: GovernedToolRegistryService,
     private readonly purchaseRequisitions: PurchaseRequisitionsService,
+    private readonly purchaseOrders: PurchaseOrdersService,
     private readonly maintenance: PlantMaintenanceService,
     private readonly quality: QualityService,
+    private readonly sales: SalesService,
     private readonly audit: AuditService,
     private readonly events: OperatingEventsService,
   ) {}
@@ -91,12 +95,44 @@ export class GovernedActionService {
       if (tool.code === 'CREATE_PURCHASE_REQUISITION_DRAFT') {
         native = await this.purchaseRequisitions.create(tenantId, row.created_by, { department: payload.department, purpose: payload.purpose, requiredDate: payload.required_date, priority: payload.priority || 'MEDIUM', remarks: payload.remarks, status: 'DRAFT', items: (payload.items || []).map((item: any) => ({ itemId: item.item_id, itemCode: item.item_code, itemName: item.item_name, description: item.description, uom: item.uom, requestedQty: item.requested_qty, estimatedRate: item.estimated_rate, requiredDate: item.required_date || payload.required_date, vendorId: item.vendor_id })) });
         route = '/dashboard/purchase/requisitions';
+      } else if (tool.code === 'CREATE_PURCHASE_ORDER_DRAFT') {
+        native = await this.purchaseOrders.create(tenantId, row.created_by, {
+          prId: payload.pr_id || undefined,
+          vendorId: payload.vendor_id,
+          deliveryDate: payload.delivery_date,
+          deliveryAddress: payload.delivery_address,
+          paymentTerms: payload.payment_terms,
+          remarks: payload.remarks,
+          status: 'DRAFT',
+          items: (payload.items || []).map((item: any) => ({
+            prItemId: item.pr_item_id,
+            itemId: item.item_id,
+            itemCode: item.item_code,
+            itemName: item.item_name,
+            description: item.description,
+            uom: item.uom,
+            orderedQty: item.ordered_qty,
+            rate: item.rate,
+            taxPercent: item.tax_percent,
+            discountPercent: item.discount_percent,
+            deliveryDate: item.delivery_date || payload.delivery_date,
+          })),
+        });
+        route = '/dashboard/purchase/orders';
       } else if (tool.code === 'CREATE_MAINTENANCE_WORK_ORDER') {
         native = await this.maintenance.createWorkOrder(tenantId, row.created_by, payload); route = '/dashboard/production/maintenance';
       } else if (tool.code === 'CREATE_QUALITY_NCR') {
         native = await this.quality.createNCR(tenantId, row.created_by, payload); route = '/dashboard/quality';
+      } else if (tool.code === 'APPLY_SALES_ORDER_HOLD') {
+        const scope = String(payload.hold_scope || 'DELIVERY').toUpperCase();
+        native = await this.sales.updateSalesOrderBlocks({ user: { ...user, tenantId, userId } } as any, payload.sales_order_id, {
+          delivery_block: ['DELIVERY', 'BOTH'].includes(scope),
+          billing_block: ['BILLING', 'BOTH'].includes(scope),
+          block_reason: payload.block_reason,
+        });
+        route = '/dashboard/sales/orders';
       } else throw new BadRequestException('No native executor is registered for this tool.');
-      const nativeResult = { id: native?.id, number: native?.pr_number || native?.work_order_number || native?.ncr_number || null, route };
+      const nativeResult = { id: native?.id, number: native?.pr_number || native?.po_number || native?.so_number || native?.work_order_number || native?.ncr_number || null, route };
       const { data: completed, error } = await this.db.from('mizantra_governed_action_requests').update({ status: 'EXECUTED', native_resource_type: tool.code, native_resource_id: native?.id || null, native_result: nativeResult, executed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', id).eq('status', 'EXECUTING').select().single();
       if (error) throw new BadRequestException(error.message);
       await this.events.record({ tenantId, eventType: 'GOVERNED_NATIVE_ACTION_EXECUTED', domain: tool.code, severity: 'HIGH', correlationId: row.insight_id, sourceType: tool.code, sourceId: native?.id, title: `${tool.name} executed`, summary: `Approved action created native record ${nativeResult.number || nativeResult.id}.`, route, actorUserId: userId, payload: { action_request_id: id, approved_by: row.approved_by, native_result: nativeResult } });

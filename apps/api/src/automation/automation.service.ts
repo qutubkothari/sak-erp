@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { OperatingEventsService } from '../intelligence/operating-events.service';
 
-const SUPPORTED_TRIGGERS = new Set(['QUOTATION_EXPIRING', 'RECEIVABLE_OVERDUE', 'SERVICE_SLA_RISK', 'SERVICE_CONTRACT_EXPIRING', 'WARRANTY_EXPIRING', 'PREVENTIVE_MAINTENANCE_DUE', 'SERVICE_ESTIMATE_EXPIRING', 'LOW_STOCK', 'PO_OVERDUE', 'MANUAL']);
+const SUPPORTED_TRIGGERS = new Set(['QUOTATION_EXPIRING', 'RECEIVABLE_OVERDUE', 'SERVICE_SLA_RISK', 'SERVICE_CONTRACT_EXPIRING', 'WARRANTY_EXPIRING', 'PREVENTIVE_MAINTENANCE_DUE', 'SERVICE_ESTIMATE_EXPIRING', 'LOW_STOCK', 'PO_OVERDUE', 'QUALITY_REJECTION_RATE', 'CUSTOMER_CREDIT_EXPOSURE', 'MANUAL']);
 const SUPPORTED_MODULES = new Set(['SALES', 'SERVICE', 'PURCHASE', 'INVENTORY', 'FINANCE', 'OPERATIONS']);
 
 @Injectable()
@@ -287,8 +287,25 @@ export class AutomationService {
         return data || [];
       }
       if (trigger === 'PO_OVERDUE') {
-        const { data } = await this.supabase.from('purchase_orders').select('id,po_number,expected_delivery_date,status,vendor:vendors(vendor_name,email)').eq('tenant_id', tenantId).in('status', ['APPROVED', 'PARTIAL']).lt('expected_delivery_date', past.slice(0, 10)).limit(200);
+        const { data } = await this.supabase.from('purchase_orders').select('id,po_number,delivery_date,status,vendor:vendors(name,email)').eq('tenant_id', tenantId).in('status', ['APPROVED', 'PARTIAL']).lt('delivery_date', past.slice(0, 10)).limit(200);
         return data || [];
+      }
+      if (trigger === 'QUALITY_REJECTION_RATE') {
+        const threshold = Math.max(0, Math.min(Number(conditions.threshold_pct || 3), 100));
+        const { data } = await this.supabase.from('process_quality_metrics').select('id,process_name,metric_date,units_produced,units_failed,units_reworked,defect_rate,quality_related_downtime').eq('tenant_id', tenantId).gte('metric_date', past.slice(0, 10)).gt('defect_rate', threshold).order('defect_rate', { ascending: false }).limit(200);
+        return data || [];
+      }
+      if (trigger === 'CUSTOMER_CREDIT_EXPOSURE') {
+        const threshold = Math.max(0, Number(conditions.threshold_amount || 0));
+        const [{ data: customers }, { data: invoices }, { data: orders }] = await Promise.all([
+          this.supabase.from('customers').select('id,customer_code,customer_name,email,credit_limit').eq('tenant_id', tenantId).eq('is_active', true),
+          this.supabase.from('sales_invoices').select('id,customer_id,balance_amount,billing_status').eq('tenant_id', tenantId).gt('balance_amount', 0).neq('billing_status', 'CANCELLED'),
+          this.supabase.from('sales_orders').select('id,customer_id,balance_amount,status').eq('tenant_id', tenantId).in('status', ['CONFIRMED','IN_PROGRESS','PARTIAL','APPROVED']),
+        ]);
+        return (customers || []).map((customer: any) => {
+          const exposure = (invoices || []).filter((row: any) => row.customer_id === customer.id).reduce((sum: number, row: any) => sum + Number(row.balance_amount || 0), 0) + (orders || []).filter((row: any) => row.customer_id === customer.id).reduce((sum: number, row: any) => sum + Number(row.balance_amount || 0), 0);
+          return { ...customer, exposure, available_credit: Number(customer.credit_limit || 0) - exposure };
+        }).filter((customer: any) => customer.exposure > Math.max(threshold, Number(customer.credit_limit || 0))).sort((a: any,b: any) => b.exposure-a.exposure).slice(0,200);
       }
     } catch { return []; }
     return [];

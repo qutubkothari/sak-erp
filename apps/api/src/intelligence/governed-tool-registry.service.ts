@@ -5,9 +5,15 @@ export type GovernedToolCode =
   | 'ASSIGN_FOLLOW_UP'
   | 'CREATE_COLLECTION_FOLLOWUP'
   | 'RECOMMEND_RESCHEDULE'
+  | 'REQUEST_SUPPLIER_RECOVERY'
+  | 'REQUEST_QUOTES_REVIEW'
+  | 'CREATE_QUALITY_CONTAINMENT'
+  | 'CREATE_BANK_RECONCILIATION_REVIEW'
   | 'CREATE_PURCHASE_REQUISITION_DRAFT'
+  | 'CREATE_PURCHASE_ORDER_DRAFT'
   | 'CREATE_MAINTENANCE_WORK_ORDER'
-  | 'CREATE_QUALITY_NCR';
+  | 'CREATE_QUALITY_NCR'
+  | 'APPLY_SALES_ORDER_HOLD';
 
 export type GovernedToolDefinition = {
   code: GovernedToolCode;
@@ -54,11 +60,46 @@ export class GovernedToolRegistryService {
       output_schema: { task: 'automation task', safe_note: 'execution boundary statement' },
     },
     {
+      code: 'REQUEST_SUPPLIER_RECOVERY', name: 'Create supplier recovery follow-up',
+      description: 'Creates an owned supplier recovery task linked to the delayed or at-risk supply record.',
+      effect: 'TASK_ONLY', risk: 'MEDIUM', approval_required: false, native_workflow_required: true, required_permission: 'purchase_orders:update',
+      input_schema: { required: ['insight_id'], optional: ['due_date', 'vendor_id', 'purchase_order_id', 'notes'], maximum_string_length: 500 },
+      output_schema: { task: 'automation task', safe_note: 'execution boundary statement' },
+    },
+    {
+      code: 'REQUEST_QUOTES_REVIEW', name: 'Create request-for-quotes review',
+      description: 'Creates a sourcing review task; supplier communication remains in the native RFQ workflow.',
+      effect: 'TASK_ONLY', risk: 'MEDIUM', approval_required: false, native_workflow_required: true, required_permission: 'purchase_requisitions:update',
+      input_schema: { required: ['insight_id'], optional: ['due_date', 'item_id', 'purchase_requisition_id', 'notes'], maximum_string_length: 500 },
+      output_schema: { task: 'automation task', safe_note: 'execution boundary statement' },
+    },
+    {
+      code: 'CREATE_QUALITY_CONTAINMENT', name: 'Create quality containment task',
+      description: 'Creates an auditable containment task without releasing, accepting or scrapping material.',
+      effect: 'TASK_ONLY', risk: 'MEDIUM', approval_required: false, native_workflow_required: true, required_permission: 'quality:update',
+      input_schema: { required: ['insight_id'], optional: ['due_date', 'item_id', 'inspection_id', 'ncr_id', 'notes'], maximum_string_length: 500 },
+      output_schema: { task: 'automation task', safe_note: 'execution boundary statement' },
+    },
+    {
+      code: 'CREATE_BANK_RECONCILIATION_REVIEW', name: 'Create bank reconciliation review',
+      description: 'Creates a finance review task; it does not match, exclude or post a bank transaction.',
+      effect: 'TASK_ONLY', risk: 'MEDIUM', approval_required: false, native_workflow_required: true, required_permission: 'accounting:update',
+      input_schema: { required: ['insight_id'], optional: ['due_date', 'bank_account_id', 'transaction_id', 'notes'], maximum_string_length: 500 },
+      output_schema: { task: 'automation task', safe_note: 'execution boundary statement' },
+    },
+    {
       code: 'CREATE_PURCHASE_REQUISITION_DRAFT', name: 'Create purchase requisition draft',
       description: 'Creates a native draft PR only after independent approval of the action request.',
       effect: 'NATIVE_DRAFT', risk: 'HIGH', approval_required: true, native_workflow_required: true, required_permission: 'purchase_requisitions:create',
       input_schema: { required: ['insight_id', 'department', 'purpose', 'required_date', 'items'], optional: ['priority', 'remarks'], maximum_string_length: 500 },
       output_schema: { action_request: 'maker-checker request', native_record: 'purchase requisition after execution' },
+    },
+    {
+      code: 'CREATE_PURCHASE_ORDER_DRAFT', name: 'Create purchase order draft',
+      description: 'Creates a native draft PO only after independent approval; normal PO approval and supplier-release controls still apply.',
+      effect: 'NATIVE_DRAFT', risk: 'HIGH', approval_required: true, native_workflow_required: true, required_permission: 'purchase_orders:create',
+      input_schema: { required: ['insight_id', 'vendor_id', 'delivery_date', 'delivery_address', 'items'], optional: ['pr_id', 'payment_terms', 'remarks'], maximum_string_length: 500 },
+      output_schema: { action_request: 'maker-checker request', native_record: 'draft purchase order after execution' },
     },
     {
       code: 'CREATE_MAINTENANCE_WORK_ORDER', name: 'Create maintenance work order',
@@ -73,6 +114,13 @@ export class GovernedToolRegistryService {
       effect: 'NATIVE_TRANSACTION', risk: 'HIGH', approval_required: true, native_workflow_required: true, required_permission: 'quality:create',
       input_schema: { required: ['insight_id', 'description', 'nonconformance_type'], optional: ['item_id', 'item_name', 'vendor_id', 'production_order_id', 'quantity_affected', 'cost_impact'], maximum_string_length: 500 },
       output_schema: { action_request: 'maker-checker request', native_record: 'quality NCR after execution' },
+    },
+    {
+      code: 'APPLY_SALES_ORDER_HOLD', name: 'Apply sales-order hold',
+      description: 'Applies a native delivery and/or billing hold only after independent approval.',
+      effect: 'NATIVE_TRANSACTION', risk: 'HIGH', approval_required: true, native_workflow_required: true, required_permission: 'sales:update',
+      input_schema: { required: ['insight_id', 'sales_order_id', 'block_reason'], optional: ['hold_scope'], maximum_string_length: 500 },
+      output_schema: { action_request: 'maker-checker request', native_record: 'sales order control update after execution' },
     },
   ];
 

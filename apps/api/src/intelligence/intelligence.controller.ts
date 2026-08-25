@@ -5,6 +5,7 @@ import { GovernedActionService } from './governed-action.service';
 import { OnboardingIntelligenceService } from './onboarding-intelligence.service';
 import { KnowledgeGraphService } from './knowledge-graph.service';
 import { AgentOrchestrationService } from './agent-orchestration.service';
+import { DocumentIntelligenceService } from './document-intelligence.service';
 
 @Controller('intelligence')
 @UseGuards(JwtAuthGuard)
@@ -15,6 +16,7 @@ export class IntelligenceController {
     private readonly onboardingIntelligence: OnboardingIntelligenceService,
     private readonly knowledgeGraph: KnowledgeGraphService,
     private readonly agents: AgentOrchestrationService,
+    private readonly documentIntelligence: DocumentIntelligenceService,
   ) {}
 
   @Get('command-center')
@@ -129,6 +131,15 @@ export class IntelligenceController {
   @Get('onboarding/batches')
   onboardingBatches(@Req() request: any) { return this.onboardingIntelligence.list(request.user.tenantId); }
 
+  @Get('document-intakes')
+  documentIntakes(@Req() request: any) { return this.documentIntelligence.list(request.user.tenantId); }
+
+  @Post('document-intakes/:documentId/analyse')
+  analyseDocument(@Req() request: any, @Param('documentId') documentId: string, @Body() body: any) { return this.documentIntelligence.analyse(request.user.tenantId, request.user, documentId, request, body || {}); }
+
+  @Patch('document-intakes/:id/approve')
+  approveDocument(@Req() request: any, @Param('id') id: string) { return this.documentIntelligence.approve(request.user.tenantId, request.user, id); }
+
   @Get('onboarding/batches/:id')
   onboardingBatch(@Req() request: any, @Param('id') id: string) { return this.onboardingIntelligence.detail(request.user.tenantId, id); }
 
@@ -137,6 +148,9 @@ export class IntelligenceController {
 
   @Patch('onboarding/batches/:id/approve')
   approveOnboarding(@Req() request: any, @Param('id') id: string) { return this.onboardingIntelligence.approve(request.user.tenantId, request.user, id); }
+
+  @Post('onboarding/batches/:id/apply')
+  applyOnboarding(@Req() request: any, @Param('id') id: string) { return this.onboardingIntelligence.apply(request.user.tenantId, request.user, id); }
 
   @Get('observability')
   observability(@Req() request: any) {

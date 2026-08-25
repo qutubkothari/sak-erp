@@ -17,11 +17,19 @@ import { AiModule } from '../ai/ai.module';
 import { OnboardingIntelligenceService } from './onboarding-intelligence.service';
 import { KnowledgeGraphService } from './knowledge-graph.service';
 import { AgentOrchestrationService } from './agent-orchestration.service';
+import { CrossModuleExceptionService } from './cross-module-exception.service';
+import { SalesModule } from '../sales/sales.module';
+import { DocumentsModule } from '../documents/documents.module';
+import { DocumentIntelligenceService } from './document-intelligence.service';
+import { ItemsModule } from '../items/items.module';
+import { BomModule } from '../bom/bom.module';
+import { AccountingModule } from '../accounting/accounting.module';
+import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
-  imports: [AuditModule, DashboardModule, EnterpriseEdgeModule, PurchaseModule, PlantMaintenanceModule, QualityModule, AiModule],
+  imports: [AuditModule, DashboardModule, EnterpriseEdgeModule, PurchaseModule, PlantMaintenanceModule, QualityModule, SalesModule, DocumentsModule, ItemsModule, BomModule, AccountingModule, InventoryModule, AiModule],
   controllers: [IntelligenceController],
-  providers: [IntelligenceService, OperatingEventsService, GovernedToolRegistryService, GovernedActionService, OnboardingIntelligenceService, KnowledgeGraphService, AgentOrchestrationService, FactoryHealthScheduler, ManagementBriefScheduler, ExceptionNotificationScheduler],
+  providers: [IntelligenceService, CrossModuleExceptionService, DocumentIntelligenceService, OperatingEventsService, GovernedToolRegistryService, GovernedActionService, OnboardingIntelligenceService, KnowledgeGraphService, AgentOrchestrationService, FactoryHealthScheduler, ManagementBriefScheduler, ExceptionNotificationScheduler],
   exports: [OperatingEventsService],
 })
 export class IntelligenceModule {}

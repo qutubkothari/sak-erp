@@ -6,6 +6,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { OperatingEventsService } from './operating-events.service';
 import { GovernedToolRegistryService } from './governed-tool-registry.service';
 import { AiProviderService } from '../ai/ai-provider.service';
+import { CrossModuleExceptionService } from './cross-module-exception.service';
 
 type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
@@ -19,6 +20,7 @@ export class IntelligenceService {
     private readonly events: OperatingEventsService,
     private readonly tools: GovernedToolRegistryService,
     private readonly ai: AiProviderService,
+    private readonly crossModuleExceptions: CrossModuleExceptionService,
   ) {}
 
   private roles(user: any): string[] {
@@ -32,6 +34,8 @@ export class IntelligenceService {
   private roleView(user: any) {
     const roles = this.roles(user).join(' ').toUpperCase();
     if (/FINANCE|ACCOUNT|CFO/.test(roles)) return 'FINANCE';
+    if (/QUALITY|QA|QC/.test(roles)) return 'QUALITY';
+    if (/MAINTENANCE|EAM|TECHNICIAN/.test(roles)) return 'MAINTENANCE';
     if (/PURCHASE|PROCUREMENT|BUYER/.test(roles)) return 'PROCUREMENT';
     if (/PRODUCTION|OPERATIONS|PLANT|FACTORY/.test(roles)) return 'OPERATIONS';
     if (/SALES|COMMERCIAL|CRM/.test(roles)) return 'COMMERCIAL';
@@ -73,7 +77,7 @@ export class IntelligenceService {
     const cockpit = await this.dashboard.getCockpit(tenantId);
     let roi: any = null;
     try { roi = await this.value.dashboard(tenantId); } catch { /* ROI tables may still be migrating on an older tenant. */ }
-    const decisions = (cockpit.exceptions || []).map((item: any, index: number) => ({
+    const cockpitDecisions = (cockpit.exceptions || []).map((item: any, index: number) => ({
       id: `cockpit-${index}-${item.type}`,
       title: item.title,
       domain: item.type,
@@ -86,7 +90,11 @@ export class IntelligenceService {
       action_mode: 'REVIEW_ONLY',
       source: 'LIVE_ERP_COCKPIT',
       forward_risk: this.forwardRisk(item),
-    })).sort((a: any, b: any) => b.priority_score - a.priority_score);
+    }));
+    const crossModuleDecisions = await this.crossModuleExceptions.collect(tenantId);
+    const decisions = [...crossModuleDecisions, ...cockpitDecisions]
+      .filter((item, index, rows) => rows.findIndex((candidate) => candidate.id === item.id) === index)
+      .sort((a: any, b: any) => b.priority_score - a.priority_score);
     await this.syncExceptionRegister(tenantId, decisions);
 
     const metrics = cockpit.metrics || [];
@@ -100,6 +108,8 @@ export class IntelligenceService {
     const roleDecisions = roleView === 'FINANCE' ? decisions.filter((item: any) => /approval|grn|finance|pay|cash|invoice/i.test(String(item.domain)))
       : roleView === 'PROCUREMENT' ? decisions.filter((item: any) => /approval|grn|inventory|master|purchase|supplier/i.test(String(item.domain)))
       : roleView === 'OPERATIONS' ? decisions.filter((item: any) => /grn|inventory|master|production|quality|machine/i.test(String(item.domain)))
+      : roleView === 'QUALITY' ? decisions.filter((item: any) => /quality|ncr|capa|supplier|production/i.test(`${item.domain} ${item.title}`))
+      : roleView === 'MAINTENANCE' ? decisions.filter((item: any) => /maintenance|machine|downtime|production/i.test(`${item.domain} ${item.title}`))
       : roleView === 'COMMERCIAL' ? decisions.filter((item: any) => /sales|customer|collection|delivery|invoice/i.test(String(item.domain)))
       : decisions;
     const healthFactors = [
@@ -108,6 +118,10 @@ export class IntelligenceService {
       { key: 'receipt_qc', label: 'Receipt and quality closure', value: decisions.filter((item: any) => String(item.domain).includes('GRN')).length, max_penalty: 16, penalty: Math.min(16, decisions.filter((item: any) => String(item.domain).includes('GRN')).length * 5), route: '/dashboard/purchase/grn' },
       { key: 'master_data', label: 'Master-data hygiene', value: decisions.filter((item: any) => String(item.domain).includes('Master')).length, max_penalty: 12, penalty: Math.min(12, decisions.filter((item: any) => String(item.domain).includes('Master')).length * 4), route: '/dashboard/inventory/items' },
       { key: 'critical_exceptions', label: 'Critical operational exceptions', value: decisions.filter((item: any) => item.priority_score >= 80).length, max_penalty: 30, penalty: Math.min(30, decisions.filter((item: any) => item.priority_score >= 80).length * 10), route: '/dashboard/command-center' },
+      { key: 'production_risk', label: 'Production schedule', value: decisions.filter((item: any) => /PRODUCTION/i.test(String(item.domain))).length, max_penalty: 12, penalty: Math.min(12, decisions.filter((item: any) => /PRODUCTION/i.test(String(item.domain))).length * 3), route: '/dashboard/production/job-orders' },
+      { key: 'quality_risk', label: 'Quality and CAPA', value: decisions.filter((item: any) => /QUALITY/i.test(String(item.domain))).length, max_penalty: 12, penalty: Math.min(12, decisions.filter((item: any) => /QUALITY/i.test(String(item.domain))).length * 3), route: '/dashboard/quality' },
+      { key: 'maintenance_risk', label: 'Machine and maintenance', value: decisions.filter((item: any) => /MAINTENANCE/i.test(String(item.domain))).length, max_penalty: 10, penalty: Math.min(10, decisions.filter((item: any) => /MAINTENANCE/i.test(String(item.domain))).length * 2), route: '/dashboard/production/plant-maintenance' },
+      { key: 'cash_risk', label: 'Cash and reconciliation', value: decisions.filter((item: any) => /FINANCE|SALES/i.test(String(item.domain))).length, max_penalty: 10, penalty: Math.min(10, decisions.filter((item: any) => /FINANCE|SALES/i.test(String(item.domain))).length * 2), route: '/dashboard/accounts/working-capital' },
     ];
     const totalPenalty = healthFactors.reduce((sum, factor) => sum + factor.penalty, 0);
     return {
@@ -244,15 +258,31 @@ export class IntelligenceService {
       evidence = center.decision_inbox.filter((item: any) => /inventory|grn|master/i.test(String(item.domain)));
       answer = evidence.length ? `${evidence.length} inventory, receipt or master-data exception(s) require review.` : 'There are no inventory exceptions in the current cockpit.';
       recommendedAction = evidence.length ? 'Validate demand and confirmed supply against the highest-priority shortage.' : 'No inventory exception action is required.';
-    } else if (/cash|payable|advance|finance|roi|value/.test(lower)) {
+    } else if (/cash|payable|receivable|collection|bank|advance|finance|roi|value/.test(lower)) {
       intent = 'FINANCE_VALUE';
-      evidence = (center.decision_inbox.filter((item: any) => /approval|grn/i.test(String(item.domain))) as any[])
+      evidence = (center.decision_inbox.filter((item: any) => /finance|sales|approval|grn/i.test(String(item.domain))) as any[])
         .concat(center.roi_impact ? [{ title: 'Verified value position', explanation: 'See Value Realization for finance-verified benefit evidence.', route: center.roi_impact.route, priority_score: 0 }] : []);
       answer = center.roi_impact ? `Finance evidence is available in Value Realization. Current cockpit contains ${center.operating_health.open_exceptions} operational exception(s) that can affect cash, stock or payables.` : 'Review the current approval, GRN and advance exposure from the operational cockpit.';
       financialImpact = center.roi_impact?.verified_value ?? null; recommendedAction = 'Review finance-verified value and unresolved cash-impact exceptions.';
-    } else if (/production|wip|factory|quality/.test(lower)) {
+    } else if (/supplier|purchase|procurement|vendor/.test(lower)) {
+      intent = 'SUPPLY'; evidence = center.decision_inbox.filter((item:any)=>/procurement|inventory/i.test(String(item.domain)));
+      answer = evidence.length ? `${evidence.length} supplier, purchasing or replenishment exception(s) require review. ${evidence[0].title}` : 'There is no current supplier or purchasing exception in the role-visible evidence.';
+      recommendedAction = evidence[0]?.recommended_action || 'No supply action is required.';
+    } else if (/customer|delivery|sales|margin|discount/.test(lower)) {
+      intent = 'CUSTOMER_DELIVERY'; evidence = center.decision_inbox.filter((item:any)=>/sales|finance/i.test(String(item.domain)));
+      answer = evidence.length ? `${evidence.length} customer, delivery or cash exception(s) require review. ${evidence[0].title}` : 'There is no current customer-delivery exception in the role-visible evidence.';
+      recommendedAction = evidence[0]?.recommended_action || 'No customer action is required.';
+    } else if (/machine|maintenance|downtime|vibration|temperature/.test(lower)) {
+      intent = 'MACHINE_RISK'; evidence = center.decision_inbox.filter((item:any)=>/maintenance|production/i.test(String(item.domain)));
+      answer = evidence.length ? `${evidence.length} machine or maintenance exception(s) require review. ${evidence[0].title}` : 'There is no current machine or maintenance exception in the role-visible evidence.';
+      recommendedAction = evidence[0]?.recommended_action || 'No machine intervention is currently indicated.';
+    } else if (/scrap|reject|defect|quality|ncr|capa/.test(lower)) {
+      intent = 'QUALITY'; evidence = center.decision_inbox.filter((item:any)=>/quality|production/i.test(String(item.domain)));
+      answer = evidence.length ? `${evidence.length} quality or production exception(s) require review. ${evidence[0].title}` : 'There is no current quality exception in the role-visible evidence.';
+      recommendedAction = evidence[0]?.recommended_action || 'No quality containment is currently indicated.';
+    } else if (/production|wip|factory/.test(lower)) {
       intent = 'OPERATIONS';
-      evidence = center.decision_inbox.filter((item: any) => /grn|inventory/i.test(String(item.domain)));
+      evidence = center.decision_inbox.filter((item: any) => /production|maintenance|quality|grn|inventory/i.test(String(item.domain)));
       answer = evidence.length ? `${evidence.length} material, quality or inventory control exception(s) may affect operational flow.` : 'There are no material or quality exceptions in the current cockpit.';
       recommendedAction = evidence.length ? 'Review the top material or quality constraint before the next production release.' : 'Continue the controlled production cadence.';
     } else {
@@ -282,6 +312,15 @@ export class IntelligenceService {
         maximum_penalty: factor.max_penalty, source_route: factor.route,
       }));
       report = { title: 'Factory health factor analysis', columns: ['factor','current_exceptions','score_penalty','maximum_penalty'], rows, chart: { type: 'bar', category_key: 'factor', value_key: 'score_penalty' }, confidence: 'HIGH', sufficient_data: rows.length > 0 };
+    } else if (/production|quality|maintenance|machine|supplier|purchase|procurement|finance|cash|receivable|customer|delivery|inventory|stock/.test(lower)) {
+      const matcher = /quality|scrap|defect|ncr|capa/.test(lower) ? /QUALITY|PRODUCTION/i
+        : /maintenance|machine|downtime/.test(lower) ? /MAINTENANCE|PRODUCTION/i
+        : /supplier|purchase|procurement/.test(lower) ? /PROCUREMENT|INVENTORY/i
+        : /finance|cash|receivable|bank/.test(lower) ? /FINANCE|SALES/i
+        : /customer|delivery/.test(lower) ? /SALES|FINANCE/i
+        : /inventory|stock/.test(lower) ? /INVENTORY|PROCUREMENT/i : /PRODUCTION|QUALITY|MAINTENANCE/i;
+      const rows=(center.decision_inbox||[]).filter((item:any)=>matcher.test(String(item.domain))).map((item:any)=>({title:item.title,domain:item.domain,severity:item.severity,priority_score:item.priority_score,impact:item.impact,confidence:item.forward_risk?.confidence,source_route:item.route}));
+      report={title:'Cross-module exception analysis',columns:['title','domain','severity','priority_score','impact','confidence'],rows,chart:{type:'bar',category_key:'title',value_key:'priority_score'},confidence:'HIGH',sufficient_data:rows.length>0,note:rows.length?'Filtered from current tenant-scoped operational evidence.':'No matching role-visible evidence exists.'};
     } else if (/exception|risk|priority|worry|attention/.test(lower)) {
       const rows = (center.decision_inbox || []).map((item: any) => ({
         title: item.title, domain: item.domain, severity: item.severity, priority_score: item.priority_score,
@@ -359,9 +398,33 @@ export class IntelligenceService {
   async draftWorkflow(tenantId: string, user: any, rawInstruction: string, request: any) {
     const instruction = String(rawInstruction || '').trim();
     if (!instruction || instruction.length > 500) throw new BadRequestException('A workflow instruction up to 500 characters is required.');
+    const lower = instruction.toLowerCase();
+    const isRuleInstruction = /\b(alert|notify|escalate|create a task|email)\b/.test(lower) && /\b(if|when|whenever|exceed|overdue|below|expir|due)\b/.test(lower);
+    if (isRuleInstruction) {
+      const roles = this.roles(user).map((role) => role.toUpperCase().replace(/[\s-]+/g, '_'));
+      if (!roles.some((role) => ['SUPER_ADMIN','ADMIN','ADMINISTRATOR','MANAGER','CFO','FINANCE_MANAGER','OPERATIONS_MANAGER'].includes(role))) throw new ForbiddenException('Management permission is required to compile automation rules.');
+      const numeric = lower.match(/(?:aed|inr|rs\.?|₹|د\.إ)?\s*([0-9]+(?:\.[0-9]+)?)/i); const value = numeric ? Number(numeric[1]) : 0;
+      let module = 'OPERATIONS', trigger = 'MANUAL', conditions:any = {};
+      if (/scrap|reject|defect/.test(lower)) { trigger='QUALITY_REJECTION_RATE'; module='OPERATIONS'; conditions={threshold_pct:value||3,days:30}; }
+      else if (/credit exposure|credit limit/.test(lower)) { trigger='CUSTOMER_CREDIT_EXPOSURE'; module='FINANCE'; conditions={threshold_amount:value||0}; }
+      else if (/low stock|safety stock|stock.*below/.test(lower)) { trigger='LOW_STOCK'; module='INVENTORY'; }
+      else if (/purchase|supplier|\bpo\b/.test(lower) && /overdue|late/.test(lower)) { trigger='PO_OVERDUE'; module='PURCHASE'; conditions={days:value||7}; }
+      else if (/receivable|invoice|collection/.test(lower) && /overdue|late/.test(lower)) { trigger='RECEIVABLE_OVERDUE'; module='FINANCE'; conditions={days:value||0}; }
+      else if (/maintenance|machine.*hours|runtime/.test(lower)) { trigger='PREVENTIVE_MAINTENANCE_DUE'; module='OPERATIONS'; conditions={days:value||7}; }
+      else if (/service.*sla|sla/.test(lower)) { trigger='SERVICE_SLA_RISK'; module='SERVICE'; conditions={days:value||2}; }
+      else if (/quotation|quote/.test(lower) && /expir/.test(lower)) { trigger='QUOTATION_EXPIRING'; module='SALES'; conditions={days:value||7}; }
+      if (trigger === 'MANUAL') throw new BadRequestException('The rule condition is not yet deterministic. Use scrap/rejection, credit exposure, low stock, overdue PO/receivable, maintenance due, service SLA or quotation expiry.');
+      const actionType = /email/.test(lower) ? 'EMAIL' : /escalate/.test(lower) ? 'ESCALATE' : /create a task/.test(lower) ? 'CREATE_TASK' : 'NOTIFY';
+      const recipients = ['CFO','PURCHASE_MANAGER','QUALITY_MANAGER','PRODUCTION_MANAGER','FINANCE_MANAGER'].filter((role) => lower.includes(role.toLowerCase().replace('_',' ')));
+      const ruleCode = `AI_${trigger}_${Date.now().toString(36).toUpperCase()}`.slice(0,80);
+      const proposed = { action_code:'CREATE_AUTOMATION_RULE',rule_code:ruleCode,rule_name:instruction.slice(0,180),module,trigger_type:trigger,action_type:actionType,recipients,conditions,template_subject:`Mizantra: ${instruction.slice(0,100)}`,template_body:'{{document_number}} meets the confirmed Mizantra automation condition. Review the linked evidence and governed action.',is_active:false };
+      const expiresAt = new Date(Date.now()+30*60*1000).toISOString(); const explanation=`Mizantra understood the rule as: when ${trigger.replaceAll('_',' ').toLowerCase()} meets ${JSON.stringify(conditions)}, create ${actionType.replaceAll('_',' ').toLowerCase()} for ${recipients.join(', ')||'the configured module owner'}. Confirmation creates a disabled rule for preview; it does not activate or execute it.`;
+      const {data,error}=await this.db.from('mizantra_action_drafts').insert({tenant_id:tenantId,created_by:user.userId||user.id,instruction,insight_id:`workflow:${trigger}`,action_code:'CREATE_AUTOMATION_RULE',proposed_payload:proposed,explanation,expires_at:expiresAt}).select().single();if(error)throw new BadRequestException(error.message);
+      await this.audit.logActivity({tenantId,userId:user.userId||user.id,action:'MIZANTRA_AUTOMATION_RULE_DRAFTED',resourceType:'mizantra_action_draft',resourceId:data.id,resourceName:ruleCode,newValue:proposed,ipAddress:request?.ip,userAgent:request?.headers?.['user-agent'],metadata:{requires_confirmation:true,rule_disabled:true}});
+      return{draft:data,preview:{explanation,proposed_action:proposed,source_title:'Natural-language automation rule',source_route:'/dashboard/automation'},requires_confirmation:true,expires_at:expiresAt};
+    }
     const center = await this.commandCenter(tenantId, user); const insights = center.decision_inbox || [];
     if (!insights.length) throw new BadRequestException('There is no active role-visible exception from which to create a governed workflow.');
-    const lower = instruction.toLowerCase();
     const selected = insights.find((item: any) => String(item.title).toLowerCase().split(/\s+/).some((word: string) => word.length > 4 && lower.includes(word))) || insights[0];
     const due = new Date();
     if (/tomorrow/.test(lower)) due.setUTCDate(due.getUTCDate() + 1);
@@ -384,7 +447,15 @@ export class IntelligenceService {
       await this.db.from('mizantra_action_drafts').update({ status: 'EXPIRED', updated_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', id);
       throw new BadRequestException('Workflow draft expired. Create a fresh preview from current ERP evidence.');
     }
-    const result = await this.executeControlledAction(tenantId, user, draft.proposed_payload, request);
+    let result:any;
+    if (draft.action_code === 'CREATE_AUTOMATION_RULE') {
+      const payload=draft.proposed_payload||{};if(payload.is_active!==false)throw new BadRequestException('AI-generated rules must be created disabled.');
+      const allowedModules=new Set(['SALES','SERVICE','PURCHASE','INVENTORY','FINANCE','OPERATIONS']),allowedTriggers=new Set(['QUOTATION_EXPIRING','RECEIVABLE_OVERDUE','SERVICE_SLA_RISK','PREVENTIVE_MAINTENANCE_DUE','LOW_STOCK','PO_OVERDUE','QUALITY_REJECTION_RATE','CUSTOMER_CREDIT_EXPOSURE']),allowedActions=new Set(['NOTIFY','EMAIL','CREATE_TASK','ESCALATE']);
+      if(!allowedModules.has(payload.module)||!allowedTriggers.has(payload.trigger_type)||!allowedActions.has(payload.action_type))throw new BadRequestException('The compiled rule is outside the governed automation catalogue.');
+      const{data:rule,error:ruleError}=await this.db.from('automation_rules').insert({tenant_id:tenantId,rule_code:payload.rule_code,rule_name:payload.rule_name,module:payload.module,trigger_type:payload.trigger_type,action_type:payload.action_type,recipients:Array.isArray(payload.recipients)?payload.recipients:[],conditions:payload.conditions||{},template_subject:payload.template_subject||null,template_body:payload.template_body||null,is_active:false,created_by:userId}).select().single();if(ruleError)throw new BadRequestException(ruleError.code==='23505'?'A rule with this code already exists.':ruleError.message);
+      await this.audit.logActivity({tenantId,userId,action:'MIZANTRA_AUTOMATION_RULE_CONFIRMED',resourceType:'automation_rule',resourceId:rule.id,resourceName:rule.rule_code,newValue:{trigger_type:rule.trigger_type,conditions:rule.conditions,is_active:false},ipAddress:request?.ip,userAgent:request?.headers?.['user-agent'],metadata:{generated_from_natural_language:true,requires_separate_activation:true}});
+      result={automation_rule:rule,safe_note:'The automation rule was created disabled. Preview its targets in Automation before a separate activation decision.'};
+    } else result = await this.executeControlledAction(tenantId, user, draft.proposed_payload, request);
     await this.db.from('mizantra_action_drafts').update({ status: 'EXECUTED', executed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', id).eq('status', 'DRAFT');
     return { ...result, draft_id: id, confirmed: true };
   }

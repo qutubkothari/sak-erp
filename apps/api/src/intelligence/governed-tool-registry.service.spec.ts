@@ -5,7 +5,15 @@ describe('GovernedToolRegistryService security boundary', () => {
   const registry = new GovernedToolRegistryService();
 
   it('rejects an unregistered tool', () => expect(() => registry.require('DROP_DATABASE')).toThrow(BadRequestException));
-  it('publishes only explicit tools', () => expect(registry.catalogue()).toHaveLength(7));
+  it('publishes only the explicit governed catalogue', () => {
+    const catalogue = registry.catalogue();
+    expect(catalogue).toHaveLength(13);
+    expect(catalogue.map((tool) => tool.code)).toEqual(expect.arrayContaining([
+      'CREATE_PURCHASE_ORDER_DRAFT',
+      'APPLY_SALES_ORDER_HOLD',
+      'CREATE_BANK_RECONCILIATION_REVIEW',
+    ]));
+  });
   it('rejects unknown payload fields', () => {
     const tool = registry.require('CREATE_REVIEW_TASK');
     expect(() => registry.validate(tool, { insight_id: 'i-1', arbitrary_sql: 'select *' })).toThrow('Unsupported action field');
