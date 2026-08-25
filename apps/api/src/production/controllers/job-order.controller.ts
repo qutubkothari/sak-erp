@@ -154,6 +154,12 @@ export class JobOrderController {
     return this.jobOrderService.getAssignableUsers(tenantId);
   }
 
+  @Get('store/issue-employees')
+  async getStoreIssueEmployees(@Request() req: any) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.getActiveEmployeesForStoreIssue(tenantId);
+  }
+
   @Get(':id')
   async findOne(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
@@ -361,13 +367,14 @@ export class JobOrderController {
   @Post('store/material-requisitions/manual-issue')
   async createManualStoreIssueVoucher(
     @Request() req: any,
-    @Body() body: { itemId: string; issueQuantity: number; notes?: string; uids?: string[] },
+    @Body() body: { itemId: string; issueQuantity: number; issuedToEmployeeId: string; notes?: string; uids?: string[] },
   ) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.userId || req.user?.id || req.user?.sub;
     return this.jobOrderService.createManualStoreIssueVoucher(tenantId, {
       itemId: body?.itemId,
       issueQuantity: body?.issueQuantity,
+      issuedToEmployeeId: body?.issuedToEmployeeId,
       notes: body?.notes,
       uids: Array.isArray(body?.uids) ? body.uids : undefined,
       userId,

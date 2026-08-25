@@ -63,4 +63,51 @@ describe('JobOrderService inventory fallback', () => {
     expect(result.updateQuery.update).toHaveBeenNthCalledWith(1, expect.objectContaining({ quantity: 1 }));
     expect(result.updateQuery.update).toHaveBeenNthCalledWith(2, expect.objectContaining({ quantity: 1 }));
   });
+
+  it('requires a registered receiving employee before a manual SIV can change stock', async () => {
+    const service = new JobOrderService({} as any);
+    const from = jest.fn();
+    (service as any).supabase = { from };
+
+    await expect(service.createManualStoreIssueVoucher(
+      '11111111-1111-4111-8111-111111111111',
+      {
+        itemId: '22222222-2222-4222-8222-222222222222',
+        issueQuantity: 1,
+        issuedToEmployeeId: '',
+        userId: '33333333-3333-4333-8333-333333333333',
+      },
+    )).rejects.toThrow('Select the employee receiving the material');
+
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('returns only the minimal active employee fields required by the SIV selector', async () => {
+    const query: any = {
+      select: jest.fn(() => query),
+      eq: jest.fn(() => query),
+      order: jest.fn().mockResolvedValue({
+        data: [{
+          id: 'employee-1',
+          employee_code: 'EMP-001',
+          employee_name: 'Store Receiver',
+          department: 'Production',
+          designation: 'Operator',
+          status: 'ACTIVE',
+        }],
+        error: null,
+      }),
+    };
+    const service = new JobOrderService({} as any);
+    (service as any).supabase = { from: jest.fn(() => query) };
+
+    await expect(service.getActiveEmployeesForStoreIssue('tenant-1')).resolves.toEqual([{
+      id: 'employee-1',
+      employeeCode: 'EMP-001',
+      employeeName: 'Store Receiver',
+      department: 'Production',
+      designation: 'Operator',
+    }]);
+    expect(query.eq).toHaveBeenCalledWith('status', 'ACTIVE');
+  });
 });

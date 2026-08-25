@@ -292,6 +292,27 @@ export class JobOrderService {
       .sort((a: any, b: any) => a.displayName.localeCompare(b.displayName));
   }
 
+  async getActiveEmployeesForStoreIssue(tenantId: string) {
+    const { data, error } = await this.supabase
+      .from('employees')
+      .select('id, employee_code, employee_name, department, designation, status')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'ACTIVE')
+      .order('employee_name', { ascending: true });
+
+    if (error) throw new BadRequestException(error.message);
+
+    return (Array.isArray(data) ? data : [])
+      .map((employee: any) => ({
+        id: String(employee?.id || '').trim(),
+        employeeCode: String(employee?.employee_code || '').trim(),
+        employeeName: String(employee?.employee_name || '').trim(),
+        department: String(employee?.department || '').trim() || null,
+        designation: String(employee?.designation || '').trim() || null,
+      }))
+      .filter((employee) => employee.id && employee.employeeName);
+  }
+
   private pruneSmartCreateJobs(now = Date.now()) {
     for (const [id, job] of this.smartCreateJobs.entries()) {
       const createdAt = Date.parse(job.createdAt);
@@ -5220,7 +5241,7 @@ export class JobOrderService {
     const assignedTo = String(options?.assignedTo || '').trim();
     const { data: movements, error: mvErr } = await this.supabase
       .from('stock_movements')
-      .select('id, tenant_id, movement_type, item_id, uid, from_warehouse_id, quantity, reference_type, reference_id, reference_number, movement_date, notes, moved_by, approved_by, approved_at')
+      .select('id, tenant_id, movement_type, item_id, uid, from_warehouse_id, quantity, reference_type, reference_id, reference_number, movement_date, notes, moved_by, approved_by, approved_at, issued_to_employee_id, issued_to_employee_code, issued_to_employee_name')
       .eq('tenant_id', tenantId)
       .eq('reference_type', 'SIV')
       .order('movement_date', { ascending: false })
@@ -5311,6 +5332,9 @@ export class JobOrderService {
         approved_by: String(m?.approved_by || ''),
         approved_at: m?.approved_at || null,
         notes: String(m?.notes || ''),
+        issued_to_employee_id: String(m?.issued_to_employee_id || ''),
+        issued_to_employee_code: String(m?.issued_to_employee_code || ''),
+        issued_to_employee_name: String(m?.issued_to_employee_name || ''),
         assigned_to: String(job?.assigned_to || ''),
         assigned_to_name: String(job?.assigned_to_name || ''),
       };
@@ -5319,11 +5343,12 @@ export class JobOrderService {
 
   async createManualStoreIssueVoucher(
     tenantId: string,
-    payload: { itemId: string; issueQuantity: number; notes?: string; uids?: string[]; userId?: string },
+    payload: { itemId: string; issueQuantity: number; issuedToEmployeeId: string; notes?: string; uids?: string[]; userId?: string },
   ) {
     const itemId = String(payload?.itemId || '').trim();
     const requestedIssueQty = Number(payload?.issueQuantity || 0);
     const movedBy = String(payload?.userId || '').trim();
+    const issuedToEmployeeId = String(payload?.issuedToEmployeeId || '').trim();
     const manualNotes = String(payload?.notes || '').trim();
     let normalizedUids = Array.from(
       new Set(
@@ -5338,6 +5363,23 @@ export class JobOrderService {
       throw new BadRequestException('issueQuantity must be greater than 0');
     }
     if (!movedBy || !this.isUuid(movedBy)) throw new BadRequestException('Valid userId is required');
+    if (!issuedToEmployeeId || !this.isUuid(issuedToEmployeeId)) {
+      throw new BadRequestException('Select the employee receiving the material');
+    }
+
+    const { data: issuedToEmployee, error: employeeError } = await this.supabase
+      .from('employees')
+      .select('id, employee_code, employee_name, status')
+      .eq('tenant_id', tenantId)
+      .eq('id', issuedToEmployeeId)
+      .maybeSingle();
+    if (employeeError) throw new BadRequestException(employeeError.message);
+    if (!issuedToEmployee || String((issuedToEmployee as any)?.status || '').toUpperCase() !== 'ACTIVE') {
+      throw new BadRequestException('Selected employee is not an active registered employee for this company');
+    }
+    const issuedToEmployeeCode = String((issuedToEmployee as any)?.employee_code || '').trim();
+    const issuedToEmployeeName = String((issuedToEmployee as any)?.employee_name || '').trim();
+    if (!issuedToEmployeeName) throw new BadRequestException('Selected employee has no name in Employee Master');
 
     const { data: item, error: itemError } = await this.supabase
       .from('items')
@@ -5516,6 +5558,9 @@ export class JobOrderService {
             reference_number: voucherNumber,
             notes: manualNotes || `Manual SIV: Issued ${toConsumeFromEntry} of ${String((item as any)?.code || '').trim()} (${String((item as any)?.name || '').trim()})`,
             moved_by: movedBy,
+            issued_to_employee_id: issuedToEmployeeId,
+            issued_to_employee_code: issuedToEmployeeCode || null,
+            issued_to_employee_name: issuedToEmployeeName,
             movement_date: postedAt,
             approved_by: movedBy,
             approved_at: postedAt,
@@ -5559,6 +5604,9 @@ export class JobOrderService {
           reference_number: voucherNumber,
           notes: manualNotes || `Manual SIV: Issued UID ${uid} for ${String((item as any)?.code || '').trim()}`,
           moved_by: movedBy,
+          issued_to_employee_id: issuedToEmployeeId,
+          issued_to_employee_code: issuedToEmployeeCode || null,
+          issued_to_employee_name: issuedToEmployeeName,
           movement_date: postedAt,
           approved_by: movedBy,
           approved_at: postedAt,
@@ -5628,6 +5676,9 @@ export class JobOrderService {
       itemId,
       itemCode: String((item as any)?.code || '').trim(),
       itemName: String((item as any)?.name || '').trim(),
+      issuedToEmployeeId,
+      issuedToEmployeeCode,
+      issuedToEmployeeName,
       issuedNow,
       uidCount: normalizedUids.length,
       message: `Manual SIV ${voucherNumber} created successfully`,

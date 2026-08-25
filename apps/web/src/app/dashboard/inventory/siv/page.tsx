@@ -39,6 +39,14 @@ type ManualIssueLine = {
   uids: string[];
 };
 
+type StoreIssueEmployee = {
+  id: string;
+  employeeCode?: string;
+  employeeName: string;
+  department?: string | null;
+  designation?: string | null;
+};
+
 type MaterialLine = {
   id: string;
   item_id?: string;
@@ -79,6 +87,9 @@ type SivHistoryRow = {
   from_warehouse_id?: string;
   movement_date?: string;
   moved_by?: string;
+  issued_to_employee_id?: string;
+  issued_to_employee_code?: string;
+  issued_to_employee_name?: string;
   approved_by?: string;
   approved_at?: string;
   notes?: string;
@@ -142,6 +153,7 @@ export default function SivPage() {
   const [sivHistory, setSivHistory] = useState<SivHistoryRow[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [users, setUsers] = useState<Array<{ id: string; displayName: string; employeeCode?: string }>>([]);
+  const [storeIssueEmployees, setStoreIssueEmployees] = useState<StoreIssueEmployee[]>([]);
   const [filterAssignedTo, setFilterAssignedTo] = useState<string>('');
   const [activeSivView, setActiveSivView] = useState<'open' | 'history'>('open');
   const [selectedMaterialJobId, setSelectedMaterialJobId] = useState<string | null>(null);
@@ -173,6 +185,7 @@ export default function SivPage() {
   const [uidPickerLoading, setUidPickerLoading] = useState(false);
   const [uidPickerSelected, setUidPickerSelected] = useState<string[]>([]);
   const [manualIssueItemId, setManualIssueItemId] = useState('');
+  const [manualIssuedToEmployeeId, setManualIssuedToEmployeeId] = useState('');
   const [manualIssueQty, setManualIssueQty] = useState('1');
   const [manualIssueNotes, setManualIssueNotes] = useState('');
   const [manualIssueUidInput, setManualIssueUidInput] = useState('');
@@ -289,6 +302,15 @@ export default function SivPage() {
     }
   }, []);
 
+  const loadStoreIssueEmployees = useCallback(async () => {
+    try {
+      const data = await apiClient.get<StoreIssueEmployee[]>('/job-orders/store/issue-employees');
+      setStoreIssueEmployees(Array.isArray(data) ? data : []);
+    } catch {
+      setStoreIssueEmployees([]);
+    }
+  }, []);
+
   const isSubassemblyItem = useCallback((itemId?: string) => {
     const normalizedId = String(itemId || '').trim();
     if (!normalizedId) return false;
@@ -355,7 +377,8 @@ export default function SivPage() {
     loadAll();
     loadInventoryItems();
     loadUsers();
-  }, [loadAll, loadInventoryItems, loadUsers]);
+    loadStoreIssueEmployees();
+  }, [loadAll, loadInventoryItems, loadStoreIssueEmployees, loadUsers]);
 
   useEffect(() => {
     try {
@@ -599,6 +622,17 @@ export default function SivPage() {
   }, []);
 
   const handleManualIssue = useCallback(async () => {
+    if (!manualIssuedToEmployeeId) {
+      await confirmDialog({
+        title: 'Select Receiving Employee',
+        message: 'Select the registered employee receiving this material before creating the manual SIV.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
+      return;
+    }
+
     const linesToSubmit = [...manualIssueLines];
 
     try {
@@ -635,6 +669,7 @@ export default function SivPage() {
         const result = await apiClient.post('/job-orders/store/material-requisitions/manual-issue', {
           itemId: line.itemId,
           issueQuantity: line.issueQuantity,
+          issuedToEmployeeId: manualIssuedToEmployeeId,
           notes: line.notes || undefined,
           uids: line.uids.length > 0 ? line.uids : undefined,
         });
@@ -643,6 +678,7 @@ export default function SivPage() {
 
       setManualIssueLines([]);
       resetManualIssueDraft();
+      setManualIssuedToEmployeeId('');
       await loadAll();
       const message = results.length === 1
         ? String(results[0]?.message || 'Manual SIV created successfully')
@@ -664,7 +700,7 @@ export default function SivPage() {
     } finally {
       setManualIssueBusy(false);
     }
-  }, [buildManualIssueDraftLine, loadAll, manualIssueLines, resetManualIssueDraft]);
+  }, [buildManualIssueDraftLine, loadAll, manualIssueLines, manualIssuedToEmployeeId, resetManualIssueDraft]);
 
   const scanUidForJob = useCallback(async (jobId: string) => {
     const raw = normalizeUid(scanInputByJob[jobId] || '');
@@ -1221,6 +1257,10 @@ export default function SivPage() {
       const issuedDateFmt = issuedDate
         ? new Date(issuedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
         : '-';
+      const issuedToEmployees = Array.from(new Set(rows
+        .map((row) => [row.issued_to_employee_code, row.issued_to_employee_name].filter(Boolean).join(' - '))
+        .filter(Boolean)));
+      const issuedToLabel = issuedToEmployees.join(', ') || 'Not recorded (legacy SIV)';
 
       const html = `
         <!DOCTYPE html>
@@ -1260,6 +1300,7 @@ export default function SivPage() {
           <div class="meta">
             <div><div class="meta-label">Job Order</div><div class="meta-value">${escapeHtml(joNumber)}</div></div>
             <div><div class="meta-label">Issue Date</div><div class="meta-value">${escapeHtml(issuedDateFmt)}</div></div>
+            <div><div class="meta-label">Issued To Employee</div><div class="meta-value">${escapeHtml(issuedToLabel)}</div></div>
             <div><div class="meta-label">Total Lines</div><div class="meta-value">${itemMap.size}</div></div>
             <div><div class="meta-label">Printed By</div><div class="meta-value">${escapeHtml(currentUserDisplayName)}</div></div>
           </div>
@@ -1277,7 +1318,7 @@ export default function SivPage() {
           </table>
           <div class="signatures">
             <div class="sig-box"><div class="sig-label">Issued By (Stores)</div></div>
-            <div class="sig-box"><div class="sig-label">Received By (Production)</div></div>
+            <div class="sig-box"><div class="sig-label">Received By: ${escapeHtml(issuedToLabel)}</div></div>
           </div>
         </body>
         </html>`;
@@ -1521,6 +1562,22 @@ export default function SivPage() {
                   <p className="mt-1 text-xs text-[#7A6555]">Search by item code or item name.</p>
                 </div>
                 <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Issued To Employee *</label>
+                  <SearchableSelect
+                    options={storeIssueEmployees.map((employee) => ({
+                      value: employee.id,
+                      label: [employee.employeeCode, employee.employeeName].filter(Boolean).join(' - '),
+                      subtitle: [employee.department, employee.designation].filter(Boolean).join(' | ') || undefined,
+                    }))}
+                    value={manualIssuedToEmployeeId}
+                    onChange={setManualIssuedToEmployeeId}
+                    placeholder={storeIssueEmployees.length > 0 ? 'Search active employee...' : 'No active employees available'}
+                    truncateInput={false}
+                    disabled={storeIssueEmployees.length === 0}
+                  />
+                  <p className="mt-1 text-xs text-[#7A6555]">Required for physical custody and SIV audit tracking.</p>
+                </div>
+                <div>
                   <label className="mb-1 block text-xs font-semibold uppercase text-[#7A6555]">Issue Quantity</label>
                   <input
                     type="number"
@@ -1596,7 +1653,7 @@ export default function SivPage() {
                   onChange={(e) => setManualIssueNotes(e.target.value)}
                   rows={2}
                   className="w-full rounded-md border border-[#D8C8AA] px-3 py-2 focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
-                  placeholder="Reason / receiver / remarks"
+                  placeholder="Reason / purpose / remarks"
                 />
               </div>
               {(manualIssueLines.length > 0 || manualIssueItemId) && (
@@ -2161,10 +2218,16 @@ export default function SivPage() {
                             {rows.length} line{rows.length !== 1 ? 's' : ''} - Approved {approvedCount}/{rows.length}
                             {latestDate ? ` · Last issued ${new Date(latestDate).toLocaleDateString()}` : ''}
                           </p>
-                          <div className="mt-2 grid gap-2 text-xs sm:grid-cols-4">
+                          <div className="mt-2 grid gap-2 text-xs sm:grid-cols-5">
                             <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
                               <div className="font-semibold uppercase text-[#7A6555]">Document</div>
                               <div className="mt-1 font-medium text-[#4A3426]">SIV / Goods Issue</div>
+                            </div>
+                            <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
+                              <div className="font-semibold uppercase text-[#7A6555]">Issued To</div>
+                              <div className="mt-1 font-medium text-[#4A3426]">
+                                {[rows[0]?.issued_to_employee_code, rows[0]?.issued_to_employee_name].filter(Boolean).join(' - ') || 'Legacy SIV — not recorded'}
+                              </div>
                             </div>
                             <div className="rounded-md border border-[#E8DCC4] bg-[#FFFCF5] px-3 py-2">
                               <div className="font-semibold uppercase text-[#7A6555]">Movement</div>
@@ -2231,6 +2294,7 @@ export default function SivPage() {
                               <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">UID</th>
                               <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Movement</th>
                               <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Qty</th>
+                              <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Issued To</th>
                               <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Issued At</th>
                               <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-[#5E4635]">Status</th>
                               <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-[#5E4635]">Actions</th>
@@ -2266,6 +2330,10 @@ export default function SivPage() {
                                     <div className="text-xs text-gray-500">Stock posted</div>
                                   </td>
                                   <td className="px-3 py-2 text-sm text-gray-700">{row.quantity ?? 0}</td>
+                                  <td className="px-3 py-2 text-sm text-gray-700">
+                                    <div className="font-medium text-[#4A3426]">{row.issued_to_employee_name || 'Not recorded'}</div>
+                                    {row.issued_to_employee_code && <div className="text-xs text-gray-500">{row.issued_to_employee_code}</div>}
+                                  </td>
                                   <td className="px-3 py-2 text-sm text-gray-700">
                                     {row.movement_date ? new Date(row.movement_date).toLocaleString() : '-'}
                                   </td>
