@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import DateInput from '../../../../components/ui/DateInput';
 import { getTodayDateInputValue } from '@/lib/date';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 
@@ -856,21 +857,19 @@ export default function UIDDeploymentPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Deployment Date</label>
-                  <input
-                    type="date"
+                  <DateInput
                     max={todayDate}
                     value={newDeployment.deployment_date}
-                    onChange={(e) => setNewDeployment({ ...newDeployment, deployment_date: e.target.value })}
+                    onChange={(value) => setNewDeployment({ ...newDeployment, deployment_date: value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Warranty Expiry</label>
-                  <input
-                    type="date"
+                  <DateInput
                     max={todayDate}
                     value={newDeployment.warranty_expiry_date}
-                    onChange={(e) => setNewDeployment({ ...newDeployment, warranty_expiry_date: e.target.value })}
+                    onChange={(value) => setNewDeployment({ ...newDeployment, warranty_expiry_date: value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                   />
                 </div>

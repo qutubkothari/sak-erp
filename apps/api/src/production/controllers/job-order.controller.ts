@@ -109,6 +109,11 @@ export class JobOrderController {
   ) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.id;
+    if (body.autoIssueMaterials || body.autoRepair) {
+      throw new BadRequestException(
+        'Automatic material issue is disabled. Create the Job Order, then issue materials through Inventory > SIV.',
+      );
+    }
     return this.jobOrderService.createFromBOM(
       tenantId,
       userId,
@@ -117,8 +122,8 @@ export class JobOrderController {
       body.quantity,
       body.startDate,
       {
-        autoIssueMaterials: body.autoIssueMaterials,
-        autoRepair: body.autoRepair,
+        autoIssueMaterials: false,
+        autoRepair: false,
       },
     );
   }
@@ -174,10 +179,10 @@ export class JobOrderController {
 
   @Post(':id/stop')
   @RequireUpdate('job_orders')
-  async stopJobOrder(@Request() req: any, @Param('id') id: string, @Body() body: { reason?: string }) {
+  async stopJobOrder(@Request() req: any, @Param('id') id: string, @Body() body: { reason?: string; producedQuantity?: number }) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.userId || req.user?.id || req.user?.sub;
-    return this.jobOrderService.stopJobOrder(tenantId, id, userId, body?.reason);
+    return this.jobOrderService.stopJobOrder(tenantId, id, userId, body?.reason, body?.producedQuantity);
   }
 
   @Put(':id/operations/:operationId')
@@ -195,9 +200,14 @@ export class JobOrderController {
   async completeJobOrder(@Request() req: any, @Param('id') id: string, @Body() body?: { allowPartialConsumption?: boolean; autoBuildMissingSubAssemblies?: boolean }) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     const userId = req.user?.userId || req.user?.id || req.user?.sub;
+    if (body?.autoBuildMissingSubAssemblies) {
+      throw new BadRequestException(
+        'Automatic subassembly completion is disabled. Complete the shortage and store workflow before completing this Job Order.',
+      );
+    }
     return this.jobOrderService.completeJobOrder(tenantId, id, userId, {
       allowPartialConsumption: body?.allowPartialConsumption ?? false,
-      autoBuildMissingSubAssemblies: body?.autoBuildMissingSubAssemblies ?? true,
+      autoBuildMissingSubAssemblies: false,
     });
   }
 
@@ -220,19 +230,16 @@ export class JobOrderController {
     @Param('id') id: string,
     @Body() body: { autoRepair?: boolean } = {},
   ) {
-    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    const userId = req.user?.userId || req.user?.id || req.user?.sub;
-    return this.jobOrderService.issueMaterialsForJobOrder(tenantId, id, {
-      userId,
-      autoRepair: body?.autoRepair,
-    });
+    throw new BadRequestException(
+      'Direct material issue from a Job Order is disabled. Use Inventory > SIV to issue materials.',
+    );
   }
 
   @Post(':id/smart/repair-issue')
   async repairSmartAndIssue(@Request() req: any, @Param('id') id: string) {
-    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    const userId = req.user?.userId || req.user?.id || req.user?.sub;
-    return this.jobOrderService.repairSmartJobOrderAndIssueMaterials(tenantId, userId, id);
+    throw new BadRequestException(
+      'Automatic Smart JO repair and issue is disabled. Complete shortage PRs and issue materials through Inventory > SIV.',
+    );
   }
 
   @Post(':id/qc-approve')
@@ -280,6 +287,20 @@ export class JobOrderController {
   async checkMaterialReadiness(@Request() req: any, @Param('id') id: string) {
     const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
     return this.jobOrderService.checkIssuanceReadiness(tenantId, id);
+  }
+
+  @Put('store/material-requisitions/:id/assign')
+  async assignMaterialRequisition(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { assignedTo?: string | null },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    return this.jobOrderService.assignMaterialRequisition(
+      tenantId,
+      id,
+      body?.assignedTo || null,
+    );
   }
 
   @Post('store/material-requisitions/:id/issue')
@@ -351,6 +372,21 @@ export class JobOrderController {
       uids: Array.isArray(body?.uids) ? body.uids : undefined,
       userId,
     });
+  }
+
+  @Put('store/material-requisitions/history/approve-bulk')
+  @RequireApprove('job_orders')
+  async approveStoreIssueVoucherHistoryRows(
+    @Request() req: any,
+    @Body() body: { movementIds?: string[] },
+  ) {
+    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
+    const userId = req.user?.userId || req.user?.id || req.user?.sub;
+    return this.jobOrderService.approveStoreIssueVoucherHistoryRows(
+      tenantId,
+      Array.isArray(body?.movementIds) ? body.movementIds : [],
+      userId,
+    );
   }
 
   @Put('store/material-requisitions/history/:movementId')
@@ -479,9 +515,9 @@ export class JobOrderController {
 
   @Post(':id/force-auto-complete')
   async forceAutoComplete(@Request() req: any, @Param('id') id: string) {
-    const tenantId = req.user?.tenantId || req.headers['x-tenant-id'];
-    const userId = req.user?.id || req.user?.sub;
-    return this.jobOrderService.forceAutoCompleteDraftJobOrder(tenantId, id, userId);
+    throw new BadRequestException(
+      'Force auto-completion is disabled. Follow JO > SIV > Production > SRV > QC.',
+    );
   }
 
   @Get(':id/completion-preview')

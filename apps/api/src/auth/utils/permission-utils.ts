@@ -6,6 +6,7 @@ type ModulePermission = {
   edit?: boolean;
   delete?: boolean;
   approve?: boolean;
+  download?: boolean;
 };
 
 type PermissionActionKey = keyof Omit<ModulePermission, 'module' | 'screen'>;
@@ -34,6 +35,7 @@ const SCREEN_RESOURCE_MAP: Record<string, string[]> = {
   'inventory-siv': ['job_orders'],
   'inventory-srv': ['job_orders'],
   'inventory-items': ['items'],
+  'inventory-low-stock': ['items', 'purchase_requisitions'],
   'inventory-store-vouchers': ['items'],
   'uid-overview': ['uid'],
   'uid-deployment': ['uid'],
@@ -44,6 +46,9 @@ const SCREEN_RESOURCE_MAP: Record<string, string[]> = {
   'production-job-order-vouchers': ['job_orders'],
   'production-work-stations': ['job_orders'],
   'production-shop-floor': ['job_orders'],
+  'hr-overview': ['hr'],
+  'hr-self-service': ['hr'],
+  'hr-management': ['hr'],
   'bom-overview': ['bom'],
   'bom-routing': ['bom'],
   'settings-overview': ['users', 'roles'],
@@ -57,6 +62,7 @@ const MODULE_ACTION_TO_RESOURCE_ACTIONS: Record<PermissionActionKey, string[]> =
   edit: ['update', 'edit'],
   delete: ['delete'],
   approve: ['approve'],
+  download: ['download'],
 };
 
 const MODULE_ACTION_RESOURCE_OVERRIDES: Partial<Record<PermissionActionKey, Record<string, string[]>>> = {
@@ -82,6 +88,7 @@ const toModulePermission = (value: unknown): ModulePermission | null => {
     edit: !!value.edit,
     delete: !!value.delete,
     approve: !!value.approve,
+    download: !!value.download,
   };
 };
 
@@ -154,7 +161,7 @@ const pushRolePermissions = (permissions: string[], rawPermissions: unknown) => 
 
 const hasAnyEnabledAction = (permission: ModulePermission | null) => {
   if (!permission) return false;
-  return !!(permission.view || permission.create || permission.edit || permission.delete || permission.approve);
+  return !!(permission.view || permission.create || permission.edit || permission.delete || permission.approve || permission.download);
 };
 
 const getRawPermissionEntries = (user: any): unknown[] => {
@@ -204,6 +211,24 @@ export const hasAdminBypass = (user: any): boolean => {
   }
 
   return false;
+};
+
+export const hasSuperAdminBypass = (user: any): boolean => {
+  const normalize = (value: unknown) =>
+    String(value || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_')
+      .replace(/[^A-Z0-9_]/g, '');
+  const directRole = user?.role;
+  if (typeof directRole === 'string' && normalize(directRole) === 'SUPER_ADMIN') return true;
+  if (directRole && typeof directRole === 'object' && normalize(directRole.name) === 'SUPER_ADMIN') return true;
+
+  const roleEntries = Array.isArray(user?.roles) ? user.roles : [];
+  return roleEntries.some((entry) => {
+    const roleObj = entry?.role || entry;
+    return normalize(roleObj?.name) === 'SUPER_ADMIN';
+  });
 };
 
 export const getUserPermissions = (user: any): string[] => {

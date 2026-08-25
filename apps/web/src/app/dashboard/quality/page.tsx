@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../components/ui/ListTable';
+import DateInput from '../../../components/ui/DateInput';
 import { getTodayDateInputValue } from '@/lib/date';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { useEscapeKey } from '../../../hooks/useEscapeKey';
@@ -902,11 +903,10 @@ export default function QualityPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Inspection Date</label>
-                  <input
-                    type="date"
+                  <DateInput
                     max={todayDate}
                     value={inspectionForm.inspection_date}
-                    onChange={(e) => setInspectionForm({ ...inspectionForm, inspection_date: e.target.value })}
+                    onChange={(value) => setInspectionForm({ ...inspectionForm, inspection_date: value })}
                     className="w-full border rounded px-3 py-2"
                     required
                   />

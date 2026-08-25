@@ -20,16 +20,44 @@ import { DocumentBrandingService } from '../../common/services/document-branding
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 
 const PAYMENT_TERMS_LABELS: Record<string, string> = {
+  NET_15: 'Net 15 Days',
   NET_30: 'Net 30 Days',
   NET_45: 'Net 45 Days',
   NET_60: 'Net 60 Days',
   NET_90: 'Net 90 Days',
   ADVANCE: 'Advance Payment',
   COD: 'Cash on Delivery',
+  AGAINST_DELIVERY: 'Against Delivery',
+  AGAINST_PROFORMA: 'Against Proforma Invoice',
   IMMEDIATE: 'Immediate Payment',
 };
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null;
+}
+
+function normalizeRoleName(value: unknown): string {
+  return String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+}
+
+function hasSuperAdminBypass(user: any): boolean {
+  const directRole = user?.role;
+  if (typeof directRole === 'string' && normalizeRoleName(directRole) === 'SUPER_ADMIN') {
+    return true;
+  }
+
+  if (isRecord(directRole) && normalizeRoleName(directRole.name) === 'SUPER_ADMIN') {
+    return true;
+  }
+
+  const roleEntries = Array.isArray(user?.roles) ? user.roles : [];
+  return roleEntries.some((entry: any) => {
+    const roleObj = entry?.role || entry;
+    return normalizeRoleName(roleObj?.name) === 'SUPER_ADMIN';
+  });
+}
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
-import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { RequireApprove, RequireDelete, RequireCreate, RequirePermissions, RequireUpdate } from '../../auth/decorators/permissions.decorator';
 
 @Controller('purchase/orders')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -113,7 +141,7 @@ export class PurchaseOrdersController {
   @Put(':id')
   @RequireUpdate('purchase_orders')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.poService.update(req.user.tenantId, id, body);
+    return this.poService.update(req.user.tenantId, id, body, req.user);
   }
 
   @Post(':id/status')
@@ -129,13 +157,17 @@ export class PurchaseOrdersController {
   @Post(':id/approve')
   @RequireApprove('purchase_orders')
   async approve(@Request() req: any, @Param('id') id: string) {
-    return this.poService.updateStatus(req.user.tenantId, id, 'APPROVED', req.user.userId);
+    return this.poService.updateStatus(req.user.tenantId, id, 'APPROVED', req.user.userId, {
+      overrideMakerChecker: hasSuperAdminBypass(req.user),
+    });
   }
 
   @Post(':id/reject')
   @RequireApprove('purchase_orders')
   async reject(@Request() req: any, @Param('id') id: string) {
-    return this.poService.updateStatus(req.user.tenantId, id, 'REJECTED', req.user.userId);
+    return this.poService.updateStatus(req.user.tenantId, id, 'REJECTED', req.user.userId, {
+      overrideMakerChecker: hasSuperAdminBypass(req.user),
+    });
   }
 
   @Post(':id/tracking')
@@ -171,6 +203,7 @@ export class PurchaseOrdersController {
   }
 
   @Get(':id/pdf/world-class')
+  @RequirePermissions('purchase_orders:download')
   async generateWorldClassPdf(@Request() req: any, @Param('id') id: string, @Res() res: Response) {
     try {
       // Fetch PO with all details
@@ -262,9 +295,18 @@ export class PurchaseOrdersController {
 
           return {
             sl_no: index + 1,
-            item_code: row.item_code || row.code || '',
-            item_name: row.item_name || row.name || '',
-            description: row.description || row.specifications,
+            item_code: row.item_code || row.code || row?.item?.code || row?.item?.item_code || '',
+            item_name:
+              row.item_name ||
+              row.name ||
+              row?.item?.name ||
+              row?.item?.item_name ||
+              row?.item?.description ||
+              row.description ||
+              row.item_code ||
+              row?.item?.code ||
+              '',
+            description: row.description || row.specifications || row?.item?.description,
             hsn_code: row?.item?.hsn_code || row.hsn_code || row.hsn,
             quantity,
             uom: row.uom || row?.item?.uom || 'Nos',
@@ -333,7 +375,7 @@ export class PurchaseOrdersController {
           if (!(pdfData as any).projectName && tcJson.project) (pdfData as any).projectName = tcJson.project;
           if (tcJson.freight) (pdfData as any).terms.freight_terms = tcJson.freight;
           if (tcJson.freightAmount) (pdfData as any).freightAmount = safeNumber(tcJson.freightAmount);
-          if (tcJson.freightGstApplicable) (pdfData as any).freightGstApplicable = tcJson.freightGstApplicable === true;
+          if (tcJson.freightGstApplicable !== undefined) (pdfData as any).freightGstApplicable = tcJson.freightGstApplicable === true;
           if (tcJson.freightGstPercent) (pdfData as any).freightGstPercent = safeNumber(tcJson.freightGstPercent);
           if (tcJson.freightGstAmount) (pdfData as any).freightGstAmount = safeNumber(tcJson.freightGstAmount);
           if (tcJson.additionalExpenses) (pdfData as any).additionalExpenses = safeNumber(tcJson.additionalExpenses);
@@ -342,7 +384,7 @@ export class PurchaseOrdersController {
           if (!(pdfData as any).projectName && (tc as any).project) (pdfData as any).projectName = (tc as any).project;
           if ((tc as any).freight) (pdfData as any).terms.freight_terms = (tc as any).freight;
           if ((tc as any).freightAmount) (pdfData as any).freightAmount = safeNumber((tc as any).freightAmount);
-          if ((tc as any).freightGstApplicable) (pdfData as any).freightGstApplicable = (tc as any).freightGstApplicable === true;
+          if ((tc as any).freightGstApplicable !== undefined) (pdfData as any).freightGstApplicable = (tc as any).freightGstApplicable === true;
           if ((tc as any).freightGstPercent) (pdfData as any).freightGstPercent = safeNumber((tc as any).freightGstPercent);
           if ((tc as any).freightGstAmount) (pdfData as any).freightGstAmount = safeNumber((tc as any).freightGstAmount);
           if ((tc as any).additionalExpenses) (pdfData as any).additionalExpenses = safeNumber((tc as any).additionalExpenses);
@@ -409,6 +451,22 @@ export class PurchaseOrdersController {
         // Ignore computation issues; PDF will fall back to stored totals.
       }
 
+      // Freight GST is part of landed PO tax and total. Older records may have the
+      // "applicable" flag without a stored amount, so recompute it for the PDF.
+      try {
+        const freightAmount = safeNumber((pdfData as any).freightAmount);
+        const freightGstApplicable = (pdfData as any).freightGstApplicable === true && freightAmount > 0;
+        const freightGstPercent = freightGstApplicable
+          ? (safeNumber((pdfData as any).freightGstPercent) || 18)
+          : 0;
+        const freightGstAmount = freightGstApplicable
+          ? Number(((freightAmount * freightGstPercent) / 100).toFixed(2))
+          : 0;
+        (pdfData as any).freightGstApplicable = freightGstApplicable;
+        (pdfData as any).freightGstPercent = freightGstPercent;
+        (pdfData as any).freightGstAmount = freightGstAmount;
+      } catch {}
+
       // IGST vs CGST/SGST: if vendor state code differs from company state (Andhra Pradesh = 37), use IGST
       // Note: companyGSTIN may not be populated yet at this point; use AP state code directly.
       try {
@@ -428,14 +486,50 @@ export class PurchaseOrdersController {
         }
       } catch {}
 
+      try {
+        const freightAmount = safeNumber((pdfData as any).freightAmount);
+        const freightGstAmount = safeNumber((pdfData as any).freightGstAmount);
+        const customsDuty = safeNumber((pdfData as any).customsDuty);
+        const additionalExpenses = safeNumber((pdfData as any).additionalExpenses);
+        if (freightGstAmount > 0) {
+          const hasIgst = safeNumber((pdfData as any).igstTotal) > 0;
+          if (hasIgst) {
+            (pdfData as any).igstTotal = safeNumber((pdfData as any).igstTotal) + freightGstAmount;
+          } else {
+            (pdfData as any).cgstTotal = safeNumber((pdfData as any).cgstTotal) + freightGstAmount / 2;
+            (pdfData as any).sgstTotal = safeNumber((pdfData as any).sgstTotal) + freightGstAmount / 2;
+          }
+        }
+        (pdfData as any).grandTotal =
+          safeNumber((pdfData as any).taxableAmount || (pdfData as any).subtotal) +
+          safeNumber((pdfData as any).cgstTotal) +
+          safeNumber((pdfData as any).sgstTotal) +
+          safeNumber((pdfData as any).igstTotal) +
+          freightAmount +
+          customsDuty +
+          additionalExpenses;
+      } catch {}
+
+      // Zoho-style accounting rounding: keep exact component values, post the final PO total as whole rupees,
+      // and show the rounding adjustment as its own line in the amount summary.
+      try {
+        const exactGrandTotal = safeNumber((pdfData as any).grandTotal);
+        const roundedGrandTotal = Math.round(exactGrandTotal);
+        const roundOff = Number((roundedGrandTotal - exactGrandTotal).toFixed(2));
+        (pdfData as any).roundOff = Math.abs(roundOff) >= 0.01 ? roundOff : 0;
+        (pdfData as any).grandTotal = roundedGrandTotal;
+      } catch {}
+
       // Generate PDF
       const rawPdfBuffer = await this.worldClassPoPdfService.generatePOPdf(req.user.tenantId, pdfData);
 
       // Append PO-line selected drawings as extra pages. Optional item drawings are opt-in.
       let pdfBuffer = rawPdfBuffer;
+      let appendedDrawingCount = 0;
       try {
         const poItems: any[] = po.purchase_order_items || po.items || [];
         const drawings = await this.poService.fetchDrawingsForPOItems(req.user.tenantId, poItems);
+        appendedDrawingCount = drawings.length;
         if (drawings.length > 0) {
           pdfBuffer = await this.worldClassPoPdfService.appendDrawings(pdfBuffer, drawings);
         }
@@ -462,12 +556,24 @@ export class PurchaseOrdersController {
         console.warn('[PO PDF] Attachment append failed (non-fatal):', attachErr?.message);
       }
 
-      const filename = this.worldClassPoPdfService.generateFilename(po.po_number);
+      const isDraftDocument = String(po.status || '').toUpperCase() !== 'APPROVED';
+      if (isDraftDocument) {
+        pdfBuffer = await this.worldClassPoPdfService.applyDraftWatermark(pdfBuffer);
+      }
+
+      const filename = this.worldClassPoPdfService.generateFilename(
+        po.po_number,
+        po.vendor?.name || po.vendor_name || 'Supplier',
+        isDraftDocument,
+      );
 
       // Send PDF response
       res.set({
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'X-Document-Filename': filename,
+        'X-Document-Status': isDraftDocument ? 'DRAFT' : 'FINAL',
+        'X-PO-Drawing-Count': String(appendedDrawingCount),
         'Content-Length': pdfBuffer.length,
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         Pragma: 'no-cache',

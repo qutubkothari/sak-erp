@@ -120,14 +120,65 @@ type LinkedPurchaseRequisitionInfo = {
   prNumber: string;
 };
 
+type LinkedPurchaseFlow = {
+  prNumber: string;
+  prId: string | null;
+  prStatus: string | null;
+  status: string;
+  rfqSentCount: number;
+  rfqReceivedCount: number;
+  poCount: number;
+  poNumbers: string[];
+  grnCount: number;
+  grnNumbers: string[];
+  orderedQty: number;
+  receivedQty: number;
+};
+
+type JobOrderStoreFlowSummary = {
+  lines: number;
+  quantity: number;
+  approvedLines: number;
+  approvedQuantity: number;
+  pendingLines: number;
+  pendingQuantity: number;
+};
+
 const LINKED_PR_WORKFLOW_STATUS = {
   DRAFT: 'DRAFT',
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  APPROVED: 'APPROVED',
+  PR_NOT_FOUND: 'PR_NOT_FOUND',
   RFQ_ISSUED: 'RFQ_ISSUED',
   RFQ_RCVD: 'RFQ_RCVD',
   PO_DONE: 'PO_DONE',
   GOODS_RCVD: 'GOODS_RCVD',
   REJECTED: 'REJECTED',
 } as const;
+
+const JOB_ORDER_STATUS = {
+  DRAFT: 'DRAFT',
+  SCHEDULED: 'SCHEDULED',
+  IN_PROGRESS: 'IN_PROGRESS',
+  STORE_ISSUED: 'STORE_ISSUED',
+  COMPLETED: 'COMPLETED',
+  STOPPED: 'STOPPED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+const OPEN_SIV_JOB_ORDER_STATUSES = [
+  JOB_ORDER_STATUS.DRAFT,
+  JOB_ORDER_STATUS.SCHEDULED,
+  JOB_ORDER_STATUS.IN_PROGRESS,
+  JOB_ORDER_STATUS.STORE_ISSUED,
+] as const;
+
+const SRV_RECEIVABLE_JOB_ORDER_STATUSES = [
+  JOB_ORDER_STATUS.IN_PROGRESS,
+  JOB_ORDER_STATUS.STORE_ISSUED,
+  JOB_ORDER_STATUS.COMPLETED,
+  JOB_ORDER_STATUS.STOPPED,
+] as const;
 
 function normalizeLinkedPrStatus(value: unknown): string {
   return String(value || '').trim().toUpperCase();
@@ -149,6 +200,8 @@ function parseLinkedPrNotes(value: unknown): Record<string, any> {
 @Injectable()
 export class JobOrderService {
   private readonly logger = new Logger(JobOrderService.name);
+  private readonly smartPreviewMaxDepth = Number(process.env.SMART_JO_MAX_BOM_DEPTH || 20);
+  private readonly smartPreviewMaxNodes = Number(process.env.SMART_JO_MAX_BOM_NODES || 5000);
   private supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_KEY!,
@@ -271,7 +324,7 @@ export class JobOrderService {
         current: 0,
         total: 0,
         phase: 'PREVIEW',
-        message: 'Preparing Smart Job Order…',
+        message: 'Preparing Smart Job Order...',
       },
     };
 
@@ -329,7 +382,11 @@ export class JobOrderService {
           message: 'Smart Job Order created successfully',
         },
         result: {
-          jobOrder: result.jobOrder,
+          jobOrder: {
+            ...(result.jobOrder || {}),
+            linked_pr_id: (result as any)?.jobOrder?.linked_pr_id ?? (result as any)?.linked_pr_id ?? null,
+            linked_pr_number: (result as any)?.jobOrder?.linked_pr_number ?? (result as any)?.linked_pr_number ?? null,
+          },
           autoCompletedSubJobOrders: result.autoCompletedSubJobOrders,
           preview: result.preview,
           issueMaterialsSummary: (result as any).issueMaterialsSummary,
@@ -370,11 +427,13 @@ export class JobOrderService {
       .select('*', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
       .like('movement_number', `${prefix}%`);
-    // Append timestamp+random suffix to prevent duplicates when multiple movements
-    // are generated in the same request before any are committed (race condition).
     const seq = String((count || 0) + 1).padStart(6, '0');
-    const rand = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `${prefix}${seq}-${rand}`;
+    // Append timestamp+random suffix to prevent duplicates when multiple movements
+    // are generated in the same request before any are committed, and across tenants
+    // because movement_number is globally unique in stock_movements.
+    const stamp = Date.now().toString(36).toUpperCase();
+    const rand = Math.floor(Math.random() * 1000000).toString(36).toUpperCase().padStart(4, '0');
+    return `${prefix}${seq}-${stamp}-${rand}`;
   }
 
   private resolveUidEntityTypeFromItemCategory(category: unknown): string {
@@ -402,14 +461,18 @@ export class JobOrderService {
     // Sub-assemblies ALWAYS require UIDs regardless of uid_tracking flag.
     // For other item types, respect the uid_tracking / uid_strategy setting.
     if (!isSubAssembly && (finishedItem?.uid_tracking === false || finishedItem?.uid_strategy === 'NONE')) {
-      console.log(`[JobOrder] Skipping UID generation for ${finishedItem?.code} - uid_tracking disabled or strategy is NONE`);
+      if (process.env.DEBUG_JOB_ORDER === 'true') {
+        console.log(`[JobOrder] Skipping UID generation for ${finishedItem?.code} - uid_tracking disabled or strategy is NONE`);
+      }
       return [];
     }
 
     const uidsCreated: string[] = [];
     const tenantCode = await this.uidService.resolveTenantCode(tenantId);
 
-    console.log(`[JobOrder] Generating ${quantity} UIDs for ${finishedItem?.code}, entityType: ${entityType}, reason: ${reason}`);
+    if (process.env.DEBUG_JOB_ORDER === 'true') {
+      console.log(`[JobOrder] Generating ${quantity} UIDs for ${finishedItem?.code}, entityType: ${entityType}, reason: ${reason}`);
+    }
 
     for (let i = 0; i < quantity; i++) {
       const uid = await this.uidService.generateUID(
@@ -1267,7 +1330,9 @@ export class JobOrderService {
     if (!tenantId) throw new BadRequestException('tenantId is required');
     if (!jobOrderId) throw new BadRequestException('jobOrderId is required');
 
-    const autoRepairRequested = options.autoRepair !== false;
+    // Never auto-manufacture, auto-receive, or auto-QC missing materials from an
+    // issue request. Store movements must follow the controlled SIV/SRV flow.
+    const autoRepairRequested = false;
     const userId = String(options.userId || '').trim();
 
     const first = await this.issueJobOrderMaterials(tenantId, jobOrderId, userId || undefined);
@@ -1691,8 +1756,10 @@ export class JobOrderService {
   }
 
   async create(tenantId: string, userId: string, dto: CreateJobOrderDto) {
-    console.log('[JobOrderService] create called - itemId:', dto.itemId, 'quantity:', dto.quantity);
-    console.log('[JobOrderService] create - materials:', JSON.stringify(dto.materials, null, 2));
+    if (process.env.DEBUG_JOB_ORDER === 'true') {
+      console.log('[JobOrderService] create called - itemId:', dto.itemId, 'quantity:', dto.quantity);
+      console.log('[JobOrderService] create - materials:', JSON.stringify(dto.materials, null, 2));
+    }
     
     // Get item details
     const { data: item } = await this.supabase
@@ -1963,7 +2030,7 @@ export class JobOrderService {
     // can still show "QC Completed" after QC release.
     const { data: srvEntries, error: srvEntriesError } = await this.supabase
       .from('stock_entries')
-      .select('id, available_quantity, metadata')
+      .select('id, quantity, available_quantity, metadata')
       .eq('tenant_id', tenantId)
       .eq('metadata->>created_from', 'STORE_RECEIPT')
       .in('metadata->>job_order_id', jobOrderIds)
@@ -1973,6 +2040,7 @@ export class JobOrderService {
     if (srvEntriesError) throw new BadRequestException(srvEntriesError.message);
 
     const srvQcByJobOrderId = new Map<string, { qcCompleted: boolean; srvApproved: boolean }>();
+    const srvSummaryByJobOrderId = new Map<string, JobOrderStoreFlowSummary>();
     for (const entry of Array.isArray(srvEntries) ? srvEntries : []) {
       const meta = (entry as any)?.metadata || {};
       const jobId = String(meta?.job_order_id || '').trim();
@@ -1980,6 +2048,7 @@ export class JobOrderService {
 
       const hasQcCompletedAt = Boolean(String(meta?.qc_completed_at || '').trim());
       const avail = Number((entry as any)?.available_quantity || 0) || 0;
+      const qty = Number((entry as any)?.quantity || 0) || 0;
       const qcCompleted = hasQcCompletedAt || avail > 0;
       const srvApproved = Boolean(String(meta?.srv_approved_at || '').trim());
 
@@ -1988,12 +2057,73 @@ export class JobOrderService {
         qcCompleted: prev.qcCompleted || qcCompleted,
         srvApproved: prev.srvApproved || srvApproved,
       });
+
+      const summary = srvSummaryByJobOrderId.get(jobId) || {
+        lines: 0,
+        quantity: 0,
+        approvedLines: 0,
+        approvedQuantity: 0,
+        pendingLines: 0,
+        pendingQuantity: 0,
+      };
+      summary.lines += 1;
+      summary.quantity += qty;
+      if (srvApproved) {
+        summary.approvedLines += 1;
+        summary.approvedQuantity += qty;
+      } else {
+        summary.pendingLines += 1;
+        summary.pendingQuantity += qty;
+      }
+      srvSummaryByJobOrderId.set(jobId, summary);
     }
 
-    return rows.map((r: any) => {
+    const { data: sivMovements, error: sivMovementsError } = await this.supabase
+      .from('stock_movements')
+      .select('id, reference_id, quantity, approved_by, approved_at')
+      .eq('tenant_id', tenantId)
+      .eq('reference_type', 'SIV')
+      .in('reference_id', jobOrderIds)
+      .order('movement_date', { ascending: false })
+      .limit(2000);
+
+    if (sivMovementsError) throw new BadRequestException(sivMovementsError.message);
+
+    const sivSummaryByJobOrderId = new Map<string, JobOrderStoreFlowSummary>();
+    for (const movement of Array.isArray(sivMovements) ? sivMovements : []) {
+      const jobId = String((movement as any)?.reference_id || '').trim();
+      if (!jobId) continue;
+
+      const qty = Number((movement as any)?.quantity || 0) || 0;
+      const approved = Boolean(String((movement as any)?.approved_by || '').trim() || String((movement as any)?.approved_at || '').trim());
+      const summary = sivSummaryByJobOrderId.get(jobId) || {
+        lines: 0,
+        quantity: 0,
+        approvedLines: 0,
+        approvedQuantity: 0,
+        pendingLines: 0,
+        pendingQuantity: 0,
+      };
+      summary.lines += 1;
+      summary.quantity += qty;
+      if (approved) {
+        summary.approvedLines += 1;
+        summary.approvedQuantity += qty;
+      } else {
+        summary.pendingLines += 1;
+        summary.pendingQuantity += qty;
+      }
+      sivSummaryByJobOrderId.set(jobId, summary);
+    }
+
+    return Promise.all(rows.map(async (r: any) => {
       const baseStatus = String(r?.status || '').trim();
       const baseKey = baseStatus.toUpperCase();
       const linkedPrInfo = this.extractLinkedPurchaseRequisitionInfo(r?.notes);
+      const linkedPurchaseFlow = linkedPrInfo
+        ? await this.resolveLinkedPurchaseFlow(tenantId, linkedPrInfo.prNumber || null)
+        : null;
+      const linkedPrWorkflowStatus = linkedPurchaseFlow?.status || null;
 
       // Default: keep raw status
       let workflowStatus = baseStatus;
@@ -2007,7 +2137,14 @@ export class JobOrderService {
       const srv = srvQcByJobOrderId.get(String(r?.id || '').trim()) || { qcCompleted: false, srvApproved: false };
 
       if ((baseKey === 'DRAFT' || baseKey === 'SCHEDULED') && linkedPrInfo) {
-        workflowStatus = baseKey === 'DRAFT' ? 'PR Issued' : baseStatus;
+        // A few legacy Smart JOs have an AUTO_PR token in notes where the
+        // historical PR was later removed during test-data cleanup. That is a
+        // linked-document exception, not the production status of the Job
+        // Order. Keep the JO in its true production state and expose the
+        // missing PR only in linked_pr_workflow_status / linked_purchase_flow.
+        workflowStatus = baseKey === 'DRAFT' && linkedPrWorkflowStatus !== LINKED_PR_WORKFLOW_STATUS.PR_NOT_FOUND
+          ? (linkedPrWorkflowStatus || LINKED_PR_WORKFLOW_STATUS.PENDING_APPROVAL)
+          : baseStatus;
       } else if (baseKey === 'STORE_ISSUED') {
         // Materials have been issued from store to production floor.
         // QC happens later in SRV — so this stage is "Sent to Store".
@@ -2024,12 +2161,16 @@ export class JobOrderService {
         ...r,
         workflow_status: workflowStatus,
         linked_pr_number: linkedPrInfo?.prNumber || null,
+        linked_pr_workflow_status: linkedPrWorkflowStatus,
+        linked_purchase_flow: linkedPurchaseFlow,
+        siv_summary: sivSummaryByJobOrderId.get(String(r?.id || '').trim()) || null,
+        srv_summary: srvSummaryByJobOrderId.get(String(r?.id || '').trim()) || null,
         qc_total_uids: counts.total,
         qc_passed_uids: counts.passed,
         qc_rejected_uids: counts.onHold,
         qc_pending_uids: counts.pending,
       };
-    });
+    }));
   }
 
   async findOne(tenantId: string, id: string) {
@@ -2056,26 +2197,118 @@ export class JobOrderService {
       .eq('job_order_id', id);
 
     const linkedPrInfo = this.extractLinkedPurchaseRequisitionInfo((jobOrder as any)?.notes);
-    const linkedPrWorkflowStatus = await this.resolveLinkedPurchaseWorkflowStatus(
+    const linkedPurchaseFlow = await this.resolveLinkedPurchaseFlow(
       tenantId,
       linkedPrInfo?.prNumber || null,
     );
+    const normalizedLinkedPrWorkflowStatus = linkedPrInfo
+      ? linkedPurchaseFlow?.status || LINKED_PR_WORKFLOW_STATUS.PR_NOT_FOUND
+      : null;
     const baseStatus = String((jobOrder as any)?.status || '').trim();
-    const workflowStatus = linkedPrInfo && String(baseStatus).toUpperCase() === 'DRAFT'
-      ? 'PR Issued'
+    const workflowStatus = linkedPrInfo &&
+      String(baseStatus).toUpperCase() === 'DRAFT' &&
+      normalizedLinkedPrWorkflowStatus !== LINKED_PR_WORKFLOW_STATUS.PR_NOT_FOUND
+      ? (normalizedLinkedPrWorkflowStatus || LINKED_PR_WORKFLOW_STATUS.PENDING_APPROVAL)
       : baseStatus;
+
+    const [sivSummary, srvSummary] = await Promise.all([
+      this.resolveJobOrderSivSummary(tenantId, id),
+      this.resolveJobOrderSrvSummary(tenantId, id),
+    ]);
 
     return {
       ...jobOrder,
       workflow_status: workflowStatus,
       linked_pr_number: linkedPrInfo?.prNumber || null,
-      linked_pr_workflow_status: linkedPrWorkflowStatus,
+      linked_pr_workflow_status: normalizedLinkedPrWorkflowStatus,
+      linked_purchase_flow: linkedPurchaseFlow,
+      siv_summary: sivSummary,
+      srv_summary: srvSummary,
       operations: operations || [],
       materials: materials || [],
     };
   }
 
+  private emptyStoreFlowSummary(): JobOrderStoreFlowSummary {
+    return {
+      lines: 0,
+      quantity: 0,
+      approvedLines: 0,
+      approvedQuantity: 0,
+      pendingLines: 0,
+      pendingQuantity: 0,
+    };
+  }
+
+  private async resolveJobOrderSivSummary(tenantId: string, jobOrderId: string): Promise<JobOrderStoreFlowSummary> {
+    const normalizedJobOrderId = String(jobOrderId || '').trim();
+    const summary = this.emptyStoreFlowSummary();
+    if (!normalizedJobOrderId) return summary;
+
+    const { data, error } = await this.supabase
+      .from('stock_movements')
+      .select('id, quantity, approved_by, approved_at')
+      .eq('tenant_id', tenantId)
+      .eq('reference_type', 'SIV')
+      .eq('reference_id', normalizedJobOrderId);
+
+    if (error) throw new BadRequestException(error.message);
+
+    for (const row of Array.isArray(data) ? data : []) {
+      const qty = Number((row as any)?.quantity || 0) || 0;
+      const approved = Boolean(String((row as any)?.approved_by || '').trim() || String((row as any)?.approved_at || '').trim());
+      summary.lines += 1;
+      summary.quantity += qty;
+      if (approved) {
+        summary.approvedLines += 1;
+        summary.approvedQuantity += qty;
+      } else {
+        summary.pendingLines += 1;
+        summary.pendingQuantity += qty;
+      }
+    }
+
+    return summary;
+  }
+
+  private async resolveJobOrderSrvSummary(tenantId: string, jobOrderId: string): Promise<JobOrderStoreFlowSummary> {
+    const normalizedJobOrderId = String(jobOrderId || '').trim();
+    const summary = this.emptyStoreFlowSummary();
+    if (!normalizedJobOrderId) return summary;
+
+    const { data, error } = await this.supabase
+      .from('stock_entries')
+      .select('id, quantity, metadata')
+      .eq('tenant_id', tenantId)
+      .eq('metadata->>created_from', 'STORE_RECEIPT')
+      .eq('metadata->>job_order_id', normalizedJobOrderId);
+
+    if (error) throw new BadRequestException(error.message);
+
+    for (const row of Array.isArray(data) ? data : []) {
+      const qty = Number((row as any)?.quantity || 0) || 0;
+      const meta = (row as any)?.metadata || {};
+      const approved = Boolean(String(meta?.srv_approved_at || '').trim());
+      summary.lines += 1;
+      summary.quantity += qty;
+      if (approved) {
+        summary.approvedLines += 1;
+        summary.approvedQuantity += qty;
+      } else {
+        summary.pendingLines += 1;
+        summary.pendingQuantity += qty;
+      }
+    }
+
+    return summary;
+  }
+
   private async resolveLinkedPurchaseWorkflowStatus(tenantId: string, prNumber: string | null): Promise<string | null> {
+    const flow = await this.resolveLinkedPurchaseFlow(tenantId, prNumber);
+    return flow?.status || null;
+  }
+
+  private async resolveLinkedPurchaseFlow(tenantId: string, prNumber: string | null): Promise<LinkedPurchaseFlow | null> {
     const normalizedPrNumber = String(prNumber || '').trim();
     if (!normalizedPrNumber) return null;
 
@@ -2083,6 +2316,7 @@ export class JobOrderService {
       .from('purchase_requisitions')
       .select(`
         id,
+        pr_number,
         status,
         purchase_requisition_items(remaining_qty, requested_qty)
       `)
@@ -2090,10 +2324,40 @@ export class JobOrderService {
       .eq('pr_number', normalizedPrNumber)
       .maybeSingle();
 
-    if (!requisition) return null;
+    if (!requisition) {
+      return {
+        prNumber: normalizedPrNumber,
+        prId: null,
+        prStatus: null,
+        status: LINKED_PR_WORKFLOW_STATUS.PR_NOT_FOUND,
+        rfqSentCount: 0,
+        rfqReceivedCount: 0,
+        poCount: 0,
+        poNumbers: [],
+        grnCount: 0,
+        grnNumbers: [],
+        orderedQty: 0,
+        receivedQty: 0,
+      };
+    }
 
     const prId = String((requisition as any)?.id || '').trim();
-    if (!prId) return null;
+    if (!prId) {
+      return {
+        prNumber: normalizedPrNumber,
+        prId: null,
+        prStatus: String((requisition as any)?.status || '').trim() || null,
+        status: LINKED_PR_WORKFLOW_STATUS.PR_NOT_FOUND,
+        rfqSentCount: 0,
+        rfqReceivedCount: 0,
+        poCount: 0,
+        poNumbers: [],
+        grnCount: 0,
+        grnNumbers: [],
+        orderedQty: 0,
+        receivedQty: 0,
+      };
+    }
 
     const [{ data: rfqRows }, { data: poRows }] = await Promise.all([
       this.supabase
@@ -2103,10 +2367,24 @@ export class JobOrderService {
         .eq('pr_id', prId),
       this.supabase
         .from('purchase_orders')
-        .select('purchase_order_items(ordered_qty, received_qty)')
+        .select('id, po_number, purchase_order_items(ordered_qty, received_qty)')
         .eq('tenant_id', tenantId)
         .eq('pr_id', prId),
     ]);
+
+    const poIds = (Array.isArray(poRows) ? poRows : [])
+      .map((row: any) => String(row?.id || '').trim())
+      .filter(Boolean);
+
+    let grnRows: any[] = [];
+    if (poIds.length > 0) {
+      const { data } = await this.supabase
+        .from('grns')
+        .select('id, grn_number, status, po_id')
+        .eq('tenant_id', tenantId)
+        .in('po_id', poIds);
+      grnRows = Array.isArray(data) ? data : [];
+    }
 
     const items = Array.isArray((requisition as any)?.purchase_requisition_items)
       ? (requisition as any).purchase_requisition_items
@@ -2130,8 +2408,11 @@ export class JobOrderService {
       totalOrderedQty: 0,
       totalReceivedQty: 0,
     };
+    const poNumbers: string[] = [];
 
     (Array.isArray(poRows) ? poRows : []).forEach((row: any) => {
+      const poNumber = String(row?.po_number || '').trim();
+      if (poNumber) poNumbers.push(poNumber);
       const poItems = Array.isArray(row?.purchase_order_items) ? row.purchase_order_items : [];
       poItems.forEach((item: any) => {
         poSummary.totalOrderedQty += Number(item?.ordered_qty || 0);
@@ -2147,22 +2428,53 @@ export class JobOrderService {
       poSummary.totalOrderedQty > 0 && poSummary.totalReceivedQty >= poSummary.totalOrderedQty;
 
     if (baseStatus === LINKED_PR_WORKFLOW_STATUS.REJECTED) {
-      return LINKED_PR_WORKFLOW_STATUS.REJECTED;
-    }
-    if (baseStatus === LINKED_PR_WORKFLOW_STATUS.DRAFT || !baseStatus) {
-      return LINKED_PR_WORKFLOW_STATUS.DRAFT;
-    }
-    if (goodsReceived) {
-      return LINKED_PR_WORKFLOW_STATUS.GOODS_RCVD;
-    }
-    if (poDone) {
-      return LINKED_PR_WORKFLOW_STATUS.PO_DONE;
-    }
-    if (rfqSummary.receivedCount > 0) {
-      return LINKED_PR_WORKFLOW_STATUS.RFQ_RCVD;
+      return {
+        prNumber: String((requisition as any)?.pr_number || normalizedPrNumber).trim(),
+        prId,
+        prStatus: baseStatus || null,
+        status: LINKED_PR_WORKFLOW_STATUS.REJECTED,
+        rfqSentCount: rfqSummary.sentCount,
+        rfqReceivedCount: rfqSummary.receivedCount,
+        poCount: poNumbers.length,
+        poNumbers,
+        grnCount: grnRows.length,
+        grnNumbers: grnRows.map((row: any) => String(row?.grn_number || '').trim()).filter(Boolean),
+        orderedQty: poSummary.totalOrderedQty,
+        receivedQty: poSummary.totalReceivedQty,
+      };
     }
 
-    return LINKED_PR_WORKFLOW_STATUS.RFQ_ISSUED;
+    let status: string;
+    if (baseStatus === LINKED_PR_WORKFLOW_STATUS.DRAFT || !baseStatus) {
+      status = LINKED_PR_WORKFLOW_STATUS.DRAFT;
+    } else if (baseStatus === 'SUBMITTED' || baseStatus === 'PENDING') {
+      status = LINKED_PR_WORKFLOW_STATUS.PENDING_APPROVAL;
+    } else if (goodsReceived) {
+      status = LINKED_PR_WORKFLOW_STATUS.GOODS_RCVD;
+    } else if (poDone || poNumbers.length > 0) {
+      status = LINKED_PR_WORKFLOW_STATUS.PO_DONE;
+    } else if (rfqSummary.receivedCount > 0) {
+      status = LINKED_PR_WORKFLOW_STATUS.RFQ_RCVD;
+    } else if (baseStatus === 'APPROVED' && rfqSummary.sentCount === 0) {
+      status = LINKED_PR_WORKFLOW_STATUS.APPROVED;
+    } else {
+      status = LINKED_PR_WORKFLOW_STATUS.RFQ_ISSUED;
+    }
+
+    return {
+      prNumber: String((requisition as any)?.pr_number || normalizedPrNumber).trim(),
+      prId,
+      prStatus: baseStatus || null,
+      status,
+      rfqSentCount: rfqSummary.sentCount,
+      rfqReceivedCount: rfqSummary.receivedCount,
+      poCount: poNumbers.length,
+      poNumbers,
+      grnCount: grnRows.length,
+      grnNumbers: grnRows.map((row: any) => String(row?.grn_number || '').trim()).filter(Boolean),
+      orderedQty: poSummary.totalOrderedQty,
+      receivedQty: poSummary.totalReceivedQty,
+    };
   }
 
   private extractLinkedPurchaseRequisitionInfo(notes: unknown): LinkedPurchaseRequisitionInfo | null {
@@ -2267,7 +2579,9 @@ export class JobOrderService {
           purpose: `Shortage for Job Order ${String(jobOrder?.job_order_number || '').trim()}`,
           requested_by: userId,
           required_date: requiredDate,
-          status: 'DRAFT',
+          status: 'SUBMITTED',
+          submitted_at: new Date().toISOString(),
+          current_approval_level: 0,
           remarks: `Auto-generated from Job Order ${String(jobOrder?.job_order_number || '').trim()} [JOB_ORDER:${String(jobOrder?.id || '').trim()}]`,
         })
         .select('id, pr_number')
@@ -2276,6 +2590,19 @@ export class JobOrderService {
       if (error) throw new BadRequestException(error.message);
 
       createdPrId = String(pr?.id || '').trim() || null;
+
+      if (createdPrId) {
+        await this.supabase.from('purchase_requisition_approval_history').insert({
+          tenant_id: tenantId,
+          pr_id: createdPrId,
+          actor_id: userId,
+          action: 'SUBMITTED',
+          from_status: 'AUTO_CREATED',
+          to_status: 'SUBMITTED',
+          reason: `Auto-submitted from Job Order ${String(jobOrder?.job_order_number || '').trim()} shortage planning`,
+          approval_level: 0,
+        } as any);
+      }
 
       const itemIds = rawMaterialShortages.map((row) => String(row.itemId || '').trim()).filter(Boolean);
       const { data: itemRows, error: itemRowsError } = await this.supabase
@@ -2292,11 +2619,41 @@ export class JobOrderService {
         if (itemId) itemById.set(itemId, row);
       }
 
+      const preferredVendorByItemId = new Map<string, any>();
+      if (itemIds.length > 0) {
+        const { data: vendorLinks, error: vendorLinkError } = await this.supabase
+          .from('item_vendors')
+          .select('item_id, vendor_id, unit_price, priority, vendor:vendors(id, code, name, is_active, is_verified, approval_status)')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .in('item_id', itemIds)
+          .order('priority', { ascending: true });
+
+        if (vendorLinkError) throw new BadRequestException(vendorLinkError.message);
+
+        for (const link of vendorLinks || []) {
+          const itemId = String((link as any)?.item_id || '').trim();
+          if (!itemId || preferredVendorByItemId.has(itemId)) continue;
+          const vendor = Array.isArray((link as any)?.vendor) ? (link as any).vendor[0] : (link as any)?.vendor;
+          const approvalStatus = String(vendor?.approval_status || '').trim().toUpperCase();
+          const isApproved = vendor?.is_verified === true || ['APPROVED', 'VERIFIED'].includes(approvalStatus);
+          if (vendor?.is_active === false || !isApproved) continue;
+          preferredVendorByItemId.set(itemId, { ...link, vendor });
+        }
+      }
+
       const itemsPayload = rawMaterialShortages.map((shortage) => {
-        const item = itemById.get(String(shortage.itemId || '').trim()) || {};
-        const estimatedRate = Number((item as any)?.standard_cost || (item as any)?.selling_price || 0) || 0;
+        const shortageItemId = String(shortage.itemId || '').trim();
+        const item = itemById.get(shortageItemId) || {};
+        const preferredVendor = preferredVendorByItemId.get(shortageItemId);
+        const preferredVendorName = String(preferredVendor?.vendor?.name || '').trim();
+        const preferredVendorRate = Number(preferredVendor?.unit_price || 0) || 0;
+        const estimatedRate = preferredVendorRate || Number((item as any)?.standard_cost || (item as any)?.selling_price || 0) || 0;
+        const baseRemark = `Required ${Number(shortage.required || 0)}, available ${Number(shortage.available || 0)} for Job Order ${String(jobOrder?.job_order_number || '').trim()}`;
         return {
           pr_id: pr.id,
+          item_id: shortageItemId,
+          vendor_id: preferredVendor?.vendor_id || preferredVendor?.vendor?.id || null,
           item_code: String((item as any)?.code || shortage.itemCode || '').trim(),
           item_name: String((item as any)?.name || shortage.itemName || '').trim(),
           description: `Auto-generated shortage for ${String(jobOrder?.job_order_number || '').trim()}`,
@@ -2304,7 +2661,9 @@ export class JobOrderService {
           requested_qty: Math.max(0, Number(shortage.shortage || 0)),
           estimated_rate: estimatedRate,
           required_date: requiredDate,
-          remarks: `Required ${Number(shortage.required || 0)}, available ${Number(shortage.available || 0)} for Job Order ${String(jobOrder?.job_order_number || '').trim()}`,
+          remarks: preferredVendorName
+            ? `${baseRemark}. Preferred supplier: ${preferredVendorName}.`
+            : `${baseRemark}. No active approved preferred supplier found; Purchase must select vendor.`,
         };
       }).filter((row) => row.item_code && row.item_name && row.requested_qty > 0);
 
@@ -2486,11 +2845,11 @@ export class JobOrderService {
     return this.findOne(tenantId, id);
   }
 
-  async stopJobOrder(tenantId: string, id: string, userId?: string, reason?: string) {
+  async stopJobOrder(tenantId: string, id: string, userId?: string, reason?: string, producedQuantity?: number) {
     // Get job order to verify it exists and is not already stopped/completed
     const { data: jobOrder, error: fetchError } = await this.supabase
       .from('production_job_orders')
-      .select('id, status, job_order_number')
+      .select('id, status, job_order_number, quantity, completed_quantity')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
@@ -2505,6 +2864,18 @@ export class JobOrderService {
       throw new BadRequestException(`Cannot stop a job order that is already ${currentStatus.toLowerCase()}`);
     }
 
+    const plannedQty = Math.max(0, Number((jobOrder as any)?.quantity) || 0);
+    const currentProducedQty = Math.max(0, Number((jobOrder as any)?.completed_quantity) || 0);
+    const requestedProducedQty = Number(producedQuantity);
+    const hasProducedQtyInput = Number.isFinite(requestedProducedQty) && requestedProducedQty > 0;
+    const finalProducedQty = hasProducedQtyInput
+      ? Math.max(currentProducedQty, Math.min(plannedQty || requestedProducedQty, requestedProducedQty))
+      : currentProducedQty;
+
+    if (hasProducedQtyInput && plannedQty > 0 && requestedProducedQty - plannedQty > 1e-9) {
+      throw new BadRequestException(`Produced quantity cannot exceed planned quantity (${plannedQty})`);
+    }
+
     // Update job order status to STOPPED
     const updates: any = {
       status: 'STOPPED',
@@ -2512,15 +2883,23 @@ export class JobOrderService {
       updated_at: new Date().toISOString(),
     };
 
+    if (finalProducedQty > currentProducedQty) {
+      updates.completed_quantity = finalProducedQty;
+    }
+
     // Add stop reason to notes if provided
-    if (reason?.trim()) {
+    if (reason?.trim() || finalProducedQty > currentProducedQty) {
       const { data: current } = await this.supabase
         .from('production_job_orders')
         .select('notes')
         .eq('id', id)
         .single();
       const currentNotes = String(current?.notes || '');
-      const stopNote = `[STOPPED by ${userId || 'system'} at ${new Date().toISOString()}] Reason: ${reason.trim()}`;
+      const pieces = [
+        reason?.trim() ? `Reason: ${reason.trim()}` : null,
+        finalProducedQty > currentProducedQty ? `Produced before stop: ${finalProducedQty}` : null,
+      ].filter(Boolean);
+      const stopNote = `[STOPPED by ${userId || 'system'} at ${new Date().toISOString()}] ${pieces.join(' | ') || 'No reason provided'}`;
       updates.notes = currentNotes ? `${currentNotes}\n${stopNote}` : stopNote;
     }
 
@@ -2538,7 +2917,11 @@ export class JobOrderService {
       id,
       jobOrderNumber: jobOrder.job_order_number,
       status: 'STOPPED',
-      message: 'Job order stopped successfully',
+      producedQuantity: finalProducedQty,
+      srvPending: finalProducedQty > 0,
+      message: finalProducedQty > 0
+        ? 'Job order stopped successfully. Produced quantity is available for SRV receipt.'
+        : 'Job order stopped successfully',
     };
   }
 
@@ -2585,6 +2968,12 @@ export class JobOrderService {
     startDate: string,
     options?: { autoIssueMaterials?: boolean; autoRepair?: boolean },
   ) {
+    if (options?.autoIssueMaterials || options?.autoRepair) {
+      throw new BadRequestException(
+        'Automatic material issue is disabled. Issue Job Order materials through Inventory > SIV.',
+      );
+    }
+
     // Get BOM details (avoid PostgREST ambiguous embed between bom_headers and bom_items)
     const bom = await this.getBomWithItemsAndRoutingForJobOrder(tenantId, bomId);
     if (!bom) throw new NotFoundException('BOM not found');
@@ -2802,9 +3191,11 @@ export class JobOrderService {
   }
 
   private async checkMaterialAvailability(tenantId: string, materials: any[], jobQuantity: number) {
-    console.log('[JobOrderService] checkMaterialAvailability - tenantId:', tenantId);
-    console.log('[JobOrderService] checkMaterialAvailability - materials:', JSON.stringify(materials, null, 2));
-    console.log('[JobOrderService] checkMaterialAvailability - jobQuantity:', jobQuantity);
+    if (process.env.DEBUG_JOB_ORDER === 'true') {
+      console.log('[JobOrderService] checkMaterialAvailability - tenantId:', tenantId);
+      console.log('[JobOrderService] checkMaterialAvailability - materials:', JSON.stringify(materials, null, 2));
+      console.log('[JobOrderService] checkMaterialAvailability - jobQuantity:', jobQuantity);
+    }
 
     const normalizedMaterials = await this.normalizeMaterialIds(tenantId, materials || []);
     
@@ -2817,7 +3208,9 @@ export class JobOrderService {
       if (!this.isUuid(String(itemIdToCheck || ''))) {
         throw new BadRequestException(`Invalid material itemId: ${String(itemIdToCheck)}`);
       }
-      console.log('[JobOrderService] Checking material - itemIdToCheck:', itemIdToCheck, 'required:', required);
+      if (process.env.DEBUG_JOB_ORDER === 'true') {
+        console.log('[JobOrderService] Checking material - itemIdToCheck:', itemIdToCheck, 'required:', required);
+      }
 
       // IMPORTANT: Use stock_entries-backed summary (same as GET /items/:id/stock)
       // so Job Order validation matches the stock shown across the app.
@@ -2826,14 +3219,18 @@ export class JobOrderService {
         p_tenant_id: tenantId,
       });
 
-      console.log('[JobOrderService] Stock check for item:', itemIdToCheck);
-      console.log('[JobOrderService] Stock summary found:', data);
-      console.log('[JobOrderService] Stock summary query error:', error);
+      if (process.env.DEBUG_JOB_ORDER === 'true') {
+        console.log('[JobOrderService] Stock check for item:', itemIdToCheck);
+        console.log('[JobOrderService] Stock summary found:', data);
+        console.log('[JobOrderService] Stock summary query error:', error);
+      }
 
       const summary = Array.isArray(data) && data.length > 0 ? data[0] : null;
       const available = Number(summary?.available_quantity) || 0;
       
-      console.log('[JobOrderService] Required:', required, 'Available:', available);
+      if (process.env.DEBUG_JOB_ORDER === 'true') {
+        console.log('[JobOrderService] Required:', required, 'Available:', available);
+      }
 
       // Check material availability
       if (available < required) {
@@ -2848,7 +3245,9 @@ export class JobOrderService {
           console.error('[JobOrderService] Error fetching item details for', itemIdToCheck, ':', itemError);
         }
 
-        console.log('[JobOrderService] Item lookup for', itemIdToCheck, '- found:', item, 'error:', itemError);
+        if (process.env.DEBUG_JOB_ORDER === 'true') {
+          console.log('[JobOrderService] Item lookup for', itemIdToCheck, '- found:', item, 'error:', itemError);
+        }
 
         // If item doesn't exist, try to get item code/name from other sources
         const itemCode = item?.code || 'Unknown';
@@ -2869,7 +3268,9 @@ export class JobOrderService {
       }
     }
 
-    console.log('[JobOrderService] Final shortages:', JSON.stringify(shortages, null, 2));
+    if (process.env.DEBUG_JOB_ORDER === 'true') {
+      console.log('[JobOrderService] Final shortages:', JSON.stringify(shortages, null, 2));
+    }
     return {
       available: shortages.length === 0,
       shortages,
@@ -2906,16 +3307,20 @@ export class JobOrderService {
     }
 
     const allowPartial = Boolean(options?.allowPartialConsumption);
-    const autoBuildMissingSubAssemblies = options?.autoBuildMissingSubAssemblies ?? true;
+    // Normal completion must block on missing materials. Never manufacture,
+    // receive, or QC-release a missing subassembly inside JO completion.
+    const autoBuildMissingSubAssemblies = false;
 
-    console.log('[completeJobOrder] Starting completion', {
-      jobOrderId,
-      jobOrderNumber: jobOrder.job_order_number,
-      status: jobOrder.status,
-      materialsCount: (jobOrder.job_order_materials || []).length,
-      allowPartial,
-      autoBuildMissingSubAssemblies,
-    });
+    if (process.env.DEBUG_JOB_ORDER === 'true') {
+      console.log('[completeJobOrder] Starting completion', {
+        jobOrderId,
+        jobOrderNumber: jobOrder.job_order_number,
+        status: jobOrder.status,
+        materialsCount: (jobOrder.job_order_materials || []).length,
+        allowPartial,
+        autoBuildMissingSubAssemblies,
+      });
+    }
 
     // Normalize legacy/buggy material rows (some historical flows stored bom_header IDs in item_id/selected_variant_id).
     try {
@@ -2931,51 +3336,65 @@ export class JobOrderService {
     // This runs BEFORE consumption regardless of partial mode (tries to create what's needed first).
     // Only triggers for items that have an active BOM.
     if (autoBuildMissingSubAssemblies) {
-      console.log('[completeJobOrder] Auto-build enabled, checking materials for shortages');
+      if (process.env.DEBUG_JOB_ORDER === 'true') {
+        console.log('[completeJobOrder] Auto-build enabled, checking materials for shortages');
+      }
       if (!userId) {
         throw new BadRequestException('userId is required to auto-build missing sub-assemblies');
       }
 
       const startDate = this.toStartDate(String((jobOrder as any)?.start_date || ''));
       const materials = Array.isArray(jobOrder.job_order_materials) ? jobOrder.job_order_materials : [];
-      console.log('[completeJobOrder] Materials to check:', materials.length);
+      if (process.env.DEBUG_JOB_ORDER === 'true') {
+        console.log('[completeJobOrder] Materials to check:', materials.length);
+      }
 
       for (const material of materials) {
         const requiredQty = Number(material.required_quantity) || 0;
         const alreadyIssued = Number(material.issued_quantity) || 0;
         const consumeQty = Math.max(0, requiredQty - alreadyIssued);
         if (consumeQty <= 0) {
-          console.log('[completeJobOrder] Skipping material (already issued):', material.item_id);
+          if (process.env.DEBUG_JOB_ORDER === 'true') {
+            console.log('[completeJobOrder] Skipping material (already issued):', material.item_id);
+          }
           continue;
         }
 
         const itemIdToConsume = material.selected_variant_id || material.item_id;
         if (!this.isUuid(String(itemIdToConsume || ''))) {
-          console.log('[completeJobOrder] Skipping material (invalid UUID):', itemIdToConsume);
+          if (process.env.DEBUG_JOB_ORDER === 'true') {
+            console.log('[completeJobOrder] Skipping material (invalid UUID):', itemIdToConsume);
+          }
           continue;
         }
 
         const available = await this.getAvailableStock(tenantId, String(itemIdToConsume));
         const shortage = Math.max(0, consumeQty - available);
-        console.log('[completeJobOrder] Material check:', { itemIdToConsume, consumeQty, available, shortage });
+        if (process.env.DEBUG_JOB_ORDER === 'true') {
+          console.log('[completeJobOrder] Material check:', { itemIdToConsume, consumeQty, available, shortage });
+        }
         if (shortage <= 0) continue;
 
         const bom = await this.getActiveBomForItem(tenantId, String(itemIdToConsume));
         if (!bom?.id) {
-          console.log('[completeJobOrder] No BOM for item (raw material):', itemIdToConsume);
+          if (process.env.DEBUG_JOB_ORDER === 'true') {
+            console.log('[completeJobOrder] No BOM for item (raw material):', itemIdToConsume);
+          }
           continue; // No BOM => raw material; cannot auto-build.
         }
 
         // Build the missing sub-assembly quantity, complete it, then QC-approve so stock is created.
         const itemBasic = await this.getItemBasic(String(itemIdToConsume));
-        console.log('[completeJobOrder] Auto-building missing sub-assembly', {
-          jobOrderId,
-          jobOrderNumber: jobOrder.job_order_number,
-          itemId: itemIdToConsume,
-          itemCode: itemBasic?.code,
-          shortage,
-          bomId: bom.id,
-        });
+        if (process.env.DEBUG_JOB_ORDER === 'true') {
+          console.log('[completeJobOrder] Auto-building missing sub-assembly', {
+            jobOrderId,
+            jobOrderNumber: jobOrder.job_order_number,
+            itemId: itemIdToConsume,
+            itemCode: itemBasic?.code,
+            shortage,
+            bomId: bom.id,
+          });
+        }
 
         const created = await this.createFromBOMWithVariantSelections(tenantId, userId, {
           itemId: String(itemIdToConsume),
@@ -3614,8 +4033,7 @@ export class JobOrderService {
       .from('production_job_orders')
       .select('id, job_order_number, item_id, item_code, item_name, quantity, status, start_date, created_at, assigned_to, assigned_to_name')
       .eq('tenant_id', tenantId)
-      .neq('status', 'COMPLETED')
-      .neq('status', 'CANCELLED');
+      .in('status', [...OPEN_SIV_JOB_ORDER_STATUSES]);
 
     if (assignedTo) {
       jobOrdersQuery = jobOrdersQuery.eq('assigned_to', assignedTo);
@@ -3715,10 +4133,110 @@ export class JobOrderService {
         ((row) => row.requisitionStatus !== undefined); // keep all non-COMPLETED/CANCELLED
   }
 
+  async assignMaterialRequisition(
+    tenantId: string,
+    jobOrderId: string,
+    assignedTo: string | null,
+  ) {
+    const normalizedJobOrderId = String(jobOrderId || '').trim();
+    const normalizedAssignedTo = String(assignedTo || '').trim();
+
+    if (!normalizedJobOrderId) {
+      throw new BadRequestException('Job order is required for assignment.');
+    }
+
+    const { data: jobOrder, error: jobOrderError } = await this.supabase
+      .from('production_job_orders')
+      .select('id, status')
+      .eq('tenant_id', tenantId)
+      .eq('id', normalizedJobOrderId)
+      .single();
+
+    if (jobOrderError || !jobOrder) {
+      throw new BadRequestException('Material requisition/job order not found.');
+    }
+
+    const status = String((jobOrder as any)?.status || '').trim().toUpperCase();
+    if (['COMPLETED', 'CANCELLED', 'STOPPED'].includes(status)) {
+      throw new BadRequestException('Cannot assign a completed, cancelled, or stopped job order.');
+    }
+
+    let resolvedAssignedTo: string | null = null;
+    let assignedToName: string | null = null;
+    if (normalizedAssignedTo) {
+      const { data: assignedUser, error: userError } = await this.supabase
+        .from('users')
+        .select('id, email, first_name, last_name')
+        .eq('tenant_id', tenantId)
+        .eq('id', normalizedAssignedTo)
+        .maybeSingle();
+
+      if (!userError && assignedUser) {
+        resolvedAssignedTo = String((assignedUser as any).id || normalizedAssignedTo).trim();
+        assignedToName = this.formatUserDisplayName(assignedUser);
+      } else {
+        const { data: employee, error: employeeError } = await this.supabase
+          .from('employees')
+          .select('id, user_id, employee_name, email')
+          .eq('tenant_id', tenantId)
+          .eq('id', normalizedAssignedTo)
+          .maybeSingle();
+
+        if (employeeError || !employee) {
+          throw new BadRequestException('Selected employee/user was not found for this tenant.');
+        }
+
+        const linkedUserId = String((employee as any)?.user_id || '').trim();
+        if (linkedUserId) {
+          const { data: linkedUser, error: linkedUserError } = await this.supabase
+            .from('users')
+            .select('id, email, first_name, last_name')
+            .eq('tenant_id', tenantId)
+            .eq('id', linkedUserId)
+            .maybeSingle();
+
+          if (!linkedUserError && linkedUser) {
+            resolvedAssignedTo = String((linkedUser as any).id || linkedUserId).trim();
+            assignedToName = this.formatUserDisplayName(linkedUser);
+          }
+        }
+
+        if (!resolvedAssignedTo) {
+          resolvedAssignedTo = String((employee as any).id || normalizedAssignedTo).trim();
+          assignedToName =
+            String((employee as any)?.employee_name || '').trim() ||
+            String((employee as any)?.email || '').trim() ||
+            resolvedAssignedTo;
+        }
+      }
+    }
+
+    const { data, error } = await this.supabase
+      .from('production_job_orders')
+      .update({
+        assigned_to: resolvedAssignedTo,
+        assigned_to_name: assignedToName,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('tenant_id', tenantId)
+      .eq('id', normalizedJobOrderId)
+      .select('id, job_order_number, assigned_to, assigned_to_name')
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+
+    return {
+      id: data?.id,
+      job_order_number: data?.job_order_number,
+      assigned_to: data?.assigned_to || null,
+      assigned_to_name: data?.assigned_to_name || null,
+    };
+  }
+
   async issueMaterialRequisition(tenantId: string, jobOrderId: string, userId?: string) {
     const summary = await this.issueMaterialsForJobOrder(tenantId, jobOrderId, {
       userId,
-      autoRepair: true,
+      autoRepair: false,
     });
 
     const updated = await this.findOne(tenantId, jobOrderId);
@@ -3775,7 +4293,7 @@ export class JobOrderService {
         .select('id, job_order_number, status, quantity')
         .eq('tenant_id', tenantId)
         .eq('item_id', itemId)
-        .not('status', 'in', '("COMPLETED","CANCELLED")')
+        .in('status', [...OPEN_SIV_JOB_ORDER_STATUSES])
         .order('created_at', { ascending: false })
         .limit(5);
 
@@ -4018,7 +4536,7 @@ export class JobOrderService {
 
       const missing = normalizedUids.filter((u) => !byUid.has(u));
       if (missing.length > 0) {
-        throw new BadRequestException(`Unknown UID(s): ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}`);
+        throw new BadRequestException(`Unknown UID(s): ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '...' : ''}`);
       }
 
       for (const uid of normalizedUids) {
@@ -4165,6 +4683,7 @@ export class JobOrderService {
         const movedBy = String(userId || '').trim();
         if (movedBy && this.isUuid(movedBy)) {
           const movementNumber = await this.generateMovementNumber(tenantId, 'PRODUCTION_ISSUE');
+          const postedAt = new Date().toISOString();
           const { error: auditError } = await this.supabase
             .from('stock_movements')
             .insert({
@@ -4179,7 +4698,9 @@ export class JobOrderService {
               reference_number: String((jobOrder as any)?.job_order_number || ''),
               notes: `SIV: Issued ${toConsumeFromEntry} of ${String((material as any)?.item_code || '').trim()} (${String((material as any)?.item_name || '').trim()}) for ${String((jobOrder as any)?.job_order_number || '').trim()} (material_id=${materialId})`,
               moved_by: movedBy,
-              movement_date: new Date().toISOString(),
+              movement_date: postedAt,
+              approved_by: movedBy,
+              approved_at: postedAt,
             } as any);
 
           if (auditError) {
@@ -4236,6 +4757,8 @@ export class JobOrderService {
           notes: `SIV: Issued UID ${uid} for ${String((jobOrder as any)?.job_order_number || '').trim()} (material_id=${materialId})`,
           moved_by: movedBy,
           movement_date: new Date().toISOString(),
+          approved_by: movedBy,
+          approved_at: new Date().toISOString(),
         }));
 
         if (rows.length > 0) {
@@ -4469,6 +4992,10 @@ export class JobOrderService {
 
     const safeRows = Array.isArray(rows) ? rows : [];
     if (safeRows.length === 0) {
+      if (quantityChange < 0) {
+        throw new Error('No inventory stock rows available for deduction');
+      }
+
       // Last resort: try to insert a row. This may fail if your schema enforces location_id.
       const { error: insErr } = await this.supabase
         .from('inventory_stock')
@@ -4489,6 +5016,20 @@ export class JobOrderService {
 
     let remaining = quantityChange;
     if (remaining < 0) {
+      const totalAvailable = safeRows.reduce((sum, row) => {
+        const currentQty = Number((row as any)?.quantity || 0);
+        const reservedQty = Number((row as any)?.reserved_quantity || 0);
+        return sum + Math.max(0, currentQty - reservedQty);
+      }, 0);
+
+      // Never leave a partially deducted balance if the full SIV quantity is
+      // unavailable. Validate first, then update the individual location rows.
+      if (totalAvailable + 1e-6 < -remaining) {
+        throw new Error(
+          `Insufficient inventory stock: available ${totalAvailable.toFixed(6)}, requested ${Math.abs(remaining).toFixed(6)}`,
+        );
+      }
+
       // Deduct across rows with the most available first.
       for (const row of safeRows) {
         if (remaining >= -1e-9) break;
@@ -4537,7 +5078,7 @@ export class JobOrderService {
       .from('production_job_orders')
       .select('id, job_order_number, item_id, item_code, item_name, quantity, completed_quantity, status, actual_end_date, created_at')
       .eq('tenant_id', tenantId)
-      .in('status', ['STORE_ISSUED', 'COMPLETED', 'IN_PROGRESS'])
+      .in('status', [...SRV_RECEIVABLE_JOB_ORDER_STATUSES])
       .order('created_at', { ascending: false })
       .limit(200);
 
@@ -4569,7 +5110,13 @@ export class JobOrderService {
     // OPEN SRVs = jobs that have produced quantity pending receipt OR receipt exists but is not approved.
     return (completedJobs || [])
       .map((jo: any) => {
-        const producedQty = Math.max(0, Number(jo.completed_quantity ?? jo.quantity ?? 0) || 0);
+        const status = String(jo.status || '').trim().toUpperCase();
+        const completedQty = Number(jo.completed_quantity);
+        const plannedQty = Number(jo.quantity);
+        const producedQty =
+          status === JOB_ORDER_STATUS.STOPPED || status === JOB_ORDER_STATUS.IN_PROGRESS
+            ? Math.max(0, Number.isFinite(completedQty) ? completedQty : 0)
+            : Math.max(0, Number.isFinite(completedQty) ? completedQty : (Number.isFinite(plannedQty) ? plannedQty : 0));
         const alreadyReceivedQty = (receiptEntries || [])
           .filter((e: any) => String((e as any)?.metadata?.job_order_id || '').trim() === String(jo.id))
           .reduce((sum: number, e: any) => sum + (Number((e as any)?.quantity || 0) || 0), 0);
@@ -4847,7 +5394,7 @@ export class JobOrderService {
 
       const missing = normalizedUids.filter((uid) => !byUid.has(uid));
       if (missing.length > 0) {
-        throw new BadRequestException(`Unknown UID(s): ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}`);
+        throw new BadRequestException(`Unknown UID(s): ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '...' : ''}`);
       }
 
       for (const uid of normalizedUids) {
@@ -4953,11 +5500,13 @@ export class JobOrderService {
       }
 
       if (!requiresUidMapping) {
+        const postedAt = new Date().toISOString();
+        const lineMovementNumber = await this.generateMovementNumber(tenantId, 'PRODUCTION_ISSUE');
         const { error: movementError } = await this.supabase
           .from('stock_movements')
           .insert({
             tenant_id: tenantId,
-            movement_number: voucherNumber,
+            movement_number: lineMovementNumber,
             movement_type: 'PRODUCTION_ISSUE',
             item_id: itemId,
             from_warehouse_id: warehouseId,
@@ -4967,7 +5516,9 @@ export class JobOrderService {
             reference_number: voucherNumber,
             notes: manualNotes || `Manual SIV: Issued ${toConsumeFromEntry} of ${String((item as any)?.code || '').trim()} (${String((item as any)?.name || '').trim()})`,
             moved_by: movedBy,
-            movement_date: new Date().toISOString(),
+            movement_date: postedAt,
+            approved_by: movedBy,
+            approved_at: postedAt,
           } as any);
 
         if (movementError) throw new BadRequestException(movementError.message);
@@ -4993,21 +5544,26 @@ export class JobOrderService {
         uidMovementNumbers.push(await this.generateMovementNumber(tenantId, 'PRODUCTION_ISSUE'));
       }
 
-      const rows = uidsToRecord.map((uid, index) => ({
-        tenant_id: tenantId,
-        movement_number: uidMovementNumbers[index],
-        movement_type: 'PRODUCTION_ISSUE',
-        item_id: itemId,
-        uid,
-        from_warehouse_id: warehouseId,
-        quantity: qtyPerUid,
-        reference_type: 'SIV',
-        reference_id: null,
-        reference_number: voucherNumber,
-        notes: manualNotes || `Manual SIV: Issued UID ${uid} for ${String((item as any)?.code || '').trim()}`,
-        moved_by: movedBy,
-        movement_date: new Date().toISOString(),
-      }));
+      const rows = uidsToRecord.map((uid, index) => {
+        const postedAt = new Date().toISOString();
+        return {
+          tenant_id: tenantId,
+          movement_number: uidMovementNumbers[index],
+          movement_type: 'PRODUCTION_ISSUE',
+          item_id: itemId,
+          uid,
+          from_warehouse_id: warehouseId,
+          quantity: qtyPerUid,
+          reference_type: 'SIV',
+          reference_id: null,
+          reference_number: voucherNumber,
+          notes: manualNotes || `Manual SIV: Issued UID ${uid} for ${String((item as any)?.code || '').trim()}`,
+          moved_by: movedBy,
+          movement_date: postedAt,
+          approved_by: movedBy,
+          approved_at: postedAt,
+        };
+      });
 
       if (rows.length > 0) {
         const { error: rowsError } = await this.supabase.from('stock_movements').insert(rows as any);
@@ -5146,6 +5702,74 @@ export class JobOrderService {
 
     if (upErr) throw new BadRequestException(upErr.message);
     return { id: movementId, message: 'Approved' };
+  }
+
+  async approveStoreIssueVoucherHistoryRows(tenantId: string, movementIds: string[], userId?: string) {
+    if (!tenantId) throw new BadRequestException('tenantId is required');
+
+    const approver = String(userId || '').trim();
+    if (!approver || !this.isUuid(approver)) {
+      throw new BadRequestException('Valid userId is required to approve');
+    }
+
+    const ids = Array.from(new Set(
+      (Array.isArray(movementIds) ? movementIds : [])
+        .map((id) => String(id || '').trim())
+        .filter(Boolean),
+    ));
+    if (ids.length === 0) throw new BadRequestException('Select at least one SIV entry to approve');
+
+    const chunkSize = 75;
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      chunks.push(ids.slice(i, i + chunkSize));
+    }
+
+    const validRows: any[] = [];
+    for (const chunk of chunks) {
+      const { data: rows, error } = await this.supabase
+        .from('stock_movements')
+        .select('id, reference_type, approved_at')
+        .eq('tenant_id', tenantId)
+        .in('id', chunk);
+
+      if (error) {
+        throw new BadRequestException(`Failed to validate SIV entries: ${error.message}`);
+      }
+      validRows.push(...(Array.isArray(rows) ? rows : []));
+    }
+
+    if (validRows.length !== ids.length) {
+      throw new BadRequestException('One or more selected SIV entries were not found');
+    }
+    if (validRows.some((row: any) => String(row?.reference_type || '').trim() !== 'SIV')) {
+      throw new BadRequestException('One or more selected entries are not SIV history rows');
+    }
+
+    const pendingIds = validRows
+      .filter((row: any) => !row?.approved_at)
+      .map((row: any) => String(row.id));
+    if (pendingIds.length > 0) {
+      const approvedAt = new Date().toISOString();
+      for (let i = 0; i < pendingIds.length; i += chunkSize) {
+        const chunk = pendingIds.slice(i, i + chunkSize);
+        const { error: updateError } = await this.supabase
+          .from('stock_movements')
+          .update({ approved_by: approver, approved_at: approvedAt } as any)
+          .eq('tenant_id', tenantId)
+          .in('id', chunk);
+        if (updateError) {
+          throw new BadRequestException(`Failed to approve SIV entries: ${updateError.message}`);
+        }
+      }
+    }
+
+    return {
+      approved: pendingIds.length,
+      alreadyApproved: ids.length - pendingIds.length,
+      requested: ids.length,
+      message: `${pendingIds.length} SIV entr${pendingIds.length === 1 ? 'y' : 'ies'} approved`,
+    };
   }
 
   async deleteStoreIssueVoucherHistoryRow(tenantId: string, movementId: string, userId?: string) {
@@ -5480,13 +6104,18 @@ export class JobOrderService {
     if (!jobOrder) throw new NotFoundException('Job order not found');
 
     const status = String(jobOrder.status || '').toUpperCase();
-    if (status !== 'STORE_ISSUED' && status !== 'COMPLETED' && status !== 'IN_PROGRESS') {
-      throw new BadRequestException('SRV is allowed only for IN_PROGRESS / STORE_ISSUED / COMPLETED job orders');
+    if (!SRV_RECEIVABLE_JOB_ORDER_STATUSES.includes(status as any)) {
+      throw new BadRequestException('SRV is allowed only for IN_PROGRESS / STORE_ISSUED / COMPLETED / STOPPED job orders');
     }
 
-    const producedQty = Math.max(0, Number((jobOrder as any)?.completed_quantity ?? (jobOrder as any)?.quantity ?? 0) || 0);
+    const completedQty = Number((jobOrder as any)?.completed_quantity);
+    const plannedQty = Number((jobOrder as any)?.quantity);
+    const producedQty =
+      status === JOB_ORDER_STATUS.STOPPED || status === JOB_ORDER_STATUS.IN_PROGRESS
+        ? Math.max(0, Number.isFinite(completedQty) ? completedQty : 0)
+        : Math.max(0, Number.isFinite(completedQty) ? completedQty : (Number.isFinite(plannedQty) ? plannedQty : 0));
     if (producedQty <= 0) {
-      throw new BadRequestException('No produced quantity available for SRV receipt');
+      throw new BadRequestException('No produced quantity available for SRV receipt. Record partial production before receiving SRV.');
     }
 
     const { data: existingReceipts, error: existingError } = await this.supabase
@@ -5925,10 +6554,10 @@ export class JobOrderService {
     return new Date().toISOString().slice(0, 10);
   }
 
-  private async getItemBasic(itemId: string): Promise<{ id: string; code: string; name: string; category?: string | null } | null> {
+  private async getItemBasic(itemId: string): Promise<{ id: string; code: string; name: string; category?: string | null; uid_strategy?: string | null } | null> {
     const { data } = await this.supabase
       .from('items')
-      .select('id, code, name, category')
+      .select('id, code, name, category, uid_strategy')
       .eq('id', itemId)
       .single();
     return data || null;
@@ -6183,6 +6812,262 @@ export class JobOrderService {
     return Array.isArray(data) ? data : [];
   }
 
+  private async getActiveBomForItemCached(
+    tenantId: string,
+    itemId: string,
+    cache: Map<string, any | null>,
+  ): Promise<any | null> {
+    if (cache.has(itemId)) return cache.get(itemId) || null;
+    const bom = await this.getActiveBomForItem(tenantId, itemId);
+    cache.set(itemId, bom || null);
+    return bom || null;
+  }
+
+  private async getBomItemsCached(
+    bomId: string,
+    cache: Map<string, any[]>,
+  ): Promise<any[]> {
+    const cached = cache.get(bomId);
+    if (cached) return cached;
+    const rows = await this.getBomItems(bomId);
+    cache.set(bomId, rows);
+    return rows;
+  }
+
+  private async getAvailableStockForPreview(tenantId: string, itemId: string): Promise<number> {
+    // Preview must be fast and side-effect free. The actual SIV/JO posting path still performs
+    // strict FIFO checks. For planning, show the best available ledger figure without running
+    // stock-entry reconciliation for every BOM node.
+    const [entryRes, inventoryRes] = await Promise.all([
+      this.supabase
+        .from('stock_entries')
+        .select('available_quantity')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', itemId)
+        .gt('available_quantity', 0),
+      this.supabase
+        .from('inventory_stock')
+        .select('available_quantity')
+        .eq('tenant_id', tenantId)
+        .eq('item_id', itemId),
+    ]);
+
+    if (entryRes.error) throw new BadRequestException(entryRes.error.message);
+    if (inventoryRes.error) throw new BadRequestException(inventoryRes.error.message);
+
+    const entryAvailable = (Array.isArray(entryRes.data) ? entryRes.data : []).reduce(
+      (sum: number, row: any) => sum + (Number(row?.available_quantity) || 0),
+      0,
+    );
+    const inventoryAvailable = (Array.isArray(inventoryRes.data) ? inventoryRes.data : []).reduce(
+      (sum: number, row: any) => sum + (Number(row?.available_quantity) || 0),
+      0,
+    );
+
+    return Math.max(entryAvailable, inventoryAvailable);
+  }
+
+  private chunkArray<T>(items: T[], size = 500): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < items.length; i += size) {
+      chunks.push(items.slice(i, i + size));
+    }
+    return chunks;
+  }
+
+  private pickBetterBomForPreview(current: any | null | undefined, candidate: any): any {
+    if (!current) return candidate;
+    const currentActive = Boolean(current?.is_active);
+    const candidateActive = Boolean(candidate?.is_active);
+    if (candidateActive !== currentActive) return candidateActive ? candidate : current;
+    const currentVersion = Number(current?.version || 0);
+    const candidateVersion = Number(candidate?.version || 0);
+    return candidateVersion > currentVersion ? candidate : current;
+  }
+
+  private async loadSmartPreviewCaches(
+    tenantId: string,
+    finishedItem: any,
+    topBom: any,
+  ): Promise<{
+    itemById: Map<string, any>;
+    stockByItemId: Map<string, number>;
+    bomById: Map<string, any>;
+    activeBomByItemId: Map<string, any | null>;
+    bomItemsByBomId: Map<string, any[]>;
+  }> {
+    const caches = {
+      itemById: new Map<string, any>([[String(finishedItem.id), finishedItem]]),
+      stockByItemId: new Map<string, number>(),
+      bomById: new Map<string, any>([[String(topBom.id), topBom]]),
+      activeBomByItemId: new Map<string, any | null>([[String(finishedItem.id), topBom]]),
+      bomItemsByBomId: new Map<string, any[]>(),
+    };
+
+    const queuedBomIds = new Set<string>([String(topBom.id)]);
+    const loadedBomIds = new Set<string>();
+    const discoveredItemIds = new Set<string>([String(finishedItem.id)]);
+    let safetyRounds = 0;
+
+    while (queuedBomIds.size > 0) {
+      safetyRounds += 1;
+      if (safetyRounds > this.smartPreviewMaxDepth + 5) {
+        throw new BadRequestException(
+          `BOM preload exceeded ${this.smartPreviewMaxDepth} levels. Please check for circular or unusually deep BOM data.`,
+        );
+      }
+
+      const bomIdsToLoad = Array.from(queuedBomIds).filter((bomId) => bomId && !loadedBomIds.has(bomId));
+      queuedBomIds.clear();
+      if (bomIdsToLoad.length === 0) break;
+
+      const bomItems: any[] = [];
+      for (const chunk of this.chunkArray(bomIdsToLoad)) {
+        const { data, error } = await this.supabase
+          .from('bom_items')
+          .select('*')
+          .in('bom_id', chunk)
+          .order('sequence', { ascending: true });
+        if (error) throw new BadRequestException(error.message);
+        bomItems.push(...(Array.isArray(data) ? data : []));
+      }
+
+      for (const bomId of bomIdsToLoad) loadedBomIds.add(bomId);
+
+      const childBomIds = new Set<string>();
+      const componentItemIds = new Set<string>();
+      for (const row of bomItems) {
+        const rowBomId = String(row?.bom_id || row?.bomId || '').trim();
+        if (rowBomId) {
+          const list = caches.bomItemsByBomId.get(rowBomId) || [];
+          list.push(row);
+          caches.bomItemsByBomId.set(rowBomId, list);
+        }
+
+        const itemId = String(row?.item_id || row?.itemId || '').trim();
+        if (itemId) componentItemIds.add(itemId);
+
+        const childBomId = String(row?.child_bom_id || row?.childBomId || '').trim();
+        if (childBomId && !caches.bomById.has(childBomId)) childBomIds.add(childBomId);
+      }
+
+      if (childBomIds.size > 0) {
+        for (const chunk of this.chunkArray(Array.from(childBomIds))) {
+          const { data, error } = await this.supabase
+            .from('bom_headers')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .in('id', chunk);
+          if (error) throw new BadRequestException(error.message);
+          for (const header of Array.isArray(data) ? data : []) {
+            const bomId = String(header?.id || '').trim();
+            const headerItemId = String(header?.item_id || header?.itemId || '').trim();
+            if (bomId) {
+              caches.bomById.set(bomId, header);
+              if (!loadedBomIds.has(bomId)) queuedBomIds.add(bomId);
+            }
+            if (headerItemId) {
+              discoveredItemIds.add(headerItemId);
+              const existing = caches.activeBomByItemId.get(headerItemId);
+              caches.activeBomByItemId.set(headerItemId, this.pickBetterBomForPreview(existing, header));
+            }
+          }
+        }
+      }
+
+      const activeLookupIds = Array.from(componentItemIds).filter((itemId) => itemId && !caches.activeBomByItemId.has(itemId));
+      if (activeLookupIds.length > 0) {
+        const foundActiveFor = new Set<string>();
+        for (const chunk of this.chunkArray(activeLookupIds)) {
+          const { data, error } = await this.supabase
+            .from('bom_headers')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .in('item_id', chunk)
+            .order('version', { ascending: false });
+          if (error) throw new BadRequestException(error.message);
+
+          for (const header of Array.isArray(data) ? data : []) {
+            const bomId = String(header?.id || '').trim();
+            const headerItemId = String(header?.item_id || header?.itemId || '').trim();
+            if (!bomId || !headerItemId) continue;
+            foundActiveFor.add(headerItemId);
+            caches.bomById.set(bomId, header);
+            const existing = caches.activeBomByItemId.get(headerItemId);
+            const better = this.pickBetterBomForPreview(existing, header);
+            caches.activeBomByItemId.set(headerItemId, better);
+            if (better?.id && !loadedBomIds.has(String(better.id))) queuedBomIds.add(String(better.id));
+          }
+        }
+
+        for (const itemId of activeLookupIds) {
+          if (!foundActiveFor.has(itemId) && !caches.activeBomByItemId.has(itemId)) {
+            caches.activeBomByItemId.set(itemId, null);
+          }
+        }
+      }
+
+      for (const itemId of componentItemIds) discoveredItemIds.add(itemId);
+
+      if (loadedBomIds.size > this.smartPreviewMaxNodes) {
+        throw new BadRequestException(
+          `BOM preload exceeded ${this.smartPreviewMaxNodes} BOM records. Please review duplicate/circular BOM data.`,
+        );
+      }
+    }
+
+    const itemIdList = Array.from(discoveredItemIds).filter(Boolean);
+    for (const chunk of this.chunkArray(itemIdList)) {
+      const { data, error } = await this.supabase
+        .from('items')
+        .select('id, code, name, category, uid_strategy')
+        .eq('tenant_id', tenantId)
+        .in('id', chunk);
+      if (error) throw new BadRequestException(error.message);
+      for (const item of Array.isArray(data) ? data : []) {
+        if (item?.id) caches.itemById.set(String(item.id), item);
+      }
+    }
+
+    const stockEntryTotals = new Map<string, number>();
+    const inventoryTotals = new Map<string, number>();
+    for (const chunk of this.chunkArray(itemIdList)) {
+      const [entriesRes, inventoryRes] = await Promise.all([
+        this.supabase
+          .from('stock_entries')
+          .select('item_id, available_quantity')
+          .eq('tenant_id', tenantId)
+          .in('item_id', chunk)
+          .gt('available_quantity', 0),
+        this.supabase
+          .from('inventory_stock')
+          .select('item_id, available_quantity')
+          .eq('tenant_id', tenantId)
+          .in('item_id', chunk),
+      ]);
+
+      if (entriesRes.error) throw new BadRequestException(entriesRes.error.message);
+      if (inventoryRes.error) throw new BadRequestException(inventoryRes.error.message);
+
+      for (const entry of Array.isArray(entriesRes.data) ? entriesRes.data : []) {
+        const id = String(entry?.item_id || '').trim();
+        if (!id) continue;
+        stockEntryTotals.set(id, (stockEntryTotals.get(id) || 0) + (Number(entry?.available_quantity) || 0));
+      }
+      for (const row of Array.isArray(inventoryRes.data) ? inventoryRes.data : []) {
+        const id = String(row?.item_id || '').trim();
+        if (!id) continue;
+        inventoryTotals.set(id, (inventoryTotals.get(id) || 0) + (Number(row?.available_quantity) || 0));
+      }
+    }
+
+    for (const id of itemIdList) {
+      caches.stockByItemId.set(id, Math.max(stockEntryTotals.get(id) || 0, inventoryTotals.get(id) || 0));
+    }
+
+    return caches;
+  }
+
   private async getBomWithItemsAndRoutingForJobOrder(tenantId: string, bomId: string): Promise<any | null> {
     const { data: header, error: headerError } = await this.supabase
       .from('bom_headers')
@@ -6227,20 +7112,61 @@ export class JobOrderService {
       itemById: Map<string, any>;
       stockByItemId: Map<string, number>;
       bomById: Map<string, any>;
+      activeBomByItemId: Map<string, any | null>;
+      bomItemsByBomId: Map<string, any[]>;
     },
     options?: {
       includeAllComponents?: boolean;
+      state?: { nodeCount: number };
+      memo?: Map<string, { nodes: SmartExplosionNode[]; subAssemblies: SmartSubAssemblyPlan[] }>;
     },
   ): Promise<{ nodes: SmartExplosionNode[]; subAssemblies: SmartSubAssemblyPlan[] }> {
     if (multiplier <= 0) return { nodes: [], subAssemblies: [] };
+
+    if (level > this.smartPreviewMaxDepth) {
+      throw new BadRequestException(
+        `BOM expansion exceeded ${this.smartPreviewMaxDepth} levels. Please check for an unusually deep or circular BOM hierarchy.`,
+      );
+    }
 
     if (visitedBomIds.has(bomId)) {
       throw new BadRequestException('BOM cycle detected. Please check BOM hierarchy.');
     }
     visitedBomIds.add(bomId);
 
+    const state = options?.state || { nodeCount: 0 };
+    const registerNode = () => {
+      state.nodeCount += 1;
+      if (state.nodeCount > this.smartPreviewMaxNodes) {
+        throw new BadRequestException(
+          `BOM expansion exceeded ${this.smartPreviewMaxNodes} component lines. Please narrow the request or review duplicate/circular BOM data.`,
+        );
+      }
+    };
+
     const nodes: SmartExplosionNode[] = [];
     const subAssemblies: SmartSubAssemblyPlan[] = [];
+    const memo = options?.memo;
+    const memoKey = [
+      bomId,
+      level,
+      Number(multiplier).toFixed(6),
+      Boolean(options?.includeAllComponents) ? 'all' : 'shortage',
+    ].join('|');
+
+    if (memo?.has(memoKey)) {
+      const cached = memo.get(memoKey)!;
+      state.nodeCount += cached.nodes.length;
+      if (state.nodeCount > this.smartPreviewMaxNodes) {
+        throw new BadRequestException(
+          `BOM expansion exceeded ${this.smartPreviewMaxNodes} component lines. Please narrow the request or review duplicate/circular BOM data.`,
+        );
+      }
+      return {
+        nodes: cached.nodes.map((node) => ({ ...node })),
+        subAssemblies: cached.subAssemblies.map((subAssembly) => ({ ...subAssembly })),
+      };
+    }
 
     let bom = caches.bomById.get(bomId);
     if (!bom) {
@@ -6249,7 +7175,7 @@ export class JobOrderService {
       caches.bomById.set(bomId, bom);
     }
 
-    const bomItems = await this.getBomItems(bomId);
+    const bomItems = await this.getBomItemsCached(bomId, caches.bomItemsByBomId);
     for (const bi of bomItems) {
       const lineQty = Number(bi.quantity) || 0;
       if (lineQty <= 0) continue;
@@ -6279,12 +7205,13 @@ export class JobOrderService {
 
         let available = caches.stockByItemId.get(subItemId);
         if (available === undefined) {
-          available = await this.getAvailableStock(tenantId, subItemId);
+          available = await this.getAvailableStockForPreview(tenantId, subItemId);
           caches.stockByItemId.set(subItemId, available);
         }
 
         const toMakeQuantity = Math.max(0, requiredQuantity - available);
 
+        registerNode();
         nodes.push({
           level,
           componentType: 'BOM',
@@ -6322,7 +7249,7 @@ export class JobOrderService {
             level + 1,
             new Set(visitedBomIds),
             caches,
-            options,
+            { ...options, state, memo },
           );
           nodes.push(...childResult.nodes);
           subAssemblies.push(...childResult.subAssemblies);
@@ -6342,10 +7269,10 @@ export class JobOrderService {
         // If this item has its own BOM, treat it as a sub-assembly even if category/type is not set.
         // Many BOMs reference assemblies via item_id (without child_bom_id), so relying only on
         // category/type can cause assemblies to be treated as plain items and appear as "NO_STOCK".
-        const subBom = await this.getActiveBomForItem(tenantId, itemId);
+        const subBom = await this.getActiveBomForItemCached(tenantId, itemId, caches.activeBomByItemId);
         
         // Debug: Log when an item has/doesn't have a BOM
-        if (!subBom && (item.code?.startsWith('SA-') || item.code?.startsWith('ITEM-06'))) {
+        if (process.env.DEBUG_SMART_JO_PREVIEW === 'true' && !subBom && (item.code?.startsWith('SA-') || item.code?.startsWith('ITEM-06'))) {
           console.log(`[SmartJO Explosion] Item ${item.code} (${itemId}) has NO BOM - treating as ITEM`);
         }
         
@@ -6354,13 +7281,14 @@ export class JobOrderService {
 
           let available = caches.stockByItemId.get(itemId);
           if (available === undefined) {
-            available = await this.getAvailableStock(tenantId, itemId);
+            available = await this.getAvailableStockForPreview(tenantId, itemId);
             caches.stockByItemId.set(itemId, available);
           }
 
           const toMakeQuantity = Math.max(0, requiredQuantity - available);
 
-          nodes.push({
+            registerNode();
+            nodes.push({
             level,
             componentType: 'BOM',
             bomId: subBom.id,
@@ -6398,7 +7326,7 @@ export class JobOrderService {
               level + 1,
               new Set(visitedBomIds),
               caches,
-              options,
+              { ...options, state, memo },
             );
             nodes.push(...childResult.nodes);
             subAssemblies.push(...childResult.subAssemblies);
@@ -6410,12 +7338,13 @@ export class JobOrderService {
         // Standard ITEM component (not a subassembly or no BOM found)
         let available = caches.stockByItemId.get(itemId);
         if (available === undefined) {
-          available = await this.getAvailableStock(tenantId, itemId);
+          available = await this.getAvailableStockForPreview(tenantId, itemId);
           caches.stockByItemId.set(itemId, available);
         }
 
         const shortageQuantity = Math.max(0, requiredQuantity - available);
 
+        registerNode();
         nodes.push({
           level,
           componentType: 'ITEM',
@@ -6434,7 +7363,13 @@ export class JobOrderService {
       }
     }
 
-    return { nodes, subAssemblies };
+    const result = { nodes, subAssemblies };
+    memo?.set(memoKey, {
+      nodes: nodes.map((node) => ({ ...node })),
+      subAssemblies: subAssemblies.map((subAssembly) => ({ ...subAssembly })),
+    });
+
+    return result;
   }
 
   async getSmartJobOrderPreview(tenantId: string, req: SmartJobOrderPreviewRequest) {
@@ -6449,11 +7384,7 @@ export class JobOrderService {
       throw new BadRequestException('No BOM found for this item');
     }
 
-    const caches = {
-      itemById: new Map<string, any>([[finishedItem.id, finishedItem]]),
-      stockByItemId: new Map<string, number>(),
-      bomById: new Map<string, any>([[topBom.id, topBom]]),
-    };
+    const caches = await this.loadSmartPreviewCaches(tenantId, finishedItem, topBom);
 
     const { nodes, subAssemblies } = await this.buildSmartExplosion(
       tenantId,
@@ -6462,23 +7393,24 @@ export class JobOrderService {
       0,
       new Set<string>(),
       caches,
-      { includeAllComponents: Boolean(req.includeAllComponents) },
+      { includeAllComponents: Boolean(req.includeAllComponents), memo: new Map() },
     );
 
-    // Log explosion results for debugging
     const bomNodes = nodes.filter((n: any) => n.componentType === 'BOM');
     const bomNodesWithStock = bomNodes.filter((n: any) => n.toMakeQuantity === 0);
     const bomNodesNeedMake = bomNodes.filter((n: any) => n.toMakeQuantity > 0);
-    console.log(`[SmartJO Preview] Explosion results:`, {
-      totalNodes: nodes.length,
-      bomNodes: bomNodes.length,
-      subAssembliesWithStock: bomNodesWithStock.length,
-      subAssembliesNeedToMake: bomNodesNeedMake.length,
-      subAssembliesBeforeDedup: subAssemblies.length,
-    });
-    if (bomNodesWithStock.length > 0) {
-      console.log(`[SmartJO Preview] Sub-assemblies with existing stock (skipped):`, 
-        bomNodesWithStock.map((n: any) => `${n.itemCode} (has ${n.availableQuantity})`).join(', '));
+    if (process.env.DEBUG_SMART_JO_PREVIEW === 'true') {
+      console.log(`[SmartJO Preview] Explosion results:`, {
+        totalNodes: nodes.length,
+        bomNodes: bomNodes.length,
+        subAssembliesWithStock: bomNodesWithStock.length,
+        subAssembliesNeedToMake: bomNodesNeedMake.length,
+        subAssembliesBeforeDedup: subAssemblies.length,
+      });
+      if (bomNodesWithStock.length > 0) {
+        console.log(`[SmartJO Preview] Sub-assemblies with existing stock (skipped):`,
+          bomNodesWithStock.map((n: any) => `${n.itemCode} (has ${n.availableQuantity})`).join(', '));
+      }
     }
 
     // De-dup sub assemblies by (bomId,itemId) keeping the max-toMake (covers repeated usage).
@@ -6554,7 +7486,7 @@ export class JobOrderService {
     if (!req?.quantity || Number(req.quantity) <= 0) throw new BadRequestException('quantity must be > 0');
 
     const startDate = this.toStartDate(req.startDate);
-    onProgress?.({ current: 0, total: 0, phase: 'PREVIEW', message: 'Building preview…' });
+    onProgress?.({ current: 0, total: 0, phase: 'PREVIEW', message: 'Building preview...' });
 
     const preview = await this.getSmartJobOrderPreview(tenantId, {
       itemId: req.itemId,
@@ -6586,12 +7518,13 @@ export class JobOrderService {
 
     const subAssembliesToMake = subAssembliesToMakeAll.filter((sa) => Number(sa?.toMakeQuantity || 0) > 0);
 
-    // Log the processing order for debugging
-    console.log('[SmartJO] Sub-assembly processing order (deepest first):');
-    for (const sa of subAssembliesToMake) {
-      const key = `${String(sa.bomId)}:${String(sa.itemId)}`;
-      const lvl = subAssemblyLevelByKey.get(key) ?? 0;
-      console.log(`  Level ${lvl}: ${sa.itemCode} (qty: ${sa.toMakeQuantity})`);
+    if (process.env.DEBUG_SMART_JO_CREATE === 'true') {
+      console.log('[SmartJO] Sub-assembly processing order (deepest first):');
+      for (const sa of subAssembliesToMake) {
+        const key = `${String(sa.bomId)}:${String(sa.itemId)}`;
+        const lvl = subAssemblyLevelByKey.get(key) ?? 0;
+        console.log(`  Level ${lvl}: ${sa.itemCode} (qty: ${sa.toMakeQuantity})`);
+      }
     }
     const totalSteps = subAssembliesToMake.length + 1; // +1 for main job order
     let currentStep = 0;
@@ -6600,7 +7533,7 @@ export class JobOrderService {
       current: 0,
       total: totalSteps,
       phase: 'SUB_ASSEMBLIES',
-      message: subAssembliesToMake.length ? `Creating ${subAssembliesToMake.length} sub-assemblies…` : 'No sub-assemblies required',
+      message: subAssembliesToMake.length ? `Creating ${subAssembliesToMake.length} sub-assemblies...` : 'No sub-assemblies required',
     });
 
     // PHASE 1: Create ALL sub-assembly job orders first (without completing).
@@ -6618,13 +7551,15 @@ export class JobOrderService {
         itemName: sa.itemName,
       });
 
-      console.log('[SmartJO] Creating sub-assembly job order:', {
-        itemId: sa.itemId,
-        itemCode: sa.itemCode,
-        bomId: sa.bomId,
-        quantity: sa.toMakeQuantity,
-        level: subAssemblyLevelByKey.get(`${sa.bomId}:${sa.itemId}`) ?? 'unknown',
-      });
+      if (process.env.DEBUG_SMART_JO_CREATE === 'true') {
+        console.log('[SmartJO] Creating sub-assembly job order:', {
+          itemId: sa.itemId,
+          itemCode: sa.itemCode,
+          bomId: sa.bomId,
+          quantity: sa.toMakeQuantity,
+          level: subAssemblyLevelByKey.get(`${sa.bomId}:${sa.itemId}`) ?? 'unknown',
+        });
+      }
 
       const created = await this.createFromBOMWithVariantSelections(tenantId, userId, {
         itemId: sa.itemId,
@@ -6640,7 +7575,9 @@ export class JobOrderService {
       createdSubJobOrders.push({ sa, jobOrder: created, completed: false });
     }
 
-    console.log(`[SmartJO] Created ${createdSubJobOrders.length} sub-assembly job orders as DRAFT. Manual store flow required: issue materials via SIV → receive via SRV → QC approval → then execute main JO.`);
+    if (process.env.DEBUG_SMART_JO_CREATE === 'true') {
+      console.log(`[SmartJO] Created ${createdSubJobOrders.length} sub-assembly job orders as DRAFT. Manual store flow required: issue materials via SIV -> receive via SRV -> QC approval -> then execute main JO.`);
+    }
 
     // NOTE: Sub-assembly JOs intentionally remain in DRAFT/PLANNED status.
     // The store flow must be followed for each sub-assembly before the main JO can be executed:
@@ -6655,7 +7592,7 @@ export class JobOrderService {
       current: subAssembliesToMake.length + 1,
       total: totalSteps,
       phase: 'MAIN_JOB_ORDER',
-      message: 'Creating main finished-goods job order…',
+      message: 'Creating main finished-goods job order...',
       itemCode: preview.finishedItem.code,
       itemName: preview.finishedItem.name,
     });
@@ -6680,11 +7617,13 @@ export class JobOrderService {
     // Do NOT auto-issue materials for the main job order.
     // Materials will appear as a Material Requisition in the SIV (Store Issue Voucher) screen
     // so the storekeeper can physically verify and issue inventory.
-    console.log('[JobOrderService] Smart job order created:', {
-      jobOrderId: main.id,
-      jobOrderNumber: main.job_order_number,
-      note: 'Materials NOT auto-issued — will appear in SIV for manual issue',
-    });
+    if (process.env.DEBUG_SMART_JO_CREATE === 'true') {
+      console.log('[JobOrderService] Smart job order created:', {
+        jobOrderId: main.id,
+        jobOrderNumber: main.job_order_number,
+        note: 'Materials NOT auto-issued - will appear in SIV for manual issue',
+      });
+    }
 
     const issueMaterialsSummary = null;
 
@@ -6694,9 +7633,11 @@ export class JobOrderService {
     return {
       jobOrder: {
         ...mainWithMaterials,
-        linked_pr_id: (main as any)?.linked_pr_id ?? (mainWithMaterials as any)?.linked_pr_id ?? null,
-        linked_pr_number: (main as any)?.linked_pr_number ?? (mainWithMaterials as any)?.linked_pr_number ?? null,
+        linked_pr_id: (main as any)?.linked_pr_id ?? (mainWithMaterials as any)?.linked_pr_id ?? (main as any)?.linkedPrId ?? null,
+        linked_pr_number: (main as any)?.linked_pr_number ?? (mainWithMaterials as any)?.linked_pr_number ?? (main as any)?.linkedPrNumber ?? null,
       },
+      linked_pr_id: (main as any)?.linked_pr_id ?? (mainWithMaterials as any)?.linked_pr_id ?? (main as any)?.linkedPrId ?? null,
+      linked_pr_number: (main as any)?.linked_pr_number ?? (mainWithMaterials as any)?.linked_pr_number ?? (main as any)?.linkedPrNumber ?? null,
       autoCompletedSubJobOrders: completedSubJobOrders,
       preview,
       issueMaterialsSummary,

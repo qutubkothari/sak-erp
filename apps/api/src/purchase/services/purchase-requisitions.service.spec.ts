@@ -43,7 +43,7 @@ describe('PurchaseRequisitionsService controls', () => {
     });
 
     await expect(service.approve('tenant-1', 'pr-1', 'user-1')).rejects.toThrow(
-      new BadRequestException('You cannot approve your own purchase requisition.'),
+      new BadRequestException('You cannot approve a purchase requisition that you created or last edited.'),
     );
   });
 
@@ -84,6 +84,8 @@ describe('PurchaseRequisitionsService controls', () => {
 
   it('submits a complete draft and records its history', async () => {
     const service = makeService();
+    const futureRequiredDate = new Date();
+    futureRequiredDate.setUTCDate(futureRequiredDate.getUTCDate() + 30);
     const updateQuery: any = {
       update: jest.fn(() => updateQuery),
       eq: jest.fn(() => updateQuery),
@@ -96,7 +98,7 @@ describe('PurchaseRequisitionsService controls', () => {
     jest.spyOn(service as any, 'getRequisitionForTransition').mockResolvedValue({
       status: 'DRAFT',
       department: 'PRODUCTION',
-      required_date: '2026-07-10',
+      required_date: futureRequiredDate.toISOString().slice(0, 10),
       purchase_requisition_items: [{ id: 'line-1' }],
     });
     jest.spyOn(service, 'findOne').mockResolvedValue({ id: 'pr-1', status: 'SUBMITTED' } as any);
@@ -185,9 +187,11 @@ describe('PurchaseRequisitionsService controls', () => {
     const service = makeService();
     jest.spyOn(service, 'findOne').mockResolvedValue({
       id: 'pr-1',
+      status: 'APPROVED',
       purchase_requisition_items: [
         {
           id: 'pr-line-1',
+          item_id: 'item-1',
           item_code: 'ITEM-1',
           requested_qty: 100,
         },
@@ -197,6 +201,8 @@ describe('PurchaseRequisitionsService controls', () => {
     const poQuery: any = {
       select: jest.fn(() => poQuery),
       eq: jest.fn(() => poQuery),
+      in: jest.fn(() => poQuery),
+      order: jest.fn(() => Promise.resolve({ data: [], error: null })),
       then: (resolve: any) => resolve({
         data: [
           {

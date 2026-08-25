@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import SearchableSelect from '../../../../components/SearchableSelect';
+import DateInput from '../../../../components/ui/DateInput';
 import { buildDocumentBranding, escapeHtml } from '@/lib/document-branding';
 import { ErpButton, ErpPageHeader } from '../../../../components/ui/ErpPrimitives';
 import { ClipboardCheck, FileText, GitBranch, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
@@ -186,7 +187,7 @@ const parseUidResponse = (response: any): AvailableUid[] => {
 };
 
 export default function StockAdjustmentsPage() {
-  const currentUser = readStoredUser();
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof readStoredUser>>(null);
   const canCreate = hasModulePermission(currentUser, 'Inventory', 'create');
 
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -207,6 +208,10 @@ export default function StockAdjustmentsPage() {
   const [effectiveAt, setEffectiveAt] = useState('');
   const [uidDialogState, setUidDialogState] = useState<UidDialogState>(EMPTY_UID_DIALOG);
   const [printDialog, setPrintDialog] = useState({ open: false, fromDate: '', toDate: '', category: '', itemId: '', printing: false });
+
+  useEffect(() => {
+    setCurrentUser(readStoredUser());
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -316,6 +321,13 @@ export default function StockAdjustmentsPage() {
   const printAdjustments = useCallback(async () => {
     setPrintDialog(prev => ({ ...prev, printing: true }));
     try {
+      const formatReportDate = (value: string) => {
+        const date = new Date(`${value}T00:00:00`);
+        return Number.isNaN(date.getTime())
+          ? value
+          : date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      };
+
       const params: Record<string, any> = { movement_type: 'ADJUSTMENT', limit: 5000 };
       if (printDialog.fromDate) params.from_date = new Date(`${printDialog.fromDate}T00:00:00`).toISOString();
       if (printDialog.toDate) {
@@ -336,8 +348,8 @@ export default function StockAdjustmentsPage() {
       const branding = buildDocumentBranding(company);
 
       const filterParts = [
-        printDialog.fromDate ? `From: ${new Date(`${printDialog.fromDate}T00:00:00`).toLocaleDateString('en-IN')}` : '',
-        printDialog.toDate ? `To: ${new Date(`${printDialog.toDate}T00:00:00`).toLocaleDateString('en-IN')}` : '',
+        printDialog.fromDate ? `From: ${formatReportDate(printDialog.fromDate)}` : '',
+        printDialog.toDate ? `To: ${formatReportDate(printDialog.toDate)}` : '',
         printDialog.category ? `Category: ${printDialog.category}` : '',
         printDialog.itemId ? `Item: ${items.find(i => String(i.id) === printDialog.itemId)?.code || ''}` : '',
       ].filter(Boolean).join(' | ') || 'All Records';
@@ -364,7 +376,13 @@ export default function StockAdjustmentsPage() {
         </tr>`;
       }).join('');
 
-      const printedAt = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+      const printedAt = new Date().toLocaleString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
       const html = `<!DOCTYPE html><html><head><title>Stock Adjustments Report</title>
       <script>window.onload=function(){window.print();}</script>
       <style>
@@ -1072,19 +1090,17 @@ export default function StockAdjustmentsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-1">From Date</label>
-                    <input
-                      type="date"
+                    <DateInput
                       value={printDialog.fromDate}
-                      onChange={e => setPrintDialog(prev => ({ ...prev, fromDate: e.target.value }))}
+                      onChange={(value) => setPrintDialog(prev => ({ ...prev, fromDate: value }))}
                       className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold tracking-wide uppercase text-gray-600 mb-1">To Date</label>
-                    <input
-                      type="date"
+                    <DateInput
                       value={printDialog.toDate}
-                      onChange={e => setPrintDialog(prev => ({ ...prev, toDate: e.target.value }))}
+                      onChange={(value) => setPrintDialog(prev => ({ ...prev, toDate: value }))}
                       className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500"
                     />
                   </div>

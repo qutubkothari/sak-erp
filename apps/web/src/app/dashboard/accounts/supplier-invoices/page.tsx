@@ -5,6 +5,7 @@ import { apiClient } from '../../../../../lib/api-client';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { hasModulePermission, readStoredUser, type StoredUser } from '@/lib/rbac';
 import { CheckCircle, Pencil, RotateCcw } from 'lucide-react';
+import ServiceInvoicesPage from '../service-invoices/page';
 
 interface SupplierInvoice {
   id: string;
@@ -29,7 +30,13 @@ interface SupplierInvoice {
   invoice_approved_at: string | null;
   invoice_approval_notes: string | null;
   vendor: { id: string; name: string; code: string } | null;
-  purchase_order: { id: string; po_number: string; terms_and_conditions?: any } | null;
+  purchase_order: {
+    id: string;
+    po_number: string;
+    terms_and_conditions?: any;
+    customs_duty?: number;
+    other_charges?: number;
+  } | null;
 }
 
 function formatDate(val?: string | null) {
@@ -49,12 +56,42 @@ function formatAmount(val?: number | null) {
   return `Rs. ${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 }
 
+function formatRoundedAmount(val?: number | null) {
+  return formatAmount(Math.round(Number(val ?? 0)));
+}
+
+function parseNumber(value: any): number {
+  const n = typeof value === 'number' ? value : Number.parseFloat(String(value ?? '0'));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function roundPayableAmount(value: number): number {
+  return Math.round(Number.isFinite(value) ? value : 0);
+}
+
+function calculateRoundedPayable(gross: number, tax: number, freight: number, freightGst: number): number {
+  return roundPayableAmount(gross + tax + freight + freightGst);
+}
+
+function parsePoTerms(value: any): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function SupplierInvoicesPage() {
   const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
   const canApprove = hasModulePermission(currentUser, 'Purchase Management', 'approve');
   const canEdit = hasModulePermission(currentUser, 'Purchase Management', 'edit') || canApprove;
 
   const [invoices, setInvoices] = useState<SupplierInvoice[]>([]);
+  const [invoiceType, setInvoiceType] = useState<'GOODS' | 'SERVICES'>('GOODS');
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DUE' | 'SETTLED' | 'PENDING_APPROVAL' | 'APPROVED'>('ALL');
 
@@ -70,6 +107,7 @@ export default function SupplierInvoicesPage() {
 
   useEffect(() => {
     setCurrentUser(readStoredUser());
+    if (new URLSearchParams(window.location.search).get('type') === 'service') setInvoiceType('SERVICES');
     fetchInvoices();
   }, []);
 
@@ -95,26 +133,28 @@ export default function SupplierInvoicesPage() {
   const openEdit = (inv: SupplierInvoice) => {
     setEditingInvoice(inv);
     setEditError(null);
-    // Pre-fill freight from GRN if already set, otherwise from PO terms_and_conditions
+    // Pre-fill only freight from GRN/PO. Customs duty and other statutory
+    // charges are separate from freight and must not be merged here.
     let prefillFreight = inv.freight_amount ?? 0;
     let prefillFreightGst = inv.freight_gst_amount ?? 0;
-    if (prefillFreight === 0 && inv.purchase_order?.terms_and_conditions) {
-      try {
-        const tc = typeof inv.purchase_order.terms_and_conditions === 'string'
-          ? JSON.parse(inv.purchase_order.terms_and_conditions)
-          : inv.purchase_order.terms_and_conditions;
-        prefillFreight = parseFloat(tc.freightAmount || 0) || 0;
-        prefillFreightGst = parseFloat(tc.freightGstAmount || 0) || 0;
-      } catch {}
+    if (prefillFreight === 0 && inv.purchase_order) {
+      const tc = parsePoTerms(inv.purchase_order.terms_and_conditions);
+      prefillFreight = parseNumber(tc.freightAmount);
+      prefillFreightGst = parseNumber(tc.freightGstAmount);
     }
     const gross = inv.gross_amount ?? 0;
     const tax = inv.tax_amount ?? 0;
+    const calculatedNet = calculateRoundedPayable(gross, tax, prefillFreight, prefillFreightGst);
+    const currentNet = parseNumber(inv.net_payable_amount);
+    const netPayable = prefillFreight + prefillFreightGst > 0 && currentNet < calculatedNet
+      ? calculatedNet
+      : roundPayableAmount(currentNet);
     setEditForm({
       gross_amount: String(gross),
       tax_amount: String(tax),
       freight_amount: String(prefillFreight),
       freight_gst_amount: String(prefillFreightGst),
-      net_payable_amount: String(inv.net_payable_amount ?? ''),
+      net_payable_amount: String(netPayable || ''),
       gst_percentage: String((inv as any).gst_percentage ?? ''),
       notes: inv.invoice_approval_notes ?? '',
     });
@@ -125,19 +165,26 @@ export default function SupplierInvoicesPage() {
     setSubmitting(true);
     setEditError(null);
     try {
-      const gross = parseFloat(editForm.gross_amount) || 0;
-      const tax = parseFloat(editForm.tax_amount) || 0;
+      const gross = parseNumber(editForm.gross_amount);
+      const tax = parseNumber(editForm.tax_amount);
       const freight = parseFloat(editForm.freight_amount) || 0;
       const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
-      const autoNet = gross + tax + freight + freightGst;
-      const net = editForm.net_payable_amount !== '' ? parseFloat(editForm.net_payable_amount) : autoNet;
+      const autoNet = calculateRoundedPayable(gross, tax, freight, freightGst);
+      const oldFreight = parseNumber(editingInvoice.freight_amount);
+      const oldFreightGst = parseNumber(editingInvoice.freight_gst_amount);
+      const freightChanged = Math.round(oldFreight * 100) !== Math.round(freight * 100)
+        || Math.round(oldFreightGst * 100) !== Math.round(freightGst * 100);
+      if (freightChanged && !editForm.notes.trim()) {
+        setEditError('Reason / note is required when invoice freight is changed.');
+        return;
+      }
       const payload: any = {
         gross_amount: gross,
         tax_amount: tax,
         freight_amount: freight,
         freight_gst_amount: freightGst,
-        net_payable_amount: net,
-        notes: editForm.notes || null,
+        net_payable_amount: autoNet,
+        notes: editForm.notes.trim() || null,
       };
       // Include gst_percentage if explicitly set
       if (editForm.gst_percentage !== '') {
@@ -155,7 +202,7 @@ export default function SupplierInvoicesPage() {
 
   const handleApprove = async (inv: SupplierInvoice) => {
     if (!window.confirm(`Sanction payment for ${inv.grn_number}? This will move it to Accounts Payable.`)) return;
-    const notes = window.prompt('Approval notes / reference (optional)', inv.invoice_approval_notes ?? '') ?? '';
+    const notes = window.prompt('Approval notes / reference (optional)', '') ?? '';
     try {
       await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, { notes: notes.trim() || null });
       // Remove from selection if it was selected
@@ -181,8 +228,8 @@ export default function SupplierInvoicesPage() {
     
     const totalAmount = selected.reduce((sum, inv) => sum + Number(inv.net_payable_amount || 0), 0);
     const confirmMsg = `Sanction payment for ${selected.length} invoice${selected.length > 1 ? 's' : ''}?\n\n` +
-      selected.map(inv => `- ${inv.grn_number}: ${formatAmount(inv.net_payable_amount)}`).join('\n') +
-      `\n\nTotal: ${formatAmount(totalAmount)}\n\nThese will move to Accounts Payable.`;
+      selected.map(inv => `- ${inv.grn_number}: ${formatRoundedAmount(inv.net_payable_amount)}`).join('\n') +
+      `\n\nTotal: ${formatRoundedAmount(totalAmount)}\n\nThese will move to Accounts Payable.`;
     
     if (!window.confirm(confirmMsg)) return;
     
@@ -253,7 +300,7 @@ export default function SupplierInvoicesPage() {
       sortAccessor: (r) => r.grn_number,
       searchAccessor: (r) => r.grn_number,
       cell: (r) => (
-        <a href={`/dashboard/purchase/grn?search=${encodeURIComponent(r.grn_number)}`}
+        <a href={`/dashboard/purchase/grn?viewId=${encodeURIComponent(r.id)}&returnTo=${encodeURIComponent('/dashboard/accounts/supplier-invoices')}`}
           className="text-blue-600 hover:text-blue-800 hover:underline font-medium">
           {r.grn_number}
         </a>
@@ -327,7 +374,7 @@ export default function SupplierInvoicesPage() {
       accessor: (r) => Number(r.net_payable_amount ?? 0),
       cell: (r) => (
         <span className={`font-bold ${Number(r.net_payable_amount ?? 0) > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-          {formatAmount(r.net_payable_amount)}
+          {formatRoundedAmount(r.net_payable_amount)}
         </span>
       ),
       align: 'right',
@@ -399,8 +446,21 @@ export default function SupplierInvoicesPage() {
         <div className="rounded-md border border-[#E8DCC4] bg-white p-5">
           <div className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">Accounts</div>
           <h1 className="mt-1 text-3xl font-bold text-[#3F2D20]">Supplier Invoices</h1>
-          <p className="mt-1 text-sm text-[#6F4E37]">Review GRN supplier invoices, correct amounts, sanction liability, and move approved invoices to Accounts Payable.</p>
+          <p className="mt-1 text-sm text-[#6F4E37]">Manage goods/GRN and service/SES supplier invoices in one controlled Accounts Payable workspace.</p>
         </div>
+
+        <div className="flex flex-wrap gap-2 rounded-md border border-[#E8DCC4] bg-white p-3">
+          <button type="button" onClick={() => setInvoiceType('GOODS')}
+            className={`rounded-md px-4 py-2 text-sm font-semibold ${invoiceType === 'GOODS' ? 'bg-[#8B6F47] text-white' : 'border border-[#E8DCC4] text-[#6F4E37] hover:bg-[#F6EFE2]'}`}>
+            Goods / GRN Invoices
+          </button>
+          <button type="button" onClick={() => setInvoiceType('SERVICES')}
+            className={`rounded-md px-4 py-2 text-sm font-semibold ${invoiceType === 'SERVICES' ? 'bg-[#8B6F47] text-white' : 'border border-[#E8DCC4] text-[#6F4E37] hover:bg-[#F6EFE2]'}`}>
+            Service / SES Invoices
+          </button>
+        </div>
+
+        {invoiceType === 'GOODS' ? <>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 overflow-hidden rounded-md border border-[#E8DCC4] bg-white md:grid-cols-4">
@@ -418,7 +478,7 @@ export default function SupplierInvoicesPage() {
           </div>
           <div className="p-4">
             <div className="text-xs font-semibold uppercase text-[#7A6756]">Filtered Payable</div>
-            <div className="mt-1 text-xl font-bold text-[#3F2D20]">{formatAmount(totalPayable)}</div>
+            <div className="mt-1 text-xl font-bold text-[#3F2D20]">{formatRoundedAmount(totalPayable)}</div>
           </div>
         </div>
 
@@ -454,7 +514,7 @@ export default function SupplierInvoicesPage() {
               </span>
               {selectedSanctionableCount > 0 && (
                 <span className="text-xs text-[#7A6756]">
-                  Total: {formatAmount(
+                  Total: {formatRoundedAmount(
                     invoices
                       .filter(inv => selectedInvoiceIds.has(inv.id) && !inv.invoice_approved)
                       .reduce((sum, inv) => sum + Number(inv.net_payable_amount || 0), 0)
@@ -514,6 +574,7 @@ export default function SupplierInvoicesPage() {
             />
           )}
         </div>
+        </> : <ServiceInvoicesPage />}
       </div>
 
       {/* Edit Invoice Amounts Workspace */}
@@ -545,54 +606,30 @@ export default function SupplierInvoicesPage() {
 
                   <section className="rounded-md border border-[#E8DCC4] bg-white">
                     <div className="border-b border-[#E8DCC4] px-5 py-3">
-                      <h3 className="text-sm font-bold uppercase tracking-wide text-[#3F2D20]">Invoice Values</h3>
-                      <p className="mt-1 text-xs text-[#7A6756]">Amounts posted here feed Accounts Payable after sanction.</p>
+                      <h3 className="text-sm font-bold uppercase tracking-wide text-[#3F2D20]">Purchase-Derived Invoice Values</h3>
+                      <p className="mt-1 text-xs text-[#7A6756]">Gross, GST %, tax and net payable are controlled by GRN/PO posting. Only invoice freight can be revised here.</p>
                     </div>
                     <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
                       <div>
                         <label className="block text-sm font-semibold text-[#5C4738] mb-1">Gross Amount (Rs.)</label>
                         <input type="number" step="0.01" min="0"
                           value={editForm.gross_amount}
-                          onChange={(e) => {
-                            const gross = parseFloat(e.target.value) || 0;
-                            const tax = parseFloat(editForm.tax_amount) || 0;
-                            const freight = parseFloat(editForm.freight_amount) || 0;
-                            const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
-                            setEditForm(prev => ({ ...prev, gross_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
-                          }}
-                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
+                          readOnly
+                          className="w-full rounded-md border border-[#D9C9AD] bg-[#F7F3EA] px-3 py-2 text-sm text-[#6F4E37]" />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">GST % <span className="text-[#9B8A79] font-normal">(auto-calc tax)</span></label>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">GST %</label>
                         <input type="number" step="0.01" min="0" max="100"
                           value={editForm.gst_percentage}
-                          onChange={(e) => {
-                            const gstPct = e.target.value;
-                            const gross = parseFloat(editForm.gross_amount) || 0;
-                            const tax = gstPct !== '' ? Math.round(gross * (parseFloat(gstPct) || 0) / 100 * 100) / 100 : parseFloat(editForm.tax_amount) || 0;
-                            const freight = parseFloat(editForm.freight_amount) || 0;
-                            const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
-                            setEditForm(prev => ({
-                              ...prev,
-                              gst_percentage: gstPct,
-                              tax_amount: gstPct !== '' ? String(tax) : prev.tax_amount,
-                              net_payable_amount: String(gross + tax + freight + freightGst),
-                            }));
-                          }}
-                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
+                          readOnly
+                          className="w-full rounded-md border border-[#D9C9AD] bg-[#F7F3EA] px-3 py-2 text-sm text-[#6F4E37]" />
                       </div>
                       <div>
                         <label className="block text-sm font-semibold text-[#5C4738] mb-1">Tax / GST Amount (Rs.)</label>
                         <input type="number" step="0.01" min="0"
                           value={editForm.tax_amount}
-                          onChange={(e) => {
-                            const tax = parseFloat(e.target.value) || 0;
-                            const gross = parseFloat(editForm.gross_amount) || 0;
-                            const freight = parseFloat(editForm.freight_amount) || 0;
-                            const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
-                            setEditForm(prev => ({ ...prev, tax_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
-                          }}
-                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
+                          readOnly
+                          className="w-full rounded-md border border-[#D9C9AD] bg-[#F7F3EA] px-3 py-2 text-sm text-[#6F4E37]" />
                       </div>
                     </div>
                   </section>
@@ -612,7 +649,7 @@ export default function SupplierInvoicesPage() {
                             const gross = parseFloat(editForm.gross_amount) || 0;
                             const tax = parseFloat(editForm.tax_amount) || 0;
                             const freightGst = parseFloat(editForm.freight_gst_amount) || 0;
-                            setEditForm(prev => ({ ...prev, freight_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
+                            setEditForm(prev => ({ ...prev, freight_amount: e.target.value, net_payable_amount: String(calculateRoundedPayable(gross, tax, freight, freightGst)) }));
                           }}
                           className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
                       </div>
@@ -625,7 +662,7 @@ export default function SupplierInvoicesPage() {
                             const gross = parseFloat(editForm.gross_amount) || 0;
                             const tax = parseFloat(editForm.tax_amount) || 0;
                             const freight = parseFloat(editForm.freight_amount) || 0;
-                            setEditForm(prev => ({ ...prev, freight_gst_amount: e.target.value, net_payable_amount: String(gross + tax + freight + freightGst) }));
+                            setEditForm(prev => ({ ...prev, freight_gst_amount: e.target.value, net_payable_amount: String(calculateRoundedPayable(gross, tax, freight, freightGst)) }));
                           }}
                           className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
                       </div>
@@ -636,11 +673,11 @@ export default function SupplierInvoicesPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
                         <label className="block text-sm font-semibold text-[#5C4738] mb-1">Net Payable (Rs.)</label>
-                        <input type="number" step="0.01" min="0"
+                        <input type="number" step="1" min="0"
                           value={editForm.net_payable_amount}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, net_payable_amount: e.target.value }))}
-                          className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm font-semibold focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
-                        <p className="mt-1 text-xs text-[#7A6756]">Auto-calculated from Gross + Tax + Freight, but can be overridden.</p>
+                          readOnly
+                          className="w-full rounded-md border border-[#D9C9AD] bg-[#F7F3EA] px-3 py-2 text-sm font-semibold text-[#6F4E37]" />
+                        <p className="mt-1 text-xs text-[#7A6756]">Auto-calculated from Gross + Tax + Freight. It cannot be manually overridden.</p>
                       </div>
                       <div>
                         <label className="block text-sm font-semibold text-[#5C4738] mb-1">Notes / Reason for Change</label>
@@ -671,11 +708,11 @@ export default function SupplierInvoicesPage() {
                     </div>
                     <div className="flex justify-between gap-4 border-b border-[#EFE5D2] pb-2">
                       <span className="text-[#7A6756]">Current Net</span>
-                      <span className="font-semibold text-right">{formatAmount(editingInvoice.net_payable_amount)}</span>
+                      <span className="font-semibold text-right">{formatRoundedAmount(editingInvoice.net_payable_amount)}</span>
                     </div>
                     <div className="flex justify-between gap-4 text-base">
                       <span className="font-semibold text-[#3F2D20]">Revised Net</span>
-                      <span className="font-bold text-[#8B4A00]">{formatAmount(parseFloat(editForm.net_payable_amount) || 0)}</span>
+                      <span className="font-bold text-[#8B4A00]">{formatRoundedAmount(roundPayableAmount(parseNumber(editForm.net_payable_amount)))}</span>
                     </div>
                   </div>
                 </aside>

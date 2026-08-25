@@ -3,10 +3,12 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EmailService } from '../../email/email.service';
 import { VendorsService } from './vendors.service';
 import { RfqExcelService } from './rfq-excel.service';
+import { ProjectsService } from '../../projects/projects.service';
 
 const PR_WORKFLOW_STATUS = {
   DRAFT: 'DRAFT',
   AWAITING_APPROVAL: 'AWAITING_APPROVAL',
+  APPROVED: 'APPROVED',
   RFQ_ISSUED: 'RFQ_ISSUED',
   RFQ_RCVD: 'RFQ_RCVD',
   PO_DONE: 'PO_DONE',
@@ -16,6 +18,13 @@ const PR_WORKFLOW_STATUS = {
 
 function normalizeStatus(value: any): string {
   return String(value || '').trim().toUpperCase();
+}
+
+function normalizeDepartment(value: any): string {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'R&D' || normalized === 'RND' || normalized === 'RESEARCH') return 'R&D';
+  if (normalized === 'PRODUCTION') return 'PRODUCTION';
+  throw new BadRequestException('Department must be Production or R&D.');
 }
 
 function safeJsonParse(value: any): Record<string, any> {
@@ -46,6 +55,8 @@ function buildWorkflowStatusLabel(status: string, detail?: string | null): strin
       return 'Draft';
     case PR_WORKFLOW_STATUS.AWAITING_APPROVAL:
       return detail ? `Awaiting Approval (${detail})` : 'Awaiting Approval';
+    case PR_WORKFLOW_STATUS.APPROVED:
+      return 'Approved';
     case PR_WORKFLOW_STATUS.RFQ_ISSUED:
       if (detail === 'No') return 'RFQ Not Sent';
       if (detail === 'Yes') return 'RFQ Sent';
@@ -68,21 +79,61 @@ function normalizeDateOnly(value: any): string | null {
   if (!raw) return null;
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    return raw;
+    const year = Number(raw.slice(0, 4));
+    const month = Number(raw.slice(5, 7));
+    const day = Number(raw.slice(8, 10));
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    const valid =
+      parsed.getUTCFullYear() === year &&
+      parsed.getUTCMonth() === month - 1 &&
+      parsed.getUTCDate() === day &&
+      year >= 2000 &&
+      year <= 2100;
+    return valid ? raw : null;
   }
 
-  const ddmmyyyy = raw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
-  if (ddmmyyyy) {
-    const [, day, month, year] = ddmmyyyy;
-    return `${year}-${month}-${day}`;
+  const ddmmyy = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2}|\d{4})$/);
+  if (ddmmyy) {
+    const [, dayText, monthText, yearText] = ddmmyy;
+    const year = yearText.length === 2 ? 2000 + Number(yearText) : Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
+    return normalizeDateOnly(
+      `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+    );
   }
 
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
+  const isoDateTime = raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if (isoDateTime) {
+    return normalizeDateOnly(`${isoDateTime[1]}-${isoDateTime[2]}-${isoDateTime[3]}`);
   }
 
-  return parsed.toISOString().slice(0, 10);
+  return null;
+}
+
+function requireDateOnly(value: any, label: string): string {
+  const normalized = normalizeDateOnly(value);
+  if (!normalized) {
+    throw new BadRequestException(`${label} must be a valid date between 2000-01-01 and 2100-12-31.`);
+  }
+  return normalized;
+}
+
+function todayDateOnly(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function requireCurrentOrFutureDate(value: any, label: string): string {
+  const normalized = requireDateOnly(value, label);
+  const today = todayDateOnly();
+  if (normalized < today) {
+    throw new BadRequestException(`${label} cannot be before today (${today}).`);
+  }
+  return normalized;
 }
 
 function isUuid(value: unknown): boolean {
@@ -103,6 +154,31 @@ export function canonicalizeRequisitionItems(entries: any[], persisted: boolean)
     .sort((left, right) => left.key.localeCompare(right.key));
 }
 
+function assertNoDuplicateRequisitionItems(entries: any[], persisted = false) {
+  const seen = new Map<string, string>();
+  const duplicates: string[] = [];
+
+  for (const item of Array.isArray(entries) ? entries : []) {
+    const itemId = String(persisted ? item?.item_id : item?.itemId ?? item?.item_id ?? '').trim().toLowerCase();
+    const itemCode = String(persisted ? item?.item_code : item?.itemCode ?? item?.item_code ?? '').trim().toUpperCase();
+    const key = itemId || itemCode;
+    if (!key) continue;
+
+    const label = itemCode || String(persisted ? item?.item_name : item?.itemName ?? item?.item_name ?? 'Selected item').trim();
+    if (seen.has(key)) {
+      duplicates.push(label || seen.get(key) || 'Selected item');
+    } else {
+      seen.set(key, label || 'Selected item');
+    }
+  }
+
+  if (duplicates.length > 0) {
+    throw new BadRequestException(
+      `Duplicate items are not allowed in a Purchase Requisition: ${Array.from(new Set(duplicates)).join(', ')}. Please edit the existing line quantity/specifications instead.`,
+    );
+  }
+}
+
 export function requisitionItemsMatch(left: Array<{ key: string; quantity: number }>, right: Array<{ key: string; quantity: number }>) {
   return left.length === right.length && left.every((item, index) => (
     item.key === right[index].key && item.quantity === right[index].quantity
@@ -117,6 +193,7 @@ export class PurchaseRequisitionsService {
     private readonly emailService: EmailService,
     private readonly vendorsService: VendorsService,
     private readonly rfqExcelService: RfqExcelService,
+    private readonly projectsService: ProjectsService,
   ) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
@@ -175,7 +252,137 @@ export class PurchaseRequisitionsService {
     await Promise.all(ids.map((vendorId) => this.vendorsService.assertVendorVerified(tenantId, vendorId)));
   }
 
+  private async normalizeRfqVendorSelection(
+    tenantId: string,
+    pr: any,
+    vendorIds: string[],
+    itemVendors: Array<{ itemId: string; vendorIds: string[] }>,
+  ): Promise<{ vendorIds: string[]; itemVendors: Array<{ itemId: string; vendorIds: string[] }> }> {
+    const requestedVendorIds = Array.from(new Set((vendorIds || []).map((id) => String(id || '').trim()).filter(Boolean)));
+    const activeVendorIds = new Set<string>();
+
+    if (requestedVendorIds.length > 0) {
+      const { data: vendors, error } = await this.supabase
+        .from('vendors')
+        .select('id, is_active')
+        .eq('tenant_id', tenantId)
+        .in('id', requestedVendorIds);
+      if (error) throw new BadRequestException(error.message);
+      (vendors || []).forEach((vendor: any) => {
+        if (vendor?.is_active !== false && vendor?.id) activeVendorIds.add(String(vendor.id));
+      });
+    }
+
+    const prItems = Array.isArray(pr?.purchase_requisition_items) ? pr.purchase_requisition_items : [];
+    const prItemById = new Map<string, any>();
+    const missingCodes = new Set<string>();
+
+    for (const item of prItems) {
+      const prItemId = String(item?.id || '').trim();
+      if (prItemId) prItemById.set(prItemId, item);
+      if (!String(item?.item_id || '').trim() && String(item?.item_code || '').trim()) {
+        missingCodes.add(String(item.item_code).trim());
+      }
+    }
+
+    const itemIdByCode = new Map<string, string>();
+    if (missingCodes.size > 0) {
+      const { data: itemRows, error } = await this.supabase
+        .from('items')
+        .select('id, code')
+        .eq('tenant_id', tenantId)
+        .in('code', Array.from(missingCodes));
+      if (error) throw new BadRequestException(error.message);
+      (itemRows || []).forEach((row: any) => {
+        const code = String(row?.code || '').trim();
+        const id = String(row?.id || '').trim();
+        if (code && id) itemIdByCode.set(code, id);
+      });
+    }
+
+    const masterItemIdByPrItemId = new Map<string, string>();
+    for (const item of prItems) {
+      const prItemId = String(item?.id || '').trim();
+      const itemId =
+        String(item?.item_id || '').trim() ||
+        itemIdByCode.get(String(item?.item_code || '').trim()) ||
+        '';
+      if (prItemId && itemId) masterItemIdByPrItemId.set(prItemId, itemId);
+    }
+
+    const itemIds = Array.from(new Set(Array.from(masterItemIdByPrItemId.values()).filter(Boolean)));
+    const preferredVendorByItemId = new Map<string, string>();
+
+    if (itemIds.length > 0) {
+      const { data: links, error } = await this.supabase
+        .from('item_vendors')
+        .select('item_id, vendor_id, priority, vendor:vendors(id, is_active, is_verified, approval_status)')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .in('item_id', itemIds)
+        .order('priority', { ascending: true });
+      if (error) throw new BadRequestException(error.message);
+
+      for (const link of links || []) {
+        const itemId = String((link as any)?.item_id || '').trim();
+        const vendorId = String((link as any)?.vendor_id || '').trim();
+        if (!itemId || !vendorId || preferredVendorByItemId.has(itemId)) continue;
+        const vendor = Array.isArray((link as any)?.vendor) ? (link as any).vendor[0] : (link as any)?.vendor;
+        const approvalStatus = String(vendor?.approval_status || '').trim().toUpperCase();
+        const isApproved = vendor?.is_verified === true || ['APPROVED', 'VERIFIED'].includes(approvalStatus);
+        if (vendor?.is_active === false || !isApproved) continue;
+        preferredVendorByItemId.set(itemId, vendorId);
+        activeVendorIds.add(vendorId);
+      }
+    }
+
+    const normalizedItemVendors = (itemVendors || [])
+      .map((assignment) => {
+        const prItemId = String(assignment?.itemId || '').trim();
+        if (!prItemId) return null;
+
+        const activeAssigned = Array.from(new Set(
+          (assignment?.vendorIds || [])
+            .map((id) => String(id || '').trim())
+            .filter((id) => id && activeVendorIds.has(id)),
+        ));
+
+        if (activeAssigned.length > 0) {
+          return { itemId: prItemId, vendorIds: activeAssigned };
+        }
+
+        const masterItemId = masterItemIdByPrItemId.get(prItemId);
+        const preferredVendorId = masterItemId ? preferredVendorByItemId.get(masterItemId) : '';
+        return preferredVendorId ? { itemId: prItemId, vendorIds: [preferredVendorId] } : { itemId: prItemId, vendorIds: [] };
+      })
+      .filter((assignment): assignment is { itemId: string; vendorIds: string[] } => Boolean(assignment));
+
+    const assignmentVendorIds = normalizedItemVendors.flatMap((assignment) => assignment.vendorIds);
+    const effectiveVendorIds = Array.from(new Set([
+      ...requestedVendorIds.filter((id) => activeVendorIds.has(id)),
+      ...assignmentVendorIds,
+    ].filter(Boolean)));
+
+    return {
+      vendorIds: effectiveVendorIds,
+      itemVendors: normalizedItemVendors,
+    };
+  }
+
+  private assertLineDeliveryDates(items: any[], status: string) {
+    if (status !== 'SUBMITTED') return;
+    for (const item of Array.isArray(items) ? items : []) {
+      const label = String(item?.itemCode || item?.item_code || item?.itemName || item?.item_name || 'item');
+      requireCurrentOrFutureDate(
+        item?.requiredDate ?? item?.required_date,
+        `Delivery date for ${label}`,
+      );
+    }
+  }
+
   async create(tenantId: string, userId: string, data: any) {
+    await this.projectsService.ensureSchema();
+    assertNoDuplicateRequisitionItems(data.items || []);
     await this.assertItemsVerified(tenantId, data.items || []);
     await this.assertVendorsVerified(
       tenantId,
@@ -189,18 +396,24 @@ export class PurchaseRequisitionsService {
     if (!['DRAFT', 'SUBMITTED'].includes(requestedStatus)) {
       throw new BadRequestException('A new requisition can only be saved as draft or submitted.');
     }
+    this.assertLineDeliveryDates(data.items || [], requestedStatus);
+    const department = normalizeDepartment(data.department);
+    const projectId = String(data.projectId ?? data.project_id ?? '').trim() || null;
+    const projectName = String(data.projectName ?? data.project_name ?? '').trim() || null;
 
     const { data: pr, error } = await this.supabase
       .from('purchase_requisitions')
       .insert({
         tenant_id: tenantId,
         pr_number: prNumber,
-        request_date: data.requestDate || new Date().toISOString().split('T')[0],
-        department: data.department,
+        request_date: normalizeDateOnly(data.requestDate) || new Date().toISOString().split('T')[0],
+        department,
+        project_id: projectId,
+        project_name: projectName,
         purpose: data.purpose,
         delivery_address: data.deliveryAddress ?? data.delivery_address ?? null,
         requested_by: userId,
-        required_date: data.requiredDate,
+        required_date: requireCurrentOrFutureDate(data.requiredDate, 'Required date'),
         priority: normalizeStatus(data.priority || 'MEDIUM'),
         status: 'DRAFT',
         remarks: data.remarks,
@@ -209,6 +422,16 @@ export class PurchaseRequisitionsService {
       .single();
 
     if (error) throw new BadRequestException(error.message);
+    if (projectId) {
+      await this.projectsService.logEvent(tenantId, projectId, userId, {
+        eventType: 'PR_CREATED',
+        sourceModule: 'PURCHASE_REQUISITION',
+        sourceId: pr.id,
+        sourceNumber: pr.pr_number,
+        remarks: `Purchase requisition created for ${department}`,
+        metadata: { status: requestedStatus },
+      });
+    }
 
     // Insert items
     if (data.items && data.items.length > 0) {
@@ -222,7 +445,7 @@ export class PurchaseRequisitionsService {
         uom: item.uom,
         requested_qty: item.requestedQty,
         estimated_rate: item.estimatedRate,
-        required_date: item.requiredDate,
+        required_date: normalizeDateOnly(item.requiredDate),
         payment_terms: item.paymentTerms ?? null,
         delivery_terms: item.deliveryTerms ?? null,
         remarks: item.remarks,
@@ -289,6 +512,107 @@ export class PurchaseRequisitionsService {
     };
   }
 
+  async getItemAvailability(tenantId: string, itemId: string) {
+    const normalizedItemId = String(itemId || '').trim();
+    if (!normalizedItemId) {
+      throw new BadRequestException('Item is required.');
+    }
+
+    const toQty = (value: any) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : 0;
+    };
+
+    const { data: item, error: itemError } = await this.supabase
+      .from('items')
+      .select('id, code, name, uom')
+      .eq('tenant_id', tenantId)
+      .eq('id', normalizedItemId)
+      .single();
+
+    if (itemError || !item) {
+      throw new NotFoundException('Item not found');
+    }
+
+    const [{ data: stockRows, error: stockError }, { data: poRows, error: poError }, { data: prRows, error: prError }] =
+      await Promise.all([
+        this.supabase
+          .from('inventory_stock')
+          .select('quantity, available_quantity')
+          .eq('tenant_id', tenantId)
+          .eq('item_id', normalizedItemId),
+        this.supabase
+          .from('purchase_orders')
+          .select('id, po_number, status, purchase_order_items(item_id, ordered_qty, received_qty)')
+          .eq('tenant_id', tenantId),
+        this.supabase
+          .from('purchase_requisitions')
+          .select('id, pr_number, status, purchase_requisition_items(item_id, requested_qty, total_ordered_qty)')
+          .eq('tenant_id', tenantId),
+      ]);
+
+    if (stockError) throw new BadRequestException(stockError.message);
+    if (poError) throw new BadRequestException(poError.message);
+    if (prError) throw new BadRequestException(prError.message);
+
+    const currentStockQty = (stockRows || []).reduce(
+      (sum: number, row: any) => sum + toQty(row?.available_quantity ?? row?.quantity),
+      0,
+    );
+
+    const openPoLines: any[] = [];
+    let pendingPoQty = 0;
+    const ignoredPoStatuses = new Set(['REJECTED', 'CANCELLED', 'CLOSED']);
+    for (const po of poRows || []) {
+      if (ignoredPoStatuses.has(normalizeStatus(po?.status))) continue;
+      const lines = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
+      for (const line of lines) {
+        if (String(line?.item_id || '') !== normalizedItemId) continue;
+        const orderedQty = toQty(line?.ordered_qty);
+        const receivedQty = toQty(line?.received_qty);
+        const pendingQty = Math.max(0, orderedQty - receivedQty);
+        if (pendingQty <= 0) continue;
+        pendingPoQty += pendingQty;
+        openPoLines.push({
+          poNumber: po?.po_number,
+          pendingQty,
+        });
+      }
+    }
+
+    const openPrLines: any[] = [];
+    let openPrQty = 0;
+    const ignoredPrStatuses = new Set(['REJECTED', 'CANCELLED', 'PO_DONE', 'GOODS_RCVD', 'CLOSED']);
+    for (const pr of prRows || []) {
+      if (ignoredPrStatuses.has(normalizeStatus(pr?.status))) continue;
+      const lines = Array.isArray(pr?.purchase_requisition_items) ? pr.purchase_requisition_items : [];
+      for (const line of lines) {
+        if (String(line?.item_id || '') !== normalizedItemId) continue;
+        const requestedQty = toQty(line?.requested_qty);
+        const orderedQty = toQty(line?.total_ordered_qty);
+        const openQty = Math.max(0, requestedQty - orderedQty);
+        if (openQty <= 0) continue;
+        openPrQty += openQty;
+        openPrLines.push({
+          prNumber: pr?.pr_number,
+          openQty,
+        });
+      }
+    }
+
+    return {
+      itemId: item.id,
+      itemCode: item.code,
+      itemName: item.name,
+      uom: item.uom,
+      currentStockQty,
+      pendingPoQty,
+      openPrQty,
+      openPoLines: openPoLines.slice(0, 5),
+      openPrLines: openPrLines.slice(0, 5),
+    };
+  }
+
   async findAll(tenantId: string, filters?: any) {
     let query = this.supabase
       .from('purchase_requisitions')
@@ -311,15 +635,117 @@ export class PurchaseRequisitionsService {
       query = query.eq('requested_by', filters.requestedBy);
     }
 
-    if (filters?.search) {
-      query = query.or(`pr_number.ilike.%${filters.search}%,notes.ilike.%${filters.search}%`);
-    }
-
     const { data, error } = await query;
 
     if (error) throw new BadRequestException(error.message);
 
-    const requisitions: any[] = Array.isArray(data) ? data : [];
+    let requisitions: any[] = Array.isArray(data) ? data : [];
+
+    // Backfill item master text used only for list/search matching. PR lines store
+    // denormalized code/name/remarks; master description/OEM may only live on items.
+    try {
+      const allLines: any[] = requisitions.flatMap((r: any) =>
+        Array.isArray(r?.purchase_requisition_items) ? r.purchase_requisition_items : [],
+      );
+      const ids = Array.from(new Set(allLines.map((it: any) => String(it?.item_id || it?.itemId || '').trim()).filter(Boolean)));
+      const codes = Array.from(new Set(allLines.map((it: any) => String(it?.item_code || it?.itemCode || '').trim()).filter(Boolean)));
+      const itemSearchById = new Map<string, string>();
+      const itemSearchByCode = new Map<string, string>();
+      const mapItemRow = (row: any) => {
+        const text = [row?.code, row?.name, row?.description, row?.oem_part_no, row?.oem_name, row?.hsn_code]
+          .filter(Boolean)
+          .join(' ');
+        if (row?.id) itemSearchById.set(String(row.id), text);
+        if (row?.code) itemSearchByCode.set(String(row.code), text);
+      };
+
+      if (ids.length > 0) {
+        const { data: byId } = await this.supabase
+          .from('items')
+          .select('id, code, name, description, oem_part_no, oem_name, hsn_code')
+          .eq('tenant_id', tenantId)
+          .in('id', ids);
+        (Array.isArray(byId) ? byId : []).forEach(mapItemRow);
+      }
+      if (codes.length > 0) {
+        const { data: byCode } = await this.supabase
+          .from('items')
+          .select('id, code, name, description, oem_part_no, oem_name, hsn_code')
+          .eq('tenant_id', tenantId)
+          .in('code', codes);
+        (Array.isArray(byCode) ? byCode : []).forEach(mapItemRow);
+      }
+
+      requisitions.forEach((r: any) => {
+        const lines = Array.isArray(r?.purchase_requisition_items) ? r.purchase_requisition_items : [];
+        lines.forEach((line: any) => {
+          const id = String(line?.item_id || line?.itemId || '').trim();
+          const code = String(line?.item_code || line?.itemCode || '').trim();
+          line.item_master_search = (id && itemSearchById.get(id)) || (code && itemSearchByCode.get(code)) || '';
+        });
+      });
+    } catch (e) {
+      console.warn('PR item description search backfill failed:', (e as any)?.message || e);
+    }
+
+    if (filters?.search) {
+      const tokens = String(filters.search || '')
+        .toLowerCase()
+        .split(/[\s,;|/\\()[\]{}"'`._:-]+/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+      if (tokens.length > 0) {
+        requisitions = requisitions.filter((row: any) => {
+          const lineText = (Array.isArray(row?.purchase_requisition_items) ? row.purchase_requisition_items : [])
+            .map((item: any) => [
+              item?.item_code,
+              item?.item_name,
+              item?.item_description,
+              item?.description,
+              item?.specifications,
+              item?.notes,
+              item?.remarks,
+              item?.oem_part_no,
+              item?.oem_name,
+              item?.item_master_search,
+            ].filter(Boolean).join(' '))
+            .join(' ');
+          const haystack = [
+            row?.pr_number,
+            row?.department,
+            row?.priority,
+            row?.status,
+            row?.purpose,
+            row?.notes,
+            row?.project_name,
+            lineText,
+          ].filter(Boolean).join(' ').toLowerCase();
+
+          return tokens.every((token) => haystack.includes(token));
+        });
+      }
+    }
+
+    // Record-level PR visibility follows the employee department assignment.
+    // Managers/admins/approvers do not receive this internal filter; other users
+    // see their own PRs plus PRs belonging to their department.
+    if (filters?.visibility) {
+      const requestedBy = String(filters.visibility.requestedBy || '').trim();
+      const department = String(filters.visibility.department || '').trim().toUpperCase();
+      const departments = new Set(
+        (Array.isArray(filters.visibility.departments) ? filters.visibility.departments : [])
+          .map((value: any) => String(value || '').trim().toUpperCase())
+          .filter(Boolean),
+      );
+      if (department) departments.add(department);
+      requisitions = requisitions.filter((row: any) => {
+        const isCreator = requestedBy && String(row?.requested_by || '').trim() === requestedBy;
+        const rowDepartment = String(row?.department || '').trim().toUpperCase();
+        const isSameDepartment = rowDepartment && departments.has(rowDepartment);
+        return Boolean(isCreator || isSameDepartment);
+      });
+    }
 
     // Backfill missing UOM in response from master items (best-effort)
     try {
@@ -413,6 +839,26 @@ export class PurchaseRequisitionsService {
     }
 
     return this.attachWorkflowMetadata(tenantId, requisitions);
+  }
+
+  async findUserDepartment(tenantId: string, userId: string): Promise<string | null> {
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) return null;
+
+    const { data, error } = await this.supabase
+      .from('employees')
+      .select('department')
+      .eq('tenant_id', tenantId)
+      .eq('user_id', normalizedUserId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(`Unable to resolve PR department visibility for user ${normalizedUserId}: ${error.message}`);
+      return null;
+    }
+
+    const department = String((data as any)?.department || '').trim();
+    return department || null;
   }
 
   async findOne(tenantId: string, id: string) {
@@ -526,6 +972,21 @@ export class PurchaseRequisitionsService {
 
   async findOneAvailableForPO(tenantId: string, id: string) {
     const pr = await this.findOne(tenantId, id);
+    const prStatus = normalizeStatus((pr as any)?.status);
+    const poEligibleStatuses = new Set([
+      PR_WORKFLOW_STATUS.APPROVED,
+      PR_WORKFLOW_STATUS.RFQ_ISSUED,
+      PR_WORKFLOW_STATUS.RFQ_RCVD,
+      PR_WORKFLOW_STATUS.PO_DONE,
+      'RFQ_RESPONSE_RECORDED',
+      'PO_PARTIAL',
+      'PARTIAL',
+    ]);
+    if (!poEligibleStatuses.has(prStatus)) {
+      throw new BadRequestException(
+        `PR ${(pr as any)?.pr_number || id} must be fully approved before creating a Purchase Order.`,
+      );
+    }
 
     const { data: poRows, error: poError } = await this.supabase
       .from('purchase_orders')
@@ -557,7 +1018,7 @@ export class PurchaseRequisitionsService {
       ? (pr as any).purchase_requisition_items
       : [];
 
-    const availableItems = prItems.map((it: any) => {
+    let availableItems = prItems.map((it: any) => {
       const prItemId = String(it?.id || '').trim();
       const requestedQty = Number(it?.requested_qty || 0);
       const orderedQty = orderedByPrItemId.get(prItemId) || 0;
@@ -570,6 +1031,101 @@ export class PurchaseRequisitionsService {
         original_requested_qty: requestedQty,
       };
     }).filter((it: any) => Number(it?.remaining_qty || 0) > 0);
+
+    // Hydrate legacy/auto-generated PR lines that only stored item_code, then
+    // attach the first active item vendor (lowest priority = preferred). This
+    // gives Create PO one stable vendor_id instead of relying on client-side
+    // master-list timing or RPC response shapes.
+    const missingItemCodes = Array.from(new Set(
+      availableItems
+        .filter((it: any) => !String(it?.item_id || '').trim())
+        .map((it: any) => String(it?.item_code || '').trim())
+        .filter(Boolean),
+    ));
+
+    const itemIdByCode = new Map<string, string>();
+    if (missingItemCodes.length > 0) {
+      const { data: itemRows, error: itemError } = await this.supabase
+        .from('items')
+        .select('id, code')
+        .eq('tenant_id', tenantId)
+        .in('code', missingItemCodes);
+      if (itemError) throw new BadRequestException(itemError.message);
+      for (const row of itemRows || []) {
+        const code = String((row as any)?.code || '').trim();
+        const itemId = String((row as any)?.id || '').trim();
+        if (code && itemId) itemIdByCode.set(code, itemId);
+      }
+    }
+
+    availableItems = availableItems.map((it: any) => ({
+      ...it,
+      item_id: String(it?.item_id || '').trim() || itemIdByCode.get(String(it?.item_code || '').trim()) || null,
+    }));
+
+    const resolvedItemIds = Array.from(new Set(
+      availableItems.map((it: any) => String(it?.item_id || '').trim()).filter(Boolean),
+    ));
+    const existingVendorIds = Array.from(new Set(
+      availableItems.map((it: any) => String(it?.vendor_id || '').trim()).filter(Boolean),
+    ));
+    const activeExistingVendorIds = new Set<string>();
+    if (existingVendorIds.length > 0) {
+      const { data: existingVendors, error: existingVendorError } = await this.supabase
+        .from('vendors')
+        .select('id, is_active')
+        .eq('tenant_id', tenantId)
+        .in('id', existingVendorIds);
+      if (existingVendorError) throw new BadRequestException(existingVendorError.message);
+      for (const vendor of existingVendors || []) {
+        if ((vendor as any)?.is_active !== false && (vendor as any)?.id) {
+          activeExistingVendorIds.add(String((vendor as any).id));
+        }
+      }
+    }
+
+    const preferredVendorByItemId = new Map<string, any>();
+    if (resolvedItemIds.length > 0) {
+      const { data: vendorLinks, error: vendorLinkError } = await this.supabase
+        .from('item_vendors')
+        .select('item_id, vendor_id, unit_price, priority, vendor:vendors(id, name, is_active, is_verified, approval_status)')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .in('item_id', resolvedItemIds)
+        .order('priority', { ascending: true });
+      if (vendorLinkError) throw new BadRequestException(vendorLinkError.message);
+
+      for (const link of vendorLinks || []) {
+        const itemId = String((link as any)?.item_id || '').trim();
+        if (!itemId || preferredVendorByItemId.has(itemId)) continue;
+        const relation = Array.isArray((link as any)?.vendor) ? (link as any).vendor[0] : (link as any)?.vendor;
+        const approvalStatus = String(relation?.approval_status || '').trim().toUpperCase();
+        const isApproved = relation?.is_verified === true || ['APPROVED', 'VERIFIED'].includes(approvalStatus);
+        if (relation?.is_active === false || !isApproved) continue;
+        preferredVendorByItemId.set(itemId, link);
+      }
+    }
+
+    availableItems = availableItems.map((it: any) => {
+      const currentVendorId = String(it?.vendor_id || '').trim();
+      if (currentVendorId && activeExistingVendorIds.has(currentVendorId)) return it;
+      const preferred = preferredVendorByItemId.get(String(it?.item_id || '').trim());
+      if (!preferred) {
+        return {
+          ...it,
+          vendor_id: currentVendorId && activeExistingVendorIds.has(currentVendorId) ? currentVendorId : null,
+        };
+      }
+      const relation = Array.isArray(preferred.vendor) ? preferred.vendor[0] : preferred.vendor;
+      return {
+        ...it,
+        vendor_id: preferred.vendor_id || relation?.id || null,
+        vendor_name: relation?.name || null,
+        preferred_vendor_id: preferred.vendor_id || relation?.id || null,
+        preferred_vendor_name: relation?.name || null,
+        preferred_vendor_unit_price: preferred.unit_price ?? null,
+      };
+    });
 
     return {
       ...pr,
@@ -708,18 +1264,111 @@ export class PurchaseRequisitionsService {
     }
   }
 
-  async update(tenantId: string, id: string, data: any, userId: string) {
+  private formatLifecycleLockMessage(action: 'edit' | 'delete', pr: any, locks: any) {
+    const references: string[] = [];
+    if (locks.rfqCount > 0) {
+      references.push(`${locks.rfqCount} RFQ${locks.rfqCount === 1 ? '' : 's'} sent`);
+    }
+    if (locks.poCount > 0) {
+      references.push(`${locks.poCount} PO${locks.poCount === 1 ? '' : 's'}: ${locks.poNumbers.join(', ')}`);
+    }
+    if (locks.grnCount > 0) {
+      references.push(`${locks.grnCount} GRN${locks.grnCount === 1 ? '' : 's'}: ${locks.grnNumbers.join(', ')}`);
+    }
+    if (locks.receivedQty > 0) {
+      references.push(`goods received qty ${locks.receivedQty}`);
+    }
+    if (locks.invoicedCount > 0) {
+      references.push(`${locks.invoicedCount} supplier invoice/AP record${locks.invoicedCount === 1 ? '' : 's'}`);
+    }
+
+    const actionText = action === 'delete' ? 'deleted' : 'edited';
+    const referenceText = references.length > 0 ? references.join('; ') : 'downstream documents';
+    return `PR ${pr?.pr_number || pr?.id || 'selected'} cannot be ${actionText} because it has linked ${referenceText}. Use the PR Trail to review the linked documents. Only Super Admin can override edit locks; delete is blocked once downstream documents exist.`;
+  }
+
+  private async getPrLifecycleLocks(tenantId: string, id: string) {
+    const { data: pr, error: prError } = await this.supabase
+      .from('purchase_requisitions')
+      .select('id, pr_number, status')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .single();
+
+    if (prError || !pr) throw new NotFoundException('Purchase Requisition not found');
+
+    const [{ data: rfqRows, error: rfqError }, { data: poRows, error: poError }] = await Promise.all([
+      this.supabase
+        .from('rfqs')
+        .select('id, rfq_number, status')
+        .eq('tenant_id', tenantId)
+        .eq('pr_id', id),
+      this.supabase
+        .from('purchase_orders')
+        .select('id, po_number, status, purchase_order_items(id, ordered_qty, received_qty, pr_item_id)')
+        .eq('tenant_id', tenantId)
+        .eq('pr_id', id),
+    ]);
+
+    if (rfqError) throw new BadRequestException(rfqError.message);
+    if (poError) throw new BadRequestException(poError.message);
+
+    const poIds = (poRows || []).map((po: any) => String(po.id)).filter(Boolean);
+    let grnRows: any[] = [];
+    if (poIds.length > 0) {
+      const { data, error } = await this.supabase
+        .from('grns')
+        .select('id, grn_number, status, qc_completed, invoice_approved, po_id')
+        .eq('tenant_id', tenantId)
+        .in('po_id', poIds);
+      if (error) throw new BadRequestException(error.message);
+      grnRows = Array.isArray(data) ? data : [];
+    }
+
+    const poItems = (poRows || []).flatMap((po: any) =>
+      Array.isArray(po.purchase_order_items)
+        ? po.purchase_order_items.map((item: any) => ({ ...item, po_number: po.po_number }))
+        : [],
+    );
+
+    const receivedQty = poItems.reduce((sum: number, item: any) => sum + Number(item?.received_qty || 0), 0);
+    const orderedQty = poItems.reduce((sum: number, item: any) => sum + Number(item?.ordered_qty || 0), 0);
+    const invoicedCount = grnRows.filter((grn: any) => grn.invoice_approved === true).length;
+
+    return {
+      pr,
+      rfqCount: (rfqRows || []).length,
+      rfqNumbers: (rfqRows || []).map((row: any) => row.rfq_number).filter(Boolean),
+      poCount: (poRows || []).length,
+      poNumbers: (poRows || []).map((row: any) => row.po_number).filter(Boolean),
+      grnCount: grnRows.length,
+      grnNumbers: grnRows.map((row: any) => row.grn_number).filter(Boolean),
+      orderedQty,
+      receivedQty,
+      invoicedCount,
+      hasDownstream: (rfqRows || []).length > 0 || (poRows || []).length > 0 || grnRows.length > 0 || receivedQty > 0 || invoicedCount > 0,
+      hasHardDownstream: (poRows || []).length > 0 || grnRows.length > 0 || receivedQty > 0 || invoicedCount > 0,
+    };
+  }
+
+  async update(tenantId: string, id: string, data: any, userId: string, options: { overrideLifecycleLock?: boolean } = {}) {
+    await this.projectsService.ensureSchema();
     const current = await this.getRequisitionForTransition(tenantId, id);
     const currentStatus = normalizeStatus(current.status);
     if (!['DRAFT', 'SUBMITTED', 'REJECTED'].includes(currentStatus)) {
       throw new BadRequestException(`A requisition in ${currentStatus} status cannot be edited.`);
     }
 
+    const lifecycleLocks = await this.getPrLifecycleLocks(tenantId, id);
+    if (lifecycleLocks.hasDownstream && !options.overrideLifecycleLock) {
+      throw new BadRequestException(this.formatLifecycleLockMessage('edit', lifecycleLocks.pr, lifecycleLocks));
+    }
+
     let existingRowsForSync: any[] = [];
     if (Array.isArray(data.items)) {
       const { data: existingRows, error: existingError } = await this.supabase
         .from('purchase_requisition_items')
-        .select('id, total_ordered_qty')
+        .select('id, item_id, item_code, item_name, vendor_id, uom, requested_qty, estimated_rate, required_date, payment_terms, delivery_terms, remarks, description, total_ordered_qty')
         .eq('pr_id', id);
       if (existingError) throw new BadRequestException(existingError.message);
       existingRowsForSync = existingRows || [];
@@ -731,6 +1380,11 @@ export class PurchaseRequisitionsService {
       );
       const removedRows = existingRowsForSync.filter((item: any) => !retainedIds.has(String(item.id)));
       const removedIds = removedRows.map((item: any) => String(item.id));
+      if (lifecycleLocks.hasHardDownstream && removedIds.length > 0) {
+        throw new BadRequestException(
+          `Line items cannot be removed from PR ${current.pr_number || id} because PO/GRN documents already exist. Create a revision/correction flow instead of changing the source PR lines.`,
+        );
+      }
       if (removedRows.some((item: any) => Number(item.total_ordered_qty || 0) > 0)) {
         throw new BadRequestException('An item already converted to a purchase order cannot be removed.');
       }
@@ -745,6 +1399,7 @@ export class PurchaseRequisitionsService {
       }
     }
     if (data.items) {
+      assertNoDuplicateRequisitionItems(data.items);
       await this.assertItemsVerified(tenantId, data.items);
       await this.assertVendorsVerified(
         tenantId,
@@ -757,12 +1412,18 @@ export class PurchaseRequisitionsService {
     if (!['DRAFT', 'SUBMITTED'].includes(requestedStatus)) {
       throw new BadRequestException('An edited requisition can only be saved as draft or submitted.');
     }
+    this.assertLineDeliveryDates(data.items || [], requestedStatus);
     if (requestedStatus === 'DRAFT' && currentStatus !== 'DRAFT') {
       throw new BadRequestException('A submitted or rejected requisition cannot be moved back to draft.');
     }
+    const department = normalizeDepartment(data.department);
+    const projectId = String(data.projectId ?? data.project_id ?? '').trim() || null;
+    const projectName = String(data.projectName ?? data.project_name ?? '').trim() || null;
     const updateData: any = {
-      department: data.department,
-      required_date: data.requiredDate,
+      department,
+      project_id: projectId,
+      project_name: projectName,
+      required_date: requireCurrentOrFutureDate(data.requiredDate, 'Required date'),
       priority: data.priority,
       // Keep backward/forward compatibility with different client field names
       purpose: data.purpose ?? data.notes ?? null,
@@ -788,6 +1449,16 @@ export class PurchaseRequisitionsService {
       .eq('id', id);
 
     if (error) throw new BadRequestException(error.message);
+    if (projectId) {
+      await this.projectsService.logEvent(tenantId, projectId, userId, {
+        eventType: 'PR_UPDATED',
+        sourceModule: 'PURCHASE_REQUISITION',
+        sourceId: id,
+        sourceNumber: current.pr_number,
+        remarks: `Purchase requisition updated for ${department}`,
+        metadata: { fromStatus: currentStatus, toStatus: requestedStatus },
+      });
+    }
 
     if (Array.isArray(data.items)) {
       const existingRows = existingRowsForSync;
@@ -805,7 +1476,7 @@ export class PurchaseRequisitionsService {
         uom: item.uom ?? null,
         requested_qty: item.requestedQty ?? item.quantity ?? null,
         estimated_rate: item.estimatedRate ?? item.estimatedPrice ?? null,
-        required_date: item.requiredDate ?? null,
+        required_date: normalizeDateOnly(item.requiredDate),
         payment_terms: item.paymentTerms ?? null,
         delivery_terms: item.deliveryTerms ?? null,
         remarks: item.remarks ?? item.notes ?? null,
@@ -813,17 +1484,48 @@ export class PurchaseRequisitionsService {
         updated_at: nowIso,
       });
 
+      const hasMeaningfulLineChange = (existing: any, next: any) => {
+        const text = (value: any) => String(value ?? '').trim();
+        const num = (value: any) => Number(value ?? 0);
+        return (
+          text(existing.item_id) !== text(next.item_id) ||
+          text(existing.item_code) !== text(next.item_code) ||
+          text(existing.item_name) !== text(next.item_name) ||
+          text(existing.vendor_id) !== text(next.vendor_id) ||
+          text(existing.uom) !== text(next.uom) ||
+          num(existing.requested_qty) !== num(next.requested_qty) ||
+          num(existing.estimated_rate) !== num(next.estimated_rate) ||
+          text(existing.required_date) !== text(next.required_date) ||
+          text(existing.payment_terms) !== text(next.payment_terms) ||
+          text(existing.delivery_terms) !== text(next.delivery_terms) ||
+          text(existing.remarks) !== text(next.remarks) ||
+          text(existing.description) !== text(next.description)
+        );
+      };
+
       for (const item of data.items) {
         const incomingId = String(item?.id || '').trim();
         if (isUuid(incomingId) && existingById.has(incomingId)) {
           retainedIds.add(incomingId);
+          const nextPayload = buildItemPayload(item);
+          const existing = existingById.get(incomingId);
+          if (lifecycleLocks.hasHardDownstream && hasMeaningfulLineChange(existing, nextPayload)) {
+            throw new BadRequestException(
+              `Line items on PR ${current.pr_number || id} cannot be changed because PO/GRN documents already exist. Create a revision/correction flow instead of changing the source PR lines.`,
+            );
+          }
           const { error: itemError } = await this.supabase
             .from('purchase_requisition_items')
-            .update(buildItemPayload(item))
+            .update(nextPayload)
             .eq('pr_id', id)
             .eq('id', incomingId);
           if (itemError) throw new BadRequestException(`Failed to update PR item: ${itemError.message}`);
         } else {
+          if (lifecycleLocks.hasHardDownstream) {
+            throw new BadRequestException(
+              `New line items cannot be added to PR ${current.pr_number || id} because PO/GRN documents already exist. Create a new PR or controlled revision instead.`,
+            );
+          }
           newRows.push({ pr_id: id, ...buildItemPayload(item), updated_by: undefined, updated_at: undefined });
         }
       }
@@ -860,6 +1562,9 @@ export class PurchaseRequisitionsService {
     if (!String(pr.department || '').trim() || !pr.required_date || !(pr.purchase_requisition_items || []).length) {
       throw new BadRequestException('Department, required date, and at least one item are required before submission.');
     }
+    if (String(pr.required_date).slice(0, 10) < todayDateOnly()) {
+      throw new BadRequestException(`Required date cannot be before today (${todayDateOnly()}).`);
+    }
     const { error } = await this.supabase
       .from('purchase_requisitions')
       .update({
@@ -881,11 +1586,14 @@ export class PurchaseRequisitionsService {
     return this.findOne(tenantId, id);
   }
 
-  async approve(tenantId: string, id: string, userId: string) {
+  async approve(tenantId: string, id: string, userId: string, options: { overrideMakerChecker?: boolean } = {}) {
     const pr = await this.getRequisitionForTransition(tenantId, id);
     const fromStatus = normalizeStatus(pr.status);
     if (fromStatus !== 'SUBMITTED') throw new BadRequestException(`Only submitted requisitions can be approved; current status is ${fromStatus}.`);
-    if (String(pr.requested_by) === String(userId)) throw new BadRequestException('You cannot approve your own purchase requisition.');
+    if (!options.overrideMakerChecker && (
+      String(pr.requested_by || '') === String(userId || '') ||
+      String(pr.updated_by || '') === String(userId || '')
+    )) throw new BadRequestException('You cannot approve a purchase requisition that you created or last edited.');
 
     const totalAmount = (pr.purchase_requisition_items || []).reduce(
       (sum: number, item: any) => sum + Number(item.requested_qty || 0) * Number(item.estimated_rate || 0),
@@ -894,12 +1602,12 @@ export class PurchaseRequisitionsService {
     const rules = await this.getMatchingApprovalRules(tenantId, pr.department, totalAmount);
     const currentLevel = Number(pr.current_approval_level || 0);
     const currentRule = rules[currentLevel];
-    if (currentRule) {
+    if (!options.overrideMakerChecker && currentRule) {
       await this.assertRuleApprover(userId, currentRule);
-    } else if (rules.length === 0) {
+    } else if (!options.overrideMakerChecker && rules.length === 0) {
       await this.assertDefaultApprover(tenantId, userId);
     }
-    const finalApproval = rules.length === 0 || currentLevel + 1 >= rules.length;
+    const finalApproval = options.overrideMakerChecker || rules.length === 0 || currentLevel + 1 >= rules.length;
     const nextStatus = finalApproval ? 'APPROVED' : 'SUBMITTED';
 
     const { error } = await this.supabase
@@ -923,18 +1631,21 @@ export class PurchaseRequisitionsService {
       fromStatus,
       toStatus: nextStatus,
       approvalLevel: currentLevel + 1,
-      approvalRuleId: currentRule?.id || null,
+      approvalRuleId: options.overrideMakerChecker ? null : currentRule?.id || null,
     });
     return this.findOne(tenantId, id);
   }
 
-  async reject(tenantId: string, id: string, userId: string, reason: string) {
+  async reject(tenantId: string, id: string, userId: string, reason: string, options: { overrideMakerChecker?: boolean } = {}) {
     const normalizedReason = String(reason || '').trim();
     if (!normalizedReason) throw new BadRequestException('A rejection reason is required.');
     const pr = await this.getRequisitionForTransition(tenantId, id);
     const fromStatus = normalizeStatus(pr.status);
     if (fromStatus !== 'SUBMITTED') throw new BadRequestException(`Only submitted requisitions can be rejected; current status is ${fromStatus}.`);
-    if (String(pr.requested_by) === String(userId)) throw new BadRequestException('You cannot reject your own purchase requisition.');
+    if (!options.overrideMakerChecker && (
+      String(pr.requested_by || '') === String(userId || '') ||
+      String(pr.updated_by || '') === String(userId || '')
+    )) throw new BadRequestException('You cannot reject a purchase requisition that you created or last edited.');
     const { error } = await this.supabase
       .from('purchase_requisitions')
       .update({
@@ -956,9 +1667,9 @@ export class PurchaseRequisitionsService {
   }
 
   async sendRFQ(tenantId: string, requisitionId: string, userId: string, body: any) {
-    const vendorIds: string[] = Array.isArray(body?.vendorIds) ? body.vendorIds : [];
+    let vendorIds: string[] = Array.isArray(body?.vendorIds) ? body.vendorIds : [];
     const vendorEmails: string[] = Array.isArray(body?.vendorEmails) ? body.vendorEmails : [];
-    const itemVendors: Array<{ itemId: string; vendorIds: string[] }> = Array.isArray(body?.itemVendors) ? body.itemVendors : [];
+    let itemVendors: Array<{ itemId: string; vendorIds: string[] }> = Array.isArray(body?.itemVendors) ? body.itemVendors : [];
 
     const recipientOverrides: Record<string, string> =
       body?.recipientOverrides && typeof body.recipientOverrides === 'object'
@@ -981,8 +1692,6 @@ export class PurchaseRequisitionsService {
       throw new BadRequestException('vendorIds or vendorEmails is required');
     }
 
-    await this.assertVendorsVerified(tenantId, vendorIds);
-
     const pr = await this.findOne(tenantId, requisitionId);
 
     if (!pr) {
@@ -990,9 +1699,15 @@ export class PurchaseRequisitionsService {
     }
 
     const baseStatus = normalizeStatus((pr as any)?.status);
-    if (baseStatus === PR_WORKFLOW_STATUS.DRAFT || baseStatus === PR_WORKFLOW_STATUS.REJECTED) {
-      throw new BadRequestException('PR must be approved before sending RFQ');
+    if (baseStatus !== PR_WORKFLOW_STATUS.APPROVED) {
+      throw new BadRequestException('PR must be fully approved before sending RFQ');
     }
+
+    const normalizedSelection = await this.normalizeRfqVendorSelection(tenantId, pr, vendorIds, itemVendors);
+    vendorIds = normalizedSelection.vendorIds;
+    itemVendors = normalizedSelection.itemVendors;
+
+    await this.assertVendorsVerified(tenantId, vendorIds);
 
     // Save item-vendor mappings to pr_item_rfq_vendors table
     if (itemVendors.length > 0) {
@@ -1069,7 +1784,11 @@ export class PurchaseRequisitionsService {
       throw new BadRequestException('No valid vendor emails found');
     }
 
-    const responseDate = body?.responseDate || body?.response_date;
+    const rawResponseDate = body?.responseDate || body?.response_date;
+    const responseDate = rawResponseDate ? normalizeDateOnly(rawResponseDate) : null;
+    if (rawResponseDate && !responseDate) {
+      throw new BadRequestException('RFQ response date must be a valid date between 2000-01-01 and 2100-12-31.');
+    }
     const remarks = body?.remarks;
 
     const persistedRfqByVendorId = new Map<string, any>();
@@ -1273,9 +1992,9 @@ export class PurchaseRequisitionsService {
   }
 
   async previewRFQ(tenantId: string, requisitionId: string, body: any) {
-    const vendorIds: string[] = Array.isArray(body?.vendorIds) ? body.vendorIds : [];
+    let vendorIds: string[] = Array.isArray(body?.vendorIds) ? body.vendorIds : [];
     const vendorEmails: string[] = Array.isArray(body?.vendorEmails) ? body.vendorEmails : [];
-    const itemVendors: Array<{ itemId: string; vendorIds: string[] }> = Array.isArray(body?.itemVendors)
+    let itemVendors: Array<{ itemId: string; vendorIds: string[] }> = Array.isArray(body?.itemVendors)
       ? body.itemVendors
       : [];
 
@@ -1300,8 +2019,6 @@ export class PurchaseRequisitionsService {
       throw new BadRequestException('vendorIds or vendorEmails is required');
     }
 
-    await this.assertVendorsVerified(tenantId, vendorIds);
-
     const pr = await this.findOne(tenantId, requisitionId);
 
     if (!pr) {
@@ -1309,9 +2026,15 @@ export class PurchaseRequisitionsService {
     }
 
     const baseStatus = normalizeStatus((pr as any)?.status);
-    if (baseStatus === PR_WORKFLOW_STATUS.DRAFT || baseStatus === PR_WORKFLOW_STATUS.REJECTED) {
-      throw new BadRequestException('PR must be approved before previewing RFQ');
+    if (baseStatus !== PR_WORKFLOW_STATUS.APPROVED) {
+      throw new BadRequestException('PR must be fully approved before previewing RFQ');
     }
+
+    const normalizedSelection = await this.normalizeRfqVendorSelection(tenantId, pr, vendorIds, itemVendors);
+    vendorIds = normalizedSelection.vendorIds;
+    itemVendors = normalizedSelection.itemVendors;
+
+    await this.assertVendorsVerified(tenantId, vendorIds);
 
     const vendorLookups = await Promise.all(
       vendorIds.map(async (vendorId) => this.vendorsService.findOne(tenantId, vendorId)),
@@ -1357,7 +2080,11 @@ export class PurchaseRequisitionsService {
       throw new BadRequestException('No valid vendor emails found');
     }
 
-    const responseDate = body?.responseDate || body?.response_date;
+    const rawResponseDate = body?.responseDate || body?.response_date;
+    const responseDate = rawResponseDate ? normalizeDateOnly(rawResponseDate) : null;
+    if (rawResponseDate && !responseDate) {
+      throw new BadRequestException('RFQ response date must be a valid date between 2000-01-01 and 2100-12-31.');
+    }
     const remarks = body?.remarks;
 
     const previews = await Promise.all(
@@ -1442,6 +2169,17 @@ export class PurchaseRequisitionsService {
   }
 
   async delete(tenantId: string, id: string) {
+    const lifecycleLocks = await this.getPrLifecycleLocks(tenantId, id);
+    if (lifecycleLocks.hasDownstream) {
+      throw new BadRequestException(this.formatLifecycleLockMessage('delete', lifecycleLocks.pr, lifecycleLocks));
+    }
+
+    const { error: itemError } = await this.supabase
+      .from('purchase_requisition_items')
+      .delete()
+      .eq('pr_id', id);
+    if (itemError) throw new BadRequestException(`Failed to delete PR items: ${itemError.message}`);
+
     const { error } = await this.supabase
       .from('purchase_requisitions')
       .delete()
@@ -1594,10 +2332,34 @@ export class PurchaseRequisitionsService {
         .in('pr_id', prIds),
       this.supabase
         .from('purchase_orders')
-        .select('id, pr_id, purchase_order_items(ordered_qty, received_qty)')
+        .select('id, po_number, pr_id, status, purchase_order_items(id, ordered_qty, received_qty)')
         .eq('tenant_id', tenantId)
         .in('pr_id', prIds),
     ]);
+
+    const poIds = (Array.isArray(poRows) ? poRows : [])
+      .map((row: any) => String(row?.id || '').trim())
+      .filter(Boolean);
+
+    let grnRows: any[] = [];
+    let grnItemRows: any[] = [];
+    if (poIds.length > 0) {
+      const { data: fetchedGrns } = await this.supabase
+        .from('grns')
+        .select('id, grn_number, po_id, status, qc_completed')
+        .eq('tenant_id', tenantId)
+        .in('po_id', poIds);
+      grnRows = Array.isArray(fetchedGrns) ? fetchedGrns : [];
+
+      const grnIds = grnRows.map((row: any) => String(row?.id || '').trim()).filter(Boolean);
+      if (grnIds.length > 0) {
+        const { data: fetchedGrnItems } = await this.supabase
+          .from('grn_items')
+          .select('grn_id, received_qty, accepted_qty, rejected_qty, qc_status')
+          .in('grn_id', grnIds);
+        grnItemRows = Array.isArray(fetchedGrnItems) ? fetchedGrnItems : [];
+      }
+    }
 
     const rfqSummaryByPr = new Map<string, any>();
     (Array.isArray(rfqRows) ? rfqRows : []).forEach((row: any) => {
@@ -1622,18 +2384,77 @@ export class PurchaseRequisitionsService {
     });
 
     const poSummaryByPr = new Map<string, any>();
+    const grnsByPo = new Map<string, any[]>();
+    (Array.isArray(grnRows) ? grnRows : []).forEach((row: any) => {
+      const poId = String(row?.po_id || '').trim();
+      if (!poId || ['REJECTED', 'CANCELLED'].includes(normalizeStatus(row?.status))) return;
+      const rows = grnsByPo.get(poId) || [];
+      rows.push(row);
+      grnsByPo.set(poId, rows);
+    });
+
+    const grnItemsByGrn = new Map<string, any[]>();
+    (Array.isArray(grnItemRows) ? grnItemRows : []).forEach((row: any) => {
+      const grnId = String(row?.grn_id || '').trim();
+      if (!grnId) return;
+      const rows = grnItemsByGrn.get(grnId) || [];
+      rows.push(row);
+      grnItemsByGrn.set(grnId, rows);
+    });
+
     (Array.isArray(poRows) ? poRows : []).forEach((row: any) => {
       const prId = String(row?.pr_id || '').trim();
       if (!prId) return;
       const current = poSummaryByPr.get(prId) || {
+        total: 0,
+        draftCount: 0,
+        pendingCount: 0,
+        approvedCount: 0,
+        rejectedCount: 0,
+        cancelledCount: 0,
         totalOrderedQty: 0,
         totalReceivedQty: 0,
+        grnCount: 0,
+        completedGrnCount: 0,
+        poNumbers: [],
+        grnNumbers: [],
       };
+      const poStatus = normalizeStatus(row?.status);
+      current.total += 1;
+      if (poStatus === 'DRAFT') current.draftCount += 1;
+      if (['PENDING', 'SUBMITTED', 'AWAITING_APPROVAL'].includes(poStatus)) current.pendingCount += 1;
+      if (poStatus === 'APPROVED') current.approvedCount += 1;
+      if (poStatus === 'REJECTED') current.rejectedCount += 1;
+      if (poStatus === 'CANCELLED') current.cancelledCount += 1;
+      if (row?.po_number && current.poNumbers.length < 8) current.poNumbers.push(row.po_number);
+
       const items = Array.isArray(row?.purchase_order_items) ? row.purchase_order_items : [];
+      let poItemReceivedQty = 0;
       items.forEach((item: any) => {
         current.totalOrderedQty += Number(item?.ordered_qty || 0);
-        current.totalReceivedQty += Number(item?.received_qty || 0);
+        poItemReceivedQty += Number(item?.received_qty || 0);
       });
+
+      const poGrns = grnsByPo.get(String(row?.id || '').trim()) || [];
+      current.grnCount += poGrns.length;
+      let grnReceivedQtyForPo = 0;
+      poGrns.forEach((grn: any) => {
+        if (grn?.qc_completed || normalizeStatus(grn?.status) === 'COMPLETED') current.completedGrnCount += 1;
+        if (grn?.grn_number && current.grnNumbers.length < 8) current.grnNumbers.push(grn.grn_number);
+
+        const grnItems = grnItemsByGrn.get(String(grn?.id || '').trim()) || [];
+        const grnReceivedQty = grnItems.reduce((sum: number, item: any) => {
+          const qcStatus = normalizeStatus(item?.qc_status);
+          const receivedQty = Number(item?.received_qty || 0);
+          const acceptedQty = Number(item?.accepted_qty || 0);
+          const rejectedQty = Number(item?.rejected_qty || 0);
+          const qcRecorded =
+            ['ACCEPTED', 'PARTIAL', 'REJECTED'].includes(qcStatus) || acceptedQty > 0 || rejectedQty > 0;
+          return sum + (qcRecorded ? acceptedQty : receivedQty);
+        }, 0);
+        grnReceivedQtyForPo += grnReceivedQty;
+      });
+      current.totalReceivedQty += Math.max(poItemReceivedQty, grnReceivedQtyForPo);
       poSummaryByPr.set(prId, current);
     });
 
@@ -1648,13 +2469,22 @@ export class PurchaseRequisitionsService {
         nextFollowUpDate: null,
       };
       const poSummary = poSummaryByPr.get(prId) || {
+        total: 0,
+        draftCount: 0,
+        pendingCount: 0,
+        approvedCount: 0,
+        rejectedCount: 0,
+        cancelledCount: 0,
         totalOrderedQty: 0,
         totalReceivedQty: 0,
+        grnCount: 0,
+        completedGrnCount: 0,
+        poNumbers: [],
+        grnNumbers: [],
       };
 
-      const poDone =
-        items.length > 0 &&
-        items.every((item: any) => Number(item?.remaining_qty ?? item?.requested_qty ?? 0) <= 0);
+      const requestedTotal = items.reduce((sum: number, item: any) => sum + Number(item?.requested_qty || 0), 0);
+      const poDone = requestedTotal > 0 && poSummary.totalOrderedQty >= requestedTotal - 1e-9;
       const goodsReceived = poSummary.totalOrderedQty > 0 && poSummary.totalReceivedQty >= poSummary.totalOrderedQty;
 
       let workflowStatus = baseStatus;
@@ -1667,16 +2497,20 @@ export class PurchaseRequisitionsService {
       } else if (baseStatus === 'SUBMITTED') {
         workflowStatus = PR_WORKFLOW_STATUS.AWAITING_APPROVAL;
         workflowDetail = `Level ${Number(row?.current_approval_level || 0) + 1}`;
-      } else if (goodsReceived) {
-        workflowStatus = PR_WORKFLOW_STATUS.GOODS_RCVD;
-      } else if (poDone) {
-        workflowStatus = PR_WORKFLOW_STATUS.PO_DONE;
-      } else if (rfqSummary.receivedCount > 0) {
-        workflowStatus = PR_WORKFLOW_STATUS.RFQ_RCVD;
-        workflowDetail = 'Received';
-      } else {
-        workflowStatus = PR_WORKFLOW_STATUS.RFQ_ISSUED;
-        workflowDetail = rfqSummary.sentCount > 0 ? 'Yes' : 'No';
+      } else if (baseStatus === PR_WORKFLOW_STATUS.APPROVED) {
+        if (goodsReceived) {
+          workflowStatus = PR_WORKFLOW_STATUS.GOODS_RCVD;
+        } else if (poDone) {
+          workflowStatus = PR_WORKFLOW_STATUS.PO_DONE;
+        } else if (rfqSummary.receivedCount > 0) {
+          workflowStatus = PR_WORKFLOW_STATUS.RFQ_RCVD;
+          workflowDetail = 'Received';
+        } else if (rfqSummary.sentCount > 0) {
+          workflowStatus = PR_WORKFLOW_STATUS.RFQ_ISSUED;
+          workflowDetail = 'Yes';
+        } else {
+          workflowStatus = PR_WORKFLOW_STATUS.APPROVED;
+        }
       }
 
       return {

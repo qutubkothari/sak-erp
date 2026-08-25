@@ -29,6 +29,7 @@ export type QuotePdfInput = {
   quote_number: string;
   quote_date_iso: string;
   title: string;
+  document_label?: string;
   company: QuoteCompanyInfo;
   customer: QuoteCustomerInfo;
   items: QuoteItemInput[];
@@ -37,6 +38,35 @@ export type QuotePdfInput = {
   discount?: number;
   notes?: string;
   terms?: string;
+  show_totals?: boolean;
+};
+
+export type AccountStatementRowInput = {
+  date: string;
+  source: string;
+  document_type: string;
+  document_number: string;
+  reference?: string;
+  remarks?: string;
+  debit: number;
+  credit: number;
+  balance: number;
+};
+
+export type AccountStatementPdfInput = {
+  statement_date_iso: string;
+  period_from: string;
+  period_to: string;
+  company: QuoteCompanyInfo;
+  customer: QuoteCustomerInfo & { code?: string };
+  opening_balance: number;
+  total_debit: number;
+  total_credit: number;
+  closing_balance: number;
+  current_outstanding: number;
+  ageing: Array<{ bucket: string; amount: number }>;
+  transactions: AccountStatementRowInput[];
+  currency?: string;
 };
 
 @Injectable()
@@ -45,7 +75,6 @@ export class QuotePdfService {
 
   async renderQuotePdf(tenantId: string, input: QuotePdfInput): Promise<Buffer> {
     const pdfDoc = await PDFDocument.create();
-    const assets = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc);
 
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -69,8 +98,10 @@ export class QuotePdfService {
       email: input.company?.email,
       website: input.company?.website,
     });
+    const assets = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc, branding);
 
     const currency = (input.currency || 'INR').toUpperCase();
+    const documentLabel = String(input.document_label || 'QUOTATION').trim().toUpperCase();
     const taxRate = typeof input.tax_rate === 'number' ? input.tax_rate : 0;
     const discount = typeof input.discount === 'number' ? input.discount : 0;
 
@@ -88,7 +119,11 @@ export class QuotePdfService {
 
     const money = (n: number) => {
       const safe = Number.isFinite(n) ? n : 0;
-      return `${currency} ${safe.toFixed(2)}`;
+      const formatted = new Intl.NumberFormat('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(safe);
+      return `${currency} ${formatted}`;
     };
 
     const wrapText = (text: string, maxWidth: number, size: number) => {
@@ -114,6 +149,22 @@ export class QuotePdfService {
 
     const drawFooter = (page: any, pageIndex: number, pageCount: number) => {
       const text = `Page ${pageIndex + 1} of ${pageCount}`;
+      if (assets.footerImage) {
+        page.drawImage(assets.footerImage, {
+          x: 40,
+          y: 22,
+          width: PAGE_W - 80,
+          height: 30,
+        });
+        page.drawText(text, {
+          x: 40,
+          y: 58,
+          size: 8,
+          font,
+          color: brand.muted,
+        });
+        return;
+      }
       page.drawLine({
         start: { x: 40, y: 50 },
         end: { x: PAGE_W - 40, y: 50 },
@@ -127,7 +178,7 @@ export class QuotePdfService {
         font,
         color: brand.muted,
       });
-      const footerRef = `${branding.companyName} • ${input.quote_number}`;
+      const footerRef = branding.footerText || `${branding.companyName} - ${input.quote_number}`;
       page.drawText(footerRef, {
         x: PAGE_W - 40 - font.widthOfTextAtSize(footerRef, 9),
         y: 32,
@@ -150,7 +201,7 @@ export class QuotePdfService {
         topY: PAGE_H - 30,
         marginX: 40,
         width: PAGE_W - 80,
-        title: 'QUOTATION',
+        title: documentLabel,
         reference: input.quote_number,
         branding,
         font,
@@ -158,7 +209,7 @@ export class QuotePdfService {
         assets,
       });
 
-      page.drawText(input.title || 'Quotation', {
+      page.drawText(input.title || documentLabel, {
         x: 40,
         y: headerBottom - 18,
         size: 16,
@@ -233,9 +284,9 @@ export class QuotePdfService {
       const cols = [
         { label: '#', x: x0 + 8 },
         { label: 'Description', x: x0 + 40 },
-        { label: 'Qty', x: x0 + w - 210 },
-        { label: 'Unit Price', x: x0 + w - 150 },
-        { label: 'Amount', x: x0 + w - 65 },
+        { label: 'Qty', x: x0 + w - 225 },
+        { label: 'Unit Price', x: x0 + w - 160 },
+        { label: 'Amount', x: x0 + w - 64 },
       ];
       for (const col of cols) {
         page.drawText(col.label, { x: col.x, y: y - 12, size: 10, font: fontBold, color: brand.text });
@@ -254,7 +305,7 @@ export class QuotePdfService {
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      const descriptionLines = wrapText(it.description || '-', w - 260, 10).slice(0, 3);
+      const descriptionLines = wrapText(it.description || '-', w - 280, 10).slice(0, 3);
       const itemRowHeight = Math.max(rowHeight, descriptionLines.length * 12);
 
       if (y < 170 + itemRowHeight) {
@@ -273,7 +324,7 @@ export class QuotePdfService {
 
       const qtyText = it.unit ? `${it.quantity} ${it.unit}` : String(it.quantity);
       page.drawText(qtyText, {
-        x: x0 + w - 210,
+        x: x0 + w - 225 - font.widthOfTextAtSize(qtyText, 10),
         y,
         size: 10,
         font,
@@ -282,7 +333,7 @@ export class QuotePdfService {
 
       const unitPriceText = money(it.unit_price);
       page.drawText(unitPriceText, {
-        x: x0 + w - 150,
+        x: x0 + w - 100 - font.widthOfTextAtSize(unitPriceText, 10),
         y,
         size: 10,
         font,
@@ -291,7 +342,7 @@ export class QuotePdfService {
 
       const amountText = money(it.line_total);
       page.drawText(amountText, {
-        x: x0 + w - 65 - font.widthOfTextAtSize(amountText, 10),
+        x: x0 + w - 10 - font.widthOfTextAtSize(amountText, 10),
         y,
         size: 10,
         font,
@@ -302,7 +353,7 @@ export class QuotePdfService {
     }
 
     // Totals block (place on last page)
-    if (y < 230) {
+    if (input.show_totals !== false && y < 230) {
       page = await addBodyPage();
       y = drawHeader(page);
     }
@@ -323,10 +374,12 @@ export class QuotePdfService {
       });
     };
 
-    drawKV('Subtotal', money(subtotal), 0);
-    drawKV(`Tax (${(taxRate * 100).toFixed(0)}%)`, money(tax), 1);
-    if (discount > 0) drawKV('Discount', `- ${money(discount)}`, 2);
-    drawKV('Total', money(total), discount > 0 ? 3 : 2, true);
+    if (input.show_totals !== false) {
+      drawKV('Subtotal', money(subtotal), 0);
+      drawKV(`Tax (${(taxRate * 100).toFixed(0)}%)`, money(tax), 1);
+      if (discount > 0) drawKV('Discount', `- ${money(discount)}`, 2);
+      drawKV('Total', money(total), discount > 0 ? 3 : 2, true);
+    }
 
     let notesTop = totalsY - 110;
     if (input.notes) {
@@ -365,5 +418,164 @@ export class QuotePdfService {
 
     const bytes = await pdfDoc.save();
     return Buffer.from(bytes);
+  }
+
+  async renderAccountStatementPdf(tenantId: string, input: AccountStatementPdfInput): Promise<Buffer> {
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const PAGE_W = 841.89;
+    const PAGE_H = 595.28;
+    const MARGIN = 32;
+    const CONTENT_W = PAGE_W - MARGIN * 2;
+    const currency = String(input.currency || 'INR').toUpperCase();
+    const brand = {
+      light: DOCUMENT_BRAND_COLORS.light,
+      text: DOCUMENT_BRAND_COLORS.text,
+      muted: DOCUMENT_BRAND_COLORS.muted,
+      border: DOCUMENT_BRAND_COLORS.border,
+    };
+    const branding = await this.documentBrandingService.getBranding(tenantId, {
+      companyName: input.company?.name,
+      address: input.company?.address,
+      phone: input.company?.phone,
+      email: input.company?.email,
+      website: input.company?.website,
+    });
+    const assets = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc, branding);
+    const clean = (value: unknown) => String(value ?? '').normalize('NFKD').replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim();
+    const money = (value: unknown) => `${currency} ${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const shortDate = (value: unknown) => {
+      const raw = String(value || '').slice(0, 10);
+      const [year, month, day] = raw.split('-');
+      return year && month && day ? `${day}-${month}-${year}` : '-';
+    };
+    const wrap = (value: unknown, maxWidth: number, size: number, maxLines = 2) => {
+      const words = clean(value).split(/\s+/).filter(Boolean);
+      if (!words.length) return ['-'];
+      const lines: string[] = [];
+      let current = words[0];
+      for (let index = 1; index < words.length; index += 1) {
+        const candidate = `${current} ${words[index]}`;
+        if (font.widthOfTextAtSize(candidate, size) <= maxWidth) current = candidate;
+        else {
+          lines.push(current);
+          current = words[index];
+          if (lines.length === maxLines - 1) break;
+        }
+      }
+      if (lines.length < maxLines) lines.push(current);
+      return lines.slice(0, maxLines);
+    };
+    const pages: any[] = [];
+    const columns = [
+      { key: 'date', label: 'Date', width: 62, align: 'left' },
+      { key: 'source', label: 'Source', width: 55, align: 'left' },
+      { key: 'document_type', label: 'Document Type', width: 90, align: 'left' },
+      { key: 'document_number', label: 'Document No.', width: 95, align: 'left' },
+      { key: 'reference', label: 'Reference / Remarks', width: 205, align: 'left' },
+      { key: 'debit', label: 'Debit', width: 90, align: 'right' },
+      { key: 'credit', label: 'Credit', width: 90, align: 'right' },
+      { key: 'balance', label: 'Balance', width: 90, align: 'right' },
+    ];
+    const drawRight = (page: any, value: string, rightX: number, y: number, size = 8, bold = false) => {
+      const selectedFont = bold ? fontBold : font;
+      page.drawText(value, { x: rightX - selectedFont.widthOfTextAtSize(value, size), y, size, font: selectedFont, color: brand.text });
+    };
+    const drawTableHeader = (page: any, y: number) => {
+      page.drawRectangle({ x: MARGIN, y: y - 18, width: CONTENT_W, height: 22, color: rgb(0.93, 0.91, 0.87), borderColor: brand.border, borderWidth: 0.5 });
+      let x = MARGIN;
+      for (const column of columns) {
+        const labelWidth = fontBold.widthOfTextAtSize(column.label, 7.5);
+        page.drawText(column.label, { x: column.align === 'right' ? x + column.width - labelWidth - 4 : x + 4, y: y - 10, size: 7.5, font: fontBold, color: brand.text });
+        x += column.width;
+      }
+    };
+    const addPage = async () => {
+      const page = await this.documentBrandingService.createBrandedPage(pdfDoc, assets, [PAGE_W, PAGE_H]);
+      pages.push(page);
+      const headerBottom = this.documentBrandingService.drawStandardHeader({
+        page,
+        topY: PAGE_H - 24,
+        marginX: MARGIN,
+        width: CONTENT_W,
+        title: 'CUSTOMER ACCOUNT STATEMENT',
+        reference: `${shortDate(input.period_from)} to ${shortDate(input.period_to)}`,
+        branding,
+        font,
+        fontBold,
+        assets,
+      });
+      const customerY = headerBottom - 18;
+      page.drawText(clean(input.customer.name || 'Customer'), { x: MARGIN, y: customerY, size: 12, font: fontBold, color: brand.text });
+      page.drawText(`Customer Code: ${clean(input.customer.code || '-')}`, { x: MARGIN, y: customerY - 14, size: 8.5, font, color: brand.muted });
+      const address = clean(input.customer.address || '');
+      if (address) page.drawText(wrap(address, 390, 8.5, 1)[0], { x: MARGIN, y: customerY - 27, size: 8.5, font, color: brand.text });
+      drawRight(page, `Statement date: ${shortDate(input.statement_date_iso)}`, PAGE_W - MARGIN, customerY, 8.5);
+      drawRight(page, `Period: ${shortDate(input.period_from)} to ${shortDate(input.period_to)}`, PAGE_W - MARGIN, customerY - 14, 8.5);
+      const summaryY = customerY - 54;
+      const summaries = [
+        ['Opening', input.opening_balance],
+        ['Period Debit', input.total_debit],
+        ['Period Credit', input.total_credit],
+        ['Closing', input.closing_balance],
+        ['Outstanding', input.current_outstanding],
+      ];
+      const boxWidth = CONTENT_W / summaries.length;
+      summaries.forEach(([label, value], index) => {
+        const x = MARGIN + index * boxWidth;
+        page.drawRectangle({ x, y: summaryY - 32, width: boxWidth, height: 36, color: brand.light, borderColor: brand.border, borderWidth: 0.5 });
+        page.drawText(String(label).toUpperCase(), { x: x + 7, y: summaryY - 9, size: 7, font: fontBold, color: brand.muted });
+        page.drawText(money(value), { x: x + 7, y: summaryY - 24, size: 9, font: fontBold, color: brand.text });
+      });
+      const ageingY = summaryY - 48;
+      const ageingText = (input.ageing || []).map(entry => `${entry.bucket === 'CURRENT' ? 'Current' : `${entry.bucket} days`}: ${money(entry.amount)}`).join('   |   ');
+      page.drawText(`AGEING  ${clean(ageingText) || '-'}`, { x: MARGIN, y: ageingY, size: 7.5, font: fontBold, color: brand.muted });
+      const tableY = ageingY - 18;
+      drawTableHeader(page, tableY);
+      return { page, y: tableY - 32 };
+    };
+
+    let { page, y } = await addPage();
+    const transactions = input.transactions || [];
+    if (!transactions.length) {
+      page.drawText('No customer transactions were recorded in this statement period.', { x: MARGIN + 8, y, size: 9, font, color: brand.muted });
+      y -= 22;
+    }
+    for (const row of transactions) {
+      const reference = row.reference || row.remarks || '-';
+      const referenceLines = wrap(reference, 195, 7.5, 2);
+      const rowHeight = Math.max(21, referenceLines.length * 10 + 5);
+      if (y - rowHeight < 48) ({ page, y } = await addPage());
+      page.drawLine({ start: { x: MARGIN, y: y - 5 }, end: { x: PAGE_W - MARGIN, y: y - 5 }, thickness: 0.5, color: brand.border });
+      let x = MARGIN;
+      const values: Record<string, string> = {
+        date: shortDate(row.date),
+        source: clean(row.source || '-'),
+        document_type: clean(row.document_type || '-'),
+        document_number: clean(row.document_number || '-'),
+      };
+      for (const column of columns.slice(0, 4)) {
+        page.drawText(values[column.key], { x: x + 4, y, size: 7.5, font, color: brand.text });
+        x += column.width;
+      }
+      referenceLines.forEach((line, index) => page.drawText(line, { x: x + 4, y: y - index * 10, size: 7.5, font, color: brand.text }));
+      x += columns[4].width;
+      drawRight(page, Number(row.debit || 0) ? money(row.debit) : '-', x + columns[5].width - 4, y, 7.5);
+      x += columns[5].width;
+      drawRight(page, Number(row.credit || 0) ? money(row.credit) : '-', x + columns[6].width - 4, y, 7.5);
+      x += columns[6].width;
+      drawRight(page, money(row.balance), x + columns[7].width - 4, y, 7.5, true);
+      y -= rowHeight;
+    }
+
+    const allPages = pdfDoc.getPages();
+    allPages.forEach((currentPage, index) => {
+      currentPage.drawLine({ start: { x: MARGIN, y: 34 }, end: { x: PAGE_W - MARGIN, y: 34 }, thickness: 0.5, color: brand.border });
+      currentPage.drawText(`System-generated customer ledger | Page ${index + 1} of ${allPages.length}`, { x: MARGIN, y: 20, size: 7.5, font, color: brand.muted });
+      const footer = clean(branding.footerText || branding.companyName || '');
+      if (footer) drawRight(currentPage, footer, PAGE_W - MARGIN, 20, 7.5);
+    });
+    return Buffer.from(await pdfDoc.save());
   }
 }

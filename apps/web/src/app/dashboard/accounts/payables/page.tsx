@@ -7,6 +7,7 @@ import { getTodayDateInputValue } from '@/lib/date';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { buildDocumentBranding } from '@/lib/document-branding';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
+import DateInput from '../../../../components/ui/DateInput';
 
 interface VendorPayable {
   vendor_id: string;
@@ -18,10 +19,13 @@ interface VendorPayable {
   total_paid: number;
   total_outstanding: number;
   grn_count: number;
+  subcontract_count?: number;
 }
 
 interface GRNPayable {
   id: string;
+  source_type?: string | null;
+  source_id?: string | null;
   grn_number: string;
   grn_date: string;
   receipt_date: string;
@@ -44,6 +48,7 @@ interface GRNPayable {
   settled?: number;
   poAdvance?: number;
   po_id?: string | null;
+  vendor?: { id?: string; name?: string; code?: string } | null;
 }
 
 interface PaymentEntry {
@@ -73,6 +78,20 @@ interface PaymentReversal {
   reversed_at: string;
 }
 
+interface FreightAdjustment {
+  id: string;
+  adjusted_by?: string | null;
+  adjusted_by_name: string;
+  adjusted_at: string;
+  reason: string;
+  old_freight_amount: number;
+  new_freight_amount: number;
+  old_freight_gst_amount: number;
+  new_freight_gst_amount: number;
+  old_net_payable_amount: number;
+  new_net_payable_amount: number;
+}
+
 interface GRNDetail extends GRNPayable {
   computed_paid: number;
   computed_tds: number;
@@ -83,10 +102,19 @@ interface GRNDetail extends GRNPayable {
   outstanding_amount: number;
   payment_entries: PaymentEntry[];
   payment_reversals?: PaymentReversal[];
+  freight_adjustments?: FreightAdjustment[];
 }
 
 const fmtINR = (n: number | null | undefined) =>
   (+(n || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+
+const toPaisa = (value: number | string | null | undefined) => {
+  const amount = Number.parseFloat(String(value ?? '0'));
+  if (!Number.isFinite(amount)) return 0;
+  return Math.round(amount * 100);
+};
+
+const fromPaisa = (value: number) => value / 100;
 
 const paymentStatusBadge = (status?: string) => {
   if (status === 'PAID') return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">Paid</span>;
@@ -117,11 +145,14 @@ const hydratePayableGrn = (grn: any) => {
 const getPayableNet = (grn: any) => +(grn?.net ?? grn?.net_payable_amount ?? 0);
 const getPayableSettled = (grn: any) => +(grn?.settled ?? 0);
 const getPayableOutstanding = (grn: any) => +(grn?.outstanding ?? grn?.outstanding_amount ?? Math.max(0, getPayableNet(grn) - getPayableSettled(grn)));
+const isSubcontractPayable = (row?: any) =>
+  String(row?.source_type || '').toUpperCase() === 'SUBCONTRACT' || String(row?.id || '').startsWith('subcontract:');
 const isSystemPaymentEntry = (entry?: PaymentEntry | null) =>
   ['ADVANCE', 'ADVANCE_APPLIED', 'VENDOR_ADVANCE'].includes(String(entry?.entry_type || '').toUpperCase());
 const getAvailableAdvance = (detail?: GRNDetail | null) =>
   +(detail?.available_po_advance || 0) + +(detail?.available_vendor_advance || 0);
-const moneyInput = (value: number) => (Math.max(0, value).toFixed(2));
+const moneyInput = (value: number) => fromPaisa(Math.max(0, toPaisa(value))).toFixed(2);
+const moneyInputFromPaisa = (value: number) => fromPaisa(Math.max(0, value)).toFixed(2);
 
 const BLANK_FORM = {
   amount: '',
@@ -139,8 +170,14 @@ const BLANK_FORM = {
 export default function AccountsPayablePage() {
   const todayDate = getTodayDateInputValue();
   const [canRecordPayment, setCanRecordPayment] = useState(false);
+  const [canAdjustFreight, setCanAdjustFreight] = useState(false);
   useEffect(() => {
-    setCanRecordPayment(hasModulePermission(readStoredUser(), 'Purchase Management', 'create'));
+    const user = readStoredUser();
+    setCanRecordPayment(hasModulePermission(user, 'Purchase Management', 'create'));
+    setCanAdjustFreight(
+      hasModulePermission(user, 'Purchase Management', 'edit')
+      || hasModulePermission(user, 'Purchase Management', 'approve'),
+    );
   }, []);
 
   const [vendorPayables, setVendorPayables] = useState<VendorPayable[]>([]);
@@ -159,7 +196,17 @@ export default function AccountsPayablePage() {
   const [paymentForm, setPaymentForm] = useState({ ...BLANK_FORM });
   const [submitting, setSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [pageNotice, setPageNotice] = useState<{ title: string; message: string; type?: 'info' | 'warning' | 'error' } | null>(null);
   const [selectedGRNIds, setSelectedGRNIds] = useState<Set<string>>(new Set());
+
+  const [showFreightAdjustmentModal, setShowFreightAdjustmentModal] = useState(false);
+  const [freightAdjustmentForm, setFreightAdjustmentForm] = useState({
+    freight_amount: '',
+    freight_gst_amount: '',
+    reason: '',
+  });
+  const [freightAdjustmentError, setFreightAdjustmentError] = useState<string | null>(null);
+  const [freightAdjustmentSubmitting, setFreightAdjustmentSubmitting] = useState(false);
 
   // Edit payment state
   const [editingPayment, setEditingPayment] = useState<PaymentEntry | null>(null);
@@ -167,48 +214,18 @@ export default function AccountsPayablePage() {
   const [editPaymentForm, setEditPaymentForm] = useState({ ...BLANK_FORM });
   const [editingSubmitting, setEditingSubmitting] = useState(false);
   const [editPaymentError, setEditPaymentError] = useState<string | null>(null);
+  const [reversePaymentTarget, setReversePaymentTarget] = useState<PaymentEntry | null>(null);
+  const [reversePaymentReason, setReversePaymentReason] = useState('');
+  const [reversePaymentError, setReversePaymentError] = useState<string | null>(null);
+  const [reversePaymentSubmitting, setReversePaymentSubmitting] = useState(false);
 
   // Paid invoices state
   const [paidInvoices, setPaidInvoices] = useState<any[]>([]);
   const [loadingPaid, setLoadingPaid] = useState(false);
 
-  const fetchPaidInvoices = useCallback(async () => {
-    try {
-      setLoadingPaid(true);
-      // Use unified payment status API - single source of truth
-      const grnsWithStatus = await apiClient.get<any[]>('/purchase/debit-notes/grns-with-payment-status');
-
-      const paid = (grnsWithStatus || []).map(hydratePayableGrn).filter((grn: any) => {
-        const st = (grn.status || '').toUpperCase();
-        if (st === 'REJECTED' || st === 'CANCELLED') return false;
-        const calc = grn._payment_calculation || {};
-        return calc.is_fully_paid === true || getPayableOutstanding(grn) <= 0.009;
-      });
-      setPaidInvoices(paid);
-    } catch { } finally { setLoadingPaid(false); }
-  }, []);
-
   // Pending invoices (all invoice_approved GRNs with any outstanding)
   const [pendingInvoices, setPendingInvoices] = useState<any[]>([]);
   const [loadingPending, setLoadingPending] = useState(false);
-
-  const fetchPendingInvoices = useCallback(async () => {
-    console.log('[VERSION] CODE v3 - UNIFIED PAYMENT STATUS API');
-    try {
-      setLoadingPending(true);
-      // Use unified payment status API - single source of truth
-      const grnsWithStatus = await apiClient.get<any[]>('/purchase/debit-notes/grns-with-payment-status');
-
-      const pending = (grnsWithStatus || []).map(hydratePayableGrn).filter((grn: any) => {
-        const st = (grn.status || '').toUpperCase();
-        if (st === 'REJECTED' || st === 'CANCELLED') return false;
-        if (!grn.invoice_approved) return false; // Must be sanctioned first
-        return getPayableOutstanding(grn) > 0.009;
-      });
-
-      setPendingInvoices(pending);
-    } catch (e) { console.error('[Pending Invoices] Error:', e); } finally { setLoadingPending(false); }
-  }, []);
 
   // Unified Advances state (replaces separate Advance Payments and Vendor Advances)
   const [activeTab, setActiveTab] = useState<'payables' | 'pending' | 'paid' | 'advances'>('payables');
@@ -216,6 +233,8 @@ export default function AccountsPayablePage() {
   const [advanceFilter, setAdvanceFilter] = useState<'ALL' | 'PO' | 'BLANKET'>('ALL');
   const [loadingAdvances, setLoadingAdvances] = useState(false);
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+  const [selectedAdvance, setSelectedAdvance] = useState<any | null>(null);
+  const [showAdvanceDetailModal, setShowAdvanceDetailModal] = useState(false);
   // Unified advance form with type selection
   const [advanceForm, setAdvanceForm] = useState({
     advance_type: 'PO' as 'PO' | 'BLANKET',
@@ -261,8 +280,9 @@ export default function AccountsPayablePage() {
       const paidByPo = new Map<string, number>();
       (allGRNs || []).forEach((grn: any) => {
         if (!grn.po_id) return;
-        const net = grn.net_payable_amount != null ? +(grn.net_payable_amount) : +(grn.gross_amount || 0) + +(grn.tax_amount || 0) - +(grn.debit_note_amount || 0);
-        const paid = +(grn.paid_amount || 0) + +(grn.tds_amount || 0) + +(grn.short_payment_amount || 0);
+        const payableGrn = hydratePayableGrn(grn);
+        const net = getPayableNet(payableGrn);
+        const paid = getPayableSettled(payableGrn);
         netByPo.set(grn.po_id, (netByPo.get(grn.po_id) || 0) + net);
         paidByPo.set(grn.po_id, (paidByPo.get(grn.po_id) || 0) + paid);
       });
@@ -352,10 +372,13 @@ export default function AccountsPayablePage() {
   const fetchVendorPayables = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadingPaid(true);
+      setLoadingPending(true);
       const [allGRNs, vendorAdvances] = await Promise.all([
         apiClient.get<any[]>('/purchase/debit-notes/grns-with-payment-status'),
         apiClient.get<any[]>('/purchase/debit-notes/vendor-advances').catch(() => [] as any[]),
       ]);
+      const payableGRNs = (allGRNs || []).map(hydratePayableGrn);
 
       // Build vendor-level advance total per vendor
       const vendorAdvanceMap = new Map<string, number>();
@@ -365,8 +388,7 @@ export default function AccountsPayablePage() {
       });
       setVendorAdvanceBalances(vendorAdvanceMap);
 
-      const relevant = (allGRNs || [])
-        .map(hydratePayableGrn)
+      const relevant = payableGRNs
         .filter((grn: any) => {
           const st = (grn.status || '').toUpperCase();
           if (st === 'REJECTED' || st === 'CANCELLED' || st === 'DRAFT') return false;
@@ -396,10 +418,31 @@ export default function AccountsPayablePage() {
       const summary = Array.from(vendorMap.values())
         .filter((v) => Math.max(0, v.total_outstanding - (vendorAdvanceMap.get(v.vendor_id) || 0)) > 0.009);
       setVendorPayables(summary);
+
+      setPaidInvoices(payableGRNs.filter((grn: any) => {
+        const st = (grn.status || '').toUpperCase();
+        if (st === 'REJECTED' || st === 'CANCELLED') return false;
+        const calc = grn._payment_calculation || {};
+        return calc.is_fully_paid === true || getPayableOutstanding(grn) <= 0.009;
+      }));
+
+      setPendingInvoices(payableGRNs.filter((grn: any) => {
+        const st = (grn.status || '').toUpperCase();
+        if (st === 'REJECTED' || st === 'CANCELLED') return false;
+        if (!grn.invoice_approved) return false; // Must be sanctioned first
+        return getPayableOutstanding(grn) > 0.009;
+      }));
     } catch (e) {
       console.error('[AP] fetchVendorPayables error:', e);
+      setPageNotice({
+        title: 'Payables could not be refreshed',
+        message: e instanceof Error ? e.message : 'Please refresh the page and try again.',
+        type: 'error',
+      });
     } finally {
       setLoading(false);
+      setLoadingPaid(false);
+      setLoadingPending(false);
     }
   }, []);
 
@@ -407,15 +450,20 @@ export default function AccountsPayablePage() {
   useEscapeKey(showDetailsModal, () => setShowDetailsModal(false));
   useEscapeKey(showGRNDetailModal, () => setShowGRNDetailModal(false));
   useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
+  useEscapeKey(showFreightAdjustmentModal, () => setShowFreightAdjustmentModal(false));
   useEscapeKey(showEditPaymentModal, () => setShowEditPaymentModal(false));
+  useEscapeKey(!!reversePaymentTarget, () => {
+    setReversePaymentTarget(null);
+    setReversePaymentReason('');
+    setReversePaymentError(null);
+  });
   useEscapeKey(showAdvanceModal, () => setShowAdvanceModal(false));
+  useEscapeKey(showAdvanceDetailModal, () => setShowAdvanceDetailModal(false));
 
   useEffect(() => { 
     fetchVendorPayables(); 
     fetchAdvances(); 
-    fetchPaidInvoices(); 
-    fetchPendingInvoices(); 
-  }, [fetchVendorPayables, fetchAdvances, fetchPaidInvoices, fetchPendingInvoices]);
+  }, [fetchVendorPayables, fetchAdvances]);
 
   const viewVendorDetails = async (vendor: VendorPayable) => {
     try {
@@ -439,6 +487,10 @@ export default function AccountsPayablePage() {
   };
 
   const viewGRNDetail = async (grn: GRNPayable) => {
+    if (isSubcontractPayable(grn)) {
+      window.open('/dashboard/accounts/subcontract-payables', '_blank', 'noopener,noreferrer');
+      return;
+    }
     try {
       setLoadingGRNDetail(true);
       setShowGRNDetailModal(true);
@@ -452,30 +504,109 @@ export default function AccountsPayablePage() {
     }
   };
 
-  const openPaymentModal = (grn: GRNPayable) => {
-    if (!canRecordPayment) { alert('You do not have permission to record payments'); return; }
-    setSelectedGRNDetail(null);
-    setShowGRNDetailModal(false);
-    setPaymentError(null);
-    const gross = +(grn.gross_amount || 0);
-    const tax = +(grn.tax_amount || 0);
-    const debit = +(grn.debit_note_amount || 0);
-    const net = grn.net_payable_amount != null ? +(grn.net_payable_amount) : gross + tax - debit;
-    const paid = +(grn.paid_amount || 0);
-    const tds = +(grn.tds_amount || 0);
-    const short = +(grn.short_payment_amount || 0);
-    const outstanding = Math.max(0, net - paid - tds - short);
-    // If GRN detail already loaded with accurate outstanding, prefer that
-    setPaymentForm({ ...BLANK_FORM, amount: '' });
-    // reload GRN detail for payment modal context
-    viewGRNDetail(grn).then(() => setShowPaymentModal(true));
+  const openPaymentModal = async (grn: GRNPayable) => {
+    if (!canRecordPayment) { setPageNotice({ title: 'Permission required', message: 'You do not have permission to record payments.', type: 'error' }); return; }
+    if (isSubcontractPayable(grn)) {
+      setPageNotice({
+        title: 'Open Subcontract Payables',
+        message: 'Subcontracting service invoices are controlled from Accounts > Subcontract Payables.',
+        type: 'info',
+      });
+      return;
+    }
+    try {
+      setLoadingGRNDetail(true);
+      setShowGRNDetailModal(false);
+      setPaymentError(null);
+      setSelectedGRNDetail(null);
+
+      const detail = await apiClient.get<GRNDetail>(`/purchase/debit-notes/grn/${grn.id}/payable-detail`);
+      const payableDetail = hydratePayableGrn(detail) as GRNDetail;
+      const outstanding = getPayableOutstanding(payableDetail);
+
+      setSelectedGRNDetail({
+        ...payableDetail,
+        outstanding_amount: outstanding,
+      });
+      setPaymentForm({ ...BLANK_FORM, amount: moneyInput(outstanding) });
+      setShowPaymentModal(true);
+    } catch (e: any) {
+      console.error('[openPaymentModal] error:', e?.message || e);
+      setPaymentError(e?.message || 'Unable to load payable detail for payment');
+      setPageNotice({
+        title: 'Payment unavailable',
+        message: e?.message || 'Unable to load payable detail for payment.',
+        type: 'error',
+      });
+    } finally {
+      setLoadingGRNDetail(false);
+    }
   };
 
   const openPaymentModalFromDetail = (detail: GRNDetail) => {
-    if (!canRecordPayment) { alert('You do not have permission to record payments'); return; }
+    if (!canRecordPayment) { setPaymentError('You do not have permission to record payments'); return; }
+    if (isSubcontractPayable(detail)) {
+      setPaymentError('Subcontracting service invoices are handled from Accounts > Subcontract Payables.');
+      return;
+    }
     setPaymentError(null);
-    setPaymentForm({ ...BLANK_FORM, amount: detail.outstanding_amount.toFixed(2) });
+    setPaymentForm({ ...BLANK_FORM, amount: moneyInput(detail.outstanding_amount) });
     setShowPaymentModal(true);
+  };
+
+  const openFreightAdjustmentModal = (detail: GRNDetail) => {
+    if (!canAdjustFreight) {
+      setPageNotice({ title: 'Permission required', message: 'You do not have permission to adjust invoice freight.', type: 'error' });
+      return;
+    }
+    setFreightAdjustmentError(null);
+    setFreightAdjustmentForm({
+      freight_amount: moneyInput(detail.freight_amount || 0),
+      freight_gst_amount: moneyInput(detail.freight_gst_amount || 0),
+      reason: '',
+    });
+    setShowFreightAdjustmentModal(true);
+  };
+
+  const submitFreightAdjustment = async () => {
+    if (!selectedGRNDetail) return;
+    const freightAmount = Number.parseFloat(freightAdjustmentForm.freight_amount);
+    const freightGstAmount = Number.parseFloat(freightAdjustmentForm.freight_gst_amount || '0');
+    const reason = freightAdjustmentForm.reason.trim();
+
+    if (!Number.isFinite(freightAmount) || freightAmount < 0) {
+      setFreightAdjustmentError('Enter a valid non-negative freight amount');
+      return;
+    }
+    if (!Number.isFinite(freightGstAmount) || freightGstAmount < 0) {
+      setFreightAdjustmentError('Enter a valid non-negative freight GST amount');
+      return;
+    }
+    if (!reason) {
+      setFreightAdjustmentError('Reason for freight adjustment is required');
+      return;
+    }
+
+    try {
+      setFreightAdjustmentSubmitting(true);
+      setFreightAdjustmentError(null);
+      const updated = await apiClient.put<GRNDetail>(
+        `/purchase/debit-notes/grn/${selectedGRNDetail.id}/freight-adjustment`,
+        {
+          freight_amount: freightAmount,
+          freight_gst_amount: freightGstAmount,
+          reason,
+        },
+      );
+      setSelectedGRNDetail(updated);
+      setShowFreightAdjustmentModal(false);
+      await fetchVendorPayables();
+      if (selectedVendor) await viewVendorDetails(selectedVendor);
+    } catch (error: any) {
+      setFreightAdjustmentError(error?.message || 'Failed to update invoice freight');
+    } finally {
+      setFreightAdjustmentSubmitting(false);
+    }
   };
 
   const updatePaymentBalance = (changes: Partial<typeof BLANK_FORM>) => {
@@ -488,17 +619,47 @@ export default function AccountsPayablePage() {
         return next;
       }
 
-      const availableAdvance = getAvailableAdvance(selectedGRNDetail);
-      const requestedAdvance = parseFloat(String(next.advance_adjustment_amount || '0')) || 0;
-      const clampedAdvance = Math.min(Math.max(0, requestedAdvance), availableAdvance, selectedGRNDetail.outstanding_amount);
-      const tds = parseFloat(next.tds_amount || '0') || 0;
-      const short = parseFloat(next.short_payment_amount || '0') || 0;
-      const cashBalance = Math.max(0, selectedGRNDetail.outstanding_amount - clampedAdvance - tds - short);
+      const availableAdvancePaisa = toPaisa(getAvailableAdvance(selectedGRNDetail));
+      const outstandingPaisa = toPaisa(selectedGRNDetail.outstanding_amount);
+      const requestedAdvancePaisa = toPaisa(next.advance_adjustment_amount);
+      const clampedAdvancePaisa = Math.min(Math.max(0, requestedAdvancePaisa), availableAdvancePaisa, outstandingPaisa);
+      const tdsPaisa = Math.max(0, toPaisa(next.tds_amount));
+      const shortPaisa = Math.max(0, toPaisa(next.short_payment_amount));
+      const cashBalancePaisa = Math.max(0, outstandingPaisa - clampedAdvancePaisa - tdsPaisa - shortPaisa);
 
       return {
         ...next,
-        advance_adjustment_amount: clampedAdvance > 0 ? String(clampedAdvance) : '',
-        amount: moneyInput(cashBalance),
+        // Keep this field exactly as typed while the user is entering it.
+        // Formatting/clamping on every keypress makes typing "200000" turn
+        // into "2.00" after the first digit.
+        advance_adjustment_amount: next.advance_adjustment_amount,
+        amount: moneyInputFromPaisa(cashBalancePaisa),
+      };
+    });
+  };
+
+  const clampAdvanceAdjustment = () => {
+    if (!selectedGRNDetail) return;
+    setPaymentForm((current) => {
+      const requestedAdvancePaisa = toPaisa(current.advance_adjustment_amount);
+      const limitPaisa = Math.min(
+        toPaisa(getAvailableAdvance(selectedGRNDetail)),
+        toPaisa(selectedGRNDetail.outstanding_amount),
+      );
+      if (requestedAdvancePaisa <= 0) {
+        return { ...current, advance_adjustment_amount: '' };
+      }
+      if (requestedAdvancePaisa <= limitPaisa) {
+        return current;
+      }
+      const clampedAdvancePaisa = Math.max(0, limitPaisa);
+      const tdsPaisa = Math.max(0, toPaisa(current.tds_amount));
+      const shortPaisa = Math.max(0, toPaisa(current.short_payment_amount));
+      const cashBalancePaisa = Math.max(0, toPaisa(selectedGRNDetail.outstanding_amount) - clampedAdvancePaisa - tdsPaisa - shortPaisa);
+      return {
+        ...current,
+        advance_adjustment_amount: moneyInputFromPaisa(clampedAdvancePaisa),
+        amount: moneyInputFromPaisa(cashBalancePaisa),
       };
     });
   };
@@ -507,32 +668,39 @@ export default function AccountsPayablePage() {
     if (!selectedGRNDetail) return;
     setPaymentError(null);
 
-    const amount = parseFloat(paymentForm.amount || '0') || 0;
-    const advanceAdjustment = parseFloat(paymentForm.advance_adjustment_amount || '0') || 0;
-    const tds = parseFloat(paymentForm.tds_amount || '0') || 0;
-    const short = parseFloat(paymentForm.short_payment_amount || '0') || 0;
+    const amountPaisa = toPaisa(paymentForm.amount);
+    const advanceAdjustmentPaisa = toPaisa(paymentForm.advance_adjustment_amount);
+    const tdsPaisa = toPaisa(paymentForm.tds_amount);
+    const shortPaisa = toPaisa(paymentForm.short_payment_amount);
+    const outstandingPaisa = toPaisa(selectedGRNDetail.outstanding_amount);
+    const availableAdvancePaisa = toPaisa(getAvailableAdvance(selectedGRNDetail));
+    const amount = fromPaisa(amountPaisa);
+    const advanceAdjustment = fromPaisa(advanceAdjustmentPaisa);
+    const tds = fromPaisa(tdsPaisa);
+    const short = fromPaisa(shortPaisa);
     const outstanding = selectedGRNDetail.outstanding_amount;
     const availableAdvance = getAvailableAdvance(selectedGRNDetail);
-    const settlementTotal = amount + advanceAdjustment + tds + short;
+    const settlementTotalPaisa = amountPaisa + advanceAdjustmentPaisa + tdsPaisa + shortPaisa;
+    const settlementTotal = fromPaisa(settlementTotalPaisa);
 
-    if (amount < 0) { setPaymentError('Payment amount cannot be negative'); return; }
-    if (advanceAdjustment < 0) { setPaymentError('Advance adjustment cannot be negative'); return; }
-    if (settlementTotal <= 0) { setPaymentError('Please enter a payment, advance adjustment, TDS, or short payment amount'); return; }
-    if (advanceAdjustment > availableAdvance + 0.009) {
-      setPaymentError(`Advance adjustment exceeds available advance Rs. ${availableAdvance.toFixed(2)}`);
+    if (amountPaisa < 0) { setPaymentError('Payment amount cannot be negative'); return; }
+    if (advanceAdjustmentPaisa < 0) { setPaymentError('Advance adjustment cannot be negative'); return; }
+    if (settlementTotalPaisa <= 0) { setPaymentError('Please enter a payment, advance adjustment, TDS, or short payment amount'); return; }
+    if (advanceAdjustmentPaisa > availableAdvancePaisa) {
+      setPaymentError(`Advance adjustment exceeds available advance Rs. ${moneyInput(availableAdvance)}`);
       return;
     }
-    if (tds < 0 || short < 0) { setPaymentError('TDS and short payment cannot be negative'); return; }
+    if (tdsPaisa < 0 || shortPaisa < 0) { setPaymentError('TDS and short payment cannot be negative'); return; }
     if (short > 0 && !paymentForm.short_payment_reason.trim()) {
       setPaymentError('Short payment reason is required');
       return;
     }
-    if (paymentForm.close_invoice && settlementTotal < outstanding - 0.009) {
+    if (paymentForm.close_invoice && settlementTotalPaisa < outstandingPaisa) {
       setPaymentError('Short payment amount must cover the remaining balance before closing the invoice');
       return;
     }
-    if (settlementTotal > outstanding + 0.009) {
-      setPaymentError(`Total settlement Rs. ${settlementTotal.toFixed(2)} exceeds outstanding Rs. ${outstanding.toFixed(2)}`);
+    if (settlementTotalPaisa > outstandingPaisa) {
+      setPaymentError(`Total settlement Rs. ${moneyInput(settlementTotal)} exceeds outstanding Rs. ${moneyInput(outstanding)}`);
       return;
     }
 
@@ -554,7 +722,7 @@ export default function AccountsPayablePage() {
       setShowGRNDetailModal(false);
       setShowDetailsModal(false);
       setPaymentForm({ ...BLANK_FORM });
-      await Promise.all([fetchVendorPayables(), fetchPaidInvoices(), fetchPendingInvoices()]);
+      await Promise.all([fetchVendorPayables(), fetchAdvances()]);
     } catch (e: any) {
       setPaymentError(e.message || 'Failed to record payment');
     } finally {
@@ -564,7 +732,7 @@ export default function AccountsPayablePage() {
 
   // Open edit payment modal
   const openEditPayment = (entry: PaymentEntry) => {
-    if (!canRecordPayment) { alert('You do not have permission to edit payments'); return; }
+    if (!canRecordPayment) { setEditPaymentError('You do not have permission to edit payments'); return; }
     setEditingPayment(entry);
     setEditPaymentError(null);
     setEditPaymentForm({
@@ -611,9 +779,6 @@ export default function AccountsPayablePage() {
     try {
       setEditingSubmitting(true);
       const endpoint = `/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${editingPayment.id}`;
-      console.log('[Edit Payment] selectedGRNDetail.id:', selectedGRNDetail.id);
-      console.log('[Edit Payment] editingPayment.id:', editingPayment.id);
-      console.log('[Edit Payment] Full endpoint:', endpoint);
       await apiClient.put(endpoint, {
         amount,
         tds_amount: tds,
@@ -629,7 +794,7 @@ export default function AccountsPayablePage() {
       setEditPaymentForm({ ...BLANK_FORM });
       // Refresh data
       await viewGRNDetail(selectedGRNDetail);
-      await Promise.all([fetchVendorPayables(), fetchPaidInvoices(), fetchPendingInvoices()]);
+      await Promise.all([fetchVendorPayables(), fetchAdvances()]);
     } catch (e: any) {
       setEditPaymentError(e.message || 'Failed to update payment');
     } finally {
@@ -638,21 +803,44 @@ export default function AccountsPayablePage() {
   };
 
   // Handle payment reversal
-  const handleReversePayment = async (paymentId: string) => {
-    if (!canRecordPayment) { alert('You do not have permission to reverse payments'); return; }
+  const openReversePaymentModal = (entry: PaymentEntry) => {
+    if (!canRecordPayment) {
+      setEditPaymentError('You do not have permission to reverse payments');
+      return;
+    }
     if (!selectedGRNDetail) return;
-    const reason = window.prompt('Enter payment reversal reason');
-    if (!reason || !reason.trim()) return;
+    setReversePaymentTarget(entry);
+    setReversePaymentReason('');
+    setReversePaymentError(null);
+  };
+
+  const handleReversePayment = async () => {
+    if (!canRecordPayment) {
+      setReversePaymentError('You do not have permission to reverse payments');
+      return;
+    }
+    if (!selectedGRNDetail || !reversePaymentTarget) return;
+    const reason = reversePaymentReason.trim();
+    if (!reason) {
+      setReversePaymentError('Payment reversal reason is required');
+      return;
+    }
 
     try {
-      await apiClient.post(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${paymentId}/reverse`, {
-        reason: reason.trim(),
+      setReversePaymentSubmitting(true);
+      setReversePaymentError(null);
+      await apiClient.post(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${reversePaymentTarget.id}/reverse`, {
+        reason,
       });
+      setReversePaymentTarget(null);
+      setReversePaymentReason('');
       // Refresh data
       await viewGRNDetail(selectedGRNDetail);
-      await Promise.all([fetchVendorPayables(), fetchPaidInvoices(), fetchPendingInvoices()]);
+      await Promise.all([fetchVendorPayables(), fetchAdvances()]);
     } catch (e: any) {
-      alert(e.message || 'Failed to reverse payment');
+      setReversePaymentError(e.message || 'Failed to reverse payment');
+    } finally {
+      setReversePaymentSubmitting(false);
     }
   };
 
@@ -665,8 +853,17 @@ export default function AccountsPayablePage() {
   const [settlementResult, setSettlementResult] = useState<{ settled: number; failed: number; messages: string[] } | null>(null);
 
   const openSettlementModal = () => {
-    const selected = vendorGRNs.filter(g => selectedGRNIds.has(g.id));
-    if (!selected.length) { alert('Select at least one invoice to settle.'); return; }
+    const allSelected = vendorGRNs.filter(g => selectedGRNIds.has(g.id));
+    const selected = allSelected.filter(g => !isSubcontractPayable(g));
+    const subcontractSelected = allSelected.length - selected.length;
+    if (!selected.length) { setPageNotice({ title: 'No invoice selected', message: 'Select at least one GRN invoice to settle.', type: 'warning' }); return; }
+    if (subcontractSelected > 0) {
+      setPageNotice({
+        title: 'Subcontracting rows skipped',
+        message: 'Subcontracting payable rows are excluded from bulk GRN settlement. Settle them from Accounts > Subcontract Payables.',
+        type: 'info',
+      });
+    }
     const totalOut = selected.reduce((s, g) => s + getPayableOutstanding(g), 0);
     setSettlementError(null);
     setSettlementResult(null);
@@ -675,7 +872,7 @@ export default function AccountsPayablePage() {
   };
 
   const submitSettlement = async () => {
-    const selected = vendorGRNs.filter(g => selectedGRNIds.has(g.id));
+    const selected = vendorGRNs.filter(g => selectedGRNIds.has(g.id) && !isSubcontractPayable(g));
     if (!selected.length) return;
     const totalPayment = parseFloat(settlementForm.amount || '0') || 0;
     const totalTds = parseFloat(settlementForm.tds_amount || '0') || 0;
@@ -729,7 +926,7 @@ export default function AccountsPayablePage() {
     setSettlementResult({ settled, failed, messages });
     setSettlementSubmitting(false);
     if (settled > 0) {
-      await Promise.all([fetchVendorPayables(), fetchPaidInvoices(), fetchPendingInvoices()]);
+      await Promise.all([fetchVendorPayables(), fetchAdvances()]);
       setSelectedGRNIds(new Set());
       // Refresh vendor GRN list
       if (selectedVendor) await viewVendorDetails(selectedVendor);
@@ -738,7 +935,7 @@ export default function AccountsPayablePage() {
 
   const printPaymentRequest = () => {
     const selected = vendorGRNs.filter(g => selectedGRNIds.has(g.id));
-    if (!selected.length) { alert('Select at least one invoice to print.'); return; }
+    if (!selected.length) { setPageNotice({ title: 'No invoice selected', message: 'Select at least one invoice to print.', type: 'warning' }); return; }
     const totalOutstandingSelected = selected.reduce((s, g) => s + getPayableOutstanding(g), 0);
 
     const rows = selected.map((grn, idx) => {
@@ -952,6 +1149,7 @@ export default function AccountsPayablePage() {
     { id: 'settled', label: 'Settled', accessor: (g) => getPayableSettled(g), cell: (g) => <span className="font-semibold text-green-700">Rs. {fmtINR(getPayableSettled(g))}</span>, sortAccessor: (g) => getPayableSettled(g), align: 'right', minWidth: 130 },
     { id: 'outstanding', label: 'Outstanding', accessor: (g) => getPayableOutstanding(g), cell: (g) => <span className="font-bold text-orange-600">Rs. {fmtINR(getPayableOutstanding(g))}</span>, sortAccessor: (g) => getPayableOutstanding(g), align: 'right', minWidth: 140 },
     { id: 'status', label: 'Status', accessor: (g) => g.payment_status || 'UNPAID', cell: (g) => paymentStatusBadge(g.payment_status), sortAccessor: (g) => g.payment_status || '', minWidth: 120 },
+    { id: 'actions', label: 'Actions', accessor: () => '', cell: (g) => <button type="button" onClick={() => viewGRNDetail(g)} className="rounded-md border border-[#D8C8AA] px-3 py-1.5 text-xs font-semibold text-[#5E4635] hover:bg-[#F7F0E4]">History</button>, sortable: false, hideable: false, minWidth: 120 },
   ];
 
   const paidInvoiceColumns: ListTableColumn<any>[] = [
@@ -965,6 +1163,7 @@ export default function AccountsPayablePage() {
     { id: 'payment_method', label: 'Method', accessor: (g) => g.payment_method || '—', sortAccessor: (g) => g.payment_method || '', minWidth: 120 },
     { id: 'payment_reference', label: 'Reference', accessor: (g) => g.payment_reference || '—', searchAccessor: (g) => g.payment_reference || '', minWidth: 180 },
     { id: 'payment_date', label: 'Payment Date', accessor: (g) => g.payment_date ? new Date(g.payment_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.payment_date || '', minWidth: 130 },
+    { id: 'actions', label: 'Actions', accessor: () => '', cell: (g) => <button type="button" onClick={() => viewGRNDetail(g)} className="rounded-md border border-[#D8C8AA] px-3 py-1.5 text-xs font-semibold text-[#5E4635] hover:bg-[#F7F0E4]">History</button>, sortable: false, hideable: false, minWidth: 120 },
   ];
 
   const advanceColumns: ListTableColumn<any>[] = [
@@ -976,9 +1175,24 @@ export default function AccountsPayablePage() {
     { id: 'utilized_amount', label: 'Used', accessor: (a) => a.utilized_amount || 0, cell: (a) => <span className="text-amber-600">₹{fmtINR(a.utilized_amount || 0)}</span>, sortAccessor: (a) => a.utilized_amount || 0, align: 'right', minWidth: 130 },
     { id: 'balance_amount', label: 'Balance', accessor: (a) => a.balance_amount || 0, cell: (a) => <span className="font-bold text-green-700">₹{fmtINR(a.balance_amount || 0)}</span>, sortAccessor: (a) => a.balance_amount || 0, align: 'right', minWidth: 130 },
     { id: 'status', label: 'Status', accessor: (a) => (a.balance_amount || 0) > 0.009 ? 'Available' : 'Fully Used', cell: (a) => (a.balance_amount || 0) > 0.009 ? <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">Available</span> : <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">Fully Used</span>, minWidth: 130 },
+    {
+      id: 'actions', label: 'Actions', accessor: () => '', sortable: false, hideable: false, minWidth: 120,
+      cell: (a) => (
+        <button
+          type="button"
+          onClick={() => { setSelectedAdvance(a); setShowAdvanceDetailModal(true); }}
+          className="rounded-md border border-[#D8C8AA] px-3 py-1.5 text-xs font-semibold text-[#5E4635] hover:bg-[#F7F0E4]"
+        >
+          View details
+        </button>
+      ),
+    },
   ];
 
   const vendorInvoiceColumns: ListTableColumn<GRNPayable>[] = [
+    { id: 'source', label: 'Source', accessor: (g) => isSubcontractPayable(g) ? 'Subcontract' : 'GRN', sortAccessor: (g) => isSubcontractPayable(g) ? 'SUBCONTRACT' : 'GRN', cell: (g) => isSubcontractPayable(g)
+      ? <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">Subcontract</span>
+      : <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">GRN</span>, minWidth: 120 },
     { id: 'po_number', label: 'PO Number', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', cell: (g) => g.purchase_order?.po_number ? <a href={`/dashboard/purchase/orders?viewId=${g.purchase_order.id || g.po_id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.purchase_order.po_number}</a> : '—', minWidth: 150 },
     { id: 'invoice_number', label: 'Supplier Invoice No.', accessor: (g) => g.invoice_number || '—', sortAccessor: (g) => g.invoice_number || '', searchAccessor: (g) => g.invoice_number || '', cell: (g) => g.invoice_number ? <a href={`/dashboard/purchase/grn?viewId=${g.id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.invoice_number}</a> : '—', minWidth: 170 },
     { id: 'invoice_date', label: 'Invoice Date', accessor: (g) => g.invoice_date ? new Date(g.invoice_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.invoice_date || '', minWidth: 130 },
@@ -992,6 +1206,13 @@ export default function AccountsPayablePage() {
     { id: 'status', label: 'Status', accessor: (g) => g.payment_status || 'UNPAID', cell: (g) => paymentStatusBadge(g.payment_status), sortAccessor: (g) => g.payment_status || '', minWidth: 120 },
     { id: 'actions', label: 'Actions', hideable: false, sortable: false, cell: (g) => {
       const outstanding = getPayableOutstanding(g);
+      if (isSubcontractPayable(g)) {
+        return (
+          <a href="/dashboard/accounts/subcontract-payables" target="_blank" className="px-2 py-1 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100" onClick={(e) => e.stopPropagation()}>
+            Open Subcontract Payables
+          </a>
+        );
+      }
       return (
         <div className="flex gap-1">
           <button onClick={() => viewGRNDetail(g)} className="px-2 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100">History</button>
@@ -1246,7 +1467,7 @@ export default function AccountsPayablePage() {
           <div className="bg-white w-full h-full flex flex-col">
             <div className="p-5 border-b border-[#E8DCC4] bg-[#FAF9F6] flex justify-between items-center">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Invoice / Payment Detail</h2>
+                <h2 className="text-lg font-bold text-gray-900">Invoice Payment History</h2>
                 {selectedGRNDetail && (
                   <p className="text-xs text-gray-500 mt-0.5">
                     GRN: <strong>{selectedGRNDetail.grn_number}</strong>
@@ -1278,11 +1499,23 @@ export default function AccountsPayablePage() {
                     ))}
                   </div>
 
-                  {/* Freight breakdown (only show if freight exists) */}
-                  {((selectedGRNDetail.freight_amount || 0) > 0 || (selectedGRNDetail.freight_gst_amount || 0) > 0) && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <div className="text-xs font-semibold text-blue-700 mb-2">Freight / Transportation Charges</div>
-                      <div className="flex gap-4 text-sm">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-semibold text-blue-700">Freight / Transportation Charges</div>
+                        <div className="mt-0.5 text-[11px] text-blue-600">Invoice freight only. The original PO freight remains unchanged.</div>
+                      </div>
+                      {canAdjustFreight && selectedGRNDetail.outstanding_amount > 0.009 && (
+                        <button
+                          type="button"
+                          onClick={() => openFreightAdjustmentModal(selectedGRNDetail)}
+                          className="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+                        >
+                          Update Freight
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-4 text-sm">
                         <div>
                           <span className="text-gray-500">Freight:</span>
                           <span className="ml-1 font-semibold text-gray-800">₹{fmtINR(selectedGRNDetail.freight_amount || 0)}</span>
@@ -1297,6 +1530,36 @@ export default function AccountsPayablePage() {
                           <span className="text-gray-500">Total Freight:</span>
                           <span className="ml-1 font-bold text-blue-800">₹{fmtINR((selectedGRNDetail.freight_amount || 0) + (selectedGRNDetail.freight_gst_amount || 0))}</span>
                         </div>
+                    </div>
+                  </div>
+
+                  {(selectedGRNDetail.freight_adjustments || []).length > 0 && (
+                    <div>
+                      <h3 className="mb-2 text-sm font-bold text-gray-700">
+                        Freight Adjustment Trail ({selectedGRNDetail.freight_adjustments?.length || 0})
+                      </h3>
+                      <div className="overflow-x-auto rounded-lg border border-blue-100">
+                        <table className="w-full text-sm">
+                          <thead className="bg-blue-50">
+                            <tr>
+                              {['Updated On', 'Updated By', 'Freight', 'Freight GST', 'Net Payable', 'Reason'].map((heading) => (
+                                <th key={heading} className="px-3 py-2 text-left text-xs font-semibold text-blue-800">{heading}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-blue-100">
+                            {(selectedGRNDetail.freight_adjustments || []).map((adjustment) => (
+                              <tr key={adjustment.id} className="bg-white">
+                                <td className="whitespace-nowrap px-3 py-2 text-xs">{new Date(adjustment.adjusted_at).toLocaleString('en-IN')}</td>
+                                <td className="px-3 py-2 text-xs font-medium">{adjustment.adjusted_by_name}</td>
+                                <td className="whitespace-nowrap px-3 py-2 text-xs">₹{fmtINR(adjustment.old_freight_amount)} → ₹{fmtINR(adjustment.new_freight_amount)}</td>
+                                <td className="whitespace-nowrap px-3 py-2 text-xs">₹{fmtINR(adjustment.old_freight_gst_amount)} → ₹{fmtINR(adjustment.new_freight_gst_amount)}</td>
+                                <td className="whitespace-nowrap px-3 py-2 text-xs font-semibold">₹{fmtINR(adjustment.old_net_payable_amount)} → ₹{fmtINR(adjustment.new_net_payable_amount)}</td>
+                                <td className="min-w-48 px-3 py-2 text-xs text-gray-600">{adjustment.reason}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   )}
@@ -1359,7 +1622,7 @@ export default function AccountsPayablePage() {
                                       Edit
                                     </button>
                                     <button
-                                      onClick={() => handleReversePayment(e.id)}
+                                      onClick={() => openReversePaymentModal(e)}
                                       className="text-red-600 hover:text-red-800 text-xs font-medium"
                                       title="Reverse payment"
                                     >
@@ -1432,6 +1695,126 @@ export default function AccountsPayablePage() {
         </div>
       )}
 
+      {showFreightAdjustmentModal && selectedGRNDetail && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-[#E8DCC4] bg-[#FAF9F6] p-5">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">Accounts Payable Control</div>
+                <h2 className="mt-1 text-lg font-bold text-gray-900">Update Invoice Freight</h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  {selectedGRNDetail.grn_number}
+                  {selectedGRNDetail.invoice_number ? ` · Invoice ${selectedGRNDetail.invoice_number}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFreightAdjustmentModal(false)}
+                disabled={freightAdjustmentSubmitting}
+                className="text-2xl text-gray-400 hover:text-gray-700 disabled:opacity-50"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-5 p-5">
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                This updates the supplier invoice liability only. It does not modify the approved Purchase Order freight. No adjustment is allowed after a payment or settlement entry has been posted.
+              </div>
+
+              {freightAdjustmentError && (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{freightAdjustmentError}</div>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">Revised Freight Amount (Rs.)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={freightAdjustmentForm.freight_amount}
+                    onChange={(event) => setFreightAdjustmentForm((form) => ({ ...form, freight_amount: event.target.value }))}
+                    className="w-full rounded-md border border-[#D9C9AD] px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Current: Rs. {fmtINR(selectedGRNDetail.freight_amount || 0)}</p>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-gray-700">Revised Freight GST (Rs.)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={freightAdjustmentForm.freight_gst_amount}
+                    onChange={(event) => setFreightAdjustmentForm((form) => ({ ...form, freight_gst_amount: event.target.value }))}
+                    className="w-full rounded-md border border-[#D9C9AD] px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Current: Rs. {fmtINR(selectedGRNDetail.freight_gst_amount || 0)}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 rounded-md border border-[#E8DCC4] bg-[#FAF9F6] p-4 sm:grid-cols-3">
+                <div>
+                  <div className="text-xs text-gray-500">Current Net Payable</div>
+                  <div className="mt-1 font-semibold">Rs. {fmtINR(selectedGRNDetail.net_payable_amount)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Revised Freight Total</div>
+                  <div className="mt-1 font-semibold text-blue-800">
+                    Rs. {fmtINR((Number.parseFloat(freightAdjustmentForm.freight_amount) || 0) + (Number.parseFloat(freightAdjustmentForm.freight_gst_amount) || 0))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Revised Net Payable</div>
+                  <div className="mt-1 font-bold text-[#8B4A00]">
+                    Rs. {fmtINR(Math.round(
+                      Number(selectedGRNDetail.gross_amount || 0)
+                      + Number(selectedGRNDetail.tax_amount || 0)
+                      + (Number.parseFloat(freightAdjustmentForm.freight_amount) || 0)
+                      + (Number.parseFloat(freightAdjustmentForm.freight_gst_amount) || 0)
+                      - Number(selectedGRNDetail.debit_note_amount || 0),
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-gray-700">
+                  Reason for Update <span className="text-red-600">*</span>
+                </label>
+                <textarea
+                  rows={4}
+                  value={freightAdjustmentForm.reason}
+                  onChange={(event) => setFreightAdjustmentForm((form) => ({ ...form, reason: event.target.value }))}
+                  placeholder="Example: Supplier invoice includes revised transport charge supported by invoice reference..."
+                  className="w-full rounded-md border border-[#D9C9AD] px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]"
+                />
+                <p className="mt-1 text-xs text-gray-500">The reason, old and new values, user, and timestamp will be retained in the invoice trail.</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-[#E8DCC4] bg-[#FAF9F6] p-4">
+              <button
+                type="button"
+                onClick={() => setShowFreightAdjustmentModal(false)}
+                disabled={freightAdjustmentSubmitting}
+                className="rounded-md border border-[#D9C9AD] px-4 py-2 text-sm font-semibold text-[#3F2D20] hover:bg-white disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitFreightAdjustment}
+                disabled={freightAdjustmentSubmitting}
+                className="rounded-md bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#745A37] disabled:opacity-50"
+              >
+                {freightAdjustmentSubmitting ? 'Updating…' : 'Update Freight & Recalculate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment Recording Modal */}
       {showPaymentModal && selectedGRNDetail && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
@@ -1448,6 +1831,25 @@ export default function AccountsPayablePage() {
             <div className="overflow-auto flex-1 p-5 space-y-4">
               {paymentError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700">{paymentError}</div>
+              )}
+
+              {canAdjustFreight && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <div>
+                  <div className="text-xs font-semibold text-blue-800">Invoice Freight: Rs. {fmtINR((selectedGRNDetail.freight_amount || 0) + (selectedGRNDetail.freight_gst_amount || 0))}</div>
+                  <div className="mt-0.5 text-[11px] text-blue-700">If the supplier invoice freight differs, update it before posting payment.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPaymentModal(false);
+                    openFreightAdjustmentModal(selectedGRNDetail);
+                  }}
+                  className="shrink-0 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+                >
+                  Update Freight
+                </button>
+              </div>
               )}
 
               {/* Advance Payment Info */}
@@ -1487,6 +1889,7 @@ export default function AccountsPayablePage() {
                     <input type="number" step="0.01" min="0" max={Math.min(getAvailableAdvance(selectedGRNDetail), selectedGRNDetail.outstanding_amount)}
                       value={paymentForm.advance_adjustment_amount}
                       onChange={(e) => updatePaymentBalance({ advance_adjustment_amount: e.target.value })}
+                      onBlur={clampAdvanceAdjustment}
                       className="w-full px-3 py-2 border border-green-300 rounded-lg text-sm focus:ring-2 focus:ring-green-400"
                       placeholder="0.00" />
                     <p className="text-xs text-gray-500 mt-1">Advance is applied only when you enter an adjustment amount here.</p>
@@ -1523,8 +1926,8 @@ export default function AccountsPayablePage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Date <span className="text-red-500">*</span></label>
-                  <input type="date" max={todayDate} value={paymentForm.payment_date}
-                    onChange={(e) => setPaymentForm(f => ({ ...f, payment_date: e.target.value }))}
+                  <DateInput max={todayDate} value={paymentForm.payment_date}
+                    onChange={(value) => setPaymentForm(f => ({ ...f, payment_date: value }))}
                     className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm" />
                 </div>
               </div>
@@ -1561,26 +1964,35 @@ export default function AccountsPayablePage() {
                 )}
                 {/* Settlement preview */}
                 {(() => {
-                  const a = parseFloat(paymentForm.amount || '0') || 0;
-                  const adv = parseFloat(paymentForm.advance_adjustment_amount || '0') || 0;
-                  const t = parseFloat(paymentForm.tds_amount || '0') || 0;
-                  const s = parseFloat(paymentForm.short_payment_amount || '0') || 0;
-                  const total = a + adv + t + s;
-                  const rem = Math.max(0, selectedGRNDetail.outstanding_amount - total);
+                  const aPaisa = toPaisa(paymentForm.amount);
+                  const advPaisa = toPaisa(paymentForm.advance_adjustment_amount);
+                  const tPaisa = toPaisa(paymentForm.tds_amount);
+                  const sPaisa = toPaisa(paymentForm.short_payment_amount);
+                  const totalPaisa = aPaisa + advPaisa + tPaisa + sPaisa;
+                  const remPaisa = Math.max(0, toPaisa(selectedGRNDetail.outstanding_amount) - totalPaisa);
+                  const a = fromPaisa(aPaisa);
+                  const adv = fromPaisa(advPaisa);
+                  const t = fromPaisa(tPaisa);
+                  const s = fromPaisa(sPaisa);
+                  const total = fromPaisa(totalPaisa);
+                  const rem = fromPaisa(remPaisa);
                   return total > 0 ? (
                     <div className="text-xs text-gray-700 bg-white rounded border border-gray-200 p-2">
-                      <span className="font-semibold">Settlement preview:</span> Cash Rs. {fmtINR(a)} + Advance Rs. {fmtINR(adv)} + TDS Rs. {fmtINR(t)} + Short Rs. {fmtINR(s)} = <strong>Rs. {fmtINR(total)}</strong> - Remaining: <strong className={rem > 0.009 ? 'text-orange-600' : 'text-green-600'}>Rs. {fmtINR(rem)}</strong>
+                      <span className="font-semibold">Settlement preview:</span> Cash Rs. {fmtINR(a)} + Advance Rs. {fmtINR(adv)} + TDS Rs. {fmtINR(t)} + Short Rs. {fmtINR(s)} = <strong>Rs. {fmtINR(total)}</strong> - Remaining: <strong className={remPaisa > 0 ? 'text-orange-600' : 'text-green-600'}>Rs. {fmtINR(rem)}</strong>
                     </div>
                   ) : null;
                 })()}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Notes</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Accounts Intimation Note / Payment Remarks</label>
                 <textarea value={paymentForm.payment_notes}
                   onChange={(e) => setPaymentForm(f => ({ ...f, payment_notes: e.target.value }))}
                   rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  placeholder="Additional notes" />
+                  placeholder="e.g. informed accounts to release NEFT, hold due to invoice mismatch, advance adjusted, TDS note..." />
+                <p className="mt-1 text-xs text-gray-500">
+                  This note is stored in the payment trail and visible later from invoice history / PO trail.
+                </p>
               </div>
 
               {/* Close Invoice toggle */}
@@ -1657,8 +2069,8 @@ export default function AccountsPayablePage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Date <span className="text-red-500">*</span></label>
-                  <input type="date" value={editPaymentForm.payment_date}
-                    onChange={(e) => setEditPaymentForm(f => ({ ...f, payment_date: e.target.value }))}
+                  <DateInput max={todayDate} value={editPaymentForm.payment_date}
+                    onChange={(value) => setEditPaymentForm(f => ({ ...f, payment_date: value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
                 </div>
               </div>
@@ -1693,11 +2105,11 @@ export default function AccountsPayablePage() {
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Notes</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Accounts Intimation Note / Payment Remarks</label>
                 <textarea value={editPaymentForm.payment_notes}
                   onChange={(e) => setEditPaymentForm(f => ({ ...f, payment_notes: e.target.value }))}
                   rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  placeholder="Additional notes" />
+                  placeholder="Update the payment trail note / accounts intimation" />
               </div>
             </div>
 
@@ -1707,6 +2119,115 @@ export default function AccountsPayablePage() {
               <button onClick={handleUpdatePayment} disabled={editingSubmitting || !canRecordPayment}
                 className="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-60">
                 {editingSubmitting ? 'Saving…' : '💾 Update Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Page Notice Modal */}
+      {pageNotice && (
+        <div className="fixed inset-0 bg-black/55 flex items-center justify-center z-[90] p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full border border-[#E8DCC4]">
+            <div className="p-5 border-b">
+              <p className={`text-xs font-semibold uppercase tracking-wide ${
+                pageNotice.type === 'error' ? 'text-red-700' :
+                pageNotice.type === 'warning' ? 'text-amber-700' :
+                'text-blue-700'
+              }`}>
+                {pageNotice.type === 'error' ? 'Action blocked' : pageNotice.type === 'warning' ? 'Attention required' : 'Information'}
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-gray-900">{pageNotice.title}</h2>
+            </div>
+            <div className="p-5 text-sm leading-6 text-gray-700 whitespace-pre-line">
+              {pageNotice.message}
+            </div>
+            <div className="p-4 border-t flex justify-end">
+              <button
+                onClick={() => setPageNotice(null)}
+                className="px-5 py-2 bg-[#8B6F47] text-white rounded-lg text-sm font-semibold hover:bg-[#6F4E37]"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Reversal Modal */}
+      {reversePaymentTarget && selectedGRNDetail && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full">
+            <div className="p-5 border-b flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Payment reversal</p>
+                <h2 className="mt-1 text-lg font-bold text-gray-900">Reverse payment entry</h2>
+                <p className="mt-1 text-xs text-gray-600">
+                  {selectedGRNDetail.grn_number}
+                  {selectedGRNDetail.invoice_number ? <> - Invoice <strong>{selectedGRNDetail.invoice_number}</strong></> : null}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setReversePaymentTarget(null);
+                  setReversePaymentReason('');
+                  setReversePaymentError(null);
+                }}
+                disabled={reversePaymentSubmitting}
+                className="text-gray-400 hover:text-gray-700 text-2xl leading-none"
+                aria-label="Close payment reversal"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+                <div className="font-semibold">Audit control</div>
+                <div className="mt-1">
+                  This will reverse Rs. {fmtINR(reversePaymentTarget.amount)} from the payment trail and recalculate outstanding/advance balances.
+                </div>
+              </div>
+
+              {reversePaymentError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+                  {reversePaymentError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Reversal reason <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={reversePaymentReason}
+                  onChange={(event) => setReversePaymentReason(event.target.value)}
+                  rows={4}
+                  autoFocus
+                  className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-400"
+                  placeholder="Example: wrong supplier, duplicate payment, incorrect amount, bank transaction failed..."
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setReversePaymentTarget(null);
+                  setReversePaymentReason('');
+                  setReversePaymentError(null);
+                }}
+                disabled={reversePaymentSubmitting}
+                className="px-5 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReversePayment}
+                disabled={reversePaymentSubmitting || !reversePaymentReason.trim()}
+                className="px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
+              >
+                {reversePaymentSubmitting ? 'Reversing...' : 'Reverse Payment'}
               </button>
             </div>
           </div>
@@ -1733,9 +2254,7 @@ export default function AccountsPayablePage() {
                 <div className="text-xs font-bold text-amber-800 mb-2 uppercase tracking-wide">Invoices to Settle</div>
                 <div className="space-y-1 max-h-32 overflow-y-auto">
                   {vendorGRNs.filter(g => selectedGRNIds.has(g.id)).map(g => {
-                    const net = +(g.net_payable_amount || 0);
-                    const paid = +(g.paid_amount || 0) + +(g.tds_amount || 0) + +(g.short_payment_amount || 0);
-                    const out = Math.max(0, net - paid);
+                    const out = getPayableOutstanding(g);
                     return (
                       <div key={g.id} className="flex justify-between text-xs text-amber-900">
                         <span>{g.grn_number}{g.invoice_number ? ` · ${g.invoice_number}` : ''}</span>
@@ -1747,9 +2266,7 @@ export default function AccountsPayablePage() {
                 <div className="border-t border-amber-300 mt-2 pt-2 flex justify-between text-sm font-bold text-amber-900">
                   <span>Total Outstanding</span>
                   <span>₹{fmtINR(vendorGRNs.filter(g => selectedGRNIds.has(g.id)).reduce((s, g) => {
-                    const net = +(g.net_payable_amount || 0);
-                    const paid = +(g.paid_amount || 0) + +(g.tds_amount || 0) + +(g.short_payment_amount || 0);
-                    return s + Math.max(0, net - paid);
+                    return s + getPayableOutstanding(g);
                   }, 0))}</span>
                 </div>
               </div>
@@ -1801,8 +2318,8 @@ export default function AccountsPayablePage() {
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Date <span className="text-red-500">*</span></label>
-                      <input type="date" max={todayDate} value={settlementForm.payment_date}
-                        onChange={(e) => setSettlementForm(f => ({ ...f, payment_date: e.target.value }))}
+                      <DateInput max={todayDate} value={settlementForm.payment_date}
+                        onChange={(value) => setSettlementForm(f => ({ ...f, payment_date: value }))}
                         className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm" />
                     </div>
                   </div>
@@ -1825,11 +2342,11 @@ export default function AccountsPayablePage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Notes</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">Accounts Intimation Note / Payment Remarks</label>
                     <textarea rows={2} value={settlementForm.payment_notes}
                       onChange={(e) => setSettlementForm(f => ({ ...f, payment_notes: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                      placeholder="Settlement reference, bank transfer details..." />
+                      placeholder="Settlement reference, bank transfer details, or intimation note copied to selected payments..." />
                   </div>
                 </>
               )}
@@ -1846,6 +2363,76 @@ export default function AccountsPayablePage() {
                   {settlementSubmitting ? 'Processing…' : `💳 Settle ${selectedGRNIds.size} Invoice${selectedGRNIds.size !== 1 ? 's' : ''}`}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Advance payment audit detail */}
+      {showAdvanceDetailModal && selectedAdvance && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="advance-detail-title">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b border-[#E8DCC4] bg-white p-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">Advance payment</p>
+                <h2 id="advance-detail-title" className="text-xl font-bold text-[#3F2D20]">
+                  {selectedAdvance.advance_type === 'PO' ? 'Purchase Order Advance Details' : 'Blanket Vendor Advance Details'}
+                </h2>
+              </div>
+              <button type="button" onClick={() => setShowAdvanceDetailModal(false)} aria-label="Close advance details" className="text-2xl leading-none text-gray-400 hover:text-gray-700">×</button>
+            </div>
+
+            <div className="space-y-5 p-5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {[
+                  { label: 'Advance paid', value: `₹${fmtINR(selectedAdvance.amount || 0)}`, tone: 'text-[#3F2D20]' },
+                  { label: 'Applied to invoices', value: `₹${fmtINR(selectedAdvance.utilized_amount || 0)}`, tone: 'text-amber-700' },
+                  { label: 'Available balance', value: `₹${fmtINR(selectedAdvance.balance_amount || 0)}`, tone: 'text-green-700' },
+                ].map((summary) => (
+                  <div key={summary.label} className="rounded-lg border border-[#E8DCC4] bg-[#FAF9F6] p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#7A6756]">{summary.label}</p>
+                    <p className={`mt-1 text-lg font-bold ${summary.tone}`}>{summary.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <section className="overflow-hidden rounded-lg border border-[#E8DCC4]">
+                <div className="border-b border-[#E8DCC4] bg-[#FAF9F6] px-4 py-3 text-sm font-semibold text-[#3F2D20]">Payment information</div>
+                <dl className="grid grid-cols-1 divide-y divide-[#F0E8DA] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                  <div className="p-4"><dt className="text-xs font-semibold uppercase text-[#7A6756]">Vendor</dt><dd className="mt-1 font-medium">{selectedAdvance.vendor?.name || '—'} {selectedAdvance.vendor?.code ? `(${selectedAdvance.vendor.code})` : ''}</dd></div>
+                  <div className="p-4"><dt className="text-xs font-semibold uppercase text-[#7A6756]">Advance type</dt><dd className="mt-1 font-medium">{selectedAdvance.advance_type === 'PO' ? 'PO-specific advance' : 'Blanket vendor advance'}</dd></div>
+                  <div className="p-4"><dt className="text-xs font-semibold uppercase text-[#7A6756]">Payment date</dt><dd className="mt-1 font-medium">{selectedAdvance.payment_date ? new Date(selectedAdvance.payment_date).toLocaleDateString('en-IN') : '—'}</dd></div>
+                  <div className="p-4"><dt className="text-xs font-semibold uppercase text-[#7A6756]">Method / reference</dt><dd className="mt-1 font-medium">{selectedAdvance.payment_method || '—'}{selectedAdvance.payment_reference ? ` · ${selectedAdvance.payment_reference}` : ''}</dd></div>
+                </dl>
+              </section>
+
+              <section className="overflow-hidden rounded-lg border border-[#E8DCC4]">
+                <div className="border-b border-[#E8DCC4] bg-[#FAF9F6] px-4 py-3 text-sm font-semibold text-[#3F2D20]">Related documents</div>
+                <div className="space-y-3 p-4 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[#7A6756]">Purchase Order</span>
+                    {selectedAdvance.purchase_order?.id ? (
+                      <a href={`/dashboard/purchase/orders?viewId=${selectedAdvance.purchase_order.id}`} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 hover:underline">{selectedAdvance.purchase_order.po_number || 'Open PO'}</a>
+                    ) : <span className="font-medium">Not applicable — blanket advance</span>}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[#7A6756]">Invoice / GRN currently linked</span>
+                    {selectedAdvance.utilized_grn?.id ? (
+                      <a href={`/dashboard/purchase/grn?viewId=${selectedAdvance.utilized_grn.id}`} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 hover:underline">{selectedAdvance.utilized_grn.grn_number || 'Open GRN'}</a>
+                    ) : <span className="font-medium">No linked GRN recorded yet</span>}
+                  </div>
+                </div>
+              </section>
+
+              {selectedAdvance.payment_notes && (
+                <section className="rounded-lg border border-[#E8DCC4] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#7A6756]">Payment notes</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-[#3F2D20]">{selectedAdvance.payment_notes}</p>
+                </section>
+              )}
+            </div>
+            <div className="sticky bottom-0 flex justify-end border-t border-[#E8DCC4] bg-white p-4">
+              <button type="button" onClick={() => setShowAdvanceDetailModal(false)} className="rounded-lg border border-[#D8C8AA] px-5 py-2 text-sm font-semibold text-[#5E4635] hover:bg-[#F7F0E4]">Close</button>
             </div>
           </div>
         </div>
@@ -1961,8 +2548,8 @@ export default function AccountsPayablePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Payment Date *</label>
-                  <input type="date" value={advanceForm.payment_date}
-                    onChange={(e) => setAdvanceForm(f => ({ ...f, payment_date: e.target.value }))}
+                  <DateInput max={todayDate} value={advanceForm.payment_date}
+                    onChange={(value) => setAdvanceForm(f => ({ ...f, payment_date: value }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                 </div>
               </div>

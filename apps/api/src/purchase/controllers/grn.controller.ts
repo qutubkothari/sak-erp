@@ -23,6 +23,7 @@ import { randomUUID } from 'crypto';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { hasSuperAdminBypass } from '../../auth/utils/permission-utils';
 
 function getUploadsRoot(): string {
   return (
@@ -130,6 +131,12 @@ export class GrnController {
     return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
   }
 
+  @Post('discrepancy-preview')
+  @RequireCreate('grns')
+  async discrepancyPreview(@Request() req: any, @Body() body: any) {
+    return this.grnService.previewDiscrepancies(req.user.tenantId, body);
+  }
+
   @Post('invoice/upload')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -181,7 +188,7 @@ export class GrnController {
   @Put(':id')
   @RequireUpdate('grns')
   async update(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.grnService.update(req.user.tenantId, id, body);
+    return this.grnService.update(req.user.tenantId, id, body, req.user.userId);
   }
 
   @Post(':id/submit')
@@ -202,13 +209,25 @@ export class GrnController {
   @Post(':id/approve')
   @RequireApprove('grns')
   async approve(@Request() req: any, @Param('id') id: string) {
-    return this.grnService.updateStatus(req.user.tenantId, id, 'APPROVED', req.user.userId);
+    return this.grnService.updateStatus(req.user.tenantId, id, 'APPROVED', req.user.userId, { overrideMakerChecker: hasSuperAdminBypass(req.user) });
   }
 
   @Post(':id/reject')
   @RequireApprove('grns')
   async reject(@Request() req: any, @Param('id') id: string) {
-    return this.grnService.updateStatus(req.user.tenantId, id, 'REJECTED', req.user.userId);
+    return this.grnService.updateStatus(req.user.tenantId, id, 'REJECTED', req.user.userId, { overrideMakerChecker: hasSuperAdminBypass(req.user) });
+  }
+
+  @Post(':id/po-amendment/approve')
+  @RequireApprove('grns')
+  async approvePoAmendment(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.grnService.decidePoAmendment(req.user.tenantId, id, req.user.userId, 'APPROVED', body?.note);
+  }
+
+  @Post(':id/po-amendment/reject')
+  @RequireApprove('grns')
+  async rejectPoAmendment(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.grnService.decidePoAmendment(req.user.tenantId, id, req.user.userId, 'REJECTED', body?.note);
   }
 
   @Delete(':id')
@@ -226,13 +245,13 @@ export class GrnController {
   @Put(':id/invoice-amounts')
   @RequireUpdate('grns')
   async updateInvoiceAmounts(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.grnService.updateInvoiceAmounts(req.user.tenantId, id, body);
+    return this.grnService.updateInvoiceAmounts(req.user.tenantId, id, body, req.user.userId);
   }
 
   @Post(':id/approve-invoice')
   @RequireApprove('grns')
   async approveInvoice(@Request() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.grnService.approveInvoice(req.user.tenantId, id, req.user.userId, body);
+    return this.grnService.approveInvoice(req.user.tenantId, id, req.user, body);
   }
 
   @Post(':id/unapprove-invoice')

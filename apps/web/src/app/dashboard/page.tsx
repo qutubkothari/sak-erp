@@ -1,64 +1,177 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { apiClient } from '../../../lib/api-client';
-import { getDefaultLandingPath, hasModulePermission, isAdminLike } from '@/lib/rbac';
-import { useAuthStore } from '@/stores/auth.store';
-import { StatCard } from '@/components/ui/StatCard';
-import { StatCardSkeleton } from '@/components/ui/Skeleton';
 import {
-  ShoppingCart, Package, Factory, TrendingUp, AlertTriangle,
-  ShoppingBag, ClipboardList, Star, ArrowRight, BarChart2,
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  ClipboardCheck,
+  Factory,
+  FileText,
+  PackageSearch,
+  RefreshCw,
+  ShieldCheck,
+  ShoppingCart,
+  WalletCards,
+  Zap,
 } from 'lucide-react';
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
-import Link from 'next/link';
+import { apiClient } from '../../../lib/api-client';
+import { getDefaultLandingPath, isAdminLike } from '@/lib/rbac';
+import { useAuthStore } from '@/stores/auth.store';
 
 export const dynamic = 'force-dynamic';
 
-interface DashboardStats {
-  activeOrders: number;
-  pendingPOs: number;
-  inProduction: number;
-  readyToShip: number;
-  lowStockCount: number;
+type Tone = 'neutral' | 'good' | 'warning' | 'danger';
+
+type CockpitMetric = {
+  key: string;
+  label: string;
+  value: number;
+  displayValue?: string;
+  tone: Tone;
+  route?: string;
+  helper?: string;
+};
+
+type CockpitException = {
+  type: string;
+  title: string;
+  detail: string;
+  severity: 'info' | 'warning' | 'danger';
+  route: string;
+  value?: string;
+};
+
+type RoiOpportunity = {
+  key: string;
+  area: string;
+  title: string;
+  action: string;
+  impact: string;
+  priority: 'high' | 'medium' | 'low';
+  count: number;
+  amount?: number;
+  route: string;
+};
+
+type CockpitData = {
+  generatedAt: string;
+  metrics: CockpitMetric[];
+  summary: any;
+  exceptions: CockpitException[];
+  activity: Array<{
+    type: string;
+    number: string;
+    status: string;
+    amount?: number;
+    date?: string;
+    route: string;
+  }>;
+  aging: {
+    purchaseOrders: Record<string, number>;
+    grns: Record<string, number>;
+  };
+  moduleHealth: Array<{ module: string; status: string; route: string }>;
+  roiOpportunities: RoiOpportunity[];
+};
+
+type MisData = {
+  generatedBy?: string;
+  grade?: string;
+  riskScore?: number;
+  executiveSummary?: string[];
+  decisionsRequired?: string[];
+};
+
+const metricIcons: Record<string, any> = {
+  approvals: ClipboardCheck,
+  poExposure: ShoppingCart,
+  invoiced: FileText,
+  advance: WalletCards,
+  stockRisk: PackageSearch,
+  wip: Factory,
+};
+
+const toneClass: Record<Tone, string> = {
+  neutral: 'border-[#D8C8AA] bg-white text-[#2F241B]',
+  good: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+  warning: 'border-amber-200 bg-amber-50 text-amber-950',
+  danger: 'border-red-200 bg-red-50 text-red-900',
+};
+
+function formatDate(value?: string) {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
-const MONTHLY_DATA = [
-  { month: 'Sep', pos: 12, grns: 8, orders: 5 },
-  { month: 'Oct', pos: 18, grns: 14, orders: 8 },
-  { month: 'Nov', pos: 15, grns: 11, orders: 12 },
-  { month: 'Dec', pos: 22, grns: 17, orders: 9 },
-  { month: 'Jan', pos: 28, grns: 21, orders: 14 },
-  { month: 'Feb', pos: 19, grns: 15, orders: 11 },
-  { month: 'Mar', pos: 25, grns: 19, orders: 16 },
-];
+function formatAmount(value?: number) {
+  if (!value) return '-';
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(value);
+}
 
-const MODULE_CARDS = [
-  { name: 'Purchase', icon: ShoppingCart, path: '/dashboard/purchase', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
-  { name: 'BOM', icon: ClipboardList, path: '/dashboard/bom', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
-  { name: 'Inventory', icon: Package, path: '/dashboard/inventory', color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
-  { name: 'Production', icon: Factory, path: '/dashboard/production', color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200', requiresProductionApprove: true },
-  { name: 'Quality', icon: BarChart2, path: '/dashboard/quality', color: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-200' },
-  { name: 'Sales', icon: TrendingUp, path: '/dashboard/sales', color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200' },
-  { name: 'UID Tracking', icon: Star, path: '/dashboard/uid', color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-200' },
-  { name: 'Service', icon: ShoppingBag, path: '/dashboard/service', color: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-200' },
-];
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="h-24 animate-pulse border border-[#E8DCC4] bg-white" />
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="h-28 animate-pulse border border-[#E8DCC4] bg-white" />
+        ))}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="h-80 animate-pulse border border-[#E8DCC4] bg-white" />
+        <div className="h-80 animate-pulse border border-[#E8DCC4] bg-white" />
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user, isReady, hydrate } = useAuthStore();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [data, setData] = useState<CockpitData | null>(null);
+  const [mis, setMis] = useState<MisData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [todayLabel, setTodayLabel] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     hydrate();
-    setTodayLabel(new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
   }, [hydrate]);
+
+  const load = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setError('');
+    try {
+      const [cockpit, misData] = await Promise.all([
+        apiClient.get<CockpitData>('/dashboard/cockpit'),
+        apiClient.get<MisData>('/dashboard/mis').catch(() => null),
+      ]);
+      setData(cockpit);
+      setMis(misData);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isReady) return;
@@ -70,141 +183,309 @@ export default function DashboardPage() {
       router.replace(getDefaultLandingPath(user));
       return;
     }
-    fetchStats();
+    load();
+    const refreshTimer = window.setInterval(() => load(false), 5 * 60 * 1000);
+    return () => window.clearInterval(refreshTimer);
   }, [isReady, router, user]);
 
-  const fetchStats = async () => {
-    try {
-      const data = await apiClient.get('/dashboard/stats');
-      setStats(data);
-    } catch {
-      setStats({ activeOrders: 0, pendingPOs: 0, inProduction: 0, readyToShip: 0, lowStockCount: 0 });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const agingData = useMemo(() => {
+    const po = data?.aging?.purchaseOrders || {};
+    const grn = data?.aging?.grns || {};
+    return [
+      { bucket: '0-7', po: po.current || 0, grn: grn.current || 0 },
+      { bucket: '8-15', po: po.d8to15 || 0, grn: grn.d8to15 || 0 },
+      { bucket: '16-30', po: po.d16to30 || 0, grn: grn.d16to30 || 0 },
+      { bucket: '30+', po: po.over30 || 0, grn: grn.over30 || 0 },
+    ];
+  }, [data]);
 
-  const canSeeProductionManagement = hasModulePermission(user, 'Production', 'approve');
+  if (loading) return <DashboardSkeleton />;
 
   return (
-    <div className="space-y-6">
-      {/* Page title */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Operations Dashboard</h1>
-        <p className="mt-0.5 text-sm text-gray-500">
-          {todayLabel}
-        </p>
-      </div>
-
-      {/* KPI Stats */}
-      {loading ? (
-        <StatCardSkeleton count={5} />
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          <StatCard
-            title="Active Orders"
-            value={stats?.activeOrders ?? 0}
-            icon={<TrendingUp className="h-5 w-5 text-amber-700" />}
-            iconBg="bg-amber-100"
-            onClick={() => router.push('/dashboard/sales')}
-          />
-          <StatCard
-            title="Pending POs"
-            value={stats?.pendingPOs ?? 0}
-            icon={<ShoppingCart className="h-5 w-5 text-blue-700" />}
-            iconBg="bg-blue-100"
-            onClick={() => router.push('/dashboard/purchase/orders')}
-          />
-          <StatCard
-            title="In Production"
-            value={stats?.inProduction ?? 0}
-            icon={<Factory className="h-5 w-5 text-purple-700" />}
-            iconBg="bg-purple-100"
-            onClick={() => router.push('/dashboard/production/job-orders/smart-items')}
-          />
-          <StatCard
-            title="Ready to Ship"
-            value={stats?.readyToShip ?? 0}
-            icon={<Package className="h-5 w-5 text-green-700" />}
-            iconBg="bg-green-100"
-          />
-          <StatCard
-            title="Low Stock Alerts"
-            value={stats?.lowStockCount ?? 0}
-            icon={<AlertTriangle className="h-5 w-5 text-red-600" />}
-            iconBg="bg-red-100"
-            alert={(stats?.lowStockCount ?? 0) > 0}
-            onClick={() => router.push('/dashboard/inventory?tab=alerts')}
-            subtitle={(stats?.lowStockCount ?? 0) > 0 ? 'Needs attention' : 'All stocked up'}
-          />
+    <div className="space-y-4 text-[#2F241B]">
+      <section className="border border-[#E8DCC4] bg-white">
+        <div className="flex flex-col gap-3 border-b border-[#E8DCC4] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-[#8B6F47]">Executive Cockpit</p>
+            <h1 className="text-2xl font-bold">Operations Dashboard</h1>
+            <p className="mt-1 text-sm text-[#6F5A45]">
+              Live view of approvals, procurement, inventory, production, quality and accounts exposure.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/dashboard/reports"
+              className="inline-flex items-center gap-2 border border-[#C9B894] bg-white px-3 py-2 text-sm font-semibold text-[#3F2D20] hover:bg-[#FAF6ED]"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Reports
+            </Link>
+            <Link
+              href="/dashboard/automation"
+              className="inline-flex items-center gap-2 border border-[#C9B894] bg-white px-3 py-2 text-sm font-semibold text-[#3F2D20] hover:bg-[#FAF6ED]"
+            >
+              <Zap className="h-4 w-4" />
+              Automation
+            </Link>
+            <button
+              type="button"
+              onClick={() => load()}
+              className="inline-flex items-center gap-2 border border-[#8B6F47] bg-[#8B6F47] px-3 py-2 text-sm font-semibold text-white hover:bg-[#735A39]"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+          </div>
         </div>
+        <div className="grid border-b border-[#E8DCC4] md:grid-cols-4">
+          <div className="border-b border-[#E8DCC4] px-4 py-3 md:border-b-0 md:border-r">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">PR Pending</div>
+            <div className="mt-1 text-2xl font-bold">{data?.summary?.procurement?.pendingPRs ?? 0}</div>
+          </div>
+          <div className="border-b border-[#E8DCC4] px-4 py-3 md:border-b-0 md:border-r">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">PO Pending</div>
+            <div className="mt-1 text-2xl font-bold">{data?.summary?.procurement?.pendingPOs ?? 0}</div>
+          </div>
+          <div className="border-b border-[#E8DCC4] px-4 py-3 md:border-b-0 md:border-r">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">GRN Pending QC</div>
+            <div className="mt-1 text-2xl font-bold">{data?.summary?.inventory?.draftGRNs ?? 0}</div>
+          </div>
+          <div className="px-4 py-3">
+            <div className="text-xs font-semibold uppercase text-[#7A6756]">Last Refreshed</div>
+            <div className="mt-1 text-sm font-semibold">{data?.generatedAt ? new Date(data.generatedAt).toLocaleString('en-IN') : '-'}</div>
+          </div>
+        </div>
+      </section>
+
+      {error && (
+        <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>
       )}
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-gray-900 mb-0.5">Activity Trend</h2>
-          <p className="text-xs text-gray-400 mb-4">POs · GRNs (last 7 months)</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={MONTHLY_DATA} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gradPO" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#92400e" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#92400e" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="gradGRN" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1d4ed8" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#1d4ed8" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} />
-              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-              <Area type="monotone" dataKey="pos" name="POs" stroke="#92400e" fill="url(#gradPO)" strokeWidth={2} dot={false} />
-              <Area type="monotone" dataKey="grns" name="GRNs" stroke="#1d4ed8" fill="url(#gradGRN)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-gray-900 mb-0.5">Sales Orders</h2>
-          <p className="text-xs text-gray-400 mb-4">Monthly order volume</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={MONTHLY_DATA} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} />
-              <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }} />
-              <Bar dataKey="orders" name="Orders" fill="#7c3aed" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Quick Access modules */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <h2 className="text-sm font-semibold text-gray-900 mb-4">Quick Access</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-          {MODULE_CARDS.filter(m => !m.requiresProductionApprove || canSeeProductionManagement).map((mod) => {
-            const Icon = mod.icon;
-            return (
-              <Link
-                key={mod.path}
-                href={mod.path}
-                className={`group flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-all hover:shadow-md hover:-translate-y-0.5 ${mod.bg} ${mod.border}`}
-              >
-                <div className="rounded-lg p-2.5 bg-white shadow-sm">
-                  <Icon className={`h-5 w-5 ${mod.color}`} />
+      <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {(data?.metrics || []).map((metric) => {
+          const Icon = metricIcons[metric.key] || ShieldCheck;
+          const body = (
+            <div className={`min-h-[118px] border p-3 ${toneClass[metric.tone]}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-bold uppercase text-[#7A6756]">{metric.label}</p>
+                  <p className="mt-2 text-2xl font-bold">{metric.displayValue ?? metric.value}</p>
                 </div>
-                <span className="text-xs font-medium text-gray-700 leading-snug">{mod.name}</span>
-                <ArrowRight className={`h-3 w-3 ${mod.color} opacity-0 group-hover:opacity-100 transition-opacity`} />
-              </Link>
-            );
-          })}
+                <Icon className="h-5 w-5 shrink-0 text-[#8B6F47]" />
+              </div>
+              <p className="mt-3 line-clamp-2 text-xs text-[#6F5A45]">{metric.helper}</p>
+            </div>
+          );
+          return metric.route ? (
+            <Link key={metric.key} href={metric.route} className="block hover:shadow-sm">
+              {body}
+            </Link>
+          ) : (
+            <div key={metric.key}>{body}</div>
+          );
+        })}
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="border border-[#E8DCC4] bg-white">
+          <div className="flex items-center justify-between border-b border-[#E8DCC4] px-4 py-3">
+            <div>
+              <h2 className="font-bold">Exception Worklist</h2>
+              <p className="text-xs text-[#7A6756]">SAP-style action queue for approvals, stock risk and master-data hygiene.</p>
+            </div>
+            <AlertTriangle className="h-5 w-5 text-[#B45309]" />
+          </div>
+          <div className="divide-y divide-[#EFE5D4]">
+            {(data?.exceptions || []).length === 0 ? (
+              <div className="flex items-center gap-2 px-4 py-8 text-sm text-emerald-700">
+                <CheckCircle2 className="h-5 w-5" />
+                No critical exceptions right now.
+              </div>
+            ) : (
+              data?.exceptions.map((item, index) => (
+                <Link
+                  key={`${item.type}-${index}`}
+                  href={item.route}
+                  className="grid gap-2 px-4 py-3 hover:bg-[#FAF6ED] sm:grid-cols-[150px_1fr_auto]"
+                >
+                  <div className="text-xs font-bold uppercase text-[#8B6F47]">{item.type}</div>
+                  <div>
+                    <div className="font-semibold">{item.title}</div>
+                    <div className="text-sm text-[#6F5A45]">{item.detail}</div>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm font-bold">
+                    {item.value && <span>{item.value}</span>}
+                    <ArrowRight className="h-4 w-4" />
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
         </div>
-      </div>
+
+        <div className="border border-[#E8DCC4] bg-white">
+          <div className="border-b border-[#E8DCC4] px-4 py-3">
+            <h2 className="font-bold">Document Aging</h2>
+            <p className="text-xs text-[#7A6756]">Open PO and pending GRN aging buckets.</p>
+          </div>
+          <div className="h-72 p-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={agingData} margin={{ top: 10, right: 12, left: -18, bottom: 0 }}>
+                <CartesianGrid stroke="#F0E7D8" vertical={false} />
+                <XAxis dataKey="bucket" tick={{ fill: '#6F5A45', fontSize: 12 }} />
+                <YAxis allowDecimals={false} tick={{ fill: '#6F5A45', fontSize: 12 }} />
+                <Tooltip contentStyle={{ border: '1px solid #D8C8AA', borderRadius: 0 }} />
+                <Bar dataKey="po" name="PO" fill="#8B6F47" />
+                <Bar dataKey="grn" name="GRN" fill="#0F766E" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
+
+      <section className="border border-[#E8DCC4] bg-white">
+        <div className="flex items-center justify-between border-b border-[#E8DCC4] px-4 py-3">
+          <div>
+            <h2 className="font-bold">ROI Opportunities</h2>
+            <p className="text-xs text-[#7A6756]">Next-best actions ranked by operational and cash impact. Values are calculated from live ERP records.</p>
+          </div>
+          <ShieldCheck className="h-5 w-5 text-[#8B6F47]" />
+        </div>
+        {(data?.roiOpportunities || []).length === 0 ? (
+          <div className="px-4 py-6 text-sm text-emerald-700">No ROI opportunities require attention right now.</div>
+        ) : (
+          <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
+            {(data?.roiOpportunities || []).map((opportunity) => (
+              <Link key={opportunity.key} href={opportunity.route} className="border border-[#E8DCC4] p-3 transition hover:border-[#B08D57] hover:bg-[#FAF6ED]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-[#8B6F47]">{opportunity.area}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${opportunity.priority === 'high' ? 'bg-red-100 text-red-800' : opportunity.priority === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>
+                    {opportunity.priority}
+                  </span>
+                </div>
+                <h3 className="mt-2 font-semibold">{opportunity.title}</h3>
+                <p className="mt-1 text-sm text-[#6F5A45]">{opportunity.action}</p>
+                <div className="mt-3 flex items-end justify-between gap-3 text-xs">
+                  <span className="text-[#7A6756]">{opportunity.impact}</span>
+                  <span className="shrink-0 font-bold text-[#8B6F47]">Open →</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section id="ai-mis" className="border border-[#E8DCC4] bg-white">
+        <div className="flex flex-col gap-2 border-b border-[#E8DCC4] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-bold">Executive AI Brief</h2>
+            <p className="text-xs text-[#7A6756]">Daily management readout generated from current ERP transactions.</p>
+          </div>
+          <span className="text-xs font-semibold text-[#8B6F47]">{mis?.generatedBy || 'MIS rules engine'}</span>
+        </div>
+        <div className="grid gap-4 p-4 lg:grid-cols-[1.15fr_0.85fr]">
+          <div>
+            <div className="mb-2 flex items-center gap-3">
+              <span className={`rounded-full px-2 py-1 text-xs font-bold ${mis?.grade === 'High Risk' ? 'bg-red-100 text-red-800' : mis?.grade === 'Controlled' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                {mis?.grade || 'Awaiting MIS'}
+              </span>
+              {typeof mis?.riskScore === 'number' && <span className="text-xs text-[#6F5A45]">Risk score {mis.riskScore}/100</span>}
+            </div>
+            <ul className="space-y-2 text-sm text-[#4A392A]">
+              {(mis?.executiveSummary || ['MIS brief is not available yet.']).slice(0, 4).map((line, index) => <li key={index} className="flex gap-2"><span className="text-[#8B6F47]">•</span><span>{line}</span></li>)}
+            </ul>
+          </div>
+          <div className="border-l border-[#E8DCC4] pl-4">
+            <div className="text-xs font-bold uppercase tracking-wide text-[#8B6F47]">Decisions required</div>
+            <ul className="mt-2 space-y-2 text-sm text-[#4A392A]">
+              {(mis?.decisionsRequired || []).slice(0, 4).map((line, index) => <li key={index}>• {line}</li>)}
+              {!(mis?.decisionsRequired || []).length && <li className="text-emerald-700">No management decisions are currently flagged.</li>}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="border border-[#E8DCC4] bg-white">
+          <div className="border-b border-[#E8DCC4] px-4 py-3">
+            <h2 className="font-bold">Sales Revenue Control</h2>
+            <p className="text-xs text-[#7A6756]">Pipeline and customer cash exposure from live sales documents.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-5">
+            <Link href="/dashboard/sales?tab=quotations" className="border border-[#E8DCC4] p-3 hover:bg-[#FAF6ED]"><div className="text-xs uppercase text-[#8B6F47]">Open quotes</div><div className="mt-1 text-xl font-bold">{data?.summary?.sales?.openQuotations ?? 0}</div></Link>
+            <Link href="/dashboard/sales?tab=quotations" className="border border-[#E8DCC4] p-3 hover:bg-[#FAF6ED]"><div className="text-xs uppercase text-[#8B6F47]">Quote value</div><div className="mt-1 text-xl font-bold">{formatAmount(data?.summary?.sales?.quoteValue)}</div></Link>
+            <Link href="/dashboard/sales?tab=quotations" className="border border-[#E8DCC4] p-3 hover:bg-[#FAF6ED]"><div className="text-xs uppercase text-[#8B6F47]">Weighted pipeline</div><div className="mt-1 text-xl font-bold">{formatAmount(data?.summary?.sales?.weightedQuoteValue)}</div></Link>
+            <Link href="/dashboard/sales?tab=billing" className="border border-[#E8DCC4] p-3 hover:bg-[#FAF6ED]"><div className="text-xs uppercase text-[#8B6F47]">Open invoices</div><div className="mt-1 text-xl font-bold">{data?.summary?.sales?.openInvoices ?? 0}</div></Link>
+            <Link href="/dashboard/sales?tab=collections" className="border border-[#E8DCC4] p-3 hover:bg-[#FAF6ED]"><div className="text-xs uppercase text-[#8B6F47]">Receivables</div><div className="mt-1 text-xl font-bold">{formatAmount(data?.summary?.sales?.receivables)}</div></Link>
+          </div>
+          <div className="flex flex-wrap gap-2 border-t border-[#E8DCC4] px-4 py-3 text-xs">
+            <Link href="/dashboard/sales" className={`rounded-full px-3 py-1 font-semibold ${data?.summary?.sales?.expiringQuotations ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'}`}>{data?.summary?.sales?.expiringQuotations ?? 0} quotes expiring in 7 days</Link>
+            <Link href="/dashboard/sales" className={`rounded-full px-3 py-1 font-semibold ${data?.summary?.sales?.overdueInvoices ? 'bg-red-100 text-red-900' : 'bg-emerald-100 text-emerald-900'}`}>{data?.summary?.sales?.overdueInvoices ?? 0} overdue customer invoices</Link>
+          </div>
+        </div>
+        <div className="border border-[#E8DCC4] bg-white">
+          <div className="border-b border-[#E8DCC4] px-4 py-3">
+            <h2 className="font-bold">Service Revenue Protection</h2>
+            <p className="text-xs text-[#7A6756]">Open tickets and planned visits requiring operational follow-through.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4">
+            <Link href="/dashboard/service?tab=tickets" className="border border-[#E8DCC4] p-3 hover:bg-[#FAF6ED]"><div className="text-xs uppercase text-[#8B6F47]">Open tickets</div><div className="mt-1 text-2xl font-bold">{data?.summary?.service?.openTickets ?? 0}</div><div className="mt-1 text-xs text-[#6F5A45]">SLA and customer risk</div></Link>
+            <Link href="/dashboard/service?tab=dispatch" className="border border-[#E8DCC4] p-3 hover:bg-[#FAF6ED]"><div className="text-xs uppercase text-[#8B6F47]">Active visits</div><div className="mt-1 text-2xl font-bold">{data?.summary?.service?.activeVisits ?? 0}</div><div className="mt-1 text-xs text-[#6F5A45]">Technician capacity</div></Link>
+            <Link href="/dashboard/service?tab=tickets" className="border border-red-200 bg-red-50 p-3 hover:bg-red-100"><div className="text-xs uppercase text-red-800">SLA overdue</div><div className="mt-1 text-2xl font-bold text-red-900">{data?.summary?.service?.overdueTickets ?? 0}</div><div className="mt-1 text-xs text-red-800">Escalate today</div></Link>
+            <Link href="/dashboard/service?tab=contracts" className="border border-[#E8DCC4] p-3 hover:bg-[#FAF6ED]"><div className="text-xs uppercase text-[#8B6F47]">Warranty / contract</div><div className="mt-1 text-2xl font-bold">{data?.summary?.service?.warrantyTickets ?? 0}</div><div className="mt-1 text-xs text-[#6F5A45]">Protect renewal margin</div></Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+        <div className="border border-[#E8DCC4] bg-white">
+          <div className="border-b border-[#E8DCC4] px-4 py-3">
+            <h2 className="font-bold">Module Health</h2>
+            <p className="text-xs text-[#7A6756]">Operational readiness by functional area.</p>
+          </div>
+          <div className="divide-y divide-[#EFE5D4]">
+            {(data?.moduleHealth || []).map((module) => (
+              <Link key={module.module} href={module.route} className="flex items-center justify-between px-4 py-3 hover:bg-[#FAF6ED]">
+                <span className="font-semibold">{module.module}</span>
+                <span className="text-sm text-[#6F5A45]">{module.status}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div className="border border-[#E8DCC4] bg-white">
+          <div className="border-b border-[#E8DCC4] px-4 py-3">
+            <h2 className="font-bold">Recent Transaction Flow</h2>
+            <p className="text-xs text-[#7A6756]">Latest PR, PO and GRN documents across the tenant.</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[720px] w-full text-sm">
+              <thead className="bg-[#F5EFE3] text-xs uppercase text-[#6F4E37]">
+                <tr>
+                  <th className="px-4 py-3 text-left">Type</th>
+                  <th className="px-4 py-3 text-left">Document</th>
+                  <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#EFE5D4]">
+                {(data?.activity || []).map((row, index) => (
+                  <tr key={`${row.type}-${row.number}-${index}`} className="hover:bg-[#FAF6ED]">
+                    <td className="px-4 py-3 font-bold text-[#8B6F47]">{row.type}</td>
+                    <td className="px-4 py-3">
+                      <Link href={row.route} className="font-semibold hover:underline">{row.number}</Link>
+                    </td>
+                    <td className="px-4 py-3">{row.status}</td>
+                    <td className="px-4 py-3">{formatDate(row.date)}</td>
+                    <td className="px-4 py-3 text-right font-semibold">{formatAmount(row.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

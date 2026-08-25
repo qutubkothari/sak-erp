@@ -14,6 +14,7 @@ interface Company {
   email?: string;
   tax_id?: string;
   logo_url?: string;
+  settings?: Record<string, unknown>;
 }
 
 export default function CompanySettings() {
@@ -77,7 +78,7 @@ export default function CompanySettings() {
   }
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl">
       <div className="bg-white rounded-lg border-2 p-6" style={{ borderColor: '#E8DCC4' }}>
         <div className="flex items-center gap-3 mb-6">
           <div className="p-3 rounded-lg" style={{ backgroundColor: '#E8DCC4' }}>
@@ -97,7 +98,7 @@ export default function CompanySettings() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Company Name
+                Legal / Company Name
               </label>
               <input
                 type="text"
@@ -110,7 +111,7 @@ export default function CompanySettings() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Domain
+                Portal Domain / URL
               </label>
               <input
                 type="text"
@@ -125,7 +126,7 @@ export default function CompanySettings() {
 
           <div>
             <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Address
+              Registered Address
             </label>
             <textarea
               rows={3}
@@ -140,7 +141,7 @@ export default function CompanySettings() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Phone
+                Company Phone
               </label>
               <input
                 type="tel"
@@ -153,7 +154,7 @@ export default function CompanySettings() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Email
+                Official Email
               </label>
               <input
                 type="email"
@@ -166,18 +167,46 @@ export default function CompanySettings() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Tax ID / Registration Number
-            </label>
-            <input
-              type="text"
-              value={company.tax_id || ''}
-              onChange={(e) => setCompany({ ...company, tax_id: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-              style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              placeholder="Tax identification number"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                GSTIN / Tax Registration
+              </label>
+              <input
+                type="text"
+                value={company.tax_id || ''}
+                onChange={(e) => setCompany({ ...company, tax_id: e.target.value.toUpperCase() })}
+                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
+                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
+                placeholder="27ABCDE1234F1Z5"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
+                Logo URL
+              </label>
+              <input
+                type="url"
+                value={company.logo_url || ''}
+                onChange={(e) => setCompany({ ...company, logo_url: e.target.value })}
+                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
+                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
+                placeholder="https://..."
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {[
+              ['Document Branding', 'Used on PO, RFQ, GRN, invoices, reports, and print layouts.'],
+              ['Regional Setup', 'Timezone, language, and currency remain controlled by tenant defaults.'],
+              ['Audit Ownership', 'Changes are protected by Settings permissions and reflected after refresh.'],
+            ].map(([title, copy]) => (
+              <div key={title} className="rounded-lg border p-4" style={{ borderColor: '#E8DCC4', backgroundColor: '#FEF9F0' }}>
+                <p className="text-sm font-semibold" style={{ color: '#6F4E37' }}>{title}</p>
+                <p className="mt-1 text-xs leading-5" style={{ color: '#8B6F47' }}>{copy}</p>
+              </div>
+            ))}
           </div>
 
           {message && (

@@ -40,6 +40,10 @@ export type ListTableProps<T> = {
   rows: T[];
   columns: Array<ListTableColumn<T>>;
   getRowId: (row: T) => string;
+  defaultSort?: {
+    id: string;
+    direction?: SortDirection;
+  };
   pageSizeOptions?: number[];
   defaultPageSize?: number;
   searchPlaceholder?: string;
@@ -81,6 +85,49 @@ function normalizeForSearch(value: unknown): string {
   }
 }
 
+function searchTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[\s,;|/\\()[\]{}"'`._:-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function normalizeSearchField(value: unknown): string {
+  return normalizeForSearch(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function scoreSearchMatch(haystack: string, fieldValues: string[], rawSearch: string): number {
+  const query = normalizeSearchField(rawSearch);
+  const tokens = searchTokens(rawSearch);
+  if (!query || !tokens.length) return 0;
+  if (!tokens.every((token) => haystack.includes(token))) return 0;
+
+  let score = 100;
+  for (const rawField of fieldValues) {
+    const field = normalizeSearchField(rawField);
+    if (!field) continue;
+    if (field === query) score = Math.max(score, 10000);
+    else if (field.startsWith(query)) score = Math.max(score, 7500);
+    else if (field.includes(query)) score = Math.max(score, 5000);
+
+    const fieldTokens = searchTokens(field);
+    if (tokens.every((token, index) => fieldTokens[index] === token)) score = Math.max(score, 3500);
+    if (tokens.every((token) => fieldTokens.some((fieldToken) => fieldToken.startsWith(token)))) score = Math.max(score, 2500);
+  }
+
+  score += tokens.reduce((sum, token) => {
+    const prefixHits = fieldValues.filter((field) => searchTokens(field).some((part) => part.startsWith(token))).length;
+    return sum + Math.min(prefixHits, 5) * 10;
+  }, 0);
+
+  return score;
+}
+
 function compareValues(a: unknown, b: unknown): number {
   if (a === b) return 0;
   if (a === null || a === undefined) return -1;
@@ -103,9 +150,10 @@ export function ListTable<T>(props: ListTableProps<T>) {
     rows,
     columns,
     getRowId,
+    defaultSort,
     pageSizeOptions = [10, 25, 50, 100],
     defaultPageSize = 10,
-    searchPlaceholder = 'Search…',
+    searchPlaceholder = 'Search...',
     initialSearch = '',
     hideSearch,
     toolbarRight,
@@ -139,8 +187,8 @@ export function ListTable<T>(props: ListTableProps<T>) {
   }, [columns]);
 
   const [searchTerm, setSearchTerm] = useState(initialSearch);
-  const [sortId, setSortId] = useState<string>('');
-  const [sortDir, setSortDir] = useState<SortDirection>('asc');
+  const [sortId, setSortId] = useState<string>(defaultSort?.id || '');
+  const [sortDir, setSortDir] = useState<SortDirection>(defaultSort?.direction || 'asc');
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(defaultPageSize);
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
@@ -289,21 +337,34 @@ export function ListTable<T>(props: ListTableProps<T>) {
   );
 
   const filteredRows = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    if (!q) return rows;
+    const tokens = searchTokens(searchTerm);
+    if (!tokens.length) return rows;
+    const searchableColumns = columns.filter((col) => col.searchAccessor || col.accessor);
 
-    return rows.filter((row) => {
-      return visibleColumns.some((col) => {
-        const raw = col.searchAccessor
-          ? col.searchAccessor(row)
-          : col.accessor
-            ? col.accessor(row)
-            : undefined;
-        const text = normalizeForSearch(raw).toLowerCase();
-        return text.includes(q);
-      });
-    });
-  }, [rows, searchTerm, visibleColumns]);
+    return rows
+      .map((row, index) => {
+        const fieldValues = searchableColumns.map((col) => {
+          const raw = col.searchAccessor
+            ? col.searchAccessor(row)
+            : col.accessor
+              ? col.accessor(row)
+              : undefined;
+          return normalizeForSearch(raw);
+        });
+        const haystack = fieldValues.map((value) => normalizeSearchField(value)).join(' ');
+        return {
+          row,
+          index,
+          score: scoreSearchMatch(haystack, fieldValues, searchTerm),
+        };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.index - b.index;
+      })
+      .map((entry) => entry.row);
+  }, [rows, searchTerm, columns]);
 
   const sortedRows = useMemo(() => {
     if (!sortId) return filteredRows;
@@ -506,7 +567,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             : 'grid gap-2 border-b border-[#E8DCC4] bg-white p-2.5 2xl:grid-cols-[minmax(24rem,1fr)_auto] 2xl:items-center'
         }
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {!hideSearch && (
             <input
               type="text"
@@ -516,7 +577,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
                 setPageIndex(0);
               }}
               placeholder={searchPlaceholder}
-              className={`min-h-9 w-full min-w-0 border border-[#D8C8AA] px-3 py-1.5 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 sm:max-w-lg ${searchClassName}`}
+              className={`min-h-9 w-full min-w-0 flex-[1_1_12rem] border border-[#D8C8AA] px-3 py-1.5 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 sm:max-w-lg ${searchClassName}`}
             />
           )}
           <div className="relative" ref={columnsMenuRef}>
@@ -529,7 +590,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
             </button>
 
             {showColumnsMenu && (
-              <div className="absolute z-50 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+              <div className="absolute left-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] bg-white border border-gray-200 rounded-lg shadow-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-sm font-semibold text-gray-800">Show and arrange columns</div>
                   <button
@@ -616,7 +677,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               <Bookmark className="h-4 w-4" /> Views
             </button>
             {showVariantsMenu && (
-              <div className="absolute left-0 z-50 mt-2 w-80 rounded-md border border-[#E8DCC4] bg-white p-3 shadow-lg">
+              <div className="absolute left-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-md border border-[#E8DCC4] bg-white p-3 shadow-lg">
                 <div className="mb-3 flex items-center gap-2">
                   <input
                     value={variantName}
@@ -671,7 +732,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
         <div
           className={
             toolbarLayout === 'singleLine'
-              ? 'flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2'
+              ? 'flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-none'
               : 'grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] 2xl:w-auto'
           }
         >
@@ -706,9 +767,74 @@ export function ListTable<T>(props: ListTableProps<T>) {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Mobile record list */}
+      <div className="divide-y divide-[#E8DCC4] md:hidden">
+        {pagedRows.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-gray-500">
+            {emptyState || 'No results'}
+          </div>
+        ) : (
+          pagedRows.map((row) => {
+            const rowId = getRowId(row);
+            const displayColumns = visibleColumns.filter((col) => col.id !== 'actions');
+            const actionColumn = visibleColumns.find((col) => col.id === 'actions');
+            const primary = displayColumns[0];
+            const secondary = displayColumns[1];
+            const detailColumns = displayColumns.slice(2, 7);
+
+            return (
+              <article key={rowId} className="bg-white px-3 py-3">
+                <div className="flex items-start gap-3">
+                  {selectable && (
+                    <input
+                      type="checkbox"
+                      checked={selectedRowIdsSet.has(rowId)}
+                      onChange={(e) => toggleRowSelection(rowId, e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-[#D8C8AA] text-[#8B6F47] focus:ring-[#8B6F47]"
+                      aria-label={`Select row ${rowId}`}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    {primary && (
+                      <div className="break-words text-sm font-semibold leading-5 text-[#2F241D]">
+                        {primary.cell ? primary.cell(row) : normalizeForSearch(primary.accessor ? primary.accessor(row) : '')}
+                      </div>
+                    )}
+                    {secondary && (
+                      <div className="mt-0.5 break-words text-xs leading-5 text-[#7A6555]">
+                        {secondary.cell ? secondary.cell(row) : normalizeForSearch(secondary.accessor ? secondary.accessor(row) : '')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {detailColumns.length > 0 && (
+                  <dl className="mt-3 grid grid-cols-1 gap-2">
+                    {detailColumns.map((col) => (
+                      <div key={col.id} className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-2 text-xs">
+                        <dt className="truncate font-semibold uppercase tracking-normal text-[#7A6555]">{col.label}</dt>
+                        <dd className="min-w-0 break-words text-[#2F241D]">
+                          {col.cell ? col.cell(row) : normalizeForSearch(col.accessor ? col.accessor(row) : '')}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+
+                {actionColumn && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#F0E7D8] pt-2">
+                    {actionColumn.cell ? actionColumn.cell(row) : normalizeForSearch(actionColumn.accessor ? actionColumn.accessor(row) : '')}
+                  </div>
+                )}
+              </article>
+            );
+          })
+        )}
+      </div>
+
+      {/* Desktop/tablet grid */}
       <div
-        className={`${fitToContainer ? 'overflow-hidden' : 'erp-list-table-scroll pb-2'} ${activeResize ? 'cursor-col-resize select-none' : ''}`}
+        className={`hidden md:block ${fitToContainer ? 'overflow-hidden' : 'erp-list-table-scroll pb-2'} ${activeResize ? 'cursor-col-resize select-none' : ''}`}
         style={fitToContainer ? undefined : { scrollbarGutter: 'stable' }}
       >
         <table
@@ -857,7 +983,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
           Showing {showingFrom} to {showingTo} of {totalRows} rows
         </div>
 
-        <div className="flex items-center gap-2 justify-end">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={() => setPageIndex(0)}

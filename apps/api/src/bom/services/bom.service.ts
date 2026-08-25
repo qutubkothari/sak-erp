@@ -631,14 +631,17 @@ export class BomService {
     const stockStatus = []; // Track all items with stock info
 
     for (const expandedItem of expandedItems) {
-      // Check current stock from stock_entries table (same as Items page uses)
+      // Check current operational stock from inventory_stock. stock_entries is a
+      // receipt-lot/FIFO table and can legitimately miss opening/manual/SRV
+      // balances, so using it here causes BOM/PR shortages to disagree with the
+      // Stock Master and Stock Adjustment screens.
       const [stockRes, itemRes] = await Promise.all([
         this.supabase
-          .from('stock_entries')
-          .select('quantity, available_quantity, allocated_quantity')
+          .from('inventory_stock')
+          .select('quantity, available_quantity, reserved_quantity')
           .eq('tenant_id', tenantId)
           .eq('item_id', expandedItem.itemId)
-          .maybeSingle(),
+          .order('created_at', { ascending: true }),
         this.supabase
           .from('items')
           .select('code, name, reorder_level')
@@ -646,9 +649,15 @@ export class BomService {
           .single(),
       ]);
 
-      const totalQty = stockRes.data?.quantity ? parseFloat(stockRes.data.quantity.toString()) : 0;
-      const availableQty = stockRes.data?.available_quantity ? parseFloat(stockRes.data.available_quantity.toString()) : 0;
-      const reservedQty = stockRes.data?.allocated_quantity ? parseFloat(stockRes.data.allocated_quantity.toString()) : 0;
+      if (stockRes.error) {
+        console.error('[BOM PR] inventory_stock lookup error:', stockRes.error);
+        throw new BadRequestException(stockRes.error.message);
+      }
+
+      const stockRows = Array.isArray(stockRes.data) ? stockRes.data : [];
+      const totalQty = stockRows.reduce((sum: number, row: any) => sum + (parseFloat(String(row.quantity ?? '0')) || 0), 0);
+      const availableQty = stockRows.reduce((sum: number, row: any) => sum + (parseFloat(String(row.available_quantity ?? row.quantity ?? '0')) || 0), 0);
+      const reservedQty = stockRows.reduce((sum: number, row: any) => sum + (parseFloat(String(row.reserved_quantity ?? '0')) || 0), 0);
       const reorderLevel = itemRes.data?.reorder_level ? parseFloat(itemRes.data.reorder_level.toString()) : 0;
       
       // Calculate usable stock (available minus reorder level safety stock)

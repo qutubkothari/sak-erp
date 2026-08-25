@@ -6,7 +6,7 @@ const VERSION_POLL_MS = 60000;
 
 async function fetchBuildId(): Promise<string | null> {
   try {
-    const response = await fetch('/api/build-id', { cache: 'no-store' });
+    const response = await fetch('/build-id', { cache: 'no-store' });
     if (!response.ok) return null;
     const data = await response.json();
     const buildId = String(data?.buildId || '').trim();
@@ -62,8 +62,8 @@ export default function VersionRefreshNotice() {
   }
 
   return (
-    <div className="fixed left-1/2 top-4 z-[120] w-[min(960px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
-      <div className="flex items-center justify-between gap-3">
+    <div className="fixed left-1/2 top-3 z-[930] w-[min(960px,calc(100vw-1rem))] -translate-x-1/2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-lg sm:top-4 sm:px-4 sm:py-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
       <div>
         <div className="font-semibold">A newer version is available.</div>
         <div className="text-amber-800">Reload to get the latest fixes from the recent deployment.</div>

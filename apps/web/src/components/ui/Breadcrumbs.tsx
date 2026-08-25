@@ -23,7 +23,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   srv: 'SRV',
   production: 'Production',
   'job-orders': 'Job Orders',
-  'smart-items': 'Smart Items',
+  'smart-items': 'Create Job Order',
   bom: 'BOM',
   accounts: 'Accounts',
   payables: 'Payables',

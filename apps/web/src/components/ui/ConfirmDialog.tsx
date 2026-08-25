@@ -11,6 +11,7 @@ interface ConfirmDialogOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: Variant;
+  disableDismiss?: boolean;
 }
 
 interface ConfirmState extends ConfirmDialogOptions {
@@ -53,7 +54,7 @@ export function ConfirmDialogProvider() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!state) return;
-      if (e.key === 'Escape') close(false);
+      if (e.key === 'Escape' && !state.disableDismiss) close(false);
       if (e.key === 'Enter') close(true);
     };
     window.addEventListener('keydown', onKey);
@@ -81,7 +82,7 @@ export function ConfirmDialogProvider() {
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[2000] flex items-center justify-center p-4"
       aria-modal="true"
       role="dialog"
       aria-labelledby="confirm-title"
@@ -89,18 +90,20 @@ export function ConfirmDialogProvider() {
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={() => close(false)}
+        onClick={() => !state.disableDismiss && close(false)}
       />
 
       {/* Dialog */}
-      <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 border border-gray-100 transition-all duration-150 scale-100">
-        <button
-          onClick={() => close(false)}
-          className="absolute right-4 top-4 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-          aria-label="Close"
-        >
-          <X className="h-4 w-4" />
-        </button>
+      <div className="relative z-10 w-full max-w-xl bg-white rounded-2xl shadow-2xl p-6 border border-gray-100 transition-all duration-150 scale-100">
+        {!state.disableDismiss && (
+          <button
+            onClick={() => close(false)}
+            className="absolute right-4 top-4 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
 
         <div className="flex items-start gap-4">
           <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-50">
@@ -110,7 +113,7 @@ export function ConfirmDialogProvider() {
             <h3 id="confirm-title" className="text-lg font-semibold text-gray-900 leading-tight">
               {state.title}
             </h3>
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">{state.message}</p>
+            <p className="mt-3 whitespace-pre-line text-sm leading-6 text-gray-600">{state.message}</p>
           </div>
         </div>
 

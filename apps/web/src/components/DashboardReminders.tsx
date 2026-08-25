@@ -6,24 +6,36 @@ import { apiClient } from '../../lib/api-client';
 import { hasModulePermission } from '@/lib/rbac';
 import { useAuthStore } from '@/stores/auth.store';
 
-type PendingPO = {
+export type PendingPO = {
   id: string;
   po_number?: string;
   vendor?: { name?: string } | null;
+  created_at?: string;
+  order_date?: string;
+  total_amount?: number;
+  status?: string;
 };
 
-type PendingGRN = {
+export type PendingGRN = {
   id: string;
   grn_number?: string;
   purchase_order?: { po_number?: string } | null;
   vendor?: { name?: string } | null;
+  created_at?: string;
+  receipt_date?: string;
+  status?: string;
+};
+
+export type DashboardReminderQueue = {
+  pendingPOs: PendingPO[];
+  pendingQC: PendingGRN[];
 };
 
 export default function DashboardReminders() {
   const [pendingPOs, setPendingPOs] = useState<PendingPO[]>([]);
   const [pendingQC, setPendingQC] = useState<PendingGRN[]>([]);
-  const [dismissed, setDismissed] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [snoozed, setSnoozed] = useState(false);
 
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -59,8 +71,17 @@ export default function DashboardReminders() {
 
         if (cancelled) return;
 
-        setPendingPOs(poResult.status === 'fulfilled' && Array.isArray(poResult.value) ? poResult.value : []);
-        setPendingQC(qcResult.status === 'fulfilled' && Array.isArray(qcResult.value) ? qcResult.value : []);
+        const queue: DashboardReminderQueue = {
+          pendingPOs: poResult.status === 'fulfilled' && Array.isArray(poResult.value) ? poResult.value : [],
+          pendingQC: qcResult.status === 'fulfilled' && Array.isArray(qcResult.value) ? qcResult.value : [],
+        };
+        setPendingPOs(queue.pendingPOs);
+        setPendingQC(queue.pendingQC);
+
+        // Other dashboard views consume the exact same queue. This prevents a
+        // duplicate query or permission branch from showing conflicting counts.
+        (window as Window & { __sakPendingReminders?: DashboardReminderQueue }).__sakPendingReminders = queue;
+        window.dispatchEvent(new CustomEvent<DashboardReminderQueue>('sak:pending-reminders', { detail: queue }));
       } catch {
         if (!cancelled) {
           setPendingPOs([]);
@@ -78,45 +99,105 @@ export default function DashboardReminders() {
     };
   }, [canApprovePO, canUpdateQC, isReady]);
 
+  useEffect(() => {
+    const saved = localStorage.getItem('dashboardReminderPosition');
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (Number.isFinite(parsed?.x) && Number.isFinite(parsed?.y)) {
+        setPosition({ x: parsed.x, y: parsed.y });
+      }
+    } catch {
+      /* ignore bad local preference */
+    }
+  }, []);
+
   const handleDragStart = useCallback(
-    (e: React.MouseEvent) => {
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
       setIsDragging(true);
       setDragOffset({ x: e.clientX - position.x, y: e.clientY - position.y });
+      e.currentTarget.setPointerCapture?.(e.pointerId);
     },
     [position]
   );
 
   const handleDragMove = useCallback(
-    (e: MouseEvent) => {
+    (e: PointerEvent) => {
       if (!isDragging) return;
-      setPosition({ x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y });
+      const next = {
+        x: e.clientX - dragOffset.x,
+        y: e.clientY - dragOffset.y,
+      };
+      const maxX = Math.max(0, window.innerWidth - 96);
+      const minX = Math.min(0, -window.innerWidth + 96);
+      const maxY = Math.max(0, window.innerHeight - 128);
+      const minY = Math.min(0, -window.innerHeight + 128);
+      setPosition({
+        x: Math.min(maxX, Math.max(minX, next.x)),
+        y: Math.min(maxY, Math.max(minY, next.y)),
+      });
     },
     [isDragging, dragOffset]
   );
 
   const handleDragEnd = useCallback(() => {
     setIsDragging(false);
-  }, []);
+    localStorage.setItem('dashboardReminderPosition', JSON.stringify(position));
+  }, [position]);
 
   useEffect(() => {
     if (!isDragging) return;
-    window.addEventListener('mousemove', handleDragMove);
-    window.addEventListener('mouseup', handleDragEnd);
+    window.addEventListener('pointermove', handleDragMove);
+    window.addEventListener('pointerup', handleDragEnd);
+    window.addEventListener('pointercancel', handleDragEnd);
     return () => {
-      window.removeEventListener('mousemove', handleDragMove);
-      window.removeEventListener('mouseup', handleDragEnd);
+      window.removeEventListener('pointermove', handleDragMove);
+      window.removeEventListener('pointerup', handleDragEnd);
+      window.removeEventListener('pointercancel', handleDragEnd);
     };
   }, [isDragging, handleDragMove, handleDragEnd]);
 
   const total = pendingPOs.length + pendingQC.length;
 
-  if (dismissed || total === 0) return null;
+  const handleLater = () => {
+    // Hide immediately. Persisting the snooze is secondary: browsers can
+    // reject localStorage writes (privacy mode, quota, or policy), and that
+    // must never make "Later" fall back to the same behaviour as "Collapse".
+    setSnoozed(true);
+    const until = Date.now() + 30 * 60 * 1000;
+    try {
+      localStorage.setItem('dashboardRemindersSnoozedUntil', String(until));
+    } catch {
+      // The current session remains dismissed even when persistence is denied.
+    }
+  };
+
+  useEffect(() => {
+    const savedUntil = Number(localStorage.getItem('dashboardRemindersSnoozedUntil') || 0);
+    if (savedUntil <= Date.now()) {
+      localStorage.removeItem('dashboardRemindersSnoozedUntil');
+      setSnoozed(false);
+      return;
+    }
+
+    setSnoozed(true);
+    const timeoutId = window.setTimeout(() => {
+      localStorage.removeItem('dashboardRemindersSnoozedUntil');
+      setSnoozed(false);
+    }, Math.min(savedUntil - Date.now(), 2_147_483_647));
+
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
+  if (total === 0 || snoozed) return null;
 
   const dragBar = (
     <div
-      onMouseDown={handleDragStart}
+      onPointerDown={handleDragStart}
       onClick={(e) => e.stopPropagation()}
-      className="mr-2 cursor-grab rounded px-1 py-2 text-amber-700 hover:bg-amber-100 active:cursor-grabbing"
+      className="mr-2 touch-none cursor-grab rounded px-1 py-2 text-amber-700 hover:bg-amber-100 active:cursor-grabbing"
       title="Drag to move"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -135,7 +216,7 @@ export default function DashboardReminders() {
   if (!expanded) {
     return (
       <div
-        className="fixed bottom-5 right-5 z-50 w-[320px] max-w-[calc(100vw-2rem)] rounded-xl border border-amber-200 bg-white shadow-xl"
+        className="fixed bottom-[5.25rem] right-3 z-[880] w-[320px] max-w-[calc(100vw-1.5rem)] rounded-xl border border-amber-200 bg-white shadow-xl md:bottom-5 md:right-5 md:z-50"
         style={transformStyle}
       >
         <button
@@ -170,7 +251,7 @@ export default function DashboardReminders() {
 
   return (
     <div
-      className="fixed bottom-5 right-5 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-amber-200 bg-white shadow-2xl"
+      className="fixed bottom-[5.25rem] right-3 z-[880] w-[360px] max-w-[calc(100vw-1.5rem)] rounded-xl border border-amber-200 bg-white shadow-2xl md:bottom-5 md:right-5 md:z-50"
       style={transformStyle}
     >
       <div className="border-b border-amber-100 bg-amber-50 px-4 py-3">
@@ -189,7 +270,7 @@ export default function DashboardReminders() {
           </button>
           <button
             type="button"
-            onClick={() => setDismissed(true)}
+            onClick={handleLater}
             className="rounded px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
           >
             Later

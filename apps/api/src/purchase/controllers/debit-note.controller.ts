@@ -2,7 +2,8 @@ import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Req,
 import { DebitNoteService } from '../services/debit-note.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
-import { RequireApprove } from '../../auth/decorators/permissions.decorator';
+import { RequireApprove, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { hasSuperAdminBypass } from '../../auth/utils/permission-utils';
 
 @Controller('purchase/debit-notes')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -111,6 +112,21 @@ export class DebitNoteController {
     return this.debitNoteService.getGrnPayableDetail(req.user.tenantId, grnId);
   }
 
+  @Put('grn/:grnId/freight-adjustment')
+  @RequireUpdate('debit_notes')
+  async adjustInvoiceFreight(
+    @Req() req: any,
+    @Param('grnId') grnId: string,
+    @Body() body: { freight_amount: number; freight_gst_amount?: number; reason: string },
+  ) {
+    return this.debitNoteService.adjustInvoiceFreight(
+      req.user.tenantId,
+      grnId,
+      req.user.userId,
+      body,
+    );
+  }
+
   @Get('grn/:grnId/payment-entries')
   async getPaymentEntries(@Req() req: any, @Param('grnId') grnId: string) {
     return this.debitNoteService.getPaymentEntries(req.user.tenantId, grnId);
@@ -145,7 +161,9 @@ export class DebitNoteController {
   async approve(@Req() req: any, @Param('id') id: string) {
     const tenantId = req.user.tenantId;
     const userId = req.user.userId;
-    return this.debitNoteService.approve(tenantId, id, userId);
+    return this.debitNoteService.approve(tenantId, id, userId, {
+      overrideMakerChecker: hasSuperAdminBypass(req.user),
+    });
   }
 
   @Post(':id/send-email')
@@ -254,6 +272,7 @@ export class DebitNoteController {
   }
 
   @Post('grn/:grnId/payment')
+  @RequireUpdate('debit_notes')
   async recordPayment(
     @Req() req: any,
     @Param('grnId') grnId: string,
@@ -276,6 +295,7 @@ export class DebitNoteController {
 
   // Update an existing payment entry
   @Put('grn/:grnId/payment/:paymentId')
+  @RequireUpdate('debit_notes')
   async updatePayment(
     @Req() req: any,
     @Param('grnId') grnId: string,
@@ -305,6 +325,7 @@ export class DebitNoteController {
 
   // Delete a payment entry
   @Delete('grn/:grnId/payment/:paymentId')
+  @RequireUpdate('debit_notes')
   async deletePayment(
     @Req() req: any,
     @Param('grnId') grnId: string,
@@ -315,6 +336,7 @@ export class DebitNoteController {
   }
 
   @Post('grn/:grnId/payment/:paymentId/reverse')
+  @RequireUpdate('debit_notes')
   async reversePayment(
     @Req() req: any,
     @Param('grnId') grnId: string,

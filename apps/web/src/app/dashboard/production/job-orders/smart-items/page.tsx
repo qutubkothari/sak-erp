@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import SearchableSelect from '../../../../../components/SearchableSelect';
-import { ChevronDown, ChevronRight, Package, Layers } from 'lucide-react';
+import { confirmDialog } from '../../../../../components/ui/ConfirmDialog';
+import { ChevronDown, ChevronRight, ClipboardList, Layers, Package, RefreshCw, Search } from 'lucide-react';
 
 type FinishedItem = {
   id: string;
@@ -186,12 +187,17 @@ function SmartJobOrdersItemsPageContent() {
   const router = useRouter();
   const currentUser = readStoredUser();
   const canCreate = hasModulePermission(currentUser, 'Production', 'create');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (!canCreate) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (mounted && !canCreate) {
       router.replace('/dashboard/production/job-orders');
     }
-  }, [canCreate, router]);
+  }, [canCreate, mounted, router]);
 
   const searchParams = useSearchParams();
 
@@ -314,6 +320,7 @@ function SmartJobOrdersItemsPageContent() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0);
   const [preview, setPreview] = useState<SmartPreview | null>(() => {
     if (typeof window === 'undefined') return null;
     if (!shouldAutoLoadFromCache) return null;
@@ -424,12 +431,32 @@ function SmartJobOrdersItemsPageContent() {
 
     let cancelled = false;
     let done = false;
+    let pollFailures = 0;
+    const startedAt = Date.now();
+    const maxPollFailures = 8;
+    const maxCreateWaitMs = 10 * 60 * 1000;
 
     const poll = async () => {
       if (cancelled || done) return;
+      if (Date.now() - startedAt > maxCreateWaitMs) {
+        done = true;
+        setShowCreateProgress(false);
+        setCreating(false);
+        setCreateJobId('');
+        void confirmDialog({
+          title: 'Smart Job Order Still Running',
+          message: 'The creation process is taking longer than expected. Please refresh and check View Job Orders before trying again, to avoid creating a duplicate.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'warning',
+        });
+        return;
+      }
+
       try {
         const status = await apiClient.get<SmartCreateAsyncStatus>(`/job-orders/smart/create-async/${createJobId}`);
         if (cancelled) return;
+        pollFailures = 0;
 
         setCreateJobStatus(status);
 
@@ -464,17 +491,39 @@ function SmartJobOrdersItemsPageContent() {
           setShowCreateProgress(false);
           setCreating(false);
           setCreateJobId('');
-          alert(`❌ Failed to create Smart Job Order: ${status.error || 'Unknown error'}`);
+          void confirmDialog({
+            title: 'Could Not Create Smart Job Order',
+            message: status.error || 'Unknown error',
+            confirmLabel: 'OK',
+            cancelLabel: 'Close',
+            variant: 'warning',
+          });
         }
       } catch (err: any) {
-        // If polling fails transiently, keep trying.
+        pollFailures += 1;
+        if (pollFailures >= maxPollFailures) {
+          done = true;
+          setShowCreateProgress(false);
+          setCreating(false);
+          setCreateJobId('');
+          void confirmDialog({
+            title: 'Could Not Track Smart Job Order',
+            message: 'The server did not return job progress after multiple attempts. Please refresh and check View Job Orders before trying again, to avoid creating a duplicate.',
+            confirmLabel: 'OK',
+            cancelLabel: 'Close',
+            variant: 'warning',
+          });
+          return;
+        }
+
+        // If polling fails transiently, keep trying but tell the user what is happening.
         setCreateJobStatus((prev) =>
           prev
             ? {
                 ...prev,
                 progress: {
                   ...prev.progress,
-                  message: prev.progress?.message || 'Working…',
+                  message: `Still working... reconnecting to progress (${pollFailures}/${maxPollFailures})`,
                 },
               }
             : prev,
@@ -558,6 +607,42 @@ function SmartJobOrdersItemsPageContent() {
     }
     return map;
   }, [allItems]);
+
+  useEffect(() => {
+    if (!preview) return;
+
+    setAllItems((prev) => {
+      const byId = new Map(prev.map((item) => [String(item.id), item]));
+      let changed = false;
+
+      const addFallbackItem = (item?: Partial<FinishedItem> | null) => {
+        const id = String(item?.id || '').trim();
+        const code = String(item?.code || '').trim();
+        const name = String(item?.name || '').trim();
+        if (!id || !code || !name || byId.has(id)) return;
+
+        byId.set(id, {
+          id,
+          code,
+          name,
+          category: item?.category ?? null,
+          product_category: item?.product_category ?? null,
+        });
+        changed = true;
+      };
+
+      addFallbackItem(preview.finishedItem);
+      for (const node of preview.nodes || []) {
+        addFallbackItem({
+          id: node.itemId,
+          code: node.itemCode,
+          name: node.itemName,
+        });
+      }
+
+      return changed ? Array.from(byId.values()) : prev;
+    });
+  }, [preview]);
 
   const selectedSalesOrderItem = useMemo(
     () => salesOrderItems.find((row) => row.id === mappedSalesOrderItemId) || null,
@@ -743,6 +828,24 @@ function SmartJobOrdersItemsPageContent() {
 
   const nodeKey = (node: SmartExplosionNode) => `${node.bomId}:${node.itemId}`;
 
+  const getBomLineDisplay = (node: SmartExplosionNode, selectedItemId?: string) => {
+    const selected = selectedItemId ? allItemsById.get(String(selectedItemId)) : undefined;
+    const fallback = node.itemId ? allItemsById.get(String(node.itemId)) : undefined;
+    const code = selected?.code || fallback?.code || node.itemCode || '';
+    const name = selected?.name || fallback?.name || node.itemName || '';
+    return `${code}${code && name ? ' - ' : ''}${name}`.trim() || 'Item not resolved';
+  };
+
+  const getBomLineMeta = (node: SmartExplosionNode, selectedItemId?: string) => {
+    const selected = selectedItemId ? allItemsById.get(String(selectedItemId)) : undefined;
+    const fallback = node.itemId ? allItemsById.get(String(node.itemId)) : undefined;
+    const code = selected?.code || fallback?.code || node.itemCode || 'Unresolved item';
+    const name = selected?.name || fallback?.name || node.itemName || 'Item not resolved';
+    const category = selected?.product_category || selected?.category || fallback?.product_category || fallback?.category || '';
+    const substituted = Boolean(selectedItemId && String(selectedItemId) !== String(node.itemId || ''));
+    return { code, name, category, substituted };
+  };
+
   const effectiveSelectedItemId = (node: SmartExplosionNode): string => {
     const key = nodeKey(node);
     return String(selectedItemByNodeKey[key] || node.itemId || '').trim();
@@ -923,36 +1026,61 @@ function SmartJobOrdersItemsPageContent() {
     setPreviewError('');
     setLoadingPreview(true);
     setLoadingProgress(0);
-    setLoadingMessage('🔍 Loading BOM...');
+    setLoadingElapsedSeconds(0);
+    setLoadingMessage('Loading BOM...');
+    let progressInterval: ReturnType<typeof setInterval> | null = null;
+    let elapsedInterval: ReturnType<typeof setInterval> | null = null;
 
     try {
-      const progressInterval = setInterval(() => {
+      elapsedInterval = setInterval(() => {
+        setLoadingElapsedSeconds((prev) => prev + 1);
+      }, 1000);
+
+      progressInterval = setInterval(() => {
         setLoadingProgress((prev) => {
           if (prev < 25) {
-            setLoadingMessage('🔍 Loading BOM...');
+            setLoadingMessage('Loading BOM...');
             return prev + 2;
           } else if (prev < 60) {
-            setLoadingMessage('💥 Expanding BOM structure...');
+            setLoadingMessage('Expanding BOM structure...');
             return prev + 2;
           } else if (prev < 90) {
-            setLoadingMessage('📦 Extracting items...');
+            setLoadingMessage('Extracting items...');
             return prev + 1;
+          } else if (prev < 96) {
+            setLoadingMessage('Finalizing multi-level BOM...');
+            return prev + 0.25;
           }
           return prev;
         });
       }, 200);
 
-      const data = (await apiClient.get('/job-orders/smart/preview', {
-        itemId,
-        quantity,
-        salesOrderId: mappedSalesOrderId || undefined,
-        salesOrderItemId: mappedSalesOrderItemId || undefined,
-        includeAllComponents: true,
-      })) as SmartPreview;
+      const previewRequest = apiClient.get('/job-orders/smart/preview', {
+          itemId,
+          quantity,
+          salesOrderId: mappedSalesOrderId || undefined,
+          salesOrderItemId: mappedSalesOrderItemId || undefined,
+          includeAllComponents: true,
+        }) as Promise<SmartPreview>;
 
-      clearInterval(progressInterval);
+      const timeoutRequest = new Promise<SmartPreview>((_, reject) => {
+        window.setTimeout(() => {
+          reject(new Error('BOM expansion took more than 90 seconds. Please check for circular BOM links, duplicate sub-assemblies, or unusually large BOM depth.'));
+        }, 90000);
+      });
+
+      const data = await Promise.race([previewRequest, timeoutRequest]);
+
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+      }
+      if (elapsedInterval) {
+        clearInterval(elapsedInterval);
+        elapsedInterval = null;
+      }
       setLoadingProgress(100);
-      setLoadingMessage('✅ Preview ready!');
+      setLoadingMessage('Success: Preview ready!');
 
       setTimeout(() => {
         setPreview(data);
@@ -963,7 +1091,15 @@ function SmartJobOrdersItemsPageContent() {
       setPreviewError(err?.message || 'Failed to load BOM preview');
       setLoadingPreview(false);
       setLoadingProgress(0);
+      setLoadingElapsedSeconds(0);
       setLoadingMessage('');
+    } finally {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+      if (elapsedInterval) {
+        clearInterval(elapsedInterval);
+      }
     }
   };
 
@@ -1090,22 +1226,9 @@ function SmartJobOrdersItemsPageContent() {
     };
   };
 
-  const navigateAfterCreate = (result: SmartCreateResponse | null, shouldShowPurchaseRequisitionNotice: boolean) => {
-    const linkedPr = getLinkedPurchaseRequisition(result);
-
-    setTimeout(() => {
-      if (shouldShowPurchaseRequisitionNotice && linkedPr.hasLinkedPr) {
-        alert(
-          `✅ PR created and JO Created!\n\nPurchase Requisition: ${
-            linkedPr.prNumber || 'Created'
-          }\nJob Order: Created successfully`,
-        );
-      } else {
-        alert('✅ PR created and JO Created successfully!');
-      }
-
-      router.push('/dashboard/production/job-orders');
-    }, 1500);
+  const navigateAfterCreate = (_result: SmartCreateResponse | null, _shouldShowPurchaseRequisitionNotice: boolean) => {
+    // The creation summary modal is now the hand-off point. Do not show browser
+    // alerts or auto-redirect; let the user choose Open SIV / Open PR / Job Orders.
   };
 
   const handlePurchaseShortageItems = async () => {
@@ -1124,7 +1247,13 @@ function SmartJobOrdersItemsPageContent() {
 
   const handleCreate = async () => {
     if (!canPreview) {
-      alert('Please select a Finished Good item and quantity');
+      await confirmDialog({
+        title: 'Missing Job Order Details',
+        message: 'Please select a Finished Good item and quantity.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -1204,10 +1333,22 @@ function SmartJobOrdersItemsPageContent() {
           
           navigateAfterCreate(result, hasShortages);
         } catch (e2: any) {
-          alert(`❌ Failed to create Smart Job Order: ${e2?.message || msg}`);
+          await confirmDialog({
+            title: 'Could Not Create Smart Job Order',
+            message: e2?.message || msg,
+            confirmLabel: 'OK',
+            cancelLabel: 'Close',
+            variant: 'warning',
+          });
         }
       } else {
-        alert(`❌ Failed to create Smart Job Order: ${msg}`);
+        await confirmDialog({
+          title: 'Could Not Create Smart Job Order',
+          message: msg,
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'warning',
+        });
       }
     } finally {
       // creating stays true while async job runs; polling will reset it.
@@ -1283,10 +1424,16 @@ function SmartJobOrdersItemsPageContent() {
   };
 
   /** Open quantity prompt for all ready sub-assemblies */
-  const openBatchSAPrompt = () => {
+  const openBatchSAPrompt = async () => {
     const ready = getReadySubAssemblies();
     if (!ready.length) {
-      alert('No sub-assemblies are ready (all materials in stock).');
+      await confirmDialog({
+        title: 'No Ready Sub-Assemblies',
+        message: 'No sub-assemblies are ready. Their direct materials are not fully available in stock.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'info',
+      });
       return;
     }
     setSubAssemblyQtyModal({
@@ -1307,13 +1454,19 @@ function SmartJobOrdersItemsPageContent() {
   };
 
   /** Open quantity prompt for selected sub-assemblies */
-  const openSelectedSAPrompt = () => {
+  const openSelectedSAPrompt = async () => {
     if (!preview?.subAssembliesToMake?.length) return;
     const selected = preview.subAssembliesToMake.filter((sa) => selectedSABatchKeys.has(getSAKey(sa)));
     const selectedReady = selected.filter((sa) => isSubAssemblyReady(sa.bomId));
 
     if (!selectedReady.length) {
-      alert('Select at least one ready sub-assembly to create JO.');
+      await confirmDialog({
+        title: 'Select Sub-Assembly',
+        message: 'Select at least one ready sub-assembly to create a Job Order.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -1367,7 +1520,7 @@ function SmartJobOrdersItemsPageContent() {
 
     const successCount = results.filter((r) => r.success).length;
     if (successCount > 0 && results.every((r) => r.success)) {
-      // All succeeded — navigate after brief delay
+      // All succeeded - navigate after brief delay
       setTimeout(() => {
         router.push('/dashboard/production/job-orders');
       }, 2000);
@@ -1587,7 +1740,7 @@ function SmartJobOrdersItemsPageContent() {
             <span className="ml-auto flex items-center gap-4 text-sm">
               <span className="text-amber-700">
                 {directItems.length} item{directItems.length !== 1 ? 's' : ''}
-                {childBoms.length ? ` • ${childBoms.length} sub` : ''}
+                {childBoms.length ? ` - ${childBoms.length} sub` : ''}
               </span>
               {hasShortage && (
                 <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">
@@ -1636,10 +1789,11 @@ function SmartJobOrdersItemsPageContent() {
                       const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue, selectedItemId);
                       const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                       const available = stockState?.available ?? node.availableQuantity;
-                      const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
+                      const inStockLabel = stockState?.loading ? '...' : formatQuantity(available);
                       const requiredQty = Number(node.requiredQuantity || 0);
                       const short = Math.max(0, requiredQty - Number(available || 0));
                       const serial = node.sequence ?? idx + 1;
+                      const lineMeta = getBomLineMeta(node, selectedItemId);
 
                       return (
                         <tr key={`${node.bomId}:${node.itemId}:${idx}`} className={`${
@@ -1648,7 +1802,25 @@ function SmartJobOrdersItemsPageContent() {
                           <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                           <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
                             <div className="flex flex-col gap-2">
-                              <Package size={14} className="text-gray-400 flex-shrink-0" />
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Package size={14} className="text-amber-600 flex-shrink-0" />
+                                <span className="font-mono text-xs font-semibold text-[#8B4513] bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                                  {lineMeta.code}
+                                </span>
+                                {lineMeta.category ? (
+                                  <span className="text-[11px] uppercase tracking-wide text-gray-600 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
+                                    {lineMeta.category}
+                                  </span>
+                                ) : null}
+                                {lineMeta.substituted ? (
+                                  <span className="text-[11px] uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                                    Substituted
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="text-sm font-semibold text-gray-900 leading-snug">
+                                {lineMeta.name}
+                              </div>
                               <div className="min-w-[360px] w-full">
                                 <SearchableSelect
                                   options={itemOptions}
@@ -1662,7 +1834,7 @@ function SmartJobOrdersItemsPageContent() {
                                     }
                                     await fetchItemStockAvailable(next);
                                   }}
-                                  placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
+                                  placeholder={itemsLoading ? 'Loading items...' : 'Select item...'}
                                   disabled={itemsLoading || itemOptions.length === 0}
                                 />
                               </div>
@@ -1703,7 +1875,7 @@ function SmartJobOrdersItemsPageContent() {
                               short > 0 ? 'text-red-600' : 'text-green-600'
                             }`}
                           >
-                            {short > 0 ? formatQuantity(short) : '✓'}
+                            {short > 0 ? formatQuantity(short) : 'OK'}
                           </td>
                         </tr>
                       );
@@ -1756,10 +1928,11 @@ function SmartJobOrdersItemsPageContent() {
                       const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue, selectedItemId);
                       const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                       const available = stockState?.available ?? node.availableQuantity;
-                      const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
+                      const inStockLabel = stockState?.loading ? '...' : formatQuantity(available);
                       const requiredQty = Number(node.requiredQuantity || 0);
                       const short = Math.max(0, requiredQty - Number(available || 0));
                       const serial = node.sequence ?? idx + 1;
+                      const lineMeta = getBomLineMeta(node, selectedItemId);
 
                       return (
                         <tr key={`${node.bomId}:${node.itemId}:${idx}`} className={`${
@@ -1768,7 +1941,25 @@ function SmartJobOrdersItemsPageContent() {
                           <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                           <td className="px-4 py-2" style={{ paddingLeft: `${40 + lvl * 24}px` }}>
                             <div className="flex flex-col gap-2">
-                              <Package size={14} className="text-gray-400 flex-shrink-0" />
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Package size={14} className="text-amber-600 flex-shrink-0" />
+                                <span className="font-mono text-xs font-semibold text-[#8B4513] bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                                  {lineMeta.code}
+                                </span>
+                                {lineMeta.category ? (
+                                  <span className="text-[11px] uppercase tracking-wide text-gray-600 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
+                                    {lineMeta.category}
+                                  </span>
+                                ) : null}
+                                {lineMeta.substituted ? (
+                                  <span className="text-[11px] uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                                    Substituted
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="text-sm font-semibold text-gray-900 leading-snug">
+                                {lineMeta.name}
+                              </div>
                               <div className="min-w-[360px] w-full">
                                 <SearchableSelect
                                   options={itemOptions}
@@ -1782,7 +1973,7 @@ function SmartJobOrdersItemsPageContent() {
                                     }
                                     await fetchItemStockAvailable(next);
                                   }}
-                                  placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
+                                  placeholder={itemsLoading ? 'Loading items...' : 'Select item...'}
                                   disabled={itemsLoading || itemOptions.length === 0}
                                 />
                               </div>
@@ -1823,7 +2014,7 @@ function SmartJobOrdersItemsPageContent() {
                               short > 0 ? 'text-red-600' : 'text-green-600'
                             }`}
                           >
-                            {short > 0 ? formatQuantity(short) : '✓'}
+                            {short > 0 ? formatQuantity(short) : 'OK'}
                           </td>
                         </tr>
                       );
@@ -1882,10 +2073,11 @@ function SmartJobOrdersItemsPageContent() {
                 const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue, selectedItemId);
                 const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                 const available = stockState?.available ?? node.availableQuantity;
-                const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
+                const inStockLabel = stockState?.loading ? '...' : formatQuantity(available);
                 const requiredQty = Number(node.requiredQuantity || 0);
                 const short = Math.max(0, requiredQty - Number(available || 0));
                 const serial = node.sequence ?? idx + 1;
+                const lineMeta = getBomLineMeta(node, selectedItemId);
 
                 return (
                   <tr
@@ -1895,7 +2087,25 @@ function SmartJobOrdersItemsPageContent() {
                     <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                     <td className="px-4 py-2">
                       <div className="flex flex-col gap-2">
-                        <Package size={14} className="text-gray-400 flex-shrink-0" />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Package size={14} className="text-amber-600 flex-shrink-0" />
+                          <span className="font-mono text-xs font-semibold text-[#8B4513] bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                            {lineMeta.code}
+                          </span>
+                          {lineMeta.category ? (
+                            <span className="text-[11px] uppercase tracking-wide text-gray-600 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
+                              {lineMeta.category}
+                            </span>
+                          ) : null}
+                          {lineMeta.substituted ? (
+                            <span className="text-[11px] uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                              Substituted
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900 leading-snug">
+                          {lineMeta.name}
+                        </div>
                         <div className="min-w-[360px] w-full">
                           <SearchableSelect
                             options={itemOptions}
@@ -1909,7 +2119,7 @@ function SmartJobOrdersItemsPageContent() {
                               }
                               await fetchItemStockAvailable(next);
                             }}
-                            placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
+                            placeholder={itemsLoading ? 'Loading items...' : 'Select item...'}
                             disabled={itemsLoading || itemOptions.length === 0}
                           />
                         </div>
@@ -1949,7 +2159,7 @@ function SmartJobOrdersItemsPageContent() {
                         short > 0 ? 'text-red-600' : 'text-green-600'
                       }`}
                     >
-                      {short > 0 ? formatQuantity(short) : '✓'}
+                      {short > 0 ? formatQuantity(short) : 'OK'}
                     </td>
                   </tr>
                 );
@@ -1991,10 +2201,11 @@ function SmartJobOrdersItemsPageContent() {
                 const itemOptions = getFilteredItemOptions(String(node.itemId || ''), categoryValue, selectedItemId);
                 const stockState = selectedItemId ? stockByItemId[selectedItemId] : undefined;
                 const available = stockState?.available ?? node.availableQuantity;
-                const inStockLabel = stockState?.loading ? '…' : formatQuantity(available);
+                const inStockLabel = stockState?.loading ? '...' : formatQuantity(available);
                 const requiredQty = Number(node.requiredQuantity || 0);
                 const short = Math.max(0, requiredQty - Number(available || 0));
                 const serial = node.sequence ?? idx + 1;
+                const lineMeta = getBomLineMeta(node, selectedItemId);
 
                 return (
                   <tr
@@ -2004,7 +2215,25 @@ function SmartJobOrdersItemsPageContent() {
                     <td className="px-4 py-2 text-sm text-gray-600">{serial}</td>
                     <td className="px-4 py-2">
                       <div className="flex flex-col gap-2">
-                        <Package size={14} className="text-gray-400 flex-shrink-0" />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Package size={14} className="text-amber-600 flex-shrink-0" />
+                          <span className="font-mono text-xs font-semibold text-[#8B4513] bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                            {lineMeta.code}
+                          </span>
+                          {lineMeta.category ? (
+                            <span className="text-[11px] uppercase tracking-wide text-gray-600 bg-gray-100 border border-gray-200 rounded px-2 py-0.5">
+                              {lineMeta.category}
+                            </span>
+                          ) : null}
+                          {lineMeta.substituted ? (
+                            <span className="text-[11px] uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                              Substituted
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900 leading-snug">
+                          {lineMeta.name}
+                        </div>
                         <div className="min-w-[360px] w-full">
                           <SearchableSelect
                             options={itemOptions}
@@ -2018,7 +2247,7 @@ function SmartJobOrdersItemsPageContent() {
                               }
                               await fetchItemStockAvailable(next);
                             }}
-                            placeholder={itemsLoading ? 'Loading items…' : 'Select item…'}
+                            placeholder={itemsLoading ? 'Loading items...' : 'Select item...'}
                             disabled={itemsLoading || itemOptions.length === 0}
                           />
                         </div>
@@ -2058,7 +2287,7 @@ function SmartJobOrdersItemsPageContent() {
                         short > 0 ? 'text-red-600' : 'text-green-600'
                       }`}
                     >
-                      {short > 0 ? formatQuantity(short) : '✓'}
+                      {short > 0 ? formatQuantity(short) : 'OK'}
                     </td>
                   </tr>
                 );
@@ -2070,21 +2299,33 @@ function SmartJobOrdersItemsPageContent() {
     );
   };
 
-  if (!canCreate) return null;
+  if (!mounted || !canCreate) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4] p-6">
       <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-start gap-6 mb-8">
+        <div className="mb-6 rounded-xl border border-[#E8DCC4] bg-white shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-[#E8DCC4] px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-[#36454F]">Create Job Order</h1>
-            <p className="text-[#6F4E37]">{headerSubtitle}</p>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[#D8C8AA] bg-[#FFF8E8] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
+              <ClipboardList className="h-3.5 w-3.5" />
+              Production Planning
+            </div>
+            <h1 className="text-3xl font-bold text-[#2F241D]">Create Job Order</h1>
+            <p className="mt-1 max-w-3xl text-sm text-[#6F4E37]">{headerSubtitle}</p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => {
-                if (confirm('Clear all cached data? You will need to reload the BOM.')) {
+              onClick={async () => {
+                const shouldClear = await confirmDialog({
+                  title: 'Clear Planning Workspace',
+                  message: 'Clear this planning workspace? You will need to reload the BOM.',
+                  confirmLabel: 'Clear',
+                  cancelLabel: 'Cancel',
+                  variant: 'warning',
+                });
+                if (shouldClear) {
                   try {
                     localStorage.removeItem(CACHE_KEY);
                     setPreview(null);
@@ -2099,25 +2340,50 @@ function SmartJobOrdersItemsPageContent() {
                   }
                 }
               }}
-              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100"
-              title="Clear cached data"
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#D8C8AA] bg-white px-4 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
+              title="Clear cached planning data"
             >
-              Clear Cache
+              <RefreshCw className="h-4 w-4" />
+              Clear
             </button>
             <button
               onClick={fetchPreview}
               disabled={!canPreview || loadingPreview}
-              className="px-4 py-2 rounded-lg border border-[#E8DCC4] text-[#6F4E37] hover:bg-[#E8DCC4] disabled:opacity-50"
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#8B6F47] px-5 text-sm font-semibold text-white shadow-sm hover:bg-[#6F4E37] disabled:cursor-not-allowed disabled:bg-gray-400"
             >
-              {loadingPreview ? 'Loading…' : 'Load BOM'}
+              <Search className="h-4 w-4" />
+              {loadingPreview ? 'Loading...' : preview ? 'Reload BOM' : 'Load BOM'}
             </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6 border border-[#E8DCC4]">
+          <div className="grid gap-px bg-[#E8DCC4] text-sm md:grid-cols-5">
+            {[
+              ['1', 'Demand', 'Select FG/sub-assembly and production quantity.'],
+              ['2', 'BOM check', 'Explode multi-level BOM and verify stock.'],
+              ['3', 'Procure gap', 'Create linked PR only for shortage material.'],
+              ['4', 'Store issue', 'Stores issues available material through SIV.'],
+              ['5', 'Receipt/QC', 'SRV receives output; QC releases stock.'],
+            ].map(([step, title, helper]) => (
+              <div key={step} className="bg-[#FFFDF8] p-3">
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#8B6F47] text-xs font-bold text-white">{step}</span>
+                  <span className="font-bold text-[#4A3426]">{title}</span>
+                </div>
+                <p className="text-xs text-[#7A6555]">{helper}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
+          <div className="mb-4 flex flex-col gap-1">
+            <h2 className="text-lg font-bold text-[#2F241D]">Planning Input</h2>
+            <p className="text-sm text-[#7A6555]">Sales Order mapping is optional. Load BOM to calculate available stock, shortage PR needs, and SIV readiness.</p>
+          </div>
           <div className="grid grid-cols-12 gap-4 items-end mb-4">
-            <div className="col-span-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Map Sales Order (Optional)</label>
+            <div className="col-span-12 lg:col-span-6">
+              <label className="block text-xs font-bold uppercase tracking-wide text-[#5E4635] mb-2">Map Sales Order (Optional)</label>
               <select
                 value={mappedSalesOrderId}
                 onChange={(e) => {
@@ -2125,7 +2391,7 @@ function SmartJobOrdersItemsPageContent() {
                   setMappedSalesOrderItemId('');
                   setPreview(null);
                 }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                className="min-h-11 w-full rounded-lg border border-[#D8C8AA] bg-white px-3 py-2 text-sm text-[#2F241D] focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/20"
                 disabled={loadingOpenSalesOrders}
               >
                 <option value="">No mapping</option>
@@ -2137,15 +2403,15 @@ function SmartJobOrdersItemsPageContent() {
               </select>
             </div>
 
-            <div className="col-span-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Sales Order Item (Optional)</label>
+            <div className="col-span-12 lg:col-span-6">
+              <label className="block text-xs font-bold uppercase tracking-wide text-[#5E4635] mb-2">Sales Order Item (Optional)</label>
               <select
                 value={mappedSalesOrderItemId}
                 onChange={(e) => {
                   setMappedSalesOrderItemId(e.target.value);
                   setPreview(null);
                 }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                className="min-h-11 w-full rounded-lg border border-[#D8C8AA] bg-white px-3 py-2 text-sm text-[#2F241D] focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/20"
                 disabled={!mappedSalesOrderId || loadingSalesOrderItems}
               >
                 <option value="">No specific item</option>
@@ -2159,8 +2425,8 @@ function SmartJobOrdersItemsPageContent() {
           </div>
 
           <div className="grid grid-cols-12 gap-4 items-end">
-            <div className="col-span-10">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Finished Goods Item *</label>
+            <div className="col-span-12 lg:col-span-9">
+              <label className="block text-xs font-bold uppercase tracking-wide text-[#5E4635] mb-2">Finished Goods / Sub-Assembly *</label>
               <SearchableSelect
                 options={finishedGoodsOptions}
                 value={itemId}
@@ -2168,7 +2434,7 @@ function SmartJobOrdersItemsPageContent() {
                   setItemId(value);
                   setPreview(null);
                 }}
-                placeholder={itemsLoading ? 'Loading items…' : 'Select finished good item…'}
+                placeholder={itemsLoading ? 'Loading items...' : 'Search item code, name, or category...'}
                 truncateInput={false}
                 dropdownClassName="min-w-[32rem] max-w-[90vw]"
                 required
@@ -2176,8 +2442,8 @@ function SmartJobOrdersItemsPageContent() {
               />
               {itemsError ? <div className="mt-2 text-xs text-red-700">{itemsError}</div> : null}
             </div>
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
+            <div className="col-span-12 sm:col-span-6 lg:col-span-3">
+              <label className="block text-xs font-bold uppercase tracking-wide text-[#5E4635] mb-2">Quantity *</label>
               <input
                 type="number"
                 value={quantity}
@@ -2186,22 +2452,36 @@ function SmartJobOrdersItemsPageContent() {
                   setQuantity(Number(e.target.value || 0));
                   setPreview(null);
                 }}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                className="min-h-11 w-full rounded-lg border border-[#D8C8AA] px-4 py-2 text-sm text-[#2F241D] focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/20"
               />
             </div>
           </div>
 
           {selectedSalesOrderItem ? (
             <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-              Reserved for selected SO item: {formatQuantity(selectedSalesOrderItem.blockedQty)} | Remaining open qty: {formatQuantity(selectedSalesOrderItem.remainingQty)}
+              <span className="font-semibold">SO reservation:</span> Blocked {formatQuantity(selectedSalesOrderItem.blockedQty)} · Open {formatQuantity(selectedSalesOrderItem.remainingQty)}
             </div>
           ) : null}
 
           {preview ? (
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Can make now: {formatQuantity(preview.makeNowQuantity || 0)} / {formatQuantity(preview.quantity)}
-              {' · '}
-              Shortage to target: {formatQuantity(preview.shortageToTargetQuantity || 0)}
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div className="text-xs font-bold uppercase tracking-wide text-emerald-800">Can Make Now</div>
+                <div className="mt-1 text-2xl font-bold text-emerald-900">{formatQuantity(preview.makeNowQuantity || 0)}</div>
+                <div className="text-xs text-emerald-700">out of {formatQuantity(preview.quantity)} requested</div>
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <div className="text-xs font-bold uppercase tracking-wide text-amber-800">Shortage to Target</div>
+                <div className="mt-1 text-2xl font-bold text-amber-900">{formatQuantity(preview.shortageToTargetQuantity || 0)}</div>
+                <div className="text-xs text-amber-700">auto PR planned when needed</div>
+              </div>
+              <div className="rounded-lg border border-[#E8DCC4] bg-[#FFFDF8] px-4 py-3">
+                <div className="text-xs font-bold uppercase tracking-wide text-[#7A6555]">BOM Status</div>
+                <div className="mt-1 text-lg font-bold text-[#4A3426]">
+                  {preview.topBom?.is_active ? 'Active BOM' : 'Inactive BOM'}
+                </div>
+                <div className="text-xs text-[#7A6555]">v{preview.topBom?.version || '-'}</div>
+              </div>
             </div>
           ) : null}
         </div>
@@ -2215,7 +2495,9 @@ function SmartJobOrdersItemsPageContent() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-lg font-semibold text-[#36454F]">{loadingMessage}</span>
-                  <span className="text-sm font-medium text-[#6F4E37]">{loadingProgress}%</span>
+                  <span className="text-sm font-medium text-[#6F4E37]">
+                    {Math.min(99, Math.floor(loadingProgress))}% · {loadingElapsedSeconds}s
+                  </span>
                 </div>
                 <div className="w-full bg-[#E8DCC4] rounded-full h-3 overflow-hidden">
                   <div
@@ -2237,29 +2519,40 @@ function SmartJobOrdersItemsPageContent() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  Processing BOM expansion...
+                  {loadingElapsedSeconds > 20
+                    ? 'Large BOM detected. Still calculating shortages, stock and sub-assembly demand...'
+                    : 'Processing BOM expansion...'}
                 </div>
+                {loadingElapsedSeconds > 45 ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    This is taking longer than usual. If it fails, review duplicate/circular BOM links or very deep sub-assemblies.
+                  </div>
+                ) : null}
               </div>
             </div>
           )}
 
           {preview ? (
             <>
-              <div className="mt-6 p-4 rounded-lg border border-amber-200 bg-amber-50">
-                <div className="flex flex-wrap gap-6 items-center">
+              <div className="mt-6 rounded-xl border border-[#E8DCC4] bg-white shadow-sm">
+                <div className="border-b border-[#E8DCC4] bg-[#FFF8E8] px-5 py-3">
+                  <h2 className="text-base font-bold text-[#2F241D]">BOM Summary</h2>
+                  <p className="text-xs text-[#7A6555]">Selected output, requested quantity, and active routing source.</p>
+                </div>
+                <div className="grid gap-4 p-5 md:grid-cols-3">
                   <div>
-                    <div className="text-xs text-amber-800">Finished Goods</div>
-                    <div className="font-semibold text-amber-900">
+                    <div className="text-xs font-bold uppercase tracking-wide text-[#7A6555]">Output Item</div>
+                    <div className="mt-1 font-semibold text-[#2F241D]">
                       {preview.finishedItem.code} - {preview.finishedItem.name}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-amber-800">Quantity</div>
-                    <div className="font-semibold text-amber-900">{preview.quantity}</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-[#7A6555]">Job Quantity</div>
+                    <div className="mt-1 text-xl font-bold text-[#2F241D]">{preview.quantity}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-amber-800">BOM</div>
-                    <div className="font-semibold text-amber-900">
+                    <div className="text-xs font-bold uppercase tracking-wide text-[#7A6555]">BOM Version</div>
+                    <div className="mt-1 font-semibold text-[#2F241D]">
                       v{preview.topBom.version} {preview.topBom.is_active ? '(Active)' : ''}
                     </div>
                   </div>
@@ -2268,8 +2561,11 @@ function SmartJobOrdersItemsPageContent() {
 
               {preview.subAssembliesToMake?.length ? (
                 <div className="mt-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">Sub-assemblies to Auto-Make</h3>
+                <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h3 className="text-lg font-bold text-[#2F241D]">Sub-assemblies to Auto-Make</h3>
+                      <p className="text-sm text-[#7A6555]">Ready sub-assemblies can be converted into child job orders in bulk.</p>
+                    </div>
                     {(() => {
                       const readyCount = getReadySubAssemblies().length;
                       const selectedCount = preview.subAssembliesToMake.filter((sa) => selectedSABatchKeys.has(getSAKey(sa))).length;
@@ -2299,17 +2595,17 @@ function SmartJobOrdersItemsPageContent() {
                       );
                     })()}
                   </div>
-                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="overflow-hidden rounded-xl border border-[#E8DCC4] bg-white shadow-sm">
                     <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-[#F5EFE3]">
                         <tr>
-                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-16">Sel</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase w-20">S.No</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Required</th>
-                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">In Stock</th>
-                          <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">To Make</th>
-                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-20">Status</th>
+                          <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wide text-[#5E4635] w-16">Sel</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#5E4635] w-20">S.No</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#5E4635]">Item</th>
+                          <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-[#5E4635]">Required</th>
+                          <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-[#5E4635]">In Stock</th>
+                          <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-[#5E4635]">To Make</th>
+                          <th className="px-4 py-3 text-center text-xs font-bold uppercase tracking-wide text-[#5E4635] w-24">Decision</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -2369,7 +2665,7 @@ function SmartJobOrdersItemsPageContent() {
                               <td className="px-4 py-2 text-center">
                                 {ready ? (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                    ✓ Ready
+                                    Ready
                                   </span>
                                 ) : (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
@@ -2386,6 +2682,69 @@ function SmartJobOrdersItemsPageContent() {
                   </div>
                 </div>
               ) : null}
+
+              {(() => {
+                const autoMakeItemIds = new Set((preview.subAssembliesToMake || []).map((sa) => String(sa.itemId)));
+                const shortageRows = groupShortagesByItem(preview.nodes || [], autoMakeItemIds);
+                const itemLines = (preview.nodes || []).filter((node) => node.componentType === 'ITEM');
+                const readyLines = itemLines.filter((node) => {
+                  const selectedItemId = effectiveSelectedItemId(node);
+                  if (!selectedItemId || autoMakeItemIds.has(selectedItemId)) return false;
+                  const available = getAvailableForItemId(selectedItemId, Number(node.availableQuantity || 0) || 0);
+                  return Number(available || 0) >= Number(node.requiredQuantity || 0);
+                }).length;
+                const subAssemblyCount = preview.subAssembliesToMake?.length || 0;
+                const hasPurchaseShortage = shortageRows.length > 0;
+                const nextAction = hasPurchaseShortage
+                  ? 'Create JO + shortage PR'
+                  : subAssemblyCount > 0
+                    ? 'Create JO + child sub-assembly JOs'
+                    : 'Create JO for SIV issue';
+                const nextOwner = hasPurchaseShortage
+                  ? 'Purchase team'
+                  : subAssemblyCount > 0
+                    ? 'Production planner'
+                    : 'Stores';
+                const nextInstruction = hasPurchaseShortage
+                  ? 'Complete PR -> PO -> GRN for unavailable material; available stock can still be issued by Stores.'
+                  : subAssemblyCount > 0
+                    ? 'Create/complete the required child job orders, then issue material and receive output.'
+                    : 'Issue components by SIV, start production, receive finished goods by SRV, then complete QC.';
+
+                return (
+                  <div className="mt-6 rounded-xl border border-[#E8DCC4] bg-white shadow-sm">
+                    <div className="border-b border-[#E8DCC4] bg-[#FFF8E8] px-5 py-3">
+                      <h3 className="text-base font-bold text-[#2F241D]">Production Control Checkpoint</h3>
+                      <p className="text-xs text-[#7A6555]">Review the SAP-style handoff before creating the job order.</p>
+                    </div>
+                    <div className="grid gap-px bg-[#E8DCC4] md:grid-cols-4">
+                      <div className="bg-white p-4">
+                        <div className="text-xs font-bold uppercase tracking-wide text-[#7A6555]">SIV-ready Lines</div>
+                        <div className="mt-1 text-2xl font-bold text-emerald-700">{readyLines}</div>
+                        <div className="text-xs text-[#7A6555]">components available for store issue</div>
+                      </div>
+                      <div className="bg-white p-4">
+                        <div className="text-xs font-bold uppercase tracking-wide text-[#7A6555]">Purchase Shortages</div>
+                        <div className={`mt-1 text-2xl font-bold ${hasPurchaseShortage ? 'text-amber-700' : 'text-emerald-700'}`}>{shortageRows.length}</div>
+                        <div className="text-xs text-[#7A6555]">grouped by item and preferred vendor</div>
+                      </div>
+                      <div className="bg-white p-4">
+                        <div className="text-xs font-bold uppercase tracking-wide text-[#7A6555]">Child Sub-JOs</div>
+                        <div className={`mt-1 text-2xl font-bold ${subAssemblyCount > 0 ? 'text-blue-700' : 'text-[#4A3426]'}`}>{subAssemblyCount}</div>
+                        <div className="text-xs text-[#7A6555]">sub-assemblies planned separately when needed</div>
+                      </div>
+                      <div className="bg-white p-4">
+                        <div className="text-xs font-bold uppercase tracking-wide text-[#7A6555]">Next Control</div>
+                        <div className="mt-1 text-sm font-bold text-[#4A3426]">{nextAction}</div>
+                        <div className="mt-1 text-xs text-[#7A6555]">Owner: {nextOwner}</div>
+                      </div>
+                    </div>
+                    <div className="border-t border-[#E8DCC4] bg-[#FAF9F6] px-5 py-3 text-sm text-[#5E4635]">
+                      <span className="font-semibold text-[#2F241D]">System action:</span> {nextInstruction}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="mt-6">
                 <div className="flex items-center justify-between mb-3">
@@ -2450,24 +2809,24 @@ function SmartJobOrdersItemsPageContent() {
                   if (rawMaterialShortages.length > 0) {
                     return (
                       <div className="p-4">
-                        <div 
-                          className="flex items-center justify-between cursor-pointer hover:bg-red-50 p-2 rounded transition-colors"
+                        <div
+                          className="flex items-center justify-between cursor-pointer hover:bg-amber-50 p-2 rounded transition-colors"
                           onClick={() => setShowShortageDetails(!showShortageDetails)}
                         >
-                          <div className="flex items-center gap-2 text-red-700 font-semibold">
+                          <div className="flex items-center gap-2 text-amber-800 font-semibold">
                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                             </svg>
                             <span>
-                              ❌ Blocked: {rawMaterialShortages.length} raw material{rawMaterialShortages.length > 1 ? 's' : ''} out of stock!
-                              <span className="ml-2 text-xs font-normal text-red-600">
+                              Stock exception: {rawMaterialShortages.length} raw material{rawMaterialShortages.length > 1 ? 's' : ''} need purchase planning.
+                              <span className="ml-2 text-xs font-normal text-amber-700">
                                 (grouped from {rawMaterialComponentLines} component line{rawMaterialComponentLines !== 1 ? 's' : ''})
                               </span>
                             </span>
                           </div>
-                          <svg 
-                            className={`w-5 h-5 text-red-700 transition-transform ${showShortageDetails ? 'rotate-180' : ''}`}
-                            fill="currentColor" 
+                          <svg
+                            className={`w-5 h-5 text-amber-800 transition-transform ${showShortageDetails ? 'rotate-180' : ''}`}
+                            fill="currentColor"
                             viewBox="0 0 20 20"
                           >
                             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -2475,7 +2834,10 @@ function SmartJobOrdersItemsPageContent() {
                         </div>
                         
                         {showShortageDetails && (
-                          <div className="mt-4 border-t border-red-200 pt-4">
+                          <div className="mt-4 border-t border-amber-200 pt-4">
+                            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                              Job Order can still be created. The system will generate the linked shortage PR through the normal PR to PO to GRN flow, while available stock remains ready for SIV issue.
+                            </div>
                             <div className="flex items-center gap-2 mb-3">
                               <button
                                 onClick={async (e) => {
@@ -2487,12 +2849,24 @@ function SmartJobOrdersItemsPageContent() {
                                       })
                                       .join('\n');
                                     await navigator.clipboard.writeText(lines);
-                                    alert('✅ Copied grouped shortage list');
+                                    await confirmDialog({
+                                      title: 'Copied',
+                                      message: 'Grouped shortage list copied to clipboard.',
+                                      confirmLabel: 'OK',
+                                      cancelLabel: 'Close',
+                                      variant: 'info',
+                                    });
                                   } catch {
-                                    alert('❌ Could not copy to clipboard');
+                                    await confirmDialog({
+                                      title: 'Copy Failed',
+                                      message: 'Could not copy the shortage list to clipboard.',
+                                      confirmLabel: 'OK',
+                                      cancelLabel: 'Close',
+                                      variant: 'warning',
+                                    });
                                   }
                                 }}
-                                className="px-3 py-1.5 text-xs rounded border border-red-300 text-red-700 hover:bg-red-50"
+                                className="px-3 py-1.5 text-xs rounded border border-amber-300 text-amber-800 hover:bg-amber-50"
                               >
                                 Copy List
                               </button>
@@ -2515,32 +2889,32 @@ function SmartJobOrdersItemsPageContent() {
                                   const name = `shortages_${preview.finishedItem?.code || 'job_order'}.csv`;
                                   downloadCsv(name, csv);
                                 }}
-                                className="px-3 py-1.5 text-xs rounded border border-red-300 text-red-700 hover:bg-red-50"
+                                className="px-3 py-1.5 text-xs rounded border border-amber-300 text-amber-800 hover:bg-amber-50"
                               >
                                 Download CSV
                               </button>
                             </div>
                             <div className="max-h-60 overflow-y-auto mb-4">
                               <table className="min-w-full text-sm">
-                                <thead className="bg-red-50">
+                                <thead className="bg-amber-50">
                                   <tr>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-red-900">Item</th>
-                                    <th className="px-3 py-2 text-right text-xs font-medium text-red-900">Required</th>
-                                    <th className="px-3 py-2 text-right text-xs font-medium text-red-900">In Stock</th>
-                                    <th className="px-3 py-2 text-right text-xs font-medium text-red-900">Shortage</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-amber-900">Item</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-amber-900">Required</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-amber-900">In Stock</th>
+                                    <th className="px-3 py-2 text-right text-xs font-medium text-amber-900">Shortage</th>
                                   </tr>
                                 </thead>
-                                <tbody className="divide-y divide-red-100">
+                                <tbody className="divide-y divide-amber-100">
                                   {rawMaterialShortages.map((row, idx) => {
                                     return (
-                                      <tr key={idx} className="hover:bg-red-50">
+                                      <tr key={idx} className="hover:bg-amber-50">
                                         <td className="px-3 py-2 text-gray-900">
                                           <div className="font-medium">{row.itemCode}</div>
                                           <div className="text-xs text-gray-600">{row.itemName}</div>
                                         </td>
                                         <td className="px-3 py-2 text-right text-gray-900">{formatQuantity(row.requiredQuantity)}</td>
                                         <td className="px-3 py-2 text-right text-gray-900">{formatQuantity(row.availableQuantity)}</td>
-                                        <td className="px-3 py-2 text-right font-semibold text-red-700">{formatQuantity(row.shortageQuantity)}</td>
+                                        <td className="px-3 py-2 text-right font-semibold text-amber-800">{formatQuantity(row.shortageQuantity)}</td>
                                       </tr>
                                     );
                                   })}
@@ -2553,9 +2927,9 @@ function SmartJobOrdersItemsPageContent() {
                                 handlePurchaseShortageItems();
                               }}
                               disabled={creatingPR || creating}
-                              className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                              className="w-full px-4 py-2 bg-[#8B6F47] hover:bg-[#6F4E37] text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                             >
-                              {creatingPR || creating ? 'Creating Job Order...' : 'Create Job Order'}
+                              {creatingPR || creating ? 'Creating Job Order and linked PR...' : 'Create JO + linked shortage PR'}
                             </button>
                           </div>
                         )}
@@ -2563,22 +2937,25 @@ function SmartJobOrdersItemsPageContent() {
                     );
                   } else {
                     return (
-                      <div className="p-4 flex items-center justify-between">
+                      <div className="p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div className="text-sm text-gray-700">
                           {subAssemblyShortagesCount > 0 ? (
                             <span className="flex items-center gap-2 text-amber-700 font-semibold">
                               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                               </svg>
-                              ⚠️ {subAssemblyShortagesCount} sub-assembl{subAssemblyShortagesCount > 1 ? 'ies' : 'y'} will be auto-created
+                              {subAssemblyShortagesCount} sub-assembl{subAssemblyShortagesCount > 1 ? 'ies' : 'y'} need child JO planning before final completion
                             </span>
                           ) : (
-                            <span className="flex items-center gap-2 text-green-700 font-semibold">
-                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                              </svg>
-                              ✓ All materials available in stock
-                            </span>
+                            <div>
+                              <span className="flex items-center gap-2 text-green-700 font-semibold">
+                                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                </svg>
+                                All materials available in stock
+                              </span>
+                              <div className="mt-1 text-xs text-gray-500">Next: create JO, issue SIV, receive SRV, then QC release.</div>
+                            </div>
                           )}
                         </div>
                         <button
@@ -2592,7 +2969,7 @@ function SmartJobOrdersItemsPageContent() {
                               : 'bg-[#8B6F47] hover:bg-[#6F4E37] shadow-md hover:shadow-lg'
                           }`}
                         >
-                          {creating ? 'Creating...' : 'Create Job Order'}
+                          {creating ? 'Creating...' : subAssemblyShortagesCount > 0 ? 'Create JO + child planning' : 'Create JO for SIV'}
                         </button>
                       </div>
                     );
@@ -2637,6 +3014,8 @@ function SmartJobOrdersItemsPageContent() {
                 (sum: number, m: any) => sum + (Number(m?.issued_quantity ?? m?.issuedQuantity ?? 0) || 0),
                 0,
               );
+              const totalPending = Math.max(0, totalRequired - totalIssued);
+              const linkedPr = getLinkedPurchaseRequisition(createSummary);
 
               const subJobs = Array.isArray((createSummary as any)?.autoCompletedSubJobOrders)
                 ? (createSummary as any).autoCompletedSubJobOrders
@@ -2647,7 +3026,7 @@ function SmartJobOrdersItemsPageContent() {
                   <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-lg p-4">
                     <div className="text-sm">
                       <div className="text-gray-600">Job Order</div>
-                      <div className="font-semibold text-gray-900">{joNumber || '—'}</div>
+                      <div className="font-semibold text-gray-900">{joNumber || '-'}</div>
                     </div>
                     <div className="text-sm">
                       <div className="text-gray-600">Status</div>
@@ -2656,7 +3035,7 @@ function SmartJobOrdersItemsPageContent() {
                     <div className="text-sm col-span-2">
                       <div className="text-gray-600">Item</div>
                       <div className="font-semibold text-gray-900">
-                        {joItemCode ? `${joItemCode} — ${joItemName}` : joItemName || '—'}
+                        {joItemCode ? `${joItemCode} - ${joItemName}` : joItemName || '-'}
                       </div>
                     </div>
                     <div className="text-sm">
@@ -2665,7 +3044,28 @@ function SmartJobOrdersItemsPageContent() {
                     </div>
                     <div className="text-sm">
                       <div className="text-gray-600">Pending Issue (SIV)</div>
-                      <div className="font-semibold text-amber-700">{totalIssued > 0 ? totalIssued : 'Awaiting SIV'}</div>
+                      <div className="font-semibold text-amber-700">{totalPending > 0 ? totalPending : 'No pending issue'}</div>
+                    </div>
+                  </div>
+
+                  <div
+                    className={`mt-4 rounded-lg border px-4 py-3 text-sm ${
+                      linkedPr.hasLinkedPr
+                        ? 'border-amber-200 bg-amber-50 text-amber-900'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                    }`}
+                  >
+                    <div className="font-semibold">
+                      {linkedPr.hasLinkedPr ? 'Shortage purchase flow started' : 'Stock available flow started'}
+                    </div>
+                    <div className="mt-1">
+                      {linkedPr.hasLinkedPr ? (
+                        <>
+                          Linked PR <span className="font-semibold">{linkedPr.prNumber || 'created'}</span> was generated for unavailable material. Complete PR to PO to GRN, then issue the material through SIV.
+                        </>
+                      ) : (
+                        <>No shortage PR was created because material is available. Stores can issue the required components through SIV.</>
+                      )}
                     </div>
                   </div>
 
@@ -2681,8 +3081,8 @@ function SmartJobOrdersItemsPageContent() {
                           return (
                             <div key={idx} className="py-1">
                               <span className="font-semibold text-gray-900">{n || 'JO'}</span>
-                              {code || name ? <span className="text-gray-700"> — {code} {name ? `(${name})` : ''}</span> : null}
-                              {q ? <span className="text-gray-600"> • Qty {q}</span> : null}
+                              {code || name ? <span className="text-gray-700"> - {code} {name ? `(${name})` : ''}</span> : null}
+                              {q ? <span className="text-gray-600"> - Qty {q}</span> : null}
                             </div>
                           );
                         })}
@@ -2752,6 +3152,52 @@ function SmartJobOrdersItemsPageContent() {
                 </div>
               );
             })()}
+            {(() => {
+              const jo = (createSummary as any)?.jobOrder || (createSummary as any)?.job_order;
+              const joId = String(jo?.id || '').trim();
+              const joNumber = String(jo?.job_order_number || jo?.jobOrderNumber || '').trim();
+              const linkedPr = getLinkedPurchaseRequisition(createSummary);
+              return (
+                <div className="border-t border-amber-200 bg-white px-6 py-4">
+                  {linkedPr.hasLinkedPr ? (
+                    <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      Shortage PR <span className="font-semibold">{linkedPr.prNumber || 'created'}</span> was generated. Complete the normal PR to PO to GRN cycle, then issue available material through SIV.
+                    </div>
+                  ) : (
+                    <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                      No shortage PR is required. Materials are ready for SIV issue.
+                    </div>
+                  )}
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {linkedPr.prNumber ? (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/dashboard/purchase/requisitions?search=${encodeURIComponent(linkedPr.prNumber)}`)}
+                        className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100"
+                      >
+                        Open Linked PR
+                      </button>
+                    ) : null}
+                    {joId ? (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(joId)}&joNumber=${encodeURIComponent(joNumber)}`)}
+                        className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-100"
+                      >
+                        Open SIV
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => router.push('/dashboard/production/job-orders')}
+                      className="rounded-lg bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#6F4E37]"
+                    >
+                      Go to Job Orders
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       ) : null}
@@ -2779,7 +3225,7 @@ function SmartJobOrdersItemsPageContent() {
               const pct = total > 0 ? Math.min(100, Math.max(0, Math.round((current / total) * 100))) : 5;
 
               const itemLine = st?.progress?.itemCode
-                ? `${st.progress.itemCode}${st.progress.itemName ? ` — ${st.progress.itemName}` : ''}`
+                ? `${st.progress.itemCode}${st.progress.itemName ? ` - ${st.progress.itemName}` : ''}`
                 : '';
 
               const statusLabel = st?.status || 'PENDING';
@@ -2800,7 +3246,7 @@ function SmartJobOrdersItemsPageContent() {
               return (
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="text-sm font-medium text-amber-900">{st?.progress?.message || 'Starting…'}</div>
+                    <div className="text-sm font-medium text-amber-900">{st?.progress?.message || 'Starting...'}</div>
                     <div className="text-xs text-amber-800">
                       {progressText}
                     </div>
@@ -2817,7 +3263,7 @@ function SmartJobOrdersItemsPageContent() {
 
                   <div className="mt-4 text-xs text-gray-600">
                     Status: <span className="font-semibold">{statusLabel}</span>
-                    {st?.error ? <span className="text-red-700"> • {st.error}</span> : null}
+                    {st?.error ? <span className="text-red-700"> - {st.error}</span> : null}
                   </div>
                 </div>
               );
@@ -2918,7 +3364,7 @@ function SmartJobOrdersItemsPageContent() {
           <div className="bg-white w-full max-w-lg rounded-xl shadow-xl border border-green-200 overflow-hidden">
             <div className="px-6 py-4 bg-green-50 border-b border-green-200 flex items-center justify-between">
               <div className="text-lg font-semibold text-green-900">
-                Sub-Assembly Job Orders — Results
+                Sub-Assembly Job Orders - Results
               </div>
               <button
                 onClick={() => {
@@ -2944,7 +3390,7 @@ function SmartJobOrdersItemsPageContent() {
                   >
                     <div className="flex items-center gap-2">
                       {r.success ? (
-                        <span className="text-green-600 font-bold">✓</span>
+                        <span className="text-green-600 font-bold">OK</span>
                       ) : (
                         <span className="text-red-600 font-bold">✗</span>
                       )}
@@ -2978,3 +3424,4 @@ function SmartJobOrdersItemsPageContent() {
     </div>
   );
 }
+

@@ -19,6 +19,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { hasAdminBypass, hasSuperAdminBypass } from '../../auth/utils/permission-utils';
 
 @Controller('items')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -30,26 +31,47 @@ export class ItemsController {
 
   @Post('check-duplicates')
   async checkDuplicates(@Request() req: any, @Body() itemData: any) {
-    const existing = await this.itemsService.findAll(req.user.tenantId, '', true);
+    const normalizedItemData = {
+      ...itemData,
+      code: itemData?.code ?? itemData?.item_code ?? itemData?.itemCode ?? null,
+      name: itemData?.name ?? itemData?.item_name ?? itemData?.itemName ?? null,
+      drawing_number: itemData?.drawing_number ?? itemData?.drawingNumber ?? null,
+    };
+    const existing = await this.itemsService.findAll(req.user.tenantId, '', true, false, { includeRnd: true });
     
     return this.duplicateDetectionService.checkDuplicates(
-      itemData,
+      normalizedItemData,
       existing,
       {
-        exactMatchFields: ['item_code', 'drawing_number'],
-        fuzzyMatchFields: ['item_name', 'description'],
+        exactMatchFields: ['code', 'drawing_number'],
+        fuzzyMatchFields: ['name', 'description'],
         fuzzyThreshold: 0.25,
-        excludeId: itemData.id,
+        excludeId: normalizedItemData.id,
       },
     );
   }
 
   @Get()
-  async findAll(@Request() req: any, @Query('search') search?: string, @Query('includeInactive') includeInactive?: string, @Query('onlyVerified') onlyVerified?: string) {
+  async findAll(
+    @Request() req: any,
+    @Query('search') search?: string,
+    @Query('includeInactive') includeInactive?: string,
+    @Query('onlyVerified') onlyVerified?: string,
+    @Query('includeRnd') includeRnd?: string,
+    @Query('onlyRnd') onlyRnd?: string,
+    @Query('scope') scope?: string,
+    @Query('department') department?: string,
+  ) {
     const includeInactiveBool = includeInactive === 'true';
     const onlyVerifiedBool = onlyVerified === 'true';
-    console.log('[ItemsController] findAll called:', { tenantId: req.user.tenantId, search, includeInactive, includeInactiveBool, onlyVerifiedBool });
-    const result = await this.itemsService.findAll(req.user.tenantId, search, includeInactiveBool, onlyVerifiedBool);
+    const normalizedScope = String(scope || department || '').trim().toUpperCase();
+    const onlyRndBool = onlyRnd === 'true' || normalizedScope === 'RND' || normalizedScope === 'R&D' || normalizedScope === 'RESEARCH';
+    const includeRndBool = includeRnd === 'true' || onlyRndBool;
+    console.log('[ItemsController] findAll called:', { tenantId: req.user.tenantId, search, includeInactive, includeInactiveBool, onlyVerifiedBool, includeRndBool, onlyRndBool });
+    const result = await this.itemsService.findAll(req.user.tenantId, search, includeInactiveBool, onlyVerifiedBool, {
+      includeRnd: includeRndBool,
+      onlyRnd: onlyRndBool,
+    });
     console.log('[ItemsController] findAll result:', { count: result.length });
     return result;
   }
@@ -57,6 +79,11 @@ export class ItemsController {
   @Get('search')
   async search(@Request() req: any, @Query('q') query: string) {
     return this.itemsService.search(req.user.tenantId, query);
+  }
+
+  @Get('next-code')
+  async previewNextCode(@Request() req: any, @Query('category') category: string) {
+    return this.itemsService.previewNextItemCode(req.user.tenantId, category || 'RAW_MATERIAL');
   }
 
   @Get(':id')
@@ -68,6 +95,14 @@ export class ItemsController {
   @RequireCreate('items')
   async create(@Request() req: any, @Body() body: any) {
     return this.itemsService.create(req.user.tenantId, req.user.userId, body);
+  }
+
+  @Post('rnd-temporary')
+  @RequireCreate('purchase_requisitions')
+  async createRndTemporary(@Request() req: any, @Body() body: any) {
+    return this.itemsService.createRndTemporary(req.user.tenantId, req.user.userId, body, {
+      adminBypass: hasAdminBypass(req.user),
+    });
   }
 
   @Post('bulk')
@@ -84,13 +119,17 @@ export class ItemsController {
   @Put(':id/verify')
   @RequireApprove('items')
   async verify(@Request() req: any, @Param('id') id: string) {
-    return this.itemsService.setVerification(req.user.tenantId, req.user.userId, id, true);
+    return this.itemsService.setVerification(req.user.tenantId, req.user.userId, id, true, {
+      overrideMakerChecker: hasSuperAdminBypass(req.user),
+    });
   }
 
   @Put(':id/unverify')
   @RequireApprove('items')
   async unverify(@Request() req: any, @Param('id') id: string) {
-    return this.itemsService.setVerification(req.user.tenantId, req.user.userId, id, false);
+    return this.itemsService.setVerification(req.user.tenantId, req.user.userId, id, false, {
+      overrideMakerChecker: hasSuperAdminBypass(req.user),
+    });
   }
 
   @Delete(':id')
@@ -107,7 +146,7 @@ export class ItemsController {
 
   @Get(':id/vendors/preferred')
   async getPreferredVendor(@Request() req: any, @Param('id') id: string) {
-    const preferred = await this.itemsService.getPreferredVendor(id);
+    const preferred = await this.itemsService.getPreferredVendor(req.user.tenantId, id);
     // Returning `null` can be serialized as an empty response by some stacks/proxies;
     // always return a JSON value so frontend `response.json()` is safe.
     return preferred ?? {};
@@ -175,7 +214,7 @@ export class ItemsController {
   @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
   @Header('Content-Disposition', 'attachment; filename="items.xlsx"')
   async exportExcel(@Request() req: any, @Res() res: Response) {
-    const items = await this.itemsService.findAll(req.user.tenantId, '', true, false);
+    const items = await this.itemsService.findAll(req.user.tenantId, '', true, false, { includeRnd: true });
     
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Items');

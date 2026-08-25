@@ -162,7 +162,7 @@ export class UidSupabaseService {
       pending = (async () => {
         const { data, error } = await this.supabase
           .from('tenants')
-          .select('code, name')
+          .select('name')
           .eq('id', normalizedTenantId)
           .single();
 
@@ -172,7 +172,6 @@ export class UidSupabaseService {
         }
 
         const resolved =
-          this.normalizeTenantCode((data as any)?.code) ||
           this.deriveTenantCodeFromName((data as any)?.name) ||
           normalizedFallback ||
           'TEN';

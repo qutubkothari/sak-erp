@@ -15,9 +15,25 @@ export class InventoryController {
 
   // Items Master
   @Get('items')
-  async getItems(@Request() req: any, @Query('search') search?: string, @Query('includeInactive') includeInactive?: string) {
+  async getItems(
+    @Request() req: any,
+    @Query('search') search?: string,
+    @Query('includeInactive') includeInactive?: string,
+    @Query('onlyVerified') onlyVerified?: string,
+    @Query('includeRnd') includeRnd?: string,
+    @Query('onlyRnd') onlyRnd?: string,
+    @Query('scope') scope?: string,
+    @Query('department') department?: string,
+  ) {
     const includeInactiveBool = includeInactive === 'true';
-    return this.itemsService.findAll(req.user.tenantId, search, includeInactiveBool);
+    const onlyVerifiedBool = onlyVerified === 'true';
+    const normalizedScope = String(scope || department || '').trim().toUpperCase();
+    const onlyRndBool = onlyRnd === 'true' || normalizedScope === 'RND' || normalizedScope === 'R&D' || normalizedScope === 'RESEARCH';
+    const includeRndBool = includeRnd === 'true' || onlyRndBool;
+    return this.itemsService.findAll(req.user.tenantId, search, includeInactiveBool, onlyVerifiedBool, {
+      includeRnd: includeRndBool,
+      onlyRnd: onlyRndBool,
+    });
   }
 
   @Get('items/search')
@@ -32,7 +48,7 @@ export class InventoryController {
 
   @Post('items')
   async createItem(@Request() req: any, @Body() body: any) {
-    return this.itemsService.create(req.user.tenantId, body);
+    return this.itemsService.create(req.user.tenantId, req.user.userId, body);
   }
 
   @Put('items/:id')
@@ -103,6 +119,29 @@ export class InventoryController {
   @Post('alerts/check-low-stock')
   async checkAllLowStock(@Request() req: any) {
     return this.inventoryService.checkAllLowStock(req);
+  }
+
+  @Get('low-stock-planning')
+  async getLowStockPlanning(@Request() req: any) {
+    return this.inventoryService.getLowStockPlanning(req);
+  }
+
+  @Put('low-stock-planning/:itemId/ignore')
+  @RequireUpdate('items')
+  async ignoreLowStockItem(@Request() req: any, @Param('itemId') itemId: string, @Body() body: any) {
+    return this.inventoryService.setLowStockPlanningIgnored(req, itemId, { ...body, ignored: true });
+  }
+
+  @Put('low-stock-planning/:itemId/restore')
+  @RequireUpdate('items')
+  async restoreLowStockItem(@Request() req: any, @Param('itemId') itemId: string, @Body() body: any) {
+    return this.inventoryService.setLowStockPlanningIgnored(req, itemId, { ...body, ignored: false });
+  }
+
+  @Post('low-stock-planning/purchase')
+  @RequireCreate('purchase_requisitions')
+  async createLowStockPurchaseRequisitions(@Request() req: any, @Body() body: any) {
+    return this.inventoryService.createLowStockPurchaseRequisitions(req, body);
   }
 
   @Post('alerts/check-job-orders')

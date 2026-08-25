@@ -15,6 +15,7 @@ import {
   readStoredUser,
 } from '../../lib/rbac';
 import { apiClient } from '../../../lib/api-client';
+import GovernanceRequiredNotice from '../../components/GovernanceRequiredNotice';
 
 export default function DashboardLayout({
   children,
@@ -44,9 +45,27 @@ export default function DashboardLayout({
   // This prevents users from opening unauthorized modules by typing URLs.
   useEffect(() => {
     if (!pathname) return;
+    try {
+      const postLoginLandingPath = sessionStorage.getItem('postLoginLandingPath');
+      if (postLoginLandingPath && pathname !== postLoginLandingPath.split('?')[0]) {
+        sessionStorage.removeItem('postLoginLandingPath');
+        router.replace(postLoginLandingPath);
+        return;
+      }
+      if (postLoginLandingPath && pathname === postLoginLandingPath.split('?')[0]) {
+        sessionStorage.removeItem('postLoginLandingPath');
+      }
+    } catch {
+      // Ignore storage restrictions; normal RBAC routing below still applies.
+    }
     const user = readStoredUser();
+    const defaultLandingPath = getDefaultLandingPath(user);
+    if (pathname === '/dashboard/hr' && defaultLandingPath.startsWith('/dashboard/hr/')) {
+      router.replace(defaultLandingPath);
+      return;
+    }
     if (!isPathAllowedForUser(user, pathname)) {
-      router.replace(getDefaultLandingPath(user));
+      router.replace(defaultLandingPath);
     }
   }, [pathname, router]);
 
@@ -66,8 +85,14 @@ export default function DashboardLayout({
 
         setUser(currentUser);
 
+        const defaultLandingPath = getDefaultLandingPath(currentUser);
+        if (pathname === '/dashboard/hr' && defaultLandingPath.startsWith('/dashboard/hr/')) {
+          router.replace(defaultLandingPath);
+          return;
+        }
+
         if (pathname && !isPathAllowedForUser(currentUser, pathname)) {
-          router.replace(getDefaultLandingPath(currentUser));
+          router.replace(defaultLandingPath);
         }
       } catch (error: any) {
         const message = error?.message || '';
@@ -92,7 +117,8 @@ export default function DashboardLayout({
   }, [pathname, router, setUser]);
 
   // Don't show breadcrumbs on the root dashboard page
-  const showBreadcrumbs = pathname !== '/dashboard';
+  const isEmployeeSelfService = pathname?.startsWith('/dashboard/hr/employees') ?? false;
+  const showBreadcrumbs = pathname !== '/dashboard' && !isEmployeeSelfService;
 
   // Update page title based on current route
   useEffect(() => {
@@ -115,17 +141,24 @@ export default function DashboardLayout({
         'inventory/siv': 'Store Issue Vouchers',
         'inventory/srv': 'Store Receipt Vouchers',
         'inventory/stock-adjustments': 'Stock Adjustments',
+        'inventory/low-stock': 'Low Stock Planning',
         'inventory/store-vouchers': 'Store Vouchers',
         'production': 'Production',
         'production/job-orders': 'Job Orders',
+        'production/mrp': 'Material Planning (MRP)',
+        'production/autonomy': 'Production Autonomy Control Tower',
         'production/work-stations': 'Work Stations',
         'production/shop-floor': 'Shop Floor',
         'quality': 'Quality Control',
         'sales': 'Sales',
         'service': 'Service',
         'accounts': 'Accounts',
+        'accounts/margin-control': 'Margin-to-Cash Control Tower',
+        'accounts/costing': 'Cost & Margin Control',
+        'accounts/collections': 'Collections Worklist',
         'accounts/payables': 'Accounts Payable',
         'accounts/supplier-invoices': 'Supplier Invoices',
+        'reports': 'Reports',
         'hr': 'HR',
         'documents': 'Documents',
         'uid': 'UID',
@@ -165,20 +198,21 @@ export default function DashboardLayout({
         {/* Confirm dialog portal */}
         <ConfirmDialogProvider />
         <DashboardReminders />
+        <GovernanceRequiredNotice />
 
         <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
         <main
-          className={`min-h-screen transition-all duration-300 ${
-            sidebarCollapsed ? 'ml-16' : 'ml-56'
+          className={`min-h-screen min-w-0 overflow-x-hidden pb-20 transition-all duration-300 md:pb-0 ${
+            sidebarCollapsed ? 'md:ml-16' : 'md:ml-56'
           }`}
         >
           {/* Top sub-header with breadcrumbs */}
           {showBreadcrumbs && (
-            <div className="sticky top-0 z-30 border-b border-[#E8DCC4] bg-white/90 backdrop-blur-xl px-4 lg:px-6 py-3 flex items-center shadow-sm">
+            <div className="sticky top-0 z-30 border-b border-[#E8DCC4] bg-white/90 px-3 py-2 shadow-sm backdrop-blur-xl sm:px-4 lg:px-6 lg:py-3">
               <Breadcrumbs />
             </div>
           )}
-          <div className="p-3 lg:p-4">
+          <div className={`min-w-0 ${isEmployeeSelfService ? 'p-0 md:p-3 lg:p-4' : 'p-2 sm:p-3 lg:p-4'}`}>
             {children}
           </div>
         </main>

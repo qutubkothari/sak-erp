@@ -1,27 +1,48 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 
 const PAYMENT_TERMS_LABELS: Record<string, string> = {
+  NET_15: 'Net 15 Days',
   NET_30: 'Net 30 Days',
   NET_45: 'Net 45 Days',
   NET_60: 'Net 60 Days',
   NET_90: 'Net 90 Days',
   ADVANCE: 'Advance Payment',
   COD: 'Cash on Delivery',
+  AGAINST_DELIVERY: 'Against Delivery',
+  AGAINST_PROFORMA: 'Against Proforma Invoice',
   IMMEDIATE: 'Immediate Payment',
 };
+const DB_PAYMENT_TERMS_VALUES = new Set(['ADVANCE', 'NET_15', 'NET_30', 'NET_45', 'NET_60', 'COD', 'CUSTOM']);
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EmailService } from '../../email/email.service';
 import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
 import { WorldClassPoPdfService } from './world-class-po-pdf.service';
+import { ProjectsService } from '../../projects/projects.service';
 
 @Injectable()
 export class PurchaseOrdersService {
   private readonly poDrawingSelectionAttachmentType = 'PO_DRAWING_SELECTIONS';
   private supabase: SupabaseClient;
 
+  private isSuperAdmin(actor: any): boolean {
+    const normalizeRole = (value: unknown) => String(value || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_');
+
+    const directRole = actor?.role;
+    if (typeof directRole === 'string' && normalizeRole(directRole) === 'SUPER_ADMIN') return true;
+    if (directRole && normalizeRole(directRole?.name) === 'SUPER_ADMIN') return true;
+
+    return Array.isArray(actor?.roles) && actor.roles.some((entry: any) =>
+      normalizeRole((entry?.role || entry)?.name || entry?.role || entry) === 'SUPER_ADMIN',
+    );
+  }
+
   constructor(
     private emailService: EmailService,
     private worldClassPoPdfService: WorldClassPoPdfService,
+    private projectsService: ProjectsService,
   ) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
@@ -112,6 +133,99 @@ export class PurchaseOrdersService {
     );
   }
 
+  private normalizePoPaymentTermsForStorage(value: any): { dbValue: string; displayText: string | null } {
+    const raw = String(value ?? '').trim();
+    if (!raw) return { dbValue: 'NET_30', displayText: null };
+
+    const normalized = raw.toUpperCase();
+    if (DB_PAYMENT_TERMS_VALUES.has(normalized) && normalized !== 'CUSTOM') {
+      return { dbValue: normalized, displayText: null };
+    }
+
+    const displayText = PAYMENT_TERMS_LABELS[normalized] || raw;
+    return { dbValue: 'CUSTOM', displayText: displayText || null };
+  }
+
+  private resolvePoPaymentTermsDisplay(po: any, termsMetadata?: Record<string, any>): string | undefined {
+    const metadata = termsMetadata || this.parseTermsMetadata(po?.terms_and_conditions);
+    const customText = String(
+      metadata.paymentTermsText ||
+      metadata.payment_terms_text ||
+      metadata.customPaymentTerms ||
+      metadata.custom_payment_terms ||
+      '',
+    ).trim();
+    if (customText) return customText;
+
+    const raw = String(po?.payment_terms || '').trim();
+    if (!raw) return undefined;
+    return PAYMENT_TERMS_LABELS[raw] || (raw === 'CUSTOM' ? 'Custom / Other' : raw);
+  }
+
+  private stripPODrawingColumns(items: any[]): any[] {
+    return (Array.isArray(items) ? items : []).map((item: any) => {
+      const { include_drawing, selected_drawing_id, ...rest } = item;
+      return rest;
+    });
+  }
+
+  private isMissingPODrawingColumns(error: any): boolean {
+    const message = String(error?.message || '').toLowerCase();
+    return (
+      message.includes('purchase_order_items') &&
+      (message.includes('include_drawing') || message.includes('selected_drawing_id')) &&
+      (message.includes('does not exist') || message.includes('schema cache') || message.includes('column'))
+    );
+  }
+
+  private async insertPurchaseOrderItemsWithDrawingFallback(items: any[]): Promise<void> {
+    const { error } = await this.supabase
+      .from('purchase_order_items')
+      .insert(items);
+
+    if (!error) return;
+
+    // Some deployed DBs may not have the PO line drawing columns yet. In that case
+    // do not fail PO creation/update: the same selections are also stored in the
+    // hidden PO attachment metadata and hydrated back for PDF generation.
+    if (this.isMissingPODrawingColumns(error)) {
+      const retry = await this.supabase
+        .from('purchase_order_items')
+        .insert(this.stripPODrawingColumns(items));
+
+      if (retry.error) throw new BadRequestException(retry.error.message);
+      console.warn('[PO] purchase_order_items drawing columns missing; using PO drawing metadata fallback.');
+      return;
+    }
+
+    throw new BadRequestException(error.message);
+  }
+
+  private async updatePurchaseOrderItemWithDrawingFallback(itemId: string, item: any): Promise<void> {
+    const { error } = await this.supabase
+      .from('purchase_order_items')
+      .update(item)
+      .eq('id', itemId);
+
+    if (!error) return;
+
+    // Some deployed DBs may not have the PO line drawing columns yet. In that case
+    // keep the commercial edit safe and rely on PO attachment metadata for drawings.
+    if (this.isMissingPODrawingColumns(error)) {
+      const [stripped] = this.stripPODrawingColumns([item]);
+      const retry = await this.supabase
+        .from('purchase_order_items')
+        .update(stripped)
+        .eq('id', itemId);
+
+      if (retry.error) throw new BadRequestException(retry.error.message);
+      console.warn('[PO] purchase_order_items drawing columns missing during update; using PO drawing metadata fallback.');
+      return;
+    }
+
+    throw new BadRequestException(error.message);
+  }
+
   private hydratePODrawingSelections(po: any): any {
     const poItems = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
     const attachments = Array.isArray(po?.attachments) ? po.attachments : [];
@@ -181,8 +295,104 @@ export class PurchaseOrdersService {
     return Number.isFinite(n) ? n : 0;
   }
 
+  private getEffectivePoReceiptQty(item: any): number {
+    const qcStatus = String(item?.qc_status || '').trim().toUpperCase();
+    const receivedQty = this.toNumber(item?.received_qty);
+    const acceptedQty = this.toNumber(item?.accepted_qty);
+    const rejectedQty = this.toNumber(item?.rejected_qty);
+    const qcRecorded = ['ACCEPTED', 'PARTIAL', 'REJECTED'].includes(qcStatus) || acceptedQty > 0 || rejectedQty > 0;
+
+    return qcRecorded ? acceptedQty : receivedQty;
+  }
+
   private safeNumber(value: any): number {
     return this.toNumber(value);
+  }
+
+  private roundMoney(value: any): number {
+    const n = this.safeNumber(value);
+    return Math.round((n + Number.EPSILON) * 100) / 100;
+  }
+
+  private roundDocumentTotal(value: any): number {
+    return Math.round(this.safeNumber(value));
+  }
+
+  private calculatePoCommercialTotals(items: any[], source: any = {}) {
+    const termsMetadata = this.parseTermsMetadata(source?.terms_and_conditions);
+    const isImportPo =
+      source?.isImportPurchase === true ||
+      termsMetadata.isImportPurchase === true ||
+      String(source?.supplierCurrency || termsMetadata.supplierCurrency || 'INR').trim().toUpperCase() !== 'INR';
+
+    const lines = Array.isArray(items) ? items : [];
+    let itemsSubtotal = 0;
+    let discountAmount = 0;
+    let taxAmount = 0;
+    let itemsGross = 0;
+
+    for (const item of lines) {
+      const qty = this.safeNumber(item?.orderedQty ?? item?.ordered_qty ?? item?.quantity ?? item?.qty);
+      const rate = this.safeNumber(item?.rate ?? item?.unitPrice ?? item?.unit_price ?? item?.price);
+      const discountPercent = this.safeNumber(item?.discountPercent ?? item?.discount_percent ?? item?.discount);
+      const taxPercent = isImportPo ? 0 : this.safeNumber(item?.taxPercent ?? item?.taxRate ?? item?.tax_percent ?? item?.tax_rate);
+      const base = this.roundMoney(qty * rate);
+      const lineDiscount = this.roundMoney(base * (discountPercent / 100));
+      const taxable = this.roundMoney(Math.max(0, base - lineDiscount));
+      const lineTax = this.roundMoney(taxable * (taxPercent / 100));
+      const lineTotal = this.roundMoney(taxable + lineTax);
+
+      itemsSubtotal = this.roundMoney(itemsSubtotal + taxable);
+      discountAmount = this.roundMoney(discountAmount + lineDiscount);
+      taxAmount = this.roundMoney(taxAmount + lineTax);
+      itemsGross = this.roundMoney(itemsGross + lineTotal);
+    }
+
+    const freightAmount = this.roundMoney(source?.freightAmount ?? source?.freight_amount ?? termsMetadata.freightAmount ?? 0);
+    const freightGstApplicable = source?.freightGstApplicable === true || termsMetadata.freightGstApplicable === true;
+    const freightGstPercent = freightGstApplicable
+      ? this.safeNumber(source?.freightGstPercent ?? source?.freight_gst_percent ?? termsMetadata.freightGstPercent ?? 0)
+      : 0;
+    const freightGstAmount = freightGstApplicable
+      ? this.roundMoney(source?.freightGstAmount ?? source?.freight_gst_amount ?? termsMetadata.freightGstAmount ?? (freightAmount * (freightGstPercent / 100)))
+      : 0;
+    const customsDuty = this.roundMoney(source?.customsDuty ?? source?.customs_duty ?? termsMetadata.customsDuty ?? 0);
+    const otherCharges = this.roundMoney(source?.otherCharges ?? source?.other_charges ?? termsMetadata.additionalExpenses ?? 0);
+    const rawGrandTotal = this.roundMoney(itemsGross + freightAmount + freightGstAmount + customsDuty + otherCharges);
+    const roundedGrandTotal = this.roundDocumentTotal(rawGrandTotal);
+
+    return {
+      items_subtotal: itemsSubtotal,
+      discount_amount: discountAmount,
+      tax_amount: taxAmount,
+      freight_amount: freightAmount,
+      freight_gst_amount: freightGstAmount,
+      customs_duty: customsDuty,
+      other_charges: otherCharges,
+      raw_grand_total: rawGrandTotal,
+      rounding_adjustment: this.roundMoney(roundedGrandTotal - rawGrandTotal),
+      grand_total: roundedGrandTotal,
+    };
+  }
+
+  private withPoAmountCalculation(po: any) {
+    const calculation = this.calculatePoCommercialTotals(po?.purchase_order_items || [], po || {});
+    const storedGrand = this.roundMoney(po?.grand_total ?? po?.total_amount ?? 0);
+    const diff = this.roundMoney(storedGrand - calculation.grand_total);
+    return {
+      ...po,
+      total_amount: calculation.grand_total,
+      tax_amount: calculation.tax_amount,
+      discount_amount: calculation.discount_amount,
+      grand_total: calculation.grand_total,
+      rounding_adjustment: calculation.rounding_adjustment,
+      _amount_calculation: {
+        ...calculation,
+        stored_grand_total: storedGrand,
+        difference_from_stored: diff,
+        has_stored_mismatch: Math.abs(diff) >= 0.01,
+      },
+    };
   }
 
   private assertNoDuplicatePoItems(items: any[]) {
@@ -192,12 +402,19 @@ export class PurchaseOrdersService {
     for (const item of items) {
       const itemId = String(item?.itemId || item?.item_id || '').trim();
       const itemCode = String(item?.itemCode || item?.item_code || '').trim();
-      const key = itemId || itemCode;
+      // Prefer the stable item id, but also reserve the normalized code.  Older
+      // clients sometimes submit the same material once by id and once by code;
+      // treating those as different lines is what allowed duplicate PO rows.
+      const keys = [
+        itemId ? `id:${itemId.toLowerCase()}` : '',
+        itemCode ? `code:${itemCode.toLowerCase()}` : '',
+      ].filter(Boolean);
+      const key = keys[0] || '';
       if (!key) continue;
-      if (seen.has(key)) {
+      if (keys.some((candidate) => seen.has(candidate))) {
         duplicates.push(itemCode || itemId || 'Unknown');
       }
-      seen.add(key);
+      keys.forEach((candidate) => seen.add(candidate));
     }
     if (duplicates.length > 0) {
       throw new BadRequestException(
@@ -274,10 +491,43 @@ export class PurchaseOrdersService {
     }
   }
 
+  private async assertPrApprovedForPo(tenantId: string, prId: any) {
+    const normalizedPrId = String(prId || '').trim();
+    if (!normalizedPrId) return;
+
+    const { data: pr, error } = await this.supabase
+      .from('purchase_requisitions')
+      .select('id, pr_number, status')
+      .eq('tenant_id', tenantId)
+      .eq('id', normalizedPrId)
+      .maybeSingle();
+
+    if (error) throw new BadRequestException(error.message);
+    if (!pr) throw new BadRequestException('Purchase Requisition not found.');
+
+    const status = String((pr as any)?.status || '').trim().toUpperCase();
+    const poEligibleStatuses = new Set([
+      'APPROVED',
+      'RFQ_ISSUED',
+      'RFQ_RCVD',
+      'RFQ_RESPONSE_RECORDED',
+      'PO_PARTIAL',
+      'PARTIAL',
+      'PO_DONE',
+    ]);
+    if (!poEligibleStatuses.has(status)) {
+      throw new BadRequestException(
+        `PR ${(pr as any)?.pr_number || normalizedPrId} must be fully approved before creating a Purchase Order.`,
+      );
+    }
+  }
+
   private buildWorldClassPoPdfData(po: any) {
     const safeNumber = (value: any): number => this.toNumber(value);
     const poItems = Array.isArray(po?.purchase_order_items || po?.items) ? (po.purchase_order_items || po.items) : [];
     const vendorBillingLine2 = po.vendor?.billing_line2 || po.vendor?.metadata?.billingLine2 || '';
+    const termsMetadata = this.parseTermsMetadata(po?.terms_and_conditions);
+    const headerPaymentTerms = this.resolvePoPaymentTermsDisplay(po, termsMetadata);
 
     const pdfData: any = {
       poNumber: po.po_number,
@@ -339,9 +589,18 @@ export class PurchaseOrdersService {
 
         return {
           sl_no: index + 1,
-          item_code: row.item_code || row.code || '',
-          item_name: row.item_name || row.name || '',
-          description: row.description || row.specifications,
+          item_code: row.item_code || row.code || row?.item?.code || row?.item?.item_code || '',
+          item_name:
+            row.item_name ||
+            row.name ||
+            row?.item?.name ||
+            row?.item?.item_name ||
+            row?.item?.description ||
+            row.description ||
+            row.item_code ||
+            row?.item?.code ||
+            '',
+          description: row.description || row.specifications || row?.item?.description,
           hsn_code: row?.item?.hsn_code || row.hsn_code || row.hsn,
           quantity,
           uom: row.uom || row?.item?.uom || 'Nos',
@@ -368,10 +627,10 @@ export class PurchaseOrdersService {
       sgstTotal: safeNumber(po.sgst_total ?? 0),
       igstTotal: safeNumber(po.igst_total ?? 0),
       grandTotal: safeNumber(po.grand_total || po.total_amount || 0),
-      paymentTerms: PAYMENT_TERMS_LABELS[po.payment_terms] || po.payment_terms || undefined,
+      paymentTerms: headerPaymentTerms,
       deliveryDate: po.expected_delivery || po.delivery_date,
       terms: {
-        payment_terms: PAYMENT_TERMS_LABELS[po.payment_terms] || po.payment_terms || undefined,
+        payment_terms: headerPaymentTerms,
         delivery_terms: undefined,
         freight_terms: undefined,
       },
@@ -512,6 +771,12 @@ export class PurchaseOrdersService {
       pdfData.grandTotal = computedGrand;
     }
 
+    const exactGrandTotal = safeNumber(pdfData.grandTotal);
+    const roundedGrandTotal = Math.round(exactGrandTotal);
+    const roundOff = Number((roundedGrandTotal - exactGrandTotal).toFixed(2));
+    pdfData.roundOff = Math.abs(roundOff) >= 0.01 ? roundOff : 0;
+    pdfData.grandTotal = roundedGrandTotal;
+
     pdfData.isServiceOrder = poItems.length > 0 && poItems.every((item: any) => normalizeInventoryCategory(item?.item?.category) === 'SERVICES');
 
     return pdfData;
@@ -520,24 +785,56 @@ export class PurchaseOrdersService {
   private async fetchGrnReceivedByPoItem(tenantId: string, poItemIds: string[]): Promise<Map<string, number>> {
     if (poItemIds.length === 0) return new Map();
 
-    // Join grn_items -> grns to exclude REJECTED/CANCELLED GRNs from received qty
-    const { data: grnItems, error } = await this.supabase
+    const receivedByPoItem = new Map<string, number>();
+    for (const poItemId of poItemIds) {
+      const normalizedPoItemId = String(poItemId || '').trim();
+      if (normalizedPoItemId) receivedByPoItem.set(normalizedPoItemId, 0);
+    }
+
+    const { data: candidateItems, error } = await this.supabase
       .from('grn_items')
-      .select('po_item_id, received_qty, accepted_qty, grn:grns!inner(status)')
-      .eq('tenant_id', tenantId)
-      .in('po_item_id', poItemIds)
-      .not('grn.status', 'in', '("REJECTED","CANCELLED")');
+      .select('grn_id, po_item_id, received_qty, accepted_qty, rejected_qty, qc_status')
+      .in('po_item_id', poItemIds);
 
     if (error) {
       console.error('[PO] Failed to fetch GRN received quantities:', error);
       return new Map();
     }
 
-    const receivedByPoItem = new Map<string, number>();
-    for (const item of grnItems || []) {
+    const grnIds = Array.from(
+      new Set(
+        (candidateItems || [])
+          .map((item: any) => String(item?.grn_id || '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (grnIds.length === 0) return receivedByPoItem;
+
+    const { data: candidateGrns, error: candidateGrnsError } = await this.supabase
+      .from('grns')
+      .select('id, status')
+      .eq('tenant_id', tenantId)
+      .in('id', grnIds);
+
+    if (candidateGrnsError) {
+      console.error('[PO] Failed to filter active GRNs for receipt summary:', candidateGrnsError);
+      return new Map();
+    }
+
+    const activeGrnIds = new Set(
+      (candidateGrns || [])
+        .filter((grn: any) => !['REJECTED', 'CANCELLED'].includes(String(grn?.status || '').trim().toUpperCase()))
+        .map((grn: any) => String(grn?.id || '').trim())
+        .filter(Boolean),
+    );
+
+    for (const item of candidateItems || []) {
+      const grnId = String((item as any).grn_id || '').trim();
+      if (!activeGrnIds.has(grnId)) continue;
       const poItemId = String(item.po_item_id || '').trim();
       if (!poItemId) continue;
-      const qty = this.toNumber(item.received_qty ?? item.accepted_qty ?? 0);
+      const qty = this.getEffectivePoReceiptQty(item);
       receivedByPoItem.set(poItemId, (receivedByPoItem.get(poItemId) || 0) + qty);
     }
 
@@ -550,22 +847,24 @@ export class PurchaseOrdersService {
 
     const { data: grns, error: grnError } = await this.supabase
       .from('grns')
-      .select('id')
+      .select('id, status')
       .eq('tenant_id', tenantId)
-      .eq('po_id', normalizedPoId)
-      .not('status', 'in', '("REJECTED","CANCELLED")');
+      .eq('po_id', normalizedPoId);
 
     if (grnError) {
       console.error('[PO] Failed to fetch GRNs for receipt summary:', grnError);
       return 0;
     }
 
-    const grnIds = (grns || []).map((grn: any) => String(grn.id || '').trim()).filter(Boolean);
+    const grnIds = (grns || [])
+      .filter((grn: any) => !['REJECTED', 'CANCELLED'].includes(String(grn?.status || '').trim().toUpperCase()))
+      .map((grn: any) => String(grn.id || '').trim())
+      .filter(Boolean);
     if (grnIds.length === 0) return 0;
 
     const { data: grnItems, error: grnItemsError } = await this.supabase
       .from('grn_items')
-      .select('received_qty, accepted_qty')
+      .select('received_qty, accepted_qty, rejected_qty, qc_status')
       .in('grn_id', grnIds);
 
     if (grnItemsError) {
@@ -575,7 +874,7 @@ export class PurchaseOrdersService {
 
     return (grnItems || []).reduce(
       (sum: number, item: any) =>
-        sum + this.toNumber(item.received_qty ?? item.accepted_qty ?? 0),
+        sum + this.getEffectivePoReceiptQty(item),
       0,
     );
   }
@@ -590,10 +889,9 @@ export class PurchaseOrdersService {
 
     const { data: grns, error: grnError } = await this.supabase
       .from('grns')
-      .select('id, po_id')
+      .select('id, po_id, status')
       .eq('tenant_id', tenantId)
-      .in('po_id', normalizedPoIds)
-      .not('status', 'in', '("REJECTED","CANCELLED")');
+      .in('po_id', normalizedPoIds);
 
     if (grnError) {
       console.error('[PO] Failed to batch-fetch GRNs for receipt summaries:', grnError);
@@ -602,6 +900,7 @@ export class PurchaseOrdersService {
 
     const poIdByGrnId = new Map<string, string>();
     for (const grn of grns || []) {
+      if (['REJECTED', 'CANCELLED'].includes(String(grn?.status || '').trim().toUpperCase())) continue;
       const grnId = String(grn.id || '').trim();
       const poId = String(grn.po_id || '').trim();
       if (grnId && poId) poIdByGrnId.set(grnId, poId);
@@ -611,8 +910,7 @@ export class PurchaseOrdersService {
 
     const { data: grnItems, error: grnItemsError } = await this.supabase
       .from('grn_items')
-      .select('grn_id, po_item_id, received_qty, accepted_qty')
-      .eq('tenant_id', tenantId)
+      .select('grn_id, po_item_id, received_qty, accepted_qty, rejected_qty, qc_status')
       .in('grn_id', grnIds);
 
     if (grnItemsError) {
@@ -624,7 +922,7 @@ export class PurchaseOrdersService {
       const grnId = String(item.grn_id || '').trim();
       const poId = poIdByGrnId.get(grnId);
       if (!poId) continue;
-      const quantity = this.toNumber(item.received_qty ?? item.accepted_qty ?? 0);
+      const quantity = this.getEffectivePoReceiptQty(item);
       receivedByPoId.set(poId, (receivedByPoId.get(poId) || 0) + quantity);
 
       const poItemId = String(item.po_item_id || '').trim();
@@ -648,13 +946,22 @@ export class PurchaseOrdersService {
     const poNumber = po?.po_number;
     
     if (items.length === 0) {
-      console.log(`[computeReceiptSummary] PO ${poNumber}: No items, status=OPEN`);
+      if (process.env.DEBUG_RECEIPT_SUMMARY === 'true') {
+        console.log(`[computeReceiptSummary] PO ${poNumber}: No items, status=NO_ITEMS`);
+      }
       return {
-        receipt_status: 'OPEN',
+        receipt_status: 'NO_ITEMS',
         receipt_progress: { ordered_qty: 0, received_qty: 0, remaining_qty: 0, received_percent: 0 },
         purchase_order_items: items,
       };
     }
+
+    const getOrderedQty = (item: any) => this.toNumber(
+      item?.ordered_qty ??
+      item?.ordered_quantity ??
+      item?.quantity ??
+      item?.qty,
+    );
 
     // Fetch actual received quantities from GRN ledger
     const poItemIds = items.map((it: any) => String(it?.id || '').trim()).filter(Boolean);
@@ -665,16 +972,19 @@ export class PurchaseOrdersService {
     let receivedTotal = 0;
 
     const patchedItems = items.map((it: any) => {
-      const ordered = this.toNumber(it?.ordered_qty);
+      const ordered = getOrderedQty(it);
       const poItemId = String(it?.id || '').trim();
       const grnLedgerReceived = grnReceivedByPoItem.get(poItemId) || 0;
       const storedPoReceived = this.toNumber(it?.received_qty ?? it?.received_quantity);
-      const received = Math.max(grnLedgerReceived, storedPoReceived);
+      const received = receiptLedger
+        ? grnLedgerReceived
+        : (grnReceivedByPoItem.has(poItemId) ? grnLedgerReceived : storedPoReceived);
       const remaining = Math.max(0, ordered - received);
       orderedTotal += ordered;
       receivedTotal += Math.min(received, ordered);
       return {
         ...it,
+        ordered_qty: ordered,
         received_qty: received,
         remaining_qty: remaining,
       };
@@ -687,7 +997,7 @@ export class PurchaseOrdersService {
     if (poLevelReceivedTotal > receivedTotal && orderedTotal > 0) {
       let remainingPoLevelReceived = poLevelReceivedTotal;
       for (const item of patchedItems) {
-        const ordered = this.toNumber(item.ordered_qty);
+        const ordered = getOrderedQty(item);
         const received = Math.min(ordered, remainingPoLevelReceived);
         item.received_qty = Math.max(this.toNumber(item.received_qty), received);
         item.remaining_qty = Math.max(0, ordered - this.toNumber(item.received_qty));
@@ -695,13 +1005,15 @@ export class PurchaseOrdersService {
       }
     }
 
-    const allFullyReceived = patchedItems.every((it: any) => this.toNumber(it.ordered_qty) <= this.toNumber(it.received_qty) + 1e-9);
+    const allFullyReceived = patchedItems.every((it: any) => getOrderedQty(it) <= this.toNumber(it.received_qty) + 1e-9);
     const anyReceived = patchedItems.some((it: any) => this.toNumber(it.received_qty) > 0);
 
     const receiptStatus = allFullyReceived ? 'FULLY_RECEIVED' : anyReceived ? 'PARTIALLY_RECEIVED' : 'OPEN';
     const receivedPercent = orderedTotal > 0 ? Math.round((effectiveReceivedTotal / orderedTotal) * 1000) / 10 : 0;
 
-    console.log(`[computeReceiptSummary] PO ${poNumber}: receipt_status=${receiptStatus}, ordered=${orderedTotal}, received=${effectiveReceivedTotal}, percent=${receivedPercent}%`);
+    if (process.env.DEBUG_RECEIPT_SUMMARY === 'true') {
+      console.log(`[computeReceiptSummary] PO ${poNumber}: receipt_status=${receiptStatus}, ordered=${orderedTotal}, received=${effectiveReceivedTotal}, percent=${receivedPercent}%`);
+    }
 
     return {
       receipt_status: receiptStatus,
@@ -713,6 +1025,19 @@ export class PurchaseOrdersService {
       },
       purchase_order_items: patchedItems,
     };
+  }
+
+  private getReceiptAwarePoStatus(po: any, receipt: any): string {
+    const currentStatus = String(po?.status || '').trim().toUpperCase();
+    if (['DRAFT', 'PENDING', 'REJECTED', 'CANCELLED'].includes(currentStatus)) {
+      return currentStatus;
+    }
+
+    const receiptStatus = String(receipt?.receipt_status || '').trim().toUpperCase();
+    if (receiptStatus === 'FULLY_RECEIVED') return 'CLOSED';
+    if (receiptStatus === 'PARTIALLY_RECEIVED') return 'PARTIAL';
+    if (receiptStatus === 'OPEN') return 'APPROVED';
+    return currentStatus || 'APPROVED';
   }
 
   private async resolveVendorMap(tenantId: string, vendorIds: Array<string | null | undefined>) {
@@ -851,7 +1176,38 @@ export class PurchaseOrdersService {
   // In-memory cache to track recent PO creations (prevents rapid duplicates)
   private recentCreations = new Map<string, number>();
 
+  private async getLinkedRfqQuotationAttachments(tenantId: string, prId: any, vendorId: any) {
+    const normalizedPrId = String(prId || '').trim();
+    const normalizedVendorId = String(vendorId || '').trim();
+    if (!normalizedPrId || !normalizedVendorId) return [];
+
+    const { data, error } = await this.supabase
+      .from('rfqs')
+      .select('status, notes')
+      .eq('tenant_id', tenantId)
+      .eq('pr_id', normalizedPrId)
+      .eq('vendor_id', normalizedVendorId)
+      .in('status', ['RECEIVED', 'RESPONDED'])
+      .order('created_at', { ascending: false });
+    if (error) throw new BadRequestException(error.message);
+
+    for (const row of data || []) {
+      const meta = this.parseTermsMetadata((row as any).notes);
+      const attachments = Array.isArray(meta.responseAttachments)
+        ? meta.responseAttachments
+            .map((attachment: any) => ({
+              url: String(attachment?.url || '').trim(),
+              name: String(attachment?.name || '').trim() || 'Vendor quotation',
+            }))
+            .filter((attachment: any) => attachment.url)
+        : [];
+      if (attachments.length) return attachments;
+    }
+    return [];
+  }
+
   async create(tenantId: string, userId: string, data: any) {
+    await this.projectsService.ensureSchema();
     console.log('=== PO CREATE - Payment data received:', {
       paymentStatus: data.paymentStatus,
       paymentNotes: data.paymentNotes,
@@ -873,6 +1229,7 @@ export class PurchaseOrdersService {
     }
 
     this.assertNoDuplicatePoItems(data.items);
+    await this.assertPrApprovedForPo(tenantId, data.prId);
     await this.assertPrQuantitiesAvailable(tenantId, data.prId, data.items);
     
     // VERIFICATION DISABLED TEMPORARILY - uncomment below to re-enable
@@ -984,9 +1341,41 @@ export class PurchaseOrdersService {
       poNumber = await this.generatePONumber(tenantId);
     }
 
-    if (!Array.isArray(data.attachments) || data.attachments.length === 0) {
+    const requiresQuotationAttachment = String(data.status || 'DRAFT').trim().toUpperCase() !== 'DRAFT';
+    const directAttachments = Array.isArray(data.attachments) ? data.attachments : [];
+    const linkedRfqAttachments = directAttachments.length === 0
+      ? await this.getLinkedRfqQuotationAttachments(tenantId, data.prId, data.vendorId)
+      : [];
+    if (requiresQuotationAttachment && directAttachments.length === 0 && linkedRfqAttachments.length === 0) {
       throw new BadRequestException('Vendor quotation attachment is mandatory for Purchase Order.');
     }
+    if (directAttachments.length === 0 && linkedRfqAttachments.length > 0) {
+      data.attachments = linkedRfqAttachments;
+    }
+    let projectId = String(data.projectId ?? data.project_id ?? '').trim() || null;
+    let projectName = String(data.projectName ?? data.project_name ?? '').trim() || null;
+    if (data.prId && (!projectId || !projectName)) {
+      const { data: prProject } = await this.supabase
+        .from('purchase_requisitions')
+        .select('project_id, project_name')
+        .eq('tenant_id', tenantId)
+        .eq('id', data.prId)
+        .maybeSingle();
+      projectId = projectId || prProject?.project_id || null;
+      projectName = projectName || prProject?.project_name || null;
+    }
+    if (projectId && !projectName) {
+      const { data: project } = await this.supabase
+        .from('projects')
+        .select('project_name')
+        .eq('tenant_id', tenantId)
+        .eq('id', projectId)
+        .maybeSingle();
+      projectName = project?.project_name || null;
+    }
+
+    const paymentTermsForStorage = this.normalizePoPaymentTermsForStorage(data.paymentTerms);
+    const serverTotals = this.calculatePoCommercialTotals(data.items || [], data);
 
     const { data: po, error } = await this.supabase
       .from('purchase_orders')
@@ -994,6 +1383,8 @@ export class PurchaseOrdersService {
         tenant_id: tenantId,
         po_number: poNumber,
         pr_id: data.prId,
+        project_id: projectId,
+        project_name: projectName,
         is_partial_po: isPartialPo,
         parent_pr_id: parentPrId,
         partial_po_sequence: partialPoSequence ?? undefined,
@@ -1001,34 +1392,52 @@ export class PurchaseOrdersService {
         po_date: data.poDate || new Date().toISOString().split('T')[0],
         delivery_date: data.deliveryDate,
         quotation_ref: data.quotationRef || null,
-        payment_terms: data.paymentTerms || 'NET_30',
+        payment_terms: paymentTermsForStorage.dbValue,
         payment_status: data.paymentStatus || 'UNPAID',
         payment_notes: data.paymentNotes,
         delivery_address: data.deliveryAddress,
         delivery_contact_person: data.deliveryContactPerson || null,
         delivery_contact_phone: data.deliveryContactPhone || null,
         terms_and_conditions: (() => {
-          const project = data.projectName || '';
+          const project = projectName || data.projectName || '';
           const freight = data.freightTerms || '';
           const freightAmount = this.safeNumber(data.freightAmount);
           const freightGstApplicable = data.freightGstApplicable === true;
           const freightGstPercent = freightGstApplicable ? this.safeNumber(data.freightGstPercent) : 0;
           const freightGstAmount = freightGstApplicable ? this.safeNumber(data.freightGstAmount) : 0;
           const additionalExpenses = this.safeNumber(data.otherCharges);
+          const isImportPurchase = data.isImportPurchase === true;
+          const supplierCurrency = String(data.supplierCurrency || 'INR').trim().toUpperCase();
+          const customsExchangeRate = this.safeNumber(data.customsExchangeRate);
+          const importNotes = String(data.importNotes || '').trim();
           // Check if any freight-related field was explicitly provided (including 0 values)
-          const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.otherCharges !== undefined;
-          if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses) {
-            return JSON.stringify({ project, freight, freightAmount, freightGstApplicable, freightGstPercent, freightGstAmount, additionalExpenses });
+          const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.project_name !== undefined || data.projectId !== undefined || data.project_id !== undefined || data.otherCharges !== undefined || data.isImportPurchase !== undefined || data.supplierCurrency !== undefined || data.customsExchangeRate !== undefined || data.importNotes !== undefined || data.paymentTerms !== undefined;
+          if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses || isImportPurchase || supplierCurrency !== 'INR' || customsExchangeRate || importNotes || paymentTermsForStorage.displayText) {
+            return JSON.stringify({
+              ...this.parseTermsMetadata(data.termsAndConditions),
+              project,
+              freight,
+              freightAmount,
+              freightGstApplicable,
+              freightGstPercent,
+              freightGstAmount,
+              additionalExpenses,
+              isImportPurchase,
+              supplierCurrency,
+              customsExchangeRate,
+              importNotes,
+              paymentTermsText: paymentTermsForStorage.displayText || undefined,
+            });
           }
           return data.termsAndConditions;
         })(),
         status: data.status || 'DRAFT',
-        total_amount: data.totalAmount || 0,
-        tax_amount: data.taxAmount || 0,
-        discount_amount: data.discountAmount || 0,
-        grand_total: data.grandTotal ?? data.totalAmount ?? 0,
-        customs_duty: this.safeNumber(data.customsDuty),
-        other_charges: this.safeNumber(data.otherCharges),
+        total_amount: serverTotals.grand_total,
+        tax_amount: serverTotals.tax_amount,
+        discount_amount: serverTotals.discount_amount,
+        grand_total: serverTotals.grand_total,
+        customs_duty: serverTotals.customs_duty,
+        other_charges: serverTotals.other_charges,
         remarks: data.remarks,
         attachments: data.attachments !== undefined || this.hasPODrawingSelections(data.items)
           ? this.buildPOAttachmentsWithDrawingSelections(data.attachments, data.items)
@@ -1039,13 +1448,24 @@ export class PurchaseOrdersService {
       .single();
 
     if (error) throw new BadRequestException(error.message);
+    if (projectId) {
+      await this.projectsService.logEvent(tenantId, projectId, userId, {
+        eventType: 'PO_CREATED',
+        sourceModule: 'PURCHASE_ORDER',
+        sourceId: po.id,
+        sourceNumber: po.po_number,
+        remarks: data.prId ? 'Purchase order created from project requisition' : 'Standalone purchase order created for project',
+        metadata: { status: po.status, amount: po.grand_total ?? po.total_amount ?? 0 },
+      });
+    }
 
     // Insert items
     if (data.items && data.items.length > 0) {
+      const isImportPo = data.isImportPurchase === true || String(data.supplierCurrency || 'INR').trim().toUpperCase() !== 'INR';
       const items = data.items.map((item: any) => {
         const orderedQty = this.safeNumber(item.orderedQty || item.quantity);
         const rate = this.safeNumber(item.rate || item.unitPrice);
-        const taxPercent = this.safeNumber(item.taxPercent ?? item.taxRate ?? 0);
+        const taxPercent = isImportPo ? 0 : this.safeNumber(item.taxPercent ?? item.taxRate ?? 0);
         const discountPercent = this.safeNumber(item.discountPercent ?? item.discount_percent ?? item.discount ?? 0);
         const baseAmount = orderedQty * rate;
         const discountAmount = baseAmount * (discountPercent / 100);
@@ -1069,15 +1489,13 @@ export class PurchaseOrdersService {
           delivery_date: item.deliveryDate,
           payment_terms: item.paymentTerms ?? null,
           delivery_terms: item.deliveryTerms ?? null,
+          include_drawing: item.includeDrawing === true || item.include_drawing === true,
+          selected_drawing_id: item.selectedDrawingId || item.selected_drawing_id || null,
           remarks: item.remarks,
         };
       });
 
-      const { error: itemsError } = await this.supabase
-        .from('purchase_order_items')
-        .insert(items);
-
-      if (itemsError) throw new BadRequestException(itemsError.message);
+      await this.insertPurchaseOrderItemsWithDrawingFallback(items);
 
       await this.upsertPreferredItemVendors(
         tenantId,
@@ -1100,7 +1518,7 @@ export class PurchaseOrdersService {
       .select(`
         *,
         vendor:vendors(id, code, name, contact_person, email),
-        purchase_order_items(*, item:items(hsn_code, uom, category))
+        purchase_order_items(*, item:items(id, code, name, description, hsn_code, uom, category, oem_part_no, oem_name))
       `)
       .eq('tenant_id', tenantId);
 
@@ -1116,10 +1534,6 @@ export class PurchaseOrdersService {
       query = query.eq('pr_id', filters.prId);
     }
 
-    if (filters?.search) {
-      query = query.or(`po_number.ilike.%${filters.search}%,remarks.ilike.%${filters.search}%`);
-    }
-
     query = query.order('created_at', { ascending: false });
 
     const { data, error } = await query;
@@ -1128,7 +1542,49 @@ export class PurchaseOrdersService {
 
     // Avoid PostgREST embed ambiguity: purchase_orders has multiple FKs to purchase_requisitions
     // (e.g. pr_id and parent_pr_id). Fetch PRs separately and attach as `pr`.
-    const rows = Array.isArray(data) ? data : [];
+    let rows = Array.isArray(data) ? data : [];
+
+    if (filters?.search) {
+      const tokens = String(filters.search || '')
+        .toLowerCase()
+        .split(/[\s,;|/\\()[\]{}"'`._:-]+/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+      if (tokens.length > 0) {
+        rows = rows.filter((po: any) => {
+          const lineText = (Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [])
+            .map((item: any) => [
+              item?.item_code,
+              item?.item_name,
+              item?.description,
+              item?.line_description,
+              item?.remarks,
+              item?.specifications,
+              item?.notes,
+              item?.item?.code,
+              item?.item?.name,
+              item?.item?.description,
+              item?.item?.hsn_code,
+              item?.item?.oem_part_no,
+              item?.item?.oem_name,
+            ].filter(Boolean).join(' '))
+            .join(' ');
+          const haystack = [
+            po?.po_number,
+            po?.remarks,
+            po?.project_name,
+            po?.vendor?.name,
+            po?.vendor?.code,
+            po?.vendor?.contact_person,
+            po?.vendor?.email,
+            lineText,
+          ].filter(Boolean).join(' ').toLowerCase();
+
+          return tokens.every((token) => haystack.includes(token));
+        });
+      }
+    }
     const prIds = Array.from(
       new Set(
         rows
@@ -1158,21 +1614,70 @@ export class PurchaseOrdersService {
       rows.map((po: any) => po?.id),
     );
 
+    const approvedUserIds = Array.from(
+      new Set(
+        rows
+          .flatMap((po: any) => {
+            const termsMetadata = this.parseTermsMetadata(po?.terms_and_conditions);
+            return [po?.approved_by, termsMetadata.approvedByUserId]
+              .map((id: any) => String(id || '').trim())
+              .filter(Boolean);
+          }),
+      ),
+    );
+    const approvedNameById = new Map<string, string>();
+    if (approvedUserIds.length > 0) {
+      const { data: users, error: usersError } = await this.supabase
+        .from('users')
+        .select('id, first_name, last_name, username, email')
+        .in('id', approvedUserIds);
+      if (usersError) throw new BadRequestException(usersError.message);
+      for (const user of users || []) {
+        approvedNameById.set(user.id, this.formatUserDisplayName(user));
+      }
+    }
+
     const result = [];
     for (const po of rows) {
+      const poStatus = String(po?.status || '').trim().toUpperCase();
+
+      const hasMaterialLine = (po.purchase_order_items || []).some((item: any) => (
+        normalizeInventoryCategory(item?.item?.category) !== 'SERVICES'
+      ));
+      // Service-only orders are received through Service Entry Sheets, never GRN.
+      if (filters?.pendingOnly && !hasMaterialLine) continue;
       const hydratedPo = this.hydratePODrawingSelections(po);
       const receipt = await this.computeReceiptSummary(tenantId, hydratedPo, receiptLedger);
+      const termsMetadata = this.parseTermsMetadata((hydratedPo as any)?.terms_and_conditions);
+      const approvedById = String((hydratedPo as any)?.approved_by || termsMetadata.approvedByUserId || '').trim();
+      const approvedByName = String(termsMetadata.approvedByName || '').trim() || approvedNameById.get(approvedById) || '';
+      const receiptAwareStatus = this.getReceiptAwarePoStatus(hydratedPo, receipt);
+      const receiptAwarePoStatus = String(receiptAwareStatus || '').trim().toUpperCase();
+      if (filters?.pendingOnly && !['APPROVED', 'PARTIAL'].includes(receiptAwarePoStatus)) continue;
       
-      // Filter out fully received POs if pendingOnly is requested (for GRN creation)
-      if (filters?.pendingOnly && receipt.receipt_status === 'FULLY_RECEIVED') {
+      // GRN creation must only list POs that still have receivable balance.
+      // Empty/ambiguous POs are excluded so completed POs cannot slip through.
+      if (
+        filters?.pendingOnly &&
+        (
+          receipt.receipt_status === 'FULLY_RECEIVED' ||
+          this.toNumber(receipt.receipt_progress?.ordered_qty) <= 0 ||
+          this.toNumber(receipt.receipt_progress?.remaining_qty) <= 0
+        )
+      ) {
         continue;
       }
       
+      const amountAwarePo = this.withPoAmountCalculation(hydratedPo);
       result.push({
-        ...hydratedPo,
+        ...amountAwarePo,
+        payment_terms_code: (amountAwarePo as any)?.payment_terms,
+        payment_terms: this.resolvePoPaymentTermsDisplay(amountAwarePo, termsMetadata),
         ...receipt,
+        status: receiptAwareStatus,
         vendor: po?.vendor_id ? vendorById.get(po.vendor_id) ?? null : null,
         pr: po?.pr_id ? prById.get(po.pr_id) ?? null : null,
+        approved_by_name: approvedByName,
       });
     }
     return result;
@@ -1184,7 +1689,7 @@ export class PurchaseOrdersService {
       .select(`
         *,
         vendor:vendors(id, code, name, contact_person, email, phone, address, street, billing_line2, metadata, city, state, pincode, tax_id),
-        purchase_order_items(*, item:items(hsn_code, uom, category))
+        purchase_order_items(*, item:items(id, code, name, description, hsn_code, uom, category))
       `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
@@ -1250,10 +1755,15 @@ export class PurchaseOrdersService {
       (await this.resolveUserDisplayName((hydratedData as any)?.approved_by || termsMetadata.approvedByUserId)) ||
       (await this.resolvePoApproverNameFromAudit(tenantId, id));
 
+    const amountAwarePo = this.withPoAmountCalculation(hydratedData);
+
     return {
-      ...(hydratedData as any),
+      ...(amountAwarePo as any),
+      payment_terms_code: (amountAwarePo as any)?.payment_terms,
+      payment_terms: this.resolvePoPaymentTermsDisplay(amountAwarePo, termsMetadata),
       ...receipt,
-      vendor: (hydratedData as any)?.vendor_id ? vendorById.get((hydratedData as any).vendor_id) ?? null : null,
+      status: this.getReceiptAwarePoStatus(amountAwarePo, receipt),
+      vendor: (amountAwarePo as any)?.vendor_id ? vendorById.get((amountAwarePo as any).vendor_id) ?? null : null,
       pr,
       rfq_trail: rfqTrail,
       created_by_name: createdByName,
@@ -1261,7 +1771,7 @@ export class PurchaseOrdersService {
     };
   }
 
-  async update(tenantId: string, id: string, data: any) {
+  async update(tenantId: string, id: string, data: any, actor?: any) {
     console.log('=== PO UPDATE - Payment data received:', {
       paymentStatus: data.paymentStatus,
       paymentNotes: data.paymentNotes,
@@ -1270,7 +1780,7 @@ export class PurchaseOrdersService {
 
     const { data: existingPO } = await this.supabase
       .from('purchase_orders')
-      .select('status, po_number')
+      .select('status, po_number, created_by, terms_and_conditions, total_amount, grand_total, tax_amount, discount_amount, customs_duty, other_charges')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .single();
@@ -1280,10 +1790,20 @@ export class PurchaseOrdersService {
     }
 
     const existingStatus = String(existingPO.status || '').toUpperCase();
-    if (!['DRAFT', 'REJECTED', 'APPROVED'].includes(existingStatus)) {
+    if (!['DRAFT', 'PENDING', 'REJECTED', 'APPROVED'].includes(existingStatus)) {
       throw new BadRequestException(
         `Purchase Order ${existingPO.po_number || id} cannot be changed while its status is ${existingStatus}.`,
       );
+    }
+
+    if (existingStatus === 'PENDING') {
+      const actorId = String(actor?.userId || actor?.id || '').trim();
+      const creatorId = String((existingPO as any)?.created_by || '').trim();
+      if (creatorId && creatorId !== actorId && !this.isSuperAdmin(actor)) {
+        throw new ForbiddenException(
+          `Purchase Order ${existingPO.po_number || id} is awaiting approval. Only its creator can edit and resubmit it; a Super Admin may override this lock.`,
+        );
+      }
     }
 
     if (existingStatus === 'APPROVED') {
@@ -1312,32 +1832,112 @@ export class PurchaseOrdersService {
     if (data.attachments !== undefined && (!Array.isArray(data.attachments) || data.attachments.length === 0)) {
       throw new BadRequestException('Vendor quotation attachment is mandatory for Purchase Order.');
     }
+
+    const projectId = data.projectId !== undefined || data.project_id !== undefined
+      ? (String(data.projectId ?? data.project_id ?? '').trim() || null)
+      : undefined;
+    let projectName = data.projectName !== undefined || data.project_name !== undefined
+      ? (String(data.projectName ?? data.project_name ?? '').trim() || null)
+      : undefined;
+    if (projectId && !projectName) {
+      const { data: project } = await this.supabase
+        .from('projects')
+        .select('project_name')
+        .eq('tenant_id', tenantId)
+        .eq('id', projectId)
+        .maybeSingle();
+      projectName = project?.project_name || null;
+    }
+
+    const existingTermsMetadata = this.parseTermsMetadata((existingPO as any)?.terms_and_conditions);
+    const hasPaymentTermsUpdate = data.paymentTerms !== undefined || data.payment_terms !== undefined;
+    const paymentTermsForStorage = hasPaymentTermsUpdate
+      ? this.normalizePoPaymentTermsForStorage(data.paymentTerms ?? data.payment_terms)
+      : null;
+    let serverTotalsForUpdate: any = null;
+    const commercialTotalFieldsTouched = [
+      'items',
+      'freightAmount',
+      'freight_amount',
+      'freightGstApplicable',
+      'freight_gst_applicable',
+      'freightGstPercent',
+      'freight_gst_percent',
+      'freightGstAmount',
+      'freight_gst_amount',
+      'customsDuty',
+      'customs_duty',
+      'otherCharges',
+      'other_charges',
+      'isImportPurchase',
+      'supplierCurrency',
+    ].some((key) => data[key] !== undefined);
+
+    if (commercialTotalFieldsTouched) {
+      let totalSourceItems = Array.isArray(data.items) ? data.items : null;
+      if (!totalSourceItems) {
+        const { data: existingItemsForTotals, error: existingItemsForTotalsError } = await this.supabase
+          .from('purchase_order_items')
+          .select('ordered_qty, rate, tax_percent, discount_percent')
+          .eq('po_id', id);
+        if (existingItemsForTotalsError) throw new BadRequestException(existingItemsForTotalsError.message);
+        totalSourceItems = existingItemsForTotals || [];
+      }
+      serverTotalsForUpdate = this.calculatePoCommercialTotals(totalSourceItems, {
+        ...(existingPO as any),
+        ...data,
+        terms_and_conditions: (existingPO as any)?.terms_and_conditions,
+      });
+    }
     
     const { error } = await this.supabase
       .from('purchase_orders')
       .update({
         vendor_id: data.vendorId,
+        project_id: projectId,
+        project_name: projectName,
         po_date: data.poDate || data.orderDate,
         delivery_date: data.deliveryDate || data.expectedDelivery,
         quotation_ref: data.quotationRef !== undefined ? (data.quotationRef || null) : undefined,
-        payment_terms: data.paymentTerms,
+        payment_terms: paymentTermsForStorage?.dbValue,
         payment_status: data.paymentStatus,
         payment_notes: data.paymentNotes,
         delivery_address: data.deliveryAddress,
         delivery_contact_person: data.deliveryContactPerson !== undefined ? (data.deliveryContactPerson || null) : undefined,
         delivery_contact_phone: data.deliveryContactPhone !== undefined ? (data.deliveryContactPhone || null) : undefined,
         terms_and_conditions: (() => {
-          const project = data.projectName || '';
+          const project = projectName !== undefined ? (projectName || '') : (data.projectName || '');
           const freight = data.freightTerms || '';
           const freightAmount = this.safeNumber(data.freightAmount);
           const freightGstApplicable = data.freightGstApplicable === true;
           const freightGstPercent = freightGstApplicable ? this.safeNumber(data.freightGstPercent) : 0;
           const freightGstAmount = freightGstApplicable ? this.safeNumber(data.freightGstAmount) : 0;
           const additionalExpenses = this.safeNumber(data.otherCharges);
+          const isImportPurchase = data.isImportPurchase === true;
+          const supplierCurrency = String(data.supplierCurrency || 'INR').trim().toUpperCase();
+          const customsExchangeRate = this.safeNumber(data.customsExchangeRate);
+          const importNotes = String(data.importNotes || '').trim();
           // Check if any freight-related field was explicitly provided (including 0 values for removal)
-          const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.otherCharges !== undefined;
-          if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses) {
-            return JSON.stringify({ project, freight, freightAmount, freightGstApplicable, freightGstPercent, freightGstAmount, additionalExpenses });
+          const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.project_name !== undefined || data.projectId !== undefined || data.project_id !== undefined || data.otherCharges !== undefined || data.isImportPurchase !== undefined || data.supplierCurrency !== undefined || data.customsExchangeRate !== undefined || data.importNotes !== undefined || hasPaymentTermsUpdate;
+          if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses || isImportPurchase || supplierCurrency !== 'INR' || customsExchangeRate || importNotes || paymentTermsForStorage?.displayText) {
+            return JSON.stringify({
+              ...existingTermsMetadata,
+              ...this.parseTermsMetadata(data.termsAndConditions),
+              project,
+              freight,
+              freightAmount,
+              freightGstApplicable,
+              freightGstPercent,
+              freightGstAmount,
+              additionalExpenses,
+              isImportPurchase,
+              supplierCurrency,
+              customsExchangeRate,
+              importNotes,
+              paymentTermsText: hasPaymentTermsUpdate
+                ? (paymentTermsForStorage?.displayText || undefined)
+                : (existingTermsMetadata.paymentTermsText || existingTermsMetadata.payment_terms_text || undefined),
+            });
           }
           return data.termsAndConditions ?? undefined;
         })(),
@@ -1345,11 +1945,14 @@ export class PurchaseOrdersService {
         attachments: data.attachments !== undefined || this.hasPODrawingSelections(data.items)
           ? this.buildPOAttachmentsWithDrawingSelections(data.attachments, data.items)
           : undefined,
-        total_amount: data.totalAmount,
-        grand_total: data.grandTotal ?? data.totalAmount,
-        customs_duty: data.customsDuty !== undefined ? this.safeNumber(data.customsDuty) : undefined,
-        other_charges: data.otherCharges !== undefined ? this.safeNumber(data.otherCharges) : undefined,
+        total_amount: serverTotalsForUpdate?.grand_total,
+        tax_amount: serverTotalsForUpdate?.tax_amount,
+        discount_amount: serverTotalsForUpdate?.discount_amount,
+        grand_total: serverTotalsForUpdate?.grand_total,
+        customs_duty: serverTotalsForUpdate?.customs_duty,
+        other_charges: serverTotalsForUpdate?.other_charges,
         updated_at: new Date().toISOString(),
+        updated_by: String(actor?.userId || actor?.id || '').trim() || undefined,
         ...(['REJECTED', 'APPROVED'].includes(existingStatus)
           ? { status: 'PENDING', approved_by: null, approved_at: null }
           : {}),
@@ -1365,43 +1968,129 @@ export class PurchaseOrdersService {
 
     if (error) throw new BadRequestException(error.message);
 
-    // Update items if provided
+    // Update items if provided. Do this line-wise instead of delete+insert:
+    // if an old PO line is referenced by GRN/SES/stock flow, a blind delete can fail
+    // and silently inserting the edited line creates duplicate rows.
     if (data.items) {
-      await this.supabase
+      const { data: existingItems, error: existingItemsError } = await this.supabase
         .from('purchase_order_items')
-        .delete()
+        .select('id, pr_item_id, item_id, item_code, item_name, description, uom')
         .eq('po_id', id);
 
-      if (data.items.length > 0) {
-        const items = data.items.map((item: any) => ({
-          po_id: id,
-          pr_item_id: item.prItemId,
-          item_id: item.itemId || item.item_id || null,
-          item_code: item.itemCode,
-          item_name: item.itemName,
-          description: item.description,
-          uom: item.uom,
-          ordered_qty: item.orderedQty || item.quantity,
-          rate: item.rate || item.unitPrice,
-          tax_percent: item.taxPercent ?? item.taxRate ?? 0,
-          discount_percent: item.discountPercent ?? item.discount_percent ?? item.discount ?? 0,
-          amount: item.amount || item.totalPrice,
-          delivery_date: item.deliveryDate,
-          payment_terms: item.paymentTerms ?? null,
-          delivery_terms: item.deliveryTerms ?? null,
-          remarks: item.remarks || item.specifications,
-        }));
+      if (existingItemsError) throw new BadRequestException(existingItemsError.message);
 
-        await this.supabase
+      const existingRows = Array.isArray(existingItems) ? existingItems : [];
+      const existingById = new Map(existingRows.map((row: any) => [String(row.id), row]));
+      const remainingExistingIds = new Set(existingRows.map((row: any) => String(row.id)));
+      const consumedExistingIds = new Set<string>();
+
+      const findExistingIdForIncomingLine = (item: any): string | null => {
+        const explicitId = String(item?.poItemId || item?.po_item_id || item?.id || '').trim();
+        if (explicitId && existingById.has(explicitId) && !consumedExistingIds.has(explicitId)) return explicitId;
+
+        const incomingPrItemId = String(item?.prItemId || item?.pr_item_id || '').trim();
+        const incomingItemId = String(item?.itemId || item?.item_id || '').trim();
+        const incomingItemCode = String(item?.itemCode || item?.item_code || '').trim();
+        const incomingItemName = String(item?.itemName || item?.item_name || '').trim().toLowerCase();
+        const incomingDescription = String(item?.description || item?.remarks || item?.specifications || '').trim().toLowerCase();
+        const incomingUom = String(item?.uom || '').trim().toLowerCase();
+
+        const matched = existingRows.find((row: any) => {
+          const rowId = String(row.id);
+          if (consumedExistingIds.has(rowId)) return false;
+          if (incomingPrItemId && String(row.pr_item_id || '') === incomingPrItemId) return true;
+          if (incomingItemId && String(row.item_id || '') === incomingItemId) return true;
+          const rowCode = String(row.item_code || '').trim();
+          const rowName = String(row.item_name || '').trim().toLowerCase();
+          const rowDescription = String(row.description || '').trim().toLowerCase();
+          const rowUom = String(row.uom || '').trim().toLowerCase();
+          if (incomingItemCode && rowCode === incomingItemCode) {
+            if (!incomingItemName || !rowName || rowName === incomingItemName) return true;
+            if (incomingDescription && rowDescription && rowDescription === incomingDescription) return true;
+            if (incomingUom && rowUom && rowUom === incomingUom) return true;
+          }
+          if (!incomingItemCode && incomingItemName && rowName === incomingItemName) return true;
+          return false;
+        });
+
+        return matched?.id ? String(matched.id) : null;
+      };
+
+      const isImportPo = data.isImportPurchase === true || String(data.supplierCurrency || 'INR').trim().toUpperCase() !== 'INR';
+      const normalizedItems = data.items.map((item: any) => {
+        const orderedQty = this.safeNumber(item.orderedQty ?? item.ordered_qty ?? item.quantity);
+        const rate = this.safeNumber(item.rate ?? item.unitPrice ?? item.unit_price);
+        const taxPercent = isImportPo ? 0 : this.safeNumber(item.taxPercent ?? item.taxRate ?? item.tax_percent ?? 0);
+        const discountPercent = this.safeNumber(item.discountPercent ?? item.discount_percent ?? item.discount ?? 0);
+        const baseAmount = orderedQty * rate;
+        const discountAmount = baseAmount * (discountPercent / 100);
+        const taxableAmount = Math.max(0, baseAmount - discountAmount);
+        return {
+          source: item,
+          row: {
+            po_id: id,
+            pr_item_id: item.prItemId ?? item.pr_item_id ?? null,
+            item_id: item.itemId || item.item_id || null,
+            item_code: item.itemCode ?? item.item_code ?? '',
+            item_name: item.itemName ?? item.item_name ?? '',
+            description: item.description,
+            uom: item.uom,
+            ordered_qty: orderedQty,
+            rate,
+            tax_percent: taxPercent,
+            discount_percent: discountPercent,
+            amount: taxableAmount + taxableAmount * (taxPercent / 100),
+            delivery_date: item.deliveryDate ?? item.delivery_date ?? null,
+            payment_terms: item.paymentTerms ?? item.payment_terms ?? null,
+            delivery_terms: item.deliveryTerms ?? item.delivery_terms ?? null,
+            include_drawing: item.includeDrawing === true || item.include_drawing === true,
+            selected_drawing_id: item.selectedDrawingId || item.selected_drawing_id || null,
+            remarks: item.remarks || item.specifications || null,
+          },
+        };
+      });
+
+      const itemsToInsert: any[] = [];
+      for (const normalized of normalizedItems) {
+        const existingItemId = findExistingIdForIncomingLine(normalized.source);
+        if (existingItemId) {
+          consumedExistingIds.add(existingItemId);
+          remainingExistingIds.delete(existingItemId);
+          await this.updatePurchaseOrderItemWithDrawingFallback(existingItemId, normalized.row);
+        } else {
+          itemsToInsert.push(normalized.row);
+        }
+      }
+
+      const removedIds = Array.from(remainingExistingIds);
+      if (removedIds.length > 0) {
+        const { error: deleteItemsError } = await this.supabase
           .from('purchase_order_items')
-          .insert(items);
+          .delete()
+          .in('id', removedIds);
+
+        if (deleteItemsError) {
+          throw new BadRequestException(
+            `Cannot remove PO line item(s) because they may already be referenced in GRN/SES/stock flow: ${deleteItemsError.message}`,
+          );
+        }
+      }
+
+      if (itemsToInsert.length > 0) {
+        await this.insertPurchaseOrderItemsWithDrawingFallback(itemsToInsert);
       }
     }
 
     return this.findOne(tenantId, id);
   }
 
-  async updateStatus(tenantId: string, id: string, status: string, userId?: string) {
+  async updateStatus(
+    tenantId: string,
+    id: string,
+    status: string,
+    userId?: string,
+    options: { overrideMakerChecker?: boolean } = {},
+  ) {
     console.log('Updating PO status:', { tenantId, id, status, userId });
 
     const normalizedStatus = String(status || '').trim().toUpperCase();
@@ -1413,7 +2102,7 @@ export class PurchaseOrdersService {
 
     const { data: currentPo } = await this.supabase
       .from('purchase_orders')
-      .select('po_number, status, terms_and_conditions, created_by')
+      .select('po_number, status, terms_and_conditions, created_by, updated_by')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
@@ -1424,8 +2113,17 @@ export class PurchaseOrdersService {
       );
     }
 
-    if (['APPROVED', 'REJECTED'].includes(normalizedStatus) && String(currentPo?.created_by || '') === String(userId || '')) {
-      throw new BadRequestException(`You cannot ${normalizedStatus === 'APPROVED' ? 'approve' : 'reject'} your own purchase order.`);
+    if (
+      ['APPROVED', 'REJECTED'].includes(normalizedStatus) &&
+      !options.overrideMakerChecker &&
+      (
+        String(currentPo?.created_by || '') === String(userId || '') ||
+        String(currentPo?.updated_by || '') === String(userId || '')
+      )
+    ) {
+      throw new BadRequestException(
+        `You cannot ${normalizedStatus === 'APPROVED' ? 'approve' : 'reject'} a purchase order that you created or last edited.`,
+      );
     }
 
     // Assign the real sequential number when a pending draft is approved.
@@ -1642,7 +2340,7 @@ export class PurchaseOrdersService {
     return safe.replace(/[\\/:*?"<>|\r\n]+/g, '_');
   }
 
-  private dataUrlToNodemailerAttachment(input: {
+  private async dataUrlToNodemailerAttachment(input: {
     fileUrl: string;
     filename: string;
     contentType?: string | null;
@@ -1678,10 +2376,9 @@ export class PurchaseOrdersService {
       };
     }
 
-    // Fallback for non-data URLs (e.g. http(s) links)
     return {
       filename,
-      path: fileUrl,
+      content: await this.worldClassPoPdfService.loadFileBuffer(fileUrl),
       contentType: input.contentType || undefined,
     };
   }
@@ -1718,7 +2415,7 @@ export class PurchaseOrdersService {
       const filename = `${itemCodeOrName}_${versionText}_${baseName}`;
 
       attachments.push(
-        this.dataUrlToNodemailerAttachment({
+        await this.dataUrlToNodemailerAttachment({
           fileUrl: activeDrawing.file_url,
           filename,
           contentType: activeDrawing.file_type,
@@ -1967,7 +2664,10 @@ export class PurchaseOrdersService {
   }
 
   async fetchDrawingsForPOItems(tenantId: string, poItems: any[]): Promise<any[]> {
-    const { drawings } = await this.resolvePODrawingChoices(tenantId, poItems);
+    const { drawings, missingCompulsory } = await this.resolvePODrawingChoices(tenantId, poItems);
+    if (missingCompulsory.length > 0) {
+      console.warn('[PO PDF] Compulsory drawings could not be resolved:', missingCompulsory.join(', '));
+    }
     return drawings.map((drawingChoice) => drawingChoice.drawing);
   }
 
@@ -2014,16 +2714,31 @@ export class PurchaseOrdersService {
       throw new BadRequestException('Vendor email not found');
     }
 
+    const outstandingItems = (po.purchase_order_items || []).map((item: any) => ({
+      ...item,
+      ordered_qty: Number(item.ordered_qty || 0),
+      received_qty: Number(item.received_qty || 0),
+      pending_qty: Math.max(0, Number(item.ordered_qty || 0) - Number(item.received_qty || 0)),
+    })).filter((item: any) => item.pending_qty > 0.000001);
+    if (!outstandingItems.length) {
+      throw new BadRequestException('All purchase-order material has already been received');
+    }
+
     const emailData = {
       tenant_id: tenantId,
       po_number: po.po_number,
       po_date: po.po_date,
       delivery_date: po.delivery_date,
       vendor_name: po.vendor.name,
-      items: po.purchase_order_items,
+      items: outstandingItems,
     };
 
     await this.emailService.sendPOTrackingReminder(po.vendor.email, emailData);
+
+    await this.supabase.from('purchase_orders').update({
+      tracking_reminder_last_sent_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('tenant_id', tenantId).eq('id', poId);
 
     return { message: 'Tracking reminder sent successfully', recipient: po.vendor.email };
   }

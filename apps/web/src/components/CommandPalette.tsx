@@ -32,6 +32,8 @@ interface CmdItem {
 const staticItems: CmdItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <Home className="h-4 w-4" />, href: '/dashboard', group: 'Navigation' },
   { id: 'manager', label: 'Manager Approvals', icon: <ClipboardList className="h-4 w-4" />, href: '/dashboard/manager', group: 'Navigation' },
+  { id: 'reports', label: 'Reports', subtitle: 'Operational report catalog and cockpit drill-downs', icon: <BarChart2 className="h-4 w-4" />, href: '/dashboard/reports', group: 'Navigation' },
+  { id: 'projects', label: 'Projects', subtitle: 'Project master and lifecycle trail', icon: <ClipboardList className="h-4 w-4" />, href: '/dashboard/projects', group: 'Navigation' },
 
   // Purchase
   { id: 'vendors', label: 'Vendors', subtitle: 'Manage supplier information', icon: <ShoppingCart className="h-4 w-4" />, href: '/dashboard/purchase/vendors', group: 'Purchase' },
@@ -43,27 +45,38 @@ const staticItems: CmdItem[] = [
   // Inventory
   { id: 'stock-overview', label: 'Stock Overview', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory', group: 'Inventory' },
   { id: 'stock-master', label: 'Stock Master', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory/items', group: 'Inventory' },
+  { id: 'low-stock-planning', label: 'Low Stock Planning', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory/low-stock', group: 'Inventory' },
   { id: 'stock-adjustments', label: 'Stock Adjustments', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory/stock-adjustments', group: 'Inventory' },
   { id: 'siv', label: 'Store Issue Voucher (SIV)', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory/siv', group: 'Inventory' },
   { id: 'srv', label: 'Store Return Voucher (SRV)', icon: <Package className="h-4 w-4" />, href: '/dashboard/inventory/srv', group: 'Inventory' },
 
   // Production
-  { id: 'job-orders', label: 'Job Orders', icon: <Factory className="h-4 w-4" />, href: '/dashboard/production/job-orders/smart-items', group: 'Production' },
+  { id: 'create-job-order', label: 'Create Job Order', subtitle: 'Plan BOM shortages, SIV issue, SRV receipt, and QC release', icon: <Factory className="h-4 w-4" />, href: '/dashboard/production/job-orders/smart-items', group: 'Production' },
+  { id: 'job-orders', label: 'View Job Orders', subtitle: 'Track production, purchase, SIV, SRV, and QC status', icon: <Factory className="h-4 w-4" />, href: '/dashboard/production/job-orders', group: 'Production' },
+  { id: 'subcontracting', label: 'Subcontracting / Outside Processing', subtitle: 'Vendor operations, WIP, scrap, and returns', icon: <Factory className="h-4 w-4" />, href: '/dashboard/production/subcontracting', group: 'Production' },
   { id: 'bom', label: 'Bill of Materials', icon: <Factory className="h-4 w-4" />, href: '/dashboard/bom', group: 'Production' },
 
   // Accounts
+  { id: 'accounting', label: 'Accounts Control Centre', subtitle: 'Chart of accounts, journals, reports, banking and tax', icon: <CreditCard className="h-4 w-4" />, href: '/dashboard/accounts', group: 'Accounts' },
   { id: 'payables', label: 'Accounts Payable', icon: <CreditCard className="h-4 w-4" />, href: '/dashboard/accounts/payables', group: 'Accounts' },
 
   // Other modules
   { id: 'sales', label: 'Sales & Dispatch', icon: <DollarSign className="h-4 w-4" />, href: '/dashboard/sales', group: 'Sales' },
   { id: 'service', label: 'Service Tickets', icon: <Wrench className="h-4 w-4" />, href: '/dashboard/service', group: 'Service' },
-  { id: 'hr', label: 'Human Resources', icon: <Users className="h-4 w-4" />, href: '/dashboard/hr', group: 'HR' },
+  { id: 'hr-employees', label: 'Employee Self-Service', subtitle: 'Attendance, leave, payslips, and documents', icon: <Users className="h-4 w-4" />, href: '/dashboard/hr/employees', group: 'HR' },
+  { id: 'hr-management', label: 'HR Management', subtitle: 'Employees, approvals, payroll, KPI, and configuration', icon: <Users className="h-4 w-4" />, href: '/dashboard/hr/management', group: 'HR' },
   { id: 'documents', label: 'Documents', icon: <FileText className="h-4 w-4" />, href: '/dashboard/documents', group: 'Documents' },
   { id: 'uid', label: 'UID Management', icon: <Tag className="h-4 w-4" />, href: '/dashboard/uid', group: 'UID' },
   { id: 'uid-trace', label: 'Trace UID', icon: <Tag className="h-4 w-4" />, href: '/dashboard/uid/trace', group: 'UID' },
   { id: 'uid-deployment', label: 'Deployment Tracking', icon: <Tag className="h-4 w-4" />, href: '/dashboard/uid/deployment', group: 'UID' },
   { id: 'quality', label: 'Quality Control', icon: <BarChart2 className="h-4 w-4" />, href: '/dashboard/quality', group: 'Quality' },
+  { id: 'cost-of-quality', label: 'Cost of Poor Quality', subtitle: 'Declared NCR cost exposure and leakage', icon: <BarChart2 className="h-4 w-4" />, href: '/dashboard/quality/cost-of-quality', group: 'Quality' },
   { id: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" />, href: '/dashboard/settings', group: 'Settings' },
+  { id: 'settings-organization', label: 'Organization', subtitle: 'Company identity, address and regional defaults', icon: <Settings className="h-4 w-4" />, href: '/dashboard/settings/organization', group: 'Settings' },
+  { id: 'settings-company-header', label: 'Company Header', subtitle: 'Letterhead header and footer templates', icon: <FileText className="h-4 w-4" />, href: '/dashboard/settings/company-header', group: 'Settings' },
+  { id: 'settings-email-configuration', label: 'Email Configuration', subtitle: 'Module-wise sender addresses and reply-to routing', icon: <FileText className="h-4 w-4" />, href: '/dashboard/settings/email-configuration', group: 'Settings' },
+  { id: 'master-data-governance', label: 'Master Data Governance', subtitle: 'Controlled customer, supplier, item, bank, tax and GL changes', icon: <Settings className="h-4 w-4" />, href: '/dashboard/settings/master-data-governance', group: 'Settings' },
+  { id: 'automation-controls', label: 'Automation & Communication', subtitle: 'Rules, escalations, branches and communication evidence', icon: <Settings className="h-4 w-4" />, href: '/dashboard/automation', group: 'Settings' },
 ];
 
 let openPaletteFn: (() => void) | null = null;
@@ -117,7 +130,7 @@ export function CommandPalette() {
   const groups = Array.from(new Set(staticItems.map((i) => i.group)));
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-start justify-center pt-20 px-4">
+    <div className="fixed inset-0 z-[300] flex items-start justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-4 sm:px-4 sm:pt-20">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -127,7 +140,7 @@ export function CommandPalette() {
       {/* Panel */}
       <div className="relative z-10 w-full max-w-xl">
         <Command
-          className="rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
+          className="max-h-[calc(100dvh-6.5rem)] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl sm:rounded-2xl"
           shouldFilter={true}
         >
           <div className="flex items-center gap-3 border-b border-gray-200 px-4 py-3">
@@ -142,7 +155,7 @@ export function CommandPalette() {
             </kbd>
           </div>
 
-          <Command.List className="max-h-[400px] overflow-y-auto p-2">
+          <Command.List className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-2 sm:max-h-[400px]">
             <Command.Empty className="py-8 text-center text-sm text-gray-400">
               No results found
             </Command.Empty>

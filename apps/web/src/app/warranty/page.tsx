@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import DateInput from '../../components/ui/DateInput';
 import { getTodayDateInputValue } from '@/lib/date';
 
 interface Customer {
@@ -737,11 +738,10 @@ export default function WarrantyPortalPage() {
                     <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
                       Purchase Date *
                     </label>
-                    <input
-                      type="date"
+                    <DateInput
                       max={todayDate}
                       value={registrationForm.purchase_date}
-                      onChange={(e) => setRegistrationForm({ ...registrationForm, purchase_date: e.target.value })}
+                      onChange={(value) => setRegistrationForm({ ...registrationForm, purchase_date: value })}
                       className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none transition-colors"
                       style={{ borderColor: '#E8DCC4', backgroundColor: '#FFFFFF' }}
                       onFocus={(e) => { e.currentTarget.style.borderColor = '#8B6F47'; }}

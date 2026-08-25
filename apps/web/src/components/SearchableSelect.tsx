@@ -65,13 +65,17 @@ export default function SearchableSelect({
 
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   const hasEnoughSearchText = normalizedSearchTerm.length >= minSearchChars;
+  const searchTokens = normalizedSearchTerm
+    .split(/[\s,;|/\\()[\]{}"'`._:-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
   const matchingOptions = hasEnoughSearchText
     ? options
-        .filter((option) => (
-          !normalizedSearchTerm ||
-          option.label.toLowerCase().includes(normalizedSearchTerm) ||
-          option.subtitle?.toLowerCase().includes(normalizedSearchTerm)
-        ))
+        .filter((option) => {
+          if (!normalizedSearchTerm) return true;
+          const haystack = `${option.label} ${option.subtitle || ''}`.toLowerCase();
+          return searchTokens.every((token) => haystack.includes(token));
+        })
     : [];
   const filteredOptions = typeof maxResults === 'number'
     ? matchingOptions.slice(0, maxResults)

@@ -28,6 +28,12 @@ export const RequireCreate = (resource: string) =>
   SetMetadata('permissions', [`${resource}:create`]);
 
 /**
+ * Decorator to mark an endpoint as requiring read/view permission
+ */
+export const RequireRead = (resource: string) =>
+  SetMetadata('permissions', [`${resource}:read`]);
+
+/**
  * Decorator to mark an endpoint as requiring update permission
  */
 export const RequireUpdate = (resource: string) => 

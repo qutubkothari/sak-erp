@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, UserX, UserCheck, Search, Mail, Eye, EyeOff, AtSign } from 'lucide-react';
+import { Plus, Edit, Trash2, UserX, UserCheck, Search, Mail, Eye, EyeOff, AtSign, ShieldCheck, Users, KeyRound } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
-import { hasModulePermission, readStoredUser, isAdminLike } from '@/lib/rbac';
+import DateInput from '../../../../components/ui/DateInput';
+import { hasModulePermission, readStoredUser, isAdminLike, type StoredUser } from '@/lib/rbac';
 import { getTodayDateInputValue } from '@/lib/date';
 
 interface User {
@@ -74,10 +75,10 @@ const employeeAccessFullSpanClass = 'lg:col-span-2 xl:col-span-3';
 const todayDate = getTodayDateInputValue();
 
 export default function UserManagement() {
-  const currentUser = readStoredUser();
-  const canCreateSettings = hasModulePermission(currentUser, 'Settings', 'create');
-  const canEditSettings = hasModulePermission(currentUser, 'Settings', 'edit');
-  const canDeleteSettings = hasModulePermission(currentUser, 'Settings', 'delete');
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
+  const canCreateSettings = !!currentUser && hasModulePermission(currentUser, 'Settings', 'create');
+  const canEditSettings = !!currentUser && hasModulePermission(currentUser, 'Settings', 'edit');
+  const canDeleteSettings = !!currentUser && hasModulePermission(currentUser, 'Settings', 'delete');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -86,6 +87,7 @@ export default function UserManagement() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   useEffect(() => {
+    setCurrentUser(readStoredUser());
     fetchUsers();
   }, []);
 
@@ -108,6 +110,13 @@ export default function UserManagement() {
       String(user.employee?.employee_code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       String(user.employee?.department || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const accessStats = {
+    total: users.length,
+    active: users.filter((user) => user.is_active).length,
+    inactive: users.filter((user) => !user.is_active).length,
+    withoutRole: users.filter((user) => getUserRoles(user).length === 0).length,
+  };
 
   const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
     if (!canEditSettings) {
@@ -144,36 +153,84 @@ export default function UserManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Header Actions */}
-      <div className="flex items-center justify-between gap-4">
-        {/* Search */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5" style={{ color: '#8B6F47' }} />
-          <input
-            type="text"
-            placeholder="Search employees by name, code, username, or email..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-            style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-          />
+      <div className="rounded-xl border-2 bg-white shadow-sm" style={{ borderColor: '#E8DCC4' }}>
+        <div className="flex flex-col gap-4 border-b p-5 lg:flex-row lg:items-center lg:justify-between" style={{ borderColor: '#E8DCC4' }}>
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl p-3" style={{ backgroundColor: '#FAF3E8', color: '#8B6F47' }}>
+                <ShieldCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold" style={{ color: '#4A3426' }}>Employee Access Register</h2>
+                <p className="text-sm" style={{ color: '#7A6555' }}>
+                  Maintain employee logins, access status, roles, and HR master linkage.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {canCreateSettings && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+              style={{ backgroundColor: '#8B6F47' }}
+            >
+              <Plus className="h-4 w-4" />
+              Add Employee Access
+            </button>
+          )}
         </div>
 
-        {/* Create User Button */}
-        {canCreateSettings && (
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: '#8B6F47' }}
-          >
-            <Plus className="w-5 h-5" />
-            <span>Add Employee Access</span>
-          </button>
-        )}
+        <div className="grid grid-cols-1 divide-y md:grid-cols-4 md:divide-x md:divide-y-0" style={{ borderColor: '#E8DCC4' }}>
+          {[
+            { label: 'Total Users', value: accessStats.total, icon: Users, tone: '#6F4E37' },
+            { label: 'Active Access', value: accessStats.active, icon: UserCheck, tone: '#047857' },
+            { label: 'Inactive Access', value: accessStats.inactive, icon: UserX, tone: '#B91C1C' },
+            { label: 'Without Role', value: accessStats.withoutRole, icon: KeyRound, tone: '#B45309' },
+          ].map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <div key={stat.label} className="flex items-center gap-3 p-4">
+                <div className="rounded-lg p-2" style={{ backgroundColor: '#FAF9F6', color: stat.tone }}>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#7A6555' }}>{stat.label}</div>
+                  <div className="text-2xl font-bold" style={{ color: stat.tone }}>{loading ? '…' : stat.value}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t p-4 lg:flex-row lg:items-center lg:justify-between" style={{ borderColor: '#E8DCC4' }}>
+          <div className="relative w-full lg:max-w-xl">
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2" style={{ color: '#8B6F47' }} />
+            <input
+              type="text"
+              placeholder="Search by employee name, code, username, email, or department..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-lg border-2 py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-opacity-80"
+              style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
+            />
+          </div>
+          <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: '#E8DCC4', color: '#7A6555', backgroundColor: '#FAF9F6' }}>
+            Access is controlled by assigned roles. Use Roles & Permissions for module/screen rights.
+          </div>
+        </div>
       </div>
 
       {/* Users Table */}
-      <div className="bg-white rounded-lg border-2 overflow-hidden" style={{ borderColor: '#E8DCC4' }}>
+      <div className="overflow-hidden rounded-xl border-2 bg-white shadow-sm" style={{ borderColor: '#E8DCC4' }}>
+        <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: '#E8DCC4' }}>
+          <div>
+            <h3 className="text-base font-bold" style={{ color: '#4A3426' }}>Access List</h3>
+            <p className="text-xs" style={{ color: '#7A6555' }}>
+              {filteredUsers.length} of {users.length} employee access record{users.length === 1 ? '' : 's'} shown.
+            </p>
+          </div>
+        </div>
         {loading ? (
           <div className="text-center py-12" style={{ color: '#8B6F47' }}>
             Loading employee access...
@@ -183,8 +240,9 @@ export default function UserManagement() {
             {searchQuery ? 'No employees found matching your search.' : 'No employee access records yet. Create your first employee login!'}
           </div>
         ) : (
-          <table className="w-full">
-            <thead style={{ backgroundColor: '#FAF9F6', color: '#6F4E37' }}>
+          <div className="overflow-x-auto">
+          <table className="min-w-[1120px] w-full">
+            <thead className="sticky top-0 z-10" style={{ backgroundColor: '#FAF9F6', color: '#6F4E37' }}>
               <tr>
                 <th className="px-6 py-3 text-left text-sm font-semibold">Name</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold">Code</th>
@@ -301,6 +359,7 @@ export default function UserManagement() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -432,11 +491,10 @@ function CreateUserModal({ onClose, onSuccess, canSubmit, isAdminUser }: { onClo
               <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
                 Date of Joining
               </label>
-              <input
-                type="date"
+              <DateInput
                 max={todayDate}
                 value={formData.date_of_joining}
-                onChange={(e) => setFormData({ ...formData, date_of_joining: e.target.value })}
+                onChange={(value) => setFormData({ ...formData, date_of_joining: value })}
                 className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
                 style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
               />
@@ -445,11 +503,10 @@ function CreateUserModal({ onClose, onSuccess, canSubmit, isAdminUser }: { onClo
               <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
                 Date of Birth
               </label>
-              <input
-                type="date"
+              <DateInput
                 max={todayDate}
                 value={formData.date_of_birth}
-                onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
+                onChange={(value) => setFormData({ ...formData, date_of_birth: value })}
                 className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
                 style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
               />
@@ -781,11 +838,10 @@ function EditUserModal({
               <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
                 Date of Joining
               </label>
-              <input
-                type="date"
+              <DateInput
                 max={todayDate}
                 value={formData.date_of_joining}
-                onChange={(e) => setFormData({ ...formData, date_of_joining: e.target.value })}
+                onChange={(value) => setFormData({ ...formData, date_of_joining: value })}
                 className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
                 style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
               />
@@ -794,11 +850,10 @@ function EditUserModal({
               <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
                 Date of Birth
               </label>
-              <input
-                type="date"
+              <DateInput
                 max={todayDate}
                 value={formData.date_of_birth}
-                onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
+                onChange={(value) => setFormData({ ...formData, date_of_birth: value })}
                 className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
                 style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
               />

@@ -27,9 +27,32 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { DuplicateDetectionService } from '../../common/services/duplicate-detection.service';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequireApprove, RequireDelete, RequireCreate, RequireUpdate } from '../../auth/decorators/permissions.decorator';
+import { hasSuperAdminBypass } from '../../auth/utils/permission-utils';
 
 function getUploadsRoot(): string {
   return process.env.UPLOAD_ROOT_DIR || resolve(process.cwd(), '..', '..', 'uploads');
+}
+
+function normalizeVendorTaxId(value: any): string | null {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized || null;
+}
+
+function extractVendorPan(value: any): string | null {
+  const normalized = normalizeVendorTaxId(value);
+  if (!normalized) return null;
+  if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(normalized)) return normalized;
+  if (/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(normalized)) {
+    return normalized.slice(2, 12);
+  }
+  return null;
+}
+
+function extractVendorGstin(value: any): string | null {
+  const normalized = normalizeVendorTaxId(value);
+  return normalized && /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(normalized)
+    ? normalized
+    : null;
 }
 
 function buildVendorAttachmentStorage() {
@@ -75,16 +98,25 @@ export class VendorsController {
 
   @Post('check-duplicates')
   async checkDuplicates(@Request() req: any, @Body() vendorData: any) {
+    const taxId = normalizeVendorTaxId(vendorData?.tax_id ?? vendorData?.taxId ?? null);
     const normalizedVendorData = {
       ...vendorData,
-      tax_id: vendorData?.tax_id ?? vendorData?.taxId ?? null,
+      tax_id: taxId,
+      gst_number: extractVendorGstin(taxId),
+      pan_number: extractVendorPan(taxId),
       legal_name: vendorData?.legal_name ?? vendorData?.legalName ?? null,
     };
     const existing = await this.vendorsService.findAll(req.user.tenantId, {});
+    const normalizedExisting = existing.map((vendor: any) => ({
+      ...vendor,
+      tax_id: normalizeVendorTaxId(vendor?.tax_id),
+      gst_number: extractVendorGstin(vendor?.tax_id),
+      pan_number: extractVendorPan(vendor?.tax_id),
+    }));
     
     return this.duplicateDetectionService.checkDuplicates(
       normalizedVendorData,
-      existing,
+      normalizedExisting,
       {
         exactMatchFields: ['gst_number', 'pan_number', 'tax_id'],
         fuzzyMatchFields: ['name', 'legal_name', 'email', 'phone'],
@@ -124,13 +156,13 @@ export class VendorsController {
   @Put(':id/verify')
   @RequireApprove('vendors')
   async verify(@Request() req: any, @Param('id') id: string) {
-    return this.vendorsService.setVerification(req.user.tenantId, req.user.userId, id, true);
+    return this.vendorsService.setVerification(req.user.tenantId, req.user.userId, id, true, { overrideMakerChecker: hasSuperAdminBypass(req.user) });
   }
 
   @Put(':id/unverify')
   @RequireApprove('vendors')
   async unverify(@Request() req: any, @Param('id') id: string) {
-    return this.vendorsService.setVerification(req.user.tenantId, req.user.userId, id, false);
+    return this.vendorsService.setVerification(req.user.tenantId, req.user.userId, id, false, { overrideMakerChecker: hasSuperAdminBypass(req.user) });
   }
 
   @Put(':id/reject')
@@ -141,13 +173,14 @@ export class VendorsController {
       req.user.userId,
       id,
       body?.reason,
+      { overrideMakerChecker: hasSuperAdminBypass(req.user) },
     );
   }
 
   @Put(':id/bank/verify')
   @RequireApprove('vendors')
   async verifyBank(@Request() req: any, @Param('id') id: string) {
-    return this.vendorsService.verifyBank(req.user.tenantId, req.user.userId, id);
+    return this.vendorsService.verifyBank(req.user.tenantId, req.user.userId, id, { overrideMakerChecker: hasSuperAdminBypass(req.user) });
   }
 
   @Post(':id/attachments/:type')

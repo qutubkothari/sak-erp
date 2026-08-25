@@ -26,6 +26,7 @@ const makeDefaultModulePermission = (module: string): Permission => ({
   edit: false,
   delete: false,
   approve: false,
+  download: false,
 });
 
 const makeDefaultScreenPermission = (screenKey: string, module: string): Permission => ({
@@ -36,6 +37,7 @@ const makeDefaultScreenPermission = (screenKey: string, module: string): Permiss
   edit: false,
   delete: false,
   approve: false,
+  download: false,
 });
 
 function normalizePermissions(value: unknown): Permission[] {
@@ -57,6 +59,7 @@ function normalizePermissions(value: unknown): Permission[] {
           edit: !!asAny.edit,
           delete: !!asAny.delete,
           approve: !!asAny.approve,
+          download: !!asAny.download,
         },
       ];
     }
@@ -72,6 +75,7 @@ function normalizePermissions(value: unknown): Permission[] {
           edit: !!entry.edit,
           delete: !!entry.delete,
           approve: !!entry.approve,
+          download: !!entry.download,
         };
       }
       return makeDefaultModulePermission(module);
@@ -87,7 +91,8 @@ function isPermissionEnabled(permission: Permission): boolean {
     permission.create ||
     permission.edit ||
     permission.delete ||
-    permission.approve
+    permission.approve ||
+    permission.download
   );
 }
 
@@ -119,6 +124,7 @@ function buildModulePermissionsFromScreens(screenPermissions: Permission[]): Per
         edit: merged.edit || !!permission.edit,
         delete: merged.delete || !!permission.delete,
         approve: merged.approve || !!permission.approve,
+        download: merged.download || !!permission.download,
       }),
       makeDefaultModulePermission(module),
     );
@@ -355,6 +361,7 @@ function RoleModal({
       edit: true,
       delete: true,
       approve: true,
+      download: true,
     };
     setModulePermissions(newPermissions);
   };
@@ -377,6 +384,7 @@ function RoleModal({
       edit: true,
       delete: true,
       approve: true,
+      download: true,
     };
     setScreenPermissions(newPermissions);
   };
@@ -465,6 +473,7 @@ function RoleModal({
                     <th className="px-4 py-3 text-center text-sm font-semibold">Edit</th>
                     <th className="px-4 py-3 text-center text-sm font-semibold">Delete</th>
                     <th className="px-4 py-3 text-center text-sm font-semibold">Approve</th>
+                    <th className="px-4 py-3 text-center text-sm font-semibold">Download</th>
                     <th className="px-4 py-3 text-center text-sm font-semibold">All</th>
                   </tr>
                 </thead>
@@ -479,7 +488,7 @@ function RoleModal({
                         <td className="px-4 py-3 text-sm" style={{ color: '#8B6F47' }}>
                           {screen.module}
                         </td>
-                        {(['view', 'create', 'edit', 'delete', 'approve'] as const).map((action) => (
+                        {(['view', 'create', 'edit', 'delete', 'approve', 'download'] as const).map((action) => (
                           <td key={action} className="px-4 py-3 text-center">
                             <input
                               type="checkbox"

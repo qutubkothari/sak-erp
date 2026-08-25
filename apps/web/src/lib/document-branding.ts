@@ -39,7 +39,21 @@ type BrandingCompanyInput = TenantCompanyProfile & {
   logoUrl?: string;
   website?: string;
   subdomain?: string;
+  settings?: { letterhead?: Record<string, unknown> } | string | null;
 };
+
+function getLetterheadSettings(company?: BrandingCompanyInput | null): Record<string, unknown> {
+  const settings = company?.settings;
+  const parsed = typeof settings === 'string'
+    ? (() => { try { return JSON.parse(settings); } catch { return null; } })()
+    : settings;
+  const letterhead = parsed && typeof parsed === 'object' && 'letterhead' in parsed
+    ? (parsed as { letterhead?: unknown }).letterhead
+    : null;
+  return letterhead && typeof letterhead === 'object' && !Array.isArray(letterhead)
+    ? letterhead as Record<string, unknown>
+    : {};
+}
 
 export function escapeHtml(value: unknown): string {
   return String(value ?? '')
@@ -100,14 +114,19 @@ function hasStructuredBranding(company?: BrandingCompanyInput | null): boolean {
 
 export function buildDocumentBranding(company?: TenantCompanyProfile | null): WebDocumentBranding {
   const companyInput = company as BrandingCompanyInput | null | undefined;
-  const useCompanyBranding = hasStructuredBranding(companyInput);
+  const letterhead = getLetterheadSettings(companyInput);
+  const useCompanyBranding = hasStructuredBranding(companyInput) || Object.keys(letterhead).length > 0 || Boolean(companyInput?.name);
   const companyName = normalizeCompanyName(getFirstNonEmptyValue(
+    letterhead.companyName,
+    letterhead.company_name,
+    letterhead.legalName,
     useCompanyBranding ? companyInput?.companyName : '',
     useCompanyBranding ? companyInput?.company_name : '',
     useCompanyBranding ? companyInput?.name : '',
     getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_NAME', 'COMPANY_NAME', 'SAIF Automations Services LLP'),
   ));
   const address = getFirstNonEmptyValue(
+    letterhead.address,
     useCompanyBranding ? companyInput?.address : '',
     getDefaultBrandingValue(
       'NEXT_PUBLIC_COMPANY_ADDRESS',
@@ -116,15 +135,18 @@ export function buildDocumentBranding(company?: TenantCompanyProfile | null): We
     ),
   );
   const phone = getFirstNonEmptyValue(
+    letterhead.phone,
     useCompanyBranding ? companyInput?.phone : '',
     useCompanyBranding ? companyInput?.phoneNumber : '',
     getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_PHONE', 'COMPANY_PHONE', '0891-6662153'),
   );
   const email = getFirstNonEmptyValue(
+    letterhead.email,
     useCompanyBranding ? companyInput?.email : '',
     getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_EMAIL', 'COMPANY_EMAIL', 'saif.automations@gmail.com'),
   );
   const websiteSource = getFirstNonEmptyValue(
+    letterhead.website,
     useCompanyBranding ? companyInput?.website : '',
     useCompanyBranding ? companyInput?.domain : '',
     useCompanyBranding ? companyInput?.subdomain : '',
@@ -138,11 +160,15 @@ export function buildDocumentBranding(company?: TenantCompanyProfile | null): We
         : websiteSource
     : '';
   const taxId = getFirstNonEmptyValue(
+    letterhead.taxId,
+    letterhead.tax_id,
     useCompanyBranding ? companyInput?.tax_id : '',
     useCompanyBranding ? companyInput?.taxId : '',
     getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_TAX_ID', 'COMPANY_TAX_ID', ''),
   );
   const logoUrl = getFirstNonEmptyValue(
+    letterhead.logoUrl,
+    letterhead.logo_url,
     useCompanyBranding ? companyInput?.logo_url : '',
     useCompanyBranding ? companyInput?.logoUrl : '',
     getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_LOGO_URL', 'COMPANY_LOGO_URL', ''),

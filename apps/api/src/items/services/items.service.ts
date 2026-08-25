@@ -8,6 +8,7 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import { toTitleCase, toUpperCode } from '../../common/utils/data-quality';
 import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
+import { ProjectsService } from '../../projects/projects.service';
 
 function mapDeleteAuditError(error: any, resourceLabel: string): string {
   const details = String(error?.details || '');
@@ -30,6 +31,17 @@ export class ItemsService {
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_KEY!,
   );
+
+  constructor(private readonly projectsService: ProjectsService) {}
+
+  private readonly itemCodePrefixes: Record<string, string> = {
+    RAW_MATERIAL: '100',
+    SUB_ASSEMBLY: '200',
+    SERVICES: '300',
+    CAPITAL_GOODS: '400',
+    CONSUMABLE: '500',
+    FINISHED_GOODS: '700',
+  };
 
   private isUuid(value: any): boolean {
     if (typeof value !== 'string') return false;
@@ -63,6 +75,88 @@ export class ItemsService {
     return trimmed || null;
   }
 
+  private getItemCodePrefix(category: any): string {
+    const normalized = normalizeInventoryCategory(category);
+    const prefix = this.itemCodePrefixes[normalized];
+    if (!prefix) {
+      throw new BadRequestException(
+        `Item number generation is not configured for category '${normalized}'. Select RAW_MATERIAL, SUB_ASSEMBLY, SERVICES, CAPITAL_GOODS, CONSUMABLE, or FINISHED_GOODS.`,
+      );
+    }
+    return prefix;
+  }
+
+  private async generateNextItemCode(tenantId: string, category: any): Promise<string> {
+    const prefix = this.getItemCodePrefix(category);
+    const codePattern = `${prefix}-%`;
+    const { data, error } = await this.supabase
+      .from('items')
+      .select('code')
+      .eq('tenant_id', tenantId)
+      .ilike('code', codePattern)
+      .limit(10000);
+
+    if (error) throw new BadRequestException(`Failed to generate item number: ${error.message}`);
+
+    const matcher = new RegExp(`^${prefix}-(\\d{4})$`, 'i');
+    const maxRunningNumber = (data || []).reduce((max: number, row: any) => {
+      const match = String(row?.code || '').trim().match(matcher);
+      if (!match) return max;
+      const value = Number(match[1]);
+      return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, 0);
+
+    return `${prefix}-${String(maxRunningNumber + 1).padStart(4, '0')}`;
+  }
+
+  async previewNextItemCode(tenantId: string, category: any) {
+    const normalizedCategory = normalizeInventoryCategory(category);
+    const prefix = this.getItemCodePrefix(normalizedCategory);
+    const code = await this.generateNextItemCode(tenantId, normalizedCategory);
+    return { code, prefix, category: normalizedCategory };
+  }
+
+  private buildTemporaryRndCode(identifier: string): string {
+    const cleanIdentifier = String(identifier || '').trim().replace(/\s+/g, '');
+    const withoutExistingTempPrefix = cleanIdentifier.replace(/^temp[-_]?/i, '');
+    return `TEMP-${withoutExistingTempPrefix}`.toUpperCase();
+  }
+
+  private isRndScope(value: any): boolean {
+    const normalized = String(value || '').trim().toUpperCase();
+    return normalized === 'R&D' || normalized === 'RND' || normalized === 'RESEARCH';
+  }
+
+  private isRndItemRecord(item: any): boolean {
+    const metadata = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+    return item?.is_rnd_item === true ||
+      metadata.isRndItem === true ||
+      metadata.is_rnd_item === true ||
+      this.isRndScope(metadata.department) ||
+      this.isRndScope(metadata.scope);
+  }
+
+  private getSearchTokens(value?: string): string[] {
+    return String(value || '')
+      .toLowerCase()
+      .split(/[\s,;|/\\()[\]{}"'`._:-]+/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .slice(0, 8);
+  }
+
+  private applyItemSearch(query: any, search?: string) {
+    const tokens = this.getSearchTokens(search);
+    for (const token of tokens) {
+      const safeToken = token.replace(/[%*,]/g, '');
+      if (!safeToken) continue;
+      query = query.or(
+        `code.ilike.%${safeToken}%,name.ilike.%${safeToken}%,oem_part_no.ilike.%${safeToken}%,oem_name.ilike.%${safeToken}%,description.ilike.%${safeToken}%,category.ilike.%${safeToken}%,hsn_code.ilike.%${safeToken}%`,
+      );
+    }
+    return query;
+  }
+
   private normalizeApprovalStatus(value: any): 'PENDING' | 'APPROVED' | 'REJECTED' {
     const normalized = String(value || '').trim().toUpperCase();
     if (normalized === 'APPROVED') return 'APPROVED';
@@ -84,7 +178,26 @@ export class ItemsService {
       throw new BadRequestException(error.message);
     }
 
-    return data || [];
+    const rows = data || [];
+    const actorIds = Array.from(new Set(rows.map((row: any) => String(row.actor_id || '').trim()).filter(Boolean)));
+    const actorsById = new Map<string, string>();
+
+    if (actorIds.length > 0) {
+      const { data: users } = await this.supabase
+        .from('users')
+        .select('id, first_name, last_name, email')
+        .in('id', actorIds);
+
+      (users || []).forEach((user: any) => {
+        const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+        actorsById.set(String(user.id), displayName || user.email || 'Unknown user');
+      });
+    }
+
+    return rows.map((row: any) => ({
+      ...row,
+      actor_name: actorsById.get(String(row.actor_id)) || 'Unknown user',
+    }));
   }
 
   private async logApprovalHistory(params: {
@@ -124,25 +237,132 @@ export class ItemsService {
   }
 
   private async getLedgerStockTotals(tenantId: string, itemIds: string[]) {
-    const itemIdSet = new Set(itemIds);
-    const totals: Record<string, number> = {};
+    if (!itemIds.length) return {};
 
-    for (const itemId of itemIds) {
+    const originalItemIds = itemIds.filter(Boolean);
+    const totals: Record<string, number> = {};
+    const chunks = <T>(values: T[], size = 75): T[][] => {
+      const result: T[][] = [];
+      for (let index = 0; index < values.length; index += size) {
+        result.push(values.slice(index, index + size));
+      }
+      return result;
+    };
+
+    for (const itemId of originalItemIds) {
       totals[itemId] = 0;
     }
 
-    const { data: stockEntries } = await this.supabase
-      .from('stock_entries')
-      .select('item_id, quantity, metadata, warehouse_id')
-      .eq('tenant_id', tenantId);
+    // Stock Trail intentionally merges item records that share the same SAS
+    // part number/code. This is required because older imports and edits can
+    // leave stock posted against a sibling item row while users search/view
+    // another row with the same code. The Stock Master list must use the same
+    // merge scope; otherwise a row can show 0 while its trail shows stock.
+    const itemRows: any[] = [];
+    for (const batch of chunks(originalItemIds)) {
+      const { data, error } = await this.supabase
+        .from('items')
+        .select('id, code')
+        .eq('tenant_id', tenantId)
+        .in('id', batch);
+
+      if (error) {
+        console.error('[ItemsService.getLedgerStockTotals] item lookup error:', error.message);
+        throw new Error(`Failed to hydrate item stock scope: ${error.message}`);
+      }
+
+      itemRows.push(...(data || []));
+    }
+
+    const codeByOriginalId = new Map<string, string>();
+    const originalIdsByCode = new Map<string, string[]>();
+    const codes = new Set<string>();
+    for (const item of itemRows) {
+      const id = String(item.id || '').trim();
+      const code = String(item.code || '').trim();
+      if (!id) continue;
+      if (code) {
+        codeByOriginalId.set(id, code);
+        codes.add(code);
+        const ids = originalIdsByCode.get(code) || [];
+        ids.push(id);
+        originalIdsByCode.set(code, ids);
+      }
+    }
+
+    const ledgerItemIds = new Set<string>(originalItemIds);
+    const codeByLedgerId = new Map<string, string>();
+    for (const [id, code] of codeByOriginalId.entries()) codeByLedgerId.set(id, code);
+
+    const codeList = Array.from(codes);
+    for (const batch of chunks(codeList)) {
+      const { data, error } = await this.supabase
+        .from('items')
+        .select('id, code')
+        .eq('tenant_id', tenantId)
+        .in('code', batch);
+
+      if (error) {
+        console.error('[ItemsService.getLedgerStockTotals] sibling item lookup error:', error.message);
+        throw new Error(`Failed to hydrate sibling item stock scope: ${error.message}`);
+      }
+
+      for (const sibling of data || []) {
+        const id = String((sibling as any).id || '').trim();
+        const code = String((sibling as any).code || '').trim();
+        if (!id || !code) continue;
+        ledgerItemIds.add(id);
+        codeByLedgerId.set(id, code);
+      }
+    }
+
+    const ledgerIdList = Array.from(ledgerItemIds);
+    const ledgerItemIdSet = new Set(ledgerIdList);
+    const ledgerTotals: Record<string, number> = {};
+    for (const itemId of ledgerIdList) {
+      ledgerTotals[itemId] = 0;
+    }
+
+    const stockEntries: any[] = [];
+    for (const batch of chunks(ledgerIdList)) {
+      const { data, error } = await this.supabase
+        .from('stock_entries')
+        .select('item_id, quantity, metadata, warehouse_id')
+        .eq('tenant_id', tenantId)
+        .in('item_id', batch);
+
+      if (error) {
+        console.error('[ItemsService.getLedgerStockTotals] stock_entries lookup error:', error.message);
+        throw new Error(`Failed to hydrate item stock entries: ${error.message}`);
+      }
+
+      stockEntries.push(...(data || []));
+    }
 
     const grnEntryMap = new Map<string, number>();
-    for (const entry of stockEntries || []) {
+    for (const entry of stockEntries) {
       const itemId = (entry as any).item_id;
-      if (!itemIdSet.has(itemId)) continue;
+      if (!ledgerItemIdSet.has(itemId)) continue;
 
-      const grnRef = (entry as any).metadata?.grn_reference || (entry as any).metadata?.grn_number;
-      if (!grnRef) continue;
+      const metadata = (entry as any).metadata && typeof (entry as any).metadata === 'object'
+        ? (entry as any).metadata
+        : {};
+      const grnRef = metadata?.grn_reference || metadata?.grn_number;
+      const createdFrom = String(metadata?.created_from || metadata?.source || '').trim().toUpperCase();
+      const isSrvOrManualReceipt =
+        createdFrom.includes('SRV') ||
+        createdFrom.includes('MANUAL') ||
+        Boolean(metadata?.srv_number || metadata?.srv_reference);
+
+      if (!grnRef) {
+        // Stock entries created by SRV/manual receipt do not have a GRN number.
+        // They still represent real stock and must be included in the Stock
+        // Master figure; otherwise the master list and Stock Trail drift.
+        if (isSrvOrManualReceipt) {
+          ledgerTotals[itemId] = (ledgerTotals[itemId] || 0) + (Number((entry as any).quantity) || 0);
+        }
+        continue;
+      }
 
       const dedupKey = `${itemId}::${grnRef}::${(entry as any).warehouse_id || ''}`;
       grnEntryMap.set(dedupKey, (grnEntryMap.get(dedupKey) || 0) + (Number((entry as any).quantity) || 0));
@@ -150,24 +370,105 @@ export class ItemsService {
 
     for (const [key, qty] of grnEntryMap.entries()) {
       const itemId = key.split('::')[0];
-      totals[itemId] = (totals[itemId] || 0) + qty;
+      ledgerTotals[itemId] = (ledgerTotals[itemId] || 0) + qty;
     }
 
-    const { data: movements } = await this.supabase
-      .from('stock_movements')
-      .select('item_id, quantity, from_warehouse_id, to_warehouse_id')
-      .eq('tenant_id', tenantId);
+    const movements: any[] = [];
+    for (const batch of chunks(ledgerIdList)) {
+      const { data, error } = await this.supabase
+        .from('stock_movements')
+        .select('item_id, quantity, movement_type, reference_type, from_warehouse_id, to_warehouse_id')
+        .eq('tenant_id', tenantId)
+        .in('item_id', batch);
 
-    for (const movement of movements || []) {
+      if (error) {
+        console.error('[ItemsService.getLedgerStockTotals] stock_movements lookup error:', error.message);
+        throw new Error(`Failed to hydrate item stock movements: ${error.message}`);
+      }
+
+      movements.push(...(data || []));
+    }
+
+    for (const movement of movements) {
       const itemId = (movement as any).item_id;
-      if (!itemIdSet.has(itemId)) continue;
+      if (!ledgerItemIdSet.has(itemId)) continue;
 
       const qty = Number((movement as any).quantity) || 0;
-      const isInbound = !(movement as any).from_warehouse_id && !!(movement as any).to_warehouse_id;
-      const isOutbound = !!(movement as any).from_warehouse_id && !(movement as any).to_warehouse_id;
+      const fromWarehouseId = (movement as any).from_warehouse_id;
+      const toWarehouseId = (movement as any).to_warehouse_id;
+      const movementType = String((movement as any).movement_type || '').trim().toUpperCase();
+      const referenceType = String((movement as any).reference_type || '').trim().toUpperCase();
+      const isKnownOutbound =
+        movementType.includes('ISSUE') ||
+        movementType.includes('CONSUM') ||
+        movementType.includes('SALE') ||
+        movementType.includes('SOLD') ||
+        referenceType === 'SIV' ||
+        referenceType === 'SALES_ORDER';
+      const isKnownInbound =
+        movementType.includes('RECEIPT') ||
+        movementType.includes('RETURN') ||
+        movementType === 'PRODUCTION' ||
+        referenceType === 'SRV';
 
-      if (isInbound) totals[itemId] = (totals[itemId] || 0) + qty;
-      if (isOutbound) totals[itemId] = (totals[itemId] || 0) - qty;
+      // Match the warehouse ledger logic used elsewhere:
+      // - any to_warehouse increases stock
+      // - any from_warehouse decreases stock
+      // - transfers have both and net to zero at item total level
+      // This catches SIV / production issue rows reliably and keeps Stock
+      // Master aligned with Stock Trail.
+      if (toWarehouseId) ledgerTotals[itemId] = (ledgerTotals[itemId] || 0) + qty;
+      if (fromWarehouseId) ledgerTotals[itemId] = (ledgerTotals[itemId] || 0) - qty;
+      if (!fromWarehouseId && !toWarehouseId && isKnownOutbound) ledgerTotals[itemId] = (ledgerTotals[itemId] || 0) - qty;
+      if (!fromWarehouseId && !toWarehouseId && isKnownInbound) ledgerTotals[itemId] = (ledgerTotals[itemId] || 0) + qty;
+    }
+
+    const inventoryRows: any[] = [];
+    for (const batch of chunks(ledgerIdList)) {
+      const { data, error } = await this.supabase
+        .from('inventory_stock')
+        .select('item_id, quantity, available_quantity')
+        .eq('tenant_id', tenantId)
+        .in('item_id', batch);
+
+      if (error) {
+        console.error('[ItemsService.getLedgerStockTotals] inventory_stock lookup error:', error.message);
+        throw new Error(`Failed to hydrate item inventory stock: ${error.message}`);
+      }
+
+      inventoryRows.push(...(data || []));
+    }
+
+    const inventoryTotals: Record<string, number> = {};
+    for (const row of inventoryRows) {
+      const itemId = (row as any).item_id;
+      if (!ledgerItemIdSet.has(itemId)) continue;
+      // available_quantity is what Stock Master, Stock Adjustment, and reorder
+      // planning users act on. quantity can lag in older/imported rows, so use
+      // available first and fall back to quantity only when needed.
+      const qty = Number((row as any).available_quantity ?? (row as any).quantity ?? 0) || 0;
+      inventoryTotals[itemId] = (inventoryTotals[itemId] || 0) + qty;
+    }
+
+    for (const itemId of ledgerIdList) {
+      if (inventoryTotals[itemId] !== undefined) {
+        // inventory_stock is the operational stock balance table. Ledger rows
+        // are still useful for trails, but any imported/opening/reconciled
+        // stock must not make the list disagree with warehouse balance.
+        ledgerTotals[itemId] = inventoryTotals[itemId];
+      }
+    }
+
+    const totalsByCode = new Map<string, number>();
+    for (const [ledgerId, qty] of Object.entries(ledgerTotals)) {
+      const code = codeByLedgerId.get(ledgerId);
+      if (!code) continue;
+      totalsByCode.set(code, (totalsByCode.get(code) || 0) + (Number(qty) || 0));
+    }
+
+    for (const itemId of originalItemIds) {
+      const code = codeByOriginalId.get(itemId);
+      totals[itemId] = code ? (totalsByCode.get(code) || 0) : (ledgerTotals[itemId] || 0);
     }
 
     return totals;
@@ -262,7 +563,14 @@ export class ItemsService {
     };
   }
 
-  async findAll(tenantId: string, search?: string, includeInactive?: boolean, onlyVerified?: boolean) {
+  async findAll(
+    tenantId: string,
+    search?: string,
+    includeInactive?: boolean,
+    onlyVerified?: boolean,
+    options: { includeRnd?: boolean; onlyRnd?: boolean } = {},
+  ) {
+    await this.projectsService.ensureSchema();
     let query = this.supabase
       .from('items')
       .select('*')
@@ -278,9 +586,7 @@ export class ItemsService {
       query = query.eq('is_verified', true);
     }
 
-    if (search) {
-      query = query.or(`code.ilike.%${search}%,name.ilike.%${search}%,oem_part_no.ilike.%${search}%,description.ilike.%${search}%`);
-    }
+    query = this.applyItemSearch(query, search);
 
     let { data, error } = await query;
 
@@ -292,7 +598,7 @@ export class ItemsService {
         .eq('tenant_id', tenantId)
         .order('name', { ascending: true });
       if (!includeInactive) retryQuery = retryQuery.eq('is_active', true);
-      if (search) retryQuery = retryQuery.or(`code.ilike.%${search}%,name.ilike.%${search}%,oem_part_no.ilike.%${search}%,description.ilike.%${search}%`);
+      retryQuery = this.applyItemSearch(retryQuery, search);
       const { data: retryData, error: retryError } = await retryQuery;
       data = retryData;
       error = retryError;
@@ -334,12 +640,25 @@ export class ItemsService {
     // Stock Master must read from inventory_stock because stock adjustments
     // update that aggregate table directly.
     if (data && data.length > 0) {
+      data = data.filter((item: any) => {
+        const isRnd = this.isRndItemRecord(item);
+        if (options.onlyRnd) return isRnd;
+        if (options.includeRnd) return true;
+        return !isRnd;
+      });
       const itemIds = data.map((item: any) => item.id).filter(Boolean);
       const stockTotals = await this.getLedgerStockTotals(tenantId, itemIds);
 
-      // Add total_stock and resolved user names to each item
+      // Add ledger stock and resolved user names to each item.
+      // Stock Master historically had multiple stock-shaped fields on item rows
+      // (current_stock / available_quantity / total_stock). Always overwrite
+      // them from the same ledger calculation used by the stock trail so the
+      // register cannot show stale GRN-only quantities after SIV/production
+      // issues.
       return data.map(item => ({
         ...item,
+        current_stock: stockTotals[item.id] || 0,
+        available_quantity: stockTotals[item.id] || 0,
         total_stock: stockTotals[item.id] || 0,
         updated_by: item.updated_by ? userMap.get(item.updated_by) || item.updated_by : null,
       }));
@@ -353,15 +672,15 @@ export class ItemsService {
       return [];
     }
 
-    const searchTerm = query.trim();
-    const { data, error } = await this.supabase
+    let itemQuery = this.supabase
       .from('items')
       .select('id, code, name, description, oem_part_no, uom, category, standard_cost, selling_price')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
-      .eq('is_verified', true)
-      .or(`code.ilike.%${searchTerm}%,name.ilike.%${searchTerm}%,oem_part_no.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
-      .order('name', { ascending: true });
+      .eq('is_verified', true);
+
+    itemQuery = this.applyItemSearch(itemQuery, query);
+    const { data, error } = await itemQuery.order('name', { ascending: true });
 
     if (error) {
       throw new Error(`Search failed: ${error.message}`);
@@ -397,6 +716,7 @@ export class ItemsService {
   }
 
   async create(tenantId: string, userId: string, itemData: any) {
+    await this.projectsService.ensureSchema();
     console.log('[ItemsService.create] Creating item with data:', JSON.stringify(itemData, null, 2));
     
     // HSN is required unless this is a variant (variants can inherit empty HSN)
@@ -435,21 +755,36 @@ export class ItemsService {
     const oemName = this.normalizeOptionalText(
       itemData.oem_name ?? itemData.oemName,
     );
-    const purchaseCurrency = (itemData.purchase_currency ?? 'INR').toString().toUpperCase().trim() || 'INR';
+    const purchaseCurrency = (itemData.purchase_currency ?? itemData.purchaseCurrency ?? 'INR').toString().toUpperCase().trim() || 'INR';
     const foreignUnitPrice = this.normalizeNumber(itemData.foreign_unit_price ?? itemData.foreignUnitPrice);
+    const isRndItem =
+      itemData.isRndItem === true ||
+      itemData.is_rnd_item === true ||
+      this.isRndScope(itemData.department) ||
+      this.isRndScope(itemData.scope) ||
+      this.isRndScope(itemData.projectDepartment);
+    const projectId = this.normalizeOptionalText(itemData.project_id ?? itemData.projectId);
+    const projectName = this.normalizeOptionalText(itemData.project_name ?? itemData.projectName);
+    const department = isRndItem ? 'R&D' : this.normalizeOptionalText(itemData.department);
 
     // Validate reorder level only for stock-tracked categories.
     // (SERVICE is excluded because services do not maintain inventory stock.)
     const category = normalizeInventoryCategory(itemData.category);
+    const shouldAutoGenerateCode =
+      itemData.auto_generate_code === true ||
+      itemData.autoGenerateCode === true ||
+      !String(itemData.code || '').trim();
+    const itemCode = shouldAutoGenerateCode
+      ? await this.generateNextItemCode(tenantId, category)
+      : toUpperCode(itemData.code);
     const requiresReorderLevel =
       category === 'RAW_MATERIAL' ||
       category === 'CAPITAL_GOODS' ||
-      category === 'CONSUMABLE' ||
-      category === 'PACKING_MATERIAL';
-    if (requiresReorderLevel) {
+      category === 'CONSUMABLE';
+    if (requiresReorderLevel && !isRndItem) {
       if (!reorderLevel || reorderLevel <= 0) {
         throw new BadRequestException(
-          'Reorder level must be greater than 0 for RAW_MATERIAL, CAPITAL_GOODS, CONSUMABLE, and PACKING_MATERIAL items.',
+          'Reorder level must be greater than 0 for RAW_MATERIAL, CAPITAL_GOODS, and CONSUMABLE items.',
         );
       }
     }
@@ -458,7 +793,7 @@ export class ItemsService {
       .from('items')
       .insert({
         tenant_id: tenantId,
-        code: toUpperCode(itemData.code),
+        code: itemCode,
         name: itemData.name,
         oem_part_no: oemPartNo,
         oem_name: oemName,
@@ -477,6 +812,9 @@ export class ItemsService {
         drawing_required: drawingRequired,
         item_type: itemData.item_type || 'RAW_MATERIAL',
         parent_item_id: itemData.parent_item_id || null,
+        project_id: projectId,
+        project_name: projectName,
+        is_rnd_item: isRndItem,
         is_variant: itemData.is_variant || false,
         is_default_variant: itemData.is_default_variant || false,
         variant_name: itemData.variant_name || null,
@@ -491,6 +829,10 @@ export class ItemsService {
         metadata: {
           ...(itemData.metadata || {}),
           createdBy: userId,
+          isRndItem,
+          department,
+          projectId,
+          projectName,
           itemApproval: {
             status: 'PENDING',
             submittedAt: new Date().toISOString(),
@@ -508,7 +850,7 @@ export class ItemsService {
       
       // Check for duplicate key constraint violation
       if (error.code === '23505' && error.message.includes('items_code_key')) {
-        throw new BadRequestException(`Item with code '${itemData.code}' already exists`);
+        throw new BadRequestException(`Item with code '${itemCode}' already exists`);
       }
       
       throw new BadRequestException(`Failed to create item: ${error.message}`);
@@ -525,11 +867,185 @@ export class ItemsService {
     return data;
   }
 
+  /**
+   * Lightweight R&D procurement item. These records deliberately bypass the
+   * normal material-master completeness, drawing and reorder rules. Regular
+   * users still submit them to maker-checker approval; only Super Admin may
+   * use explicit maker-checker override. They remain tenant scoped and are hidden
+   * from normal catalogue searches by the existing is_rnd_item scope.
+   */
+  async createRndTemporary(
+    tenantId: string,
+    userId: string,
+    body: any,
+    options: { adminBypass?: boolean } = {},
+  ) {
+    const identifier = String(
+      body?.identifier ?? body?.code ?? body?.sku ?? body?.part_no ?? body?.oem_part_no ?? '',
+    ).trim();
+    const rawVendorId = String(body?.vendor_id ?? body?.vendorId ?? '').trim();
+    const vendorId = rawVendorId || null;
+    const description = String(
+      body?.description ?? body?.item_description ?? body?.itemDescription ?? '',
+    ).trim() || null;
+    const oemName = this.normalizeOptionalText(body?.oem_name ?? body?.oemName ?? body?.manufacturer_name ?? body?.manufacturerName);
+    const preferredPrice = this.normalizeNumber(body?.preferred_price ?? body?.preferredPrice);
+    const effectiveDate = String(body?.effective_date ?? body?.effectiveDate ?? '').trim()
+      || new Date().toISOString().slice(0, 10);
+    const hsnCode = String(body?.hsn_code ?? body?.hsnCode ?? '').replace(/\D/g, '').slice(0, 8) || null;
+
+    if (!identifier) throw new BadRequestException('SKU / Part No. / OEM No. is required');
+    if (vendorId && !this.isUuid(vendorId)) throw new BadRequestException('Select a valid preferred vendor');
+    if (preferredPrice !== null && preferredPrice < 0) {
+      throw new BadRequestException('Preferred price cannot be negative');
+    }
+
+    const code = this.buildTemporaryRndCode(identifier);
+    const { data: duplicate, error: duplicateError } = await this.supabase
+      .from('items')
+      .select('id, code, name, description, oem_part_no, oem_name, uom, hsn_code, standard_cost, is_rnd_item, metadata')
+      .eq('tenant_id', tenantId)
+      .ilike('code', code)
+      .maybeSingle();
+    if (duplicateError) throw new BadRequestException(duplicateError.message);
+    if (duplicate?.id) {
+      const metadata = duplicate.metadata && typeof duplicate.metadata === 'object' ? duplicate.metadata : {};
+      if (duplicate.is_rnd_item === true && metadata.isTemporary === true) {
+        return {
+          ...duplicate,
+          preferred_vendor_id: vendorId,
+          preferred_vendor_name: null,
+          preferred_price: preferredPrice,
+          reused: true,
+        };
+      }
+      throw new BadRequestException(`Item '${code}' already exists in the material master`);
+    }
+
+    let vendor: any = null;
+    if (vendorId) {
+      const { data: vendorRow, error: vendorError } = await this.supabase
+        .from('vendors')
+        .select('id, code, name, is_active')
+        .eq('tenant_id', tenantId)
+        .eq('id', vendorId)
+        .maybeSingle();
+      if (vendorError) throw new BadRequestException(vendorError.message);
+      if (!vendorRow?.id || vendorRow.is_active === false) throw new BadRequestException('Selected vendor is not active');
+      vendor = vendorRow;
+    }
+
+    const createdAt = new Date().toISOString();
+    const autoApproved = options.adminBypass === true;
+    const metadata = {
+      isRndItem: true,
+      isTemporary: true,
+      excludeLowStock: true,
+      department: 'R&D',
+      effectiveDate,
+      createdBy: userId,
+      temporaryItem: {
+        identifier,
+        description,
+        oemName,
+        vendorId,
+        vendorName: vendor?.name || null,
+        preferredPrice,
+        effectiveDate,
+      },
+      itemApproval: {
+        status: autoApproved ? 'APPROVED' : 'PENDING',
+        submittedAt: createdAt,
+        submittedBy: userId,
+        approvedAt: autoApproved ? createdAt : null,
+        approvedBy: autoApproved ? userId : null,
+        reason: autoApproved ? 'Admin override for temporary R&D procurement item' : null,
+      },
+    };
+
+    const { data: item, error: itemError } = await this.supabase
+      .from('items')
+      .insert({
+        tenant_id: tenantId,
+        code,
+        name: description || identifier,
+        oem_part_no: identifier,
+        oem_name: oemName,
+        description,
+        category: 'RAW_MATERIAL',
+        uom: 'NOS',
+        reorder_level: 0,
+        reorder_quantity: 0,
+        standard_cost: preferredPrice,
+        selling_price: null,
+        hsn_code: hsnCode,
+        drawing_required: 'NOT_REQUIRED',
+        // The database item_type constraint only permits the standard material
+        // types. R&D temporariness is represented by is_rnd_item and metadata.
+        item_type: 'RAW_MATERIAL',
+        is_rnd_item: true,
+        is_variant: false,
+        purchase_currency: 'INR',
+        is_active: true,
+        is_verified: autoApproved,
+        created_by: userId,
+        approval_status: autoApproved ? 'APPROVED' : 'PENDING',
+        approval_reason: autoApproved ? 'Admin override for temporary R&D procurement item' : null,
+        metadata,
+      })
+      .select()
+      .single();
+    if (itemError) {
+      if (itemError.code === '23505') throw new BadRequestException(`Item '${code}' already exists`);
+      throw new BadRequestException(`Failed to create temporary R&D item: ${itemError.message}`);
+    }
+
+    if (vendorId) {
+      const { error: linkError } = await this.supabase.from('item_vendors').insert({
+        tenant_id: tenantId,
+        item_id: item.id,
+        vendor_id: vendorId,
+        priority: 1,
+        unit_price: preferredPrice,
+        vendor_item_code: identifier,
+        notes: `Temporary R&D item effective ${effectiveDate}`,
+        is_active: true,
+        created_by: userId,
+      });
+      if (linkError) {
+        await this.supabase.from('items').delete().eq('tenant_id', tenantId).eq('id', item.id);
+        throw new BadRequestException(`Failed to link preferred vendor: ${linkError.message}`);
+      }
+    }
+
+    return {
+      ...item,
+      preferred_vendor_id: vendor?.id || null,
+      preferred_vendor_name: vendor?.name || null,
+      preferred_vendor_code: vendor?.code || null,
+      preferred_price: preferredPrice,
+      effective_date: effectiveDate,
+      is_temporary: true,
+      approval_status: autoApproved ? 'APPROVED' : 'PENDING',
+      requires_checker_approval: !autoApproved,
+    };
+  }
+
   async bulkCreate(tenantId: string, items: any[]) {
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException('Import file has no item rows. Please upload a CSV with at least one item.');
+    }
+
     const results = {
       success: 0,
       failed: 0,
-      errors: [] as any[],
+      errors: [] as string[],
+    };
+
+    const addImportError = (row: number, item: any, message: any) => {
+      const itemLabel = String(item || 'Unknown item').trim();
+      const errorMessage = String(message || 'Import failed').trim();
+      results.errors.push(`Row ${row} - ${itemLabel} - ${errorMessage}`);
     };
 
     // Map category names from user's format to database format
@@ -542,7 +1058,7 @@ export class ItemsService {
       'Products': 'RAW_MATERIAL',
       'Sub Assemblies': 'RAW_MATERIAL',
       'Consumables': 'CONSUMABLE',
-      'Packing Material': 'PACKING_MATERIAL',
+      'Packing Material': 'RAW_MATERIAL',
       'Spare Parts': 'CONSUMABLE',
       'Capital Goods': 'CAPITAL_GOODS',
     };
@@ -610,27 +1126,60 @@ export class ItemsService {
             },
           };
 
-        const { error } = await this.supabase
+        const { data: existingRow, error: lookupError } = await this.supabase
           .from('items')
-          .upsert(rowData, { onConflict: 'tenant_id,code', ignoreDuplicates: false });
+          .select('id, metadata')
+          .eq('tenant_id', tenantId)
+          .eq('code', rowData.code)
+          .maybeSingle();
+
+        if (lookupError) {
+          throw new Error(lookupError.message);
+        }
+
+        let writeResult;
+        if (existingRow?.id) {
+          const existingMetadata = existingRow.metadata && typeof existingRow.metadata === 'object'
+            ? existingRow.metadata
+            : {};
+          const updateData = {
+            ...rowData,
+            // Do not silently remove purchasing verification from existing
+            // material masters during import/upsert. New rows still start
+            // unverified from rowData; existing rows keep their current
+            // maker-checker state unless the explicit verify/unverify flow is used.
+            is_verified: undefined,
+            metadata: {
+              ...existingMetadata,
+              ...(rowData.metadata || {}),
+            },
+            updated_at: new Date().toISOString(),
+          };
+          delete (updateData as any).tenant_id;
+          delete (updateData as any).is_verified;
+
+          writeResult = await this.supabase
+            .from('items')
+            .update(updateData)
+            .eq('tenant_id', tenantId)
+            .eq('id', existingRow.id);
+        } else {
+          writeResult = await this.supabase
+            .from('items')
+            .insert(rowData);
+        }
+
+        const error = writeResult.error;
 
         if (error) {
           results.failed++;
-          results.errors.push({
-            row: i + 1,
-            item: itemData.name || itemData.code,
-            error: error.message,
-          });
+          addImportError(i + 1, itemData.name || itemData.code, error.message);
         } else {
           results.success++;
         }
       } catch (err: any) {
         results.failed++;
-        results.errors.push({
-          row: i + 1,
-          item: item.name || item.code || 'Unknown',
-          error: err.message,
-        });
+        addImportError(i + 1, item?.name || item?.code, err.message);
       }
     }
 
@@ -638,6 +1187,7 @@ export class ItemsService {
   }
 
   async update(tenantId: string, id: string, itemData: any, userId?: string) {
+    await this.projectsService.ensureSchema();
     const existingItem = await this.findOne(tenantId, id);
     const hsnProvided = itemData.hsnCode !== undefined || itemData.hsn_code !== undefined;
     const validatedHsn = hsnProvided
@@ -691,6 +1241,21 @@ export class ItemsService {
     const approvedItemChanged =
       (existingItem.is_verified === true || fromStatus === 'APPROVED') &&
       approvalSensitiveKeys.some((key) => itemData[key] !== undefined);
+    const rndFlagProvided =
+      itemData.isRndItem !== undefined ||
+      itemData.is_rnd_item !== undefined ||
+      itemData.department !== undefined ||
+      itemData.scope !== undefined ||
+      itemData.projectDepartment !== undefined;
+    const nextIsRndItem = rndFlagProvided
+      ? (
+        itemData.isRndItem === true ||
+        itemData.is_rnd_item === true ||
+        this.isRndScope(itemData.department) ||
+        this.isRndScope(itemData.scope) ||
+        this.isRndScope(itemData.projectDepartment)
+      )
+      : this.isRndItemRecord(existingItem);
 
     const updateData: any = {
       updated_at: new Date().toISOString(),
@@ -752,12 +1317,11 @@ export class ItemsService {
     const requiresReorderLevel =
       category === 'RAW_MATERIAL' ||
       category === 'CAPITAL_GOODS' ||
-      category === 'CONSUMABLE' ||
-      category === 'PACKING_MATERIAL';
-    if (requiresReorderLevel && reorderLevelProvided) {
+      category === 'CONSUMABLE';
+    if (requiresReorderLevel && reorderLevelProvided && !nextIsRndItem) {
       if (!updateData.reorder_level || updateData.reorder_level <= 0) {
         throw new BadRequestException(
-          'Reorder level must be greater than 0 for RAW_MATERIAL, CAPITAL_GOODS, CONSUMABLE, and PACKING_MATERIAL items.',
+          'Reorder level must be greater than 0 for RAW_MATERIAL, CAPITAL_GOODS, and CONSUMABLE items.',
         );
       }
     }
@@ -779,6 +1343,23 @@ export class ItemsService {
     if (itemData.minStock !== undefined) updateData.min_stock = itemData.minStock;
     if (itemData.maxStock !== undefined) updateData.max_stock = itemData.maxStock;
     if (itemData.metadata !== undefined) updateData.metadata = itemData.metadata;
+    if (rndFlagProvided) updateData.is_rnd_item = nextIsRndItem;
+    if (itemData.project_id !== undefined || itemData.projectId !== undefined) {
+      updateData.project_id = this.normalizeOptionalText(itemData.project_id ?? itemData.projectId);
+    }
+    if (itemData.project_name !== undefined || itemData.projectName !== undefined) {
+      updateData.project_name = this.normalizeOptionalText(itemData.project_name ?? itemData.projectName);
+    }
+    if (updateData.is_rnd_item !== undefined || updateData.project_id !== undefined || updateData.project_name !== undefined) {
+      const metadata = existingItem.metadata && typeof existingItem.metadata === 'object' ? existingItem.metadata : {};
+      updateData.metadata = {
+        ...(updateData.metadata && typeof updateData.metadata === 'object' ? updateData.metadata : metadata),
+        isRndItem: nextIsRndItem,
+        department: nextIsRndItem ? 'R&D' : (itemData.department ?? metadata.department ?? null),
+        projectId: updateData.project_id ?? metadata.projectId ?? null,
+        projectName: updateData.project_name ?? metadata.projectName ?? null,
+      };
+    }
     if (validatedHsn !== null) updateData.hsn_code = validatedHsn;
     if (itemData.is_active !== undefined) updateData.is_active = itemData.is_active;
 
@@ -884,9 +1465,17 @@ export class ItemsService {
     return data;
   }
 
-  async setVerification(tenantId: string, userId: string, id: string, isVerified: boolean) {
+  async setVerification(
+    tenantId: string,
+    userId: string,
+    id: string,
+    isVerified: boolean,
+    options: { overrideMakerChecker?: boolean } = {},
+  ) {
     const existing = await this.findOne(tenantId, id);
-    this.assertMakerChecker(existing, userId, isVerified ? 'verify' : 'remove verification for');
+    if (!options.overrideMakerChecker) {
+      this.assertMakerChecker(existing, userId, isVerified ? 'verify' : 'remove verification for');
+    }
     const fromStatus = this.normalizeApprovalStatus(existing.approval_status || (existing.is_verified ? 'APPROVED' : 'PENDING'));
     const now = new Date().toISOString();
     const metadata = existing.metadata && typeof existing.metadata === 'object' ? existing.metadata : {};
@@ -1219,7 +1808,7 @@ export class ItemsService {
 
     const baseSelect = `
         *,
-        vendor:vendors(id, code, name, contact_person, email, phone)
+        vendor:vendors(id, code, name, contact_person, email, phone, is_active)
       `;
 
     const { data, error } = await this.supabase
@@ -1240,19 +1829,32 @@ export class ItemsService {
       throw new Error(`Failed to fetch item vendors: ${error.message}`);
     }
 
-    return data || [];
+    return (data || []).filter((row: any) => {
+      const vendor = Array.isArray(row?.vendor) ? row.vendor[0] : row?.vendor;
+      return vendor?.is_active !== false;
+    });
   }
 
-  async getPreferredVendor(itemId: string) {
-    const { data, error } = await this.supabase.rpc('get_preferred_vendor', {
-      p_item_id: itemId,
-    });
+  async getPreferredVendor(tenantId: string, itemId: string) {
+    // Use the tenant-scoped item/vendor relation directly. The legacy RPC has
+    // returned different column shapes across deployments, which left the PO
+    // vendor control blank even though the item had a preferred vendor.
+    const rows = await this.getItemVendors(tenantId, itemId);
+    const preferred: any = Array.isArray(rows) ? rows[0] : null;
+    if (!preferred) return null;
 
-    if (error) {
-      throw new Error(`Failed to fetch preferred vendor: ${error.message}`);
-    }
+    const relation = Array.isArray(preferred.vendor) ? preferred.vendor[0] : preferred.vendor;
+    const vendorId = String(preferred.vendor_id || relation?.id || '').trim();
+    if (!vendorId) return null;
 
-    return data?.[0] || null;
+    return {
+      ...preferred,
+      vendor_id: vendorId,
+      vendorId,
+      vendor_name: String(relation?.name || preferred.vendor_name || '').trim(),
+      vendorName: String(relation?.name || preferred.vendor_name || '').trim(),
+      vendor: relation || null,
+    };
   }
 
   async addItemVendor(tenantId: string, userId: string, itemId: string, body: any) {
@@ -1479,12 +2081,45 @@ export class ItemsService {
   async getStockTrail(tenantId: string, itemId: string) {
     const trails: any[] = [];
 
-    // --- 1. GRN inbound from stock_entries ---
+    const toDisplayNote = (value: unknown): string | null => {
+      const note = String(value || '')
+        // Reversal keeps this technical SIV link in storage. Hide it only in
+        // the user-facing stock trail response.
+        .replace(/\s*\(material_id=[0-9a-f-]{36}\)\s*/gi, ' ')
+        .replace(/\s*material_id=[0-9a-f-]{36}\s*/gi, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      return note || null;
+    };
+
+    const { data: itemRow } = await this.supabase
+      .from('items')
+      .select('id, code')
+      .eq('tenant_id', tenantId)
+      .eq('id', itemId)
+      .maybeSingle();
+
+    const itemIdsForTrail = new Set<string>([itemId]);
+    const itemCode = String((itemRow as any)?.code || '').trim();
+    if (itemCode) {
+      const { data: siblingItems } = await this.supabase
+        .from('items')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('code', itemCode);
+      for (const sibling of siblingItems || []) {
+        if ((sibling as any).id) itemIdsForTrail.add((sibling as any).id);
+      }
+    }
+
+    const itemIds = Array.from(itemIdsForTrail);
+
+    // --- 1. GRN / SRV inbound from stock_entries ---
     const { data: stockEntries } = await this.supabase
       .from('stock_entries')
-      .select('id, quantity, available_quantity, unit_price, batch_number, metadata, created_at, warehouse_id')
+      .select('id, item_id, quantity, available_quantity, unit_price, batch_number, metadata, created_at, warehouse_id')
       .eq('tenant_id', tenantId)
-      .eq('item_id', itemId)
+      .in('item_id', itemIds)
       .order('created_at', { ascending: true });
 
     if (stockEntries?.length) {
@@ -1524,16 +2159,19 @@ export class ItemsService {
         for (const w of whs || []) seWhById[w.id] = w;
       }
 
-      // Deduplicate: group by grn_reference + item to prevent double rows from duplicate DB entries.
-      // Multiple stock_entries for the same GRN+item are collapsed into one trail row.
+      // Deduplicate: group by GRN reference + item + warehouse to prevent double rows
+      // from duplicate DB entries without mixing quantities across different items.
+      // This endpoint is already scoped to one item, but keeping item_id in the key
+      // protects trail accuracy if the query shape is reused or broadened later.
       const grnEntryMap = new Map<string, { entry: any; qty: number }>();
       for (const entry of stockEntries as any[]) {
         const grnRef = entry.metadata?.grn_reference || entry.metadata?.grn_number;
-        // Only show stock_entries that originated from a real GRN.
-        // Entries without a GRN reference were created via adjustment/import and are
-        // already represented in stock_movements — showing them here would double-count.
+        // GRN rows are grouped below. Non-GRN rows may still be real stock receipts
+        // (for example SRV/manual receipt of finished goods) and must not disappear
+        // from Stock Trail. Adjustment/import rows are reconciled later from
+        // inventory_stock to avoid double-counting against stock_movements.
         if (!grnRef) continue;
-        const dedupKey = `${grnRef}::${entry.warehouse_id || ''}`;
+        const dedupKey = `${grnRef}::${entry.item_id || itemId}::${entry.warehouse_id || ''}`;
         if (grnEntryMap.has(dedupKey)) {
           grnEntryMap.get(dedupKey)!.qty += Number(entry.quantity) || 0;
         } else {
@@ -1553,12 +2191,53 @@ export class ItemsService {
           reference_id: grn?.id || null,
           qty_in: qty,
           qty_out: 0,
+          warehouse_id: entry.warehouse_id || null,
           warehouse: wh ? (wh.name || wh.code) : null,
           vendor: grn?.vendor_name || null,
           unit_price: entry.unit_price != null ? Number(entry.unit_price) : null,
           batch_number: entry.batch_number || null,
           po_number: grn?.po_number || null,
           notes: `Received via ${grnRef}`,
+        });
+      }
+
+      for (const entry of stockEntries as any[]) {
+        const metadata = entry.metadata || {};
+        const grnRef = metadata.grn_reference || metadata.grn_number;
+        if (grnRef) continue;
+
+        const createdFrom = String(metadata.created_from || metadata.source || '').trim().toUpperCase();
+        const isSrvReceipt = createdFrom.includes('SRV') || !!metadata.srv_number || !!metadata.srv_reference;
+        if (!isSrvReceipt) continue;
+
+        const qty = Number(entry.quantity) || 0;
+        if (Math.abs(qty) < 1e-9) continue;
+
+        const wh = seWhById[entry.warehouse_id];
+        const reference =
+          metadata.srv_number ||
+          metadata.srv_reference ||
+          metadata.reference_number ||
+          metadata.document_number ||
+          'SRV / Manual Receipt';
+        trails.push({
+          date: metadata.movement_date || entry.created_at,
+          type: 'SRV_RECEIPT',
+          document_type: 'SRV',
+          reference,
+          reference_id: metadata.srv_id || metadata.reference_id || null,
+          qty_in: qty,
+          qty_out: 0,
+          warehouse_id: entry.warehouse_id || null,
+          warehouse: wh ? (wh.name || wh.code) : null,
+          vendor: null,
+          unit_price: entry.unit_price != null ? Number(entry.unit_price) : null,
+          batch_number: entry.batch_number || null,
+          po_number: null,
+          notes: toDisplayNote(
+            metadata.notes ||
+            `Received via ${reference}${metadata.received_by_name ? ` by ${metadata.received_by_name}` : ''}`,
+          ),
         });
       }
     }
@@ -1568,7 +2247,7 @@ export class ItemsService {
       .from('stock_movements')
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('item_id', itemId)
+      .in('item_id', itemIds)
       .order('movement_date', { ascending: true });
 
     if (movements?.length) {
@@ -1596,14 +2275,68 @@ export class ItemsService {
           reference_id: m.reference_id || null,
           qty_in: isInbound ? Number(m.quantity) : 0,
           qty_out: isOutbound ? Number(m.quantity) : 0,
+          warehouse_id: warehouseId || null,
           warehouse: wh ? (wh.name || wh.code) : null,
           vendor: null,
           unit_price: null,
           batch_number: m.batch_number || null,
           po_number: null,
-          notes: m.notes || null,
+          notes: toDisplayNote(m.notes),
         });
       }
+    }
+
+    // --- 3. Opening / legacy stock from inventory_stock ---
+    // Older/imported balances and a few direct stock-adjustment paths can leave
+    // inventory_stock populated even when there is no stock_movements trail.
+    // The Stock Master and Stock Adjustment screens must not disagree with the
+    // Stock Trail; show the carried balance explicitly instead of returning an
+    // empty trail.
+    const { data: inventoryRows } = await this.supabase
+      .from('inventory_stock')
+      .select('quantity, available_quantity, warehouse_id, updated_at, last_movement_date')
+      .eq('tenant_id', tenantId)
+      .in('item_id', itemIds);
+
+    const inventoryWhIds = [...new Set((inventoryRows || []).map((row: any) => row.warehouse_id).filter(Boolean))] as string[];
+    const inventoryWhById: Record<string, any> = {};
+    if (inventoryWhIds.length > 0) {
+      const { data: whs } = await this.supabase.from('warehouses').select('id, name, code').in('id', inventoryWhIds);
+      for (const w of whs || []) inventoryWhById[w.id] = w;
+    }
+
+    const actualStockByWarehouse = new Map<string, { quantity: number; warehouseName: string; warehouseId: string | null; date: string }>();
+    for (const row of inventoryRows || []) {
+      const warehouseId = String((row as any).warehouse_id || '').trim() || null;
+      const wh = warehouseId ? inventoryWhById[warehouseId] : null;
+      const warehouseName = wh ? (wh.name || wh.code) : (warehouseId || 'Warehouse');
+      const quantity = Number((row as any).available_quantity ?? (row as any).quantity ?? 0) || 0;
+      const key = warehouseId || warehouseName;
+      const existing = actualStockByWarehouse.get(key);
+      actualStockByWarehouse.set(key, {
+        quantity: (existing?.quantity || 0) + quantity,
+        warehouseName,
+        warehouseId,
+        date: String((row as any).last_movement_date || (row as any).updated_at || new Date().toISOString()),
+      });
+    }
+
+    const ledgerStockByWarehouse = new Map<string, number>();
+    for (const t of trails) {
+      const key = String(t.warehouse_id || t.warehouse || '').trim();
+      if (!key) continue;
+      ledgerStockByWarehouse.set(key, (ledgerStockByWarehouse.get(key) || 0) + Number(t.qty_in || 0) - Number(t.qty_out || 0));
+    }
+
+    for (const [key, actual] of actualStockByWarehouse.entries()) {
+      if (Math.abs(actual.quantity) < 1e-9) continue;
+      const ledgerQty = ledgerStockByWarehouse.get(key) || 0;
+      const delta = actual.quantity - ledgerQty;
+      if (Math.abs(delta) < 1e-9) continue;
+
+      // Do not inject reconciliation as a fake transaction. The stock master
+      // is the authoritative current balance; showing this delta as an
+      // OPENING_BALANCE event makes a single adjustment appear twice.
     }
 
     // Sort chronologically and compute running balance
@@ -1629,7 +2362,11 @@ export class ItemsService {
       warehouses: { id: null, name: warehouseName, code: warehouseName },
     }));
 
-    return { trails, currentBalance: balance, currentStock };
+    const displayTrails = [...trails].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    const actualCurrentBalance = Array.from(actualStockByWarehouse.values())
+      .reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+    return { trails: displayTrails, currentBalance: actualCurrentBalance, currentStock };
   }
 
   // Get default variant for an item

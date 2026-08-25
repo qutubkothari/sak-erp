@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
@@ -7,9 +7,10 @@ import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { buildDocumentBranding, escapeHtml, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
-import { AlertTriangle, Check, GitBranch, History, PackageCheck, Plus, Printer, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Check, ClipboardList, GitBranch, History, PackageCheck, Plus, Printer, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react';
 
 const AUTO_REFRESH_MS = 30000;
+const SIV_VIEW_STORAGE_KEY = 'sak-erp:siv-active-view';
 
 type BomComponent = {
   item_code: string;
@@ -83,6 +84,39 @@ type SivHistoryRow = {
   notes?: string;
 };
 
+async function putJsonViaApiProxy<T = any>(endpoint: string, payload: any): Promise<T> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+  const response = await fetch(`/api/v1${endpoint}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload ?? {}),
+  });
+
+  const text = await response.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text || null;
+  }
+
+  if (!response.ok) {
+    const message = typeof data?.message === 'string'
+      ? data.message
+      : Array.isArray(data?.message)
+        ? data.message.join('\n')
+        : typeof data === 'string' && data.trim()
+          ? data.trim()
+          : `HTTP ${response.status}: ${response.statusText}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
 export default function SivPage() {
   const currentUser = readStoredUser();
   const currentUserDisplayName = String(
@@ -101,6 +135,7 @@ export default function SivPage() {
   const canCreate = hasModulePermission(currentUser, 'Inventory', 'create');
   const canApprove = hasModulePermission(currentUser, 'Inventory', 'approve');
   const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
+  const [mounted, setMounted] = useState(false);
   const [focusJobId, setFocusJobId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [materialRequests, setMaterialRequests] = useState<MaterialReq[]>([]);
@@ -124,6 +159,8 @@ export default function SivPage() {
   // bomSelectedByLine[lineId][componentIndex] = true/false (checkbox state for BOM components)
   const [bomSelectedByLine, setBomSelectedByLine] = useState<Record<string, Record<number, boolean>>>({});
   const [focusJoNumber, setFocusJoNumber] = useState<string>('');
+  const [focusHandled, setFocusHandled] = useState(false);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
   const [expandedHistoryJoIds, setExpandedHistoryJoIds] = useState<Record<string, boolean>>({});
   const [selectedHistoryRowIds, setSelectedHistoryRowIds] = useState<string[]>([]);
   // UID picker modal
@@ -142,6 +179,15 @@ export default function SivPage() {
   const [manualIssueUids, setManualIssueUids] = useState<string[]>([]);
   const [manualIssueLines, setManualIssueLines] = useState<ManualIssueLine[]>([]);
   const [manualIssueBusy, setManualIssueBusy] = useState(false);
+
+  const switchSivView = useCallback((view: 'open' | 'history') => {
+    setActiveSivView(view);
+    try {
+      window.localStorage.setItem(SIV_VIEW_STORAGE_KEY, view);
+    } catch {
+      // Ignore storage restrictions; the in-memory tab state still works.
+    }
+  }, []);
 
   const openUidPicker = useCallback(async (lineId: string, itemId: string, itemCode: string, maxQty: number) => {
     setUidPickerLineId(lineId);
@@ -195,11 +241,18 @@ export default function SivPage() {
       setSivHistory(sivHist || []);
     } catch (err: any) {
       if (!options?.silent) {
-        alert('Failed to load SIV data: ' + (err.message || err));
+        await confirmDialog({
+          title: 'SIV Data Not Loaded',
+          message: 'Failed to load SIV data: ' + (err.message || err),
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'danger',
+        });
       }
     } finally {
       if (!options?.silent) {
         setLoading(false);
+        setInitialDataLoaded(true);
       }
     }
   }, []);
@@ -224,12 +277,12 @@ export default function SivPage() {
 
   const loadUsers = useCallback(async () => {
     try {
-      const data = await apiClient.get<any[]>('/hr/employees');
+      const data = await apiClient.get<any[]>('/job-orders/assignable-users');
       const mapped = (Array.isArray(data) ? data : []).map((u: any) => ({
         id: String(u?.id || '').trim(),
-        displayName: String(u?.employee_name || u?.displayName || u?.name || '').trim(),
+        displayName: String(u?.displayName || u?.employee_name || u?.name || u?.email || '').trim(),
         employeeCode: String(u?.employee_code || u?.employeeCode || '').trim(),
-      })).filter((u) => u.id);
+      })).filter((u) => u.id && u.displayName);
       setUsers(mapped);
     } catch {
       setUsers([]);
@@ -295,10 +348,25 @@ export default function SivPage() {
   }, [lineBomData]);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
     loadAll();
     loadInventoryItems();
     loadUsers();
   }, [loadAll, loadInventoryItems, loadUsers]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(SIV_VIEW_STORAGE_KEY);
+      if (stored === 'open' || stored === 'history') {
+        setActiveSivView(stored);
+      }
+    } catch {
+      // Ignore storage restrictions.
+    }
+  }, []);
 
   useEffect(() => {
     if (!manualIssueItemId || itemRequiresUid(manualIssueItemId)) return;
@@ -328,20 +396,23 @@ export default function SivPage() {
   }, []);
 
   useEffect(() => {
-    if (!focusJobId) return;
-    const exists = materialRequests.some((r) => r.id === focusJobId);
-    if (!exists) return;
+    if (!initialDataLoaded || focusHandled || (!focusJobId && !focusJoNumber)) return;
 
-    // Ensure we're on Open tab and expanded on the requested job.
-    setActiveSivView('open');
-    setSelectedMaterialJobId(focusJobId);
+    // A deep-link may choose Open Requests once, after the initial load only.
+    // Mark it handled even if the job is no longer open so polling can never
+    // pull a user away from History later.
+    const matched = materialRequests.find((row) =>
+      (focusJobId && row.id === focusJobId) ||
+      (focusJoNumber && row.job_order_number === focusJoNumber),
+    );
+    setFocusHandled(true);
+    if (!matched) return;
 
-    // Best-effort scroll to the job card.
-    const el = document.getElementById(`siv-job-${focusJobId}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [focusJobId, materialRequests]);
+    switchSivView('open');
+    setSelectedMaterialJobId(matched.id);
+    const el = document.getElementById(`siv-job-${matched.id}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [focusHandled, focusJobId, focusJoNumber, initialDataLoaded, materialRequests, switchSivView]);
 
   useEffect(() => {
     const targetJobId = selectedMaterialJobId || focusJobId;
@@ -364,17 +435,6 @@ export default function SivPage() {
       return { ...prev, [targetJobId]: next };
     });
   }, [focusJobId, materialRequests, selectedMaterialJobId]);
-
-  // Auto-select by JO number (coming from Smart JO page via ?joNumber= param)
-  useEffect(() => {
-    if (!focusJoNumber || !materialRequests.length) return;
-    const matched = materialRequests.find((r) => r.job_order_number === focusJoNumber);
-    if (!matched) return;
-    setActiveSivView('open');
-    setSelectedMaterialJobId(matched.id);
-    const el = document.getElementById(`siv-job-${matched.id}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [focusJoNumber, materialRequests]);
 
   // Auto-expand all material lines that are sub-assemblies (have a BOM) when a JO is focused
   useEffect(() => {
@@ -507,18 +567,30 @@ export default function SivPage() {
     };
   }, [inventoryItems, itemRequiresUid, manualIssueItemId, manualIssueNotes, manualIssueQty, manualIssueUids]);
 
-  const addManualIssueLine = useCallback(() => {
+  const addManualIssueLine = useCallback(async () => {
     try {
       const line = buildManualIssueDraftLine();
       if (!line) {
-        alert('Select an item to add.');
+        await confirmDialog({
+          title: 'Select Item',
+          message: 'Select an item before adding it to the manual SIV.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'warning',
+        });
         return;
       }
 
       setManualIssueLines((prev) => [...prev, line]);
       resetManualIssueDraft();
     } catch (err: any) {
-      alert(String(err?.message || err));
+      await confirmDialog({
+        title: 'Manual SIV Line Not Added',
+        message: String(err?.message || err),
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'danger',
+      });
     }
   }, [buildManualIssueDraftLine, resetManualIssueDraft]);
 
@@ -535,12 +607,24 @@ export default function SivPage() {
         linesToSubmit.push(draftLine);
       }
     } catch (err: any) {
-      alert(String(err?.message || err));
+      await confirmDialog({
+        title: 'Manual SIV Not Ready',
+        message: String(err?.message || err),
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'danger',
+      });
       return;
     }
 
     if (linesToSubmit.length === 0) {
-      alert('Add at least one item for manual SIV.');
+      await confirmDialog({
+        title: 'Add Items',
+        message: 'Add at least one item for manual SIV.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -560,13 +644,23 @@ export default function SivPage() {
       setManualIssueLines([]);
       resetManualIssueDraft();
       await loadAll();
-      setActiveSivView('history');
       const message = results.length === 1
         ? String(results[0]?.message || 'Manual SIV created successfully')
         : `Created ${results.length} manual SIV entries successfully`;
-      alert(message);
+      await confirmDialog({
+        title: 'Manual SIV Created',
+        message: `${message}. Open the History tab when you want to review or approve the issued entries.`,
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+      });
     } catch (err: any) {
-      alert('Failed to create manual SIV: ' + String(err?.response?.data?.message || err?.message || err));
+      await confirmDialog({
+        title: 'Manual SIV Failed',
+        message: 'Failed to create manual SIV: ' + String(err?.response?.data?.message || err?.message || err),
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'danger',
+      });
     } finally {
       setManualIssueBusy(false);
     }
@@ -638,7 +732,7 @@ export default function SivPage() {
       addUidToLineCart(jobId, target.lineId, raw);
       setScanStatusByJob((prev) => ({
         ...prev,
-        [jobId]: { type: 'ok', message: `Added ${raw} → ${itemCode || 'material line'}` },
+        [jobId]: { type: 'ok', message: `Added ${raw} to ${itemCode || 'material line'}` },
       }));
       setScanInputByJob((prev) => ({ ...prev, [jobId]: '' }));
     } catch (err: any) {
@@ -660,9 +754,64 @@ export default function SivPage() {
     try {
       await apiClient.put(`/job-orders/store/material-requisitions/history/${movementId}/approve`, {});
       await loadAll();
-      alert('SIV history row approved');
+      await confirmDialog({
+        title: 'SIV Entry Approved',
+        message: 'The selected SIV history row has been approved.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+      });
     } catch (err: any) {
-      alert('Failed to approve: ' + (err.message || err));
+      await confirmDialog({
+        title: 'Approval Failed',
+        message: 'Failed to approve: ' + (err.message || err),
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'danger',
+      });
+    }
+  }, [loadAll]);
+
+  const approveSivHistoryRows = useCallback(async (movementIds: string[], label = 'selected SIV entries') => {
+    const ids = Array.from(new Set(movementIds.map((id) => String(id || '').trim()).filter(Boolean)));
+    if (ids.length === 0) {
+      await confirmDialog({
+        title: 'Nothing To Approve',
+        message: 'No pending SIV rows selected for approval.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    const confirmed = await confirmDialog({
+      title: 'Approve SIV Voucher',
+      message: `Approve ${ids.length} pending row${ids.length === 1 ? '' : 's'} for ${label}?`,
+      confirmLabel: 'Approve All',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
+
+    try {
+      await putJsonViaApiProxy('/job-orders/store/material-requisitions/history/approve-bulk', {
+        movementIds: ids,
+      });
+      await loadAll({ silent: true });
+      setSelectedHistoryRowIds((prev) => prev.filter((id) => !ids.includes(id)));
+      await confirmDialog({
+        title: 'SIV Rows Approved',
+        message: `Approved ${ids.length} SIV row${ids.length === 1 ? '' : 's'}.`,
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+      });
+    } catch (err: any) {
+      await confirmDialog({
+        title: 'Bulk Approval Failed',
+        message: 'Failed to approve SIV rows: ' + (err.message || err),
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'danger',
+      });
     }
   }, [loadAll]);
 
@@ -677,9 +826,20 @@ export default function SivPage() {
     try {
       await apiClient.delete(`/job-orders/store/material-requisitions/history/${movementId}`);
       await loadAll();
-      alert('SIV goods issue reversed');
+      await confirmDialog({
+        title: 'SIV Reversed',
+        message: 'SIV goods issue has been reversed and stock/UID movement has been adjusted.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+      });
     } catch (err: any) {
-      alert('Failed to reverse: ' + (err.message || err));
+      await confirmDialog({
+        title: 'Reverse Failed',
+        message: 'Failed to reverse: ' + (err.message || err),
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'danger',
+      });
     }
   }, [loadAll]);
 
@@ -689,7 +849,13 @@ export default function SivPage() {
       if (!req || !req.materialLines) return;
       const selectedLineIds = selectedLineIdsByJob[jobId] || [];
       if (!selectedLineIds.length) {
-        alert('Select at least one material line to issue.');
+        await confirmDialog({
+          title: 'Select Material Lines',
+          message: 'Select at least one material line to issue.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'warning',
+        });
         return;
       }
       setBusyJobId(jobId);
@@ -704,19 +870,29 @@ export default function SivPage() {
           if (!readiness.ready && readiness.blockers.length > 0) {
             const lines = readiness.blockers.map((b) => {
               const jo = b.pendingSubJoNumber ? ` (JO: ${b.pendingSubJoNumber})` : '';
-              return `• ${b.itemCode} — need ${b.needed}, have ${b.available}${jo}`;
+              return `- ${b.itemCode} - need ${b.needed}, have ${b.available}${jo}`;
             }).join('\n');
-            alert(
-              `⚠️ Cannot issue materials yet.\n\n` +
-              `The following sub-assemblies are not yet manufactured:\n\n${lines}\n\n` +
-              `Complete each sub-assembly Job Order in SRV/QC first, then return here to issue for this JO.`
-            );
+            await confirmDialog({
+              title: 'Cannot Issue Materials Yet',
+              message:
+                `The following sub-assemblies are not yet manufactured:\n\n${lines}\n\n` +
+                `Complete each sub-assembly Job Order in SRV/QC first, then return here to issue for this JO.`,
+              confirmLabel: 'OK',
+              cancelLabel: 'Close',
+              variant: 'warning',
+            });
             return;
           }
         } catch (readinessErr: any) {
           // Fail-safe: if readiness check throws an error, block the issue rather than allowing through
           const errMsg = String((readinessErr as any)?.response?.data?.message || (readinessErr as any)?.message || 'network error');
-          alert(`⚠️ Sub-assembly readiness check failed (${errMsg}).\n\nIssue blocked — please refresh and try again.`);
+          await confirmDialog({
+            title: 'Readiness Check Failed',
+            message: `Sub-assembly readiness check failed (${errMsg}).\n\nIssue blocked - please refresh and try again.`,
+            confirmLabel: 'OK',
+            cancelLabel: 'Close',
+            variant: 'danger',
+          });
           setBusyJobId(null);
           return;
         }
@@ -793,20 +969,36 @@ export default function SivPage() {
         await loadAll();
 
         if (failures.length === 0) {
-          alert('Materials issued successfully!');
+          await confirmDialog({
+            title: 'Materials Issued',
+            message: 'Selected material lines were issued successfully. Pending approvals can be reviewed in History.',
+            confirmLabel: 'OK',
+            cancelLabel: 'Close',
+          });
         } else {
           const lines = failures
             .slice(0, 6)
             .map((f) => `${f.itemCode || f.lineId}: ${f.message}`)
             .join('\n');
-          alert(
-            `Issued: ${successLineIds.length}\nFailed: ${failures.length}\n\n` +
-              `${lines}${failures.length > 6 ? '\n…' : ''}`,
-          );
+          await confirmDialog({
+            title: successLineIds.length > 0 ? 'SIV Partially Issued' : 'SIV Issue Failed',
+            message:
+              `Issued: ${successLineIds.length}\nFailed: ${failures.length}\n\n` +
+              `${lines}${failures.length > 6 ? '\n...' : ''}`,
+            confirmLabel: 'OK',
+            cancelLabel: 'Close',
+            variant: successLineIds.length > 0 ? 'warning' : 'danger',
+          });
         }
       } catch (err: any) {
         const msg = formatApiErrorMessage(err);
-        alert('Failed to issue materials: ' + msg);
+        await confirmDialog({
+          title: 'Issue Failed',
+          message: 'Failed to issue materials: ' + msg,
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'danger',
+        });
       } finally {
         setBusyJobId(null);
       }
@@ -828,14 +1020,26 @@ export default function SivPage() {
       const selectedLineIds = selectedLineIdsByJob[jobId] || [];
       const lines = (req.materialLines || []).filter((ln) => selectedLineIds.includes(ln.id));
       if (!lines.length) {
-        alert('Select lines to print on SIV.');
+        await confirmDialog({
+          title: 'Select Lines To Print',
+          message: 'Select one or more material lines before printing the SIV.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'warning',
+        });
         return;
       }
       const _now1 = new Date(); const now = `${_now1.getDate().toString().padStart(2,'0')}/${(_now1.getMonth()+1).toString().padStart(2,'0')}/${_now1.getFullYear()} ${_now1.getHours().toString().padStart(2,'0')}:${_now1.getMinutes().toString().padStart(2,'0')}`;
       const issuedBy = currentUserDisplayName;
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        alert('Popup blocked. Please allow popups to print SIV.');
+        await confirmDialog({
+          title: 'Popup Blocked',
+          message: 'Please allow popups for this site to print the SIV.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'warning',
+        });
         return;
       }
 
@@ -860,7 +1064,7 @@ export default function SivPage() {
 
           const uidsCell = allUids.length > 0
             ? allUids.map((uid) => `<div style="font-family:monospace; font-size:11px; font-weight:600; margin-bottom:2px;">${escapeHtml(uid)}</div>`).join('')
-            : '<span style="color:#999; font-size:10px;">—</span>';
+            : '<span style="color:#999; font-size:10px;">-</span>';
 
           return `
             <tr>
@@ -928,7 +1132,7 @@ export default function SivPage() {
             </div>
             <div class="meta-item">
               <div class="meta-label">Product</div>
-              <div class="meta-value">${escapeHtml(req.item_code || '')} — ${escapeHtml(req.item_name || '')}</div>
+              <div class="meta-value">${escapeHtml(req.item_code || '')} - ${escapeHtml(req.item_name || '')}</div>
             </div>
             <div class="meta-item">
               <div class="meta-label">Printed By</div>
@@ -970,7 +1174,13 @@ export default function SivPage() {
       // Open window FIRST (synchronously, before any await) to avoid popup blockers
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
-        alert('Popup blocked. Please allow popups for this site and try again.');
+        await confirmDialog({
+          title: 'Popup Blocked',
+          message: 'Please allow popups for this site and try again.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'warning',
+        });
         return;
       }
       const company = await apiClient.get<any>('/tenant/current').catch(() => null);
@@ -992,7 +1202,7 @@ export default function SivPage() {
       const linesHtml = Array.from(itemMap.values()).map((item, idx) => {
         const uidsCell = item.uids.length > 0
           ? item.uids.map((u) => `<div style="font-family:monospace;font-size:11px;font-weight:600;margin-bottom:2px;">${escapeHtml(u)}</div>`).join('')
-          : '<span style="color:#999;font-size:10px;">—</span>';
+          : '<span style="color:#999;font-size:10px;">-</span>';
         return `
           <tr>
             <td style="border:1px solid #333;padding:5px;text-align:center;vertical-align:top;">${idx + 1}</td>
@@ -1015,7 +1225,7 @@ export default function SivPage() {
       const html = `
         <!DOCTYPE html>
         <html>
-        <head><title>SIV — ${escapeHtml(joNumber)}</title>
+        <head><title>SIV - ${escapeHtml(joNumber)}</title>
         <script>setTimeout(function() { window.print(); }, 500);<\/script>
         <style>
           @page { margin: 0.5cm; }
@@ -1099,7 +1309,13 @@ export default function SivPage() {
       // Refresh the list
       await loadAll({ silent: true });
     } catch (err: any) {
-      alert('Failed to assign: ' + (err.message || err));
+      await confirmDialog({
+        title: 'Assignment Failed',
+        message: 'Failed to assign: ' + (err.message || err),
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'danger',
+      });
     }
   };
 
@@ -1126,6 +1342,8 @@ export default function SivPage() {
   );
   const approvedHistoryCount = sivHistory.filter((row) => row.approved_by).length;
   const awaitingApprovalCount = sivHistory.length - approvedHistoryCount;
+  const pendingHistoryRowIds = sivHistory.filter((row) => !row.approved_by).map((row) => row.id);
+  const selectedPendingHistoryRowIds = pendingHistoryRowIds.filter((id) => selectedHistoryRowIds.includes(id));
   const blockedLineCount = openMaterialReqs.reduce(
     (sum, req) =>
       sum +
@@ -1143,6 +1361,10 @@ export default function SivPage() {
     if (itemRequiresUid(line.item_id)) return { label: 'UID Required', tone: 'info' as const };
     return { label: 'Blocked', tone: 'danger' as const };
   };
+
+  if (!mounted) {
+    return <div className="min-h-screen bg-[#FAF9F6]" />;
+  }
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] px-4 py-4 text-[#2F241D] lg:px-6">
@@ -1214,7 +1436,7 @@ export default function SivPage() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setActiveSivView('open')}
+                onClick={() => switchSivView('open')}
                 className={`inline-flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors ${
                   activeSivView === 'open'
                     ? 'border-[#8B6F47] bg-[#8B6F47] text-white'
@@ -1226,7 +1448,7 @@ export default function SivPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setActiveSivView('history')}
+                onClick={() => switchSivView('history')}
                 className={`inline-flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors ${
                   activeSivView === 'history'
                     ? 'border-[#8B6F47] bg-[#8B6F47] text-white'
@@ -1253,6 +1475,21 @@ export default function SivPage() {
                   ))}
                 </select>
               </div>
+            )}
+            {activeSivView === 'history' && canApprove && pendingHistoryRowIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void approveSivHistoryRows(
+                  selectedPendingHistoryRowIds.length > 0 ? selectedPendingHistoryRowIds : pendingHistoryRowIds,
+                  selectedPendingHistoryRowIds.length > 0 ? 'selected SIV entries' : 'all pending SIV entries',
+                )}
+                className="inline-flex min-h-9 items-center gap-2 rounded-md border border-emerald-700 bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800"
+              >
+                <Check className="h-4 w-4" />
+                {selectedPendingHistoryRowIds.length > 0
+                  ? `Approve Selected (${selectedPendingHistoryRowIds.length})`
+                  : `Approve All Pending (${pendingHistoryRowIds.length})`}
+              </button>
             )}
           </div>
         </div>
@@ -1633,7 +1870,7 @@ export default function SivPage() {
                             const available = Number(ln.available_quantity || 0);
                             const isSubassembly = isSubassemblyItem(ln.item_id);
                             const requiresUid = itemRequiresUid(ln.item_id);
-                            // If sufficient stock on hand, issue directly — no need to expand BOM
+                            // If sufficient stock on hand, issue directly - no need to expand BOM
                             const hasSufficientStock = pending > 0 && available >= pending;
                             const hasNoStock = pending > 0 && available <= 0;
                             const hasPartialStock = pending > 0 && available > 0 && available < pending;
@@ -1670,7 +1907,7 @@ export default function SivPage() {
                                       <div className="text-sm text-gray-600">{ln.item_name}</div>
                                       {hasSufficientStock && (
                                         <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
-                                          ✓ In Stock ({available})
+                                          OK In Stock ({available})
                                         </span>
                                       )}
                                       {hasPartialStock && (
@@ -1752,7 +1989,7 @@ export default function SivPage() {
                                             className="px-3 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 text-sm font-medium shadow-sm"
                                             title="Pick UIDs from available stock"
                                           >
-                                            📋
+                                            <ClipboardList className="h-4 w-4" />
                                           </button>
                                         )}
                                       </div>
@@ -1776,7 +2013,7 @@ export default function SivPage() {
                                 <tr className="bg-sky-50/70">
                                   <td colSpan={hasUidLines ? 9 : 8} className="px-10 py-3">
                                     {lineBomLoading[ln.id] ? (
-                                      <div className="text-sm text-gray-500 italic py-2">Loading BOM components…</div>
+                                      <div className="text-sm text-gray-500 italic py-2">Loading BOM components...</div>
                                     ) : !lineBomData[ln.id] || lineBomData[ln.id].length === 0 ? (
                                       <div className="text-sm text-gray-500 italic py-2">
                                         No BOM found for this item. Select and issue this line directly.
@@ -1785,7 +2022,7 @@ export default function SivPage() {
                                       <>
                                         <div className="mb-2 flex items-center justify-between">
                                           <span className="text-xs font-semibold text-sky-800 uppercase tracking-wide">
-                                            Sub-Assembly Components — {ln.item_code}
+                                            Sub-Assembly Components - {ln.item_code}
                                           </span>
                                           <div className="flex items-center gap-3">
                                             <button
@@ -1877,18 +2114,25 @@ export default function SivPage() {
                 if (!groupMap.has(key)) groupMap.set(key, []);
                 groupMap.get(key)!.push(row);
               }
-              return Array.from(groupMap.entries()).map(([joId, rows]) => {
+              const getMovementTs = (row: SivHistoryRow) => row.movement_date ? new Date(row.movement_date).getTime() || 0 : 0;
+              return Array.from(groupMap.entries())
+                .map(([joId, rows]) => {
+                  const sortedRows = [...rows].sort((a, b) => getMovementTs(b) - getMovementTs(a));
+                  const latestDate = sortedRows[0]?.movement_date || '';
+                  return [joId, sortedRows, latestDate] as const;
+                })
+                .sort((a, b) => {
+                  const aTs = a[2] ? new Date(a[2]).getTime() || 0 : 0;
+                  const bTs = b[2] ? new Date(b[2]).getTime() || 0 : 0;
+                  return bTs - aTs;
+                })
+                .map(([joId, rows, latestDate]) => {
                 const joNumber = rows[0]?.job_order_number || joId;
                 const expanded = expandedHistoryJoIds[joId] !== false; // default expanded
-                const allRowIds = rows.map((r) => r.id);
-                const selectedInGroup = allRowIds.filter((id) => selectedHistoryRowIds.includes(id));
-                const allSelected = allRowIds.length > 0 && allRowIds.every((id) => selectedHistoryRowIds.includes(id));
                 const approvedCount = rows.filter((r) => r.approved_by).length;
-                const latestDate = rows
-                  .map((r) => r.movement_date)
-                  .filter(Boolean)
-                  .sort()
-                  .at(-1);
+                const pendingRowIds = rows.filter((r) => !r.approved_by).map((r) => r.id);
+                const selectedPendingRowIds = pendingRowIds.filter((id) => selectedHistoryRowIds.includes(id));
+                const allPendingSelected = pendingRowIds.length > 0 && pendingRowIds.every((id) => selectedHistoryRowIds.includes(id));
                 return (
                   <div
                     key={joId}
@@ -1899,20 +2143,22 @@ export default function SivPage() {
                       <div className="flex min-w-0 items-center gap-3">
                         <input
                           type="checkbox"
-                          checked={allSelected}
+                          checked={allPendingSelected}
+                          disabled={pendingRowIds.length === 0}
+                          title={pendingRowIds.length === 0 ? 'All rows are already approved' : 'Select pending rows'}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setSelectedHistoryRowIds((prev) => [...new Set([...prev, ...allRowIds])]);
+                              setSelectedHistoryRowIds((prev) => [...new Set([...prev, ...pendingRowIds])]);
                             } else {
-                              setSelectedHistoryRowIds((prev) => prev.filter((id) => !allRowIds.includes(id)));
+                              setSelectedHistoryRowIds((prev) => prev.filter((id) => !pendingRowIds.includes(id)));
                             }
                           }}
-                          className="w-4 h-4 rounded border-gray-300 text-[#8B6F47] focus:ring-[#8B6F47]"
+                          className="w-4 h-4 rounded border-gray-300 text-[#8B6F47] focus:ring-[#8B6F47] disabled:cursor-not-allowed disabled:opacity-40"
                         />
                         <div className="min-w-0">
                           <h3 className="truncate text-lg font-bold text-[#4A3426]">{joNumber}</h3>
                           <p className="mt-0.5 text-sm text-[#7A6555]">
-                            {rows.length} line{rows.length !== 1 ? 's' : ''} &middot; Approved {approvedCount}/{rows.length}
+                            {rows.length} line{rows.length !== 1 ? 's' : ''} - Approved {approvedCount}/{rows.length}
                             {latestDate ? ` · Last issued ${new Date(latestDate).toLocaleDateString()}` : ''}
                           </p>
                           <div className="mt-2 grid gap-2 text-xs sm:grid-cols-4">
@@ -1936,11 +2182,32 @@ export default function SivPage() {
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
+                        {pendingRowIds.length > 0 && selectedPendingRowIds.length > 0 && (
+                          <span className="inline-flex min-h-8 items-center rounded-md border border-[#D8C8AA] bg-[#FFFCF5] px-3 text-xs font-semibold text-[#5E4635]">
+                            {selectedPendingRowIds.length} selected
+                          </span>
+                        )}
+                        {canApprove && pendingRowIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void approveSivHistoryRows(
+                                selectedPendingRowIds.length > 0 ? selectedPendingRowIds : pendingRowIds,
+                                joNumber,
+                              )
+                            }
+                            className="inline-flex min-h-8 items-center gap-2 rounded-md border border-emerald-700 bg-emerald-700 px-3 text-xs font-semibold text-white hover:bg-emerald-800"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            Approve {selectedPendingRowIds.length > 0 ? selectedPendingRowIds.length : `${pendingRowIds.length} Pending`}
+                          </button>
+                        )}
                         <button
                           onClick={() => printSivHistory(joId, rows)}
                           className="inline-flex min-h-8 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-xs font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
                         >
-                          🖨 Print
+                          <Printer className="h-3.5 w-3.5" />
+                          Print
                         </button>
                         <button
                           onClick={() =>
@@ -1972,18 +2239,21 @@ export default function SivPage() {
                           <tbody className="divide-y divide-[#E8DCC4] bg-white">
                             {rows.map((row) => {
                               const isChecked = selectedHistoryRowIds.includes(row.id);
+                              const isApproved = Boolean(row.approved_by);
                               return (
                                 <tr key={row.id} className="hover:bg-[#FFFCF5]">
                                   <td className="px-3 py-2">
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
+                                      disabled={isApproved}
+                                      title={isApproved ? 'Already approved' : 'Select for bulk approval'}
                                       onChange={() =>
                                         setSelectedHistoryRowIds((prev) =>
                                           isChecked ? prev.filter((id) => id !== row.id) : [...prev, row.id]
                                         )
                                       }
-                                      className="w-4 h-4 rounded border-gray-300 text-[#8B6F47] focus:ring-[#8B6F47]"
+                                      className="w-4 h-4 rounded border-gray-300 text-[#8B6F47] focus:ring-[#8B6F47] disabled:cursor-not-allowed disabled:opacity-40"
                                     />
                                   </td>
                                   <td className="px-3 py-2 text-sm text-[#5E4635]">
@@ -2052,7 +2322,7 @@ export default function SivPage() {
             {/* Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between gap-4 px-5 py-4 border-b bg-white">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">Pick UIDs — {uidPickerItemCode}</h2>
+                <h2 className="text-base font-semibold text-gray-900">Pick UIDs - {uidPickerItemCode}</h2>
                 <p className="text-xs text-gray-500 mt-0.5">Select up to {uidPickerMaxQty} UID{uidPickerMaxQty !== 1 ? 's' : ''} from available stock</p>
               </div>
               <div className="flex items-center gap-3">
@@ -2090,7 +2360,7 @@ export default function SivPage() {
             {/* UID list */}
             <div className="overflow-y-auto flex-1 px-5 py-3">
               {uidPickerLoading ? (
-                <div className="text-center text-gray-500 py-10">Loading UIDs…</div>
+                <div className="text-center text-gray-500 py-10">Loading UIDs...</div>
               ) : uidPickerUids.length === 0 ? (
                 <div className="text-center text-gray-400 py-10">No available UIDs found for this item.</div>
               ) : (
@@ -2128,8 +2398,8 @@ export default function SivPage() {
                             />
                           </td>
                           <td className="py-2 pr-6 font-mono text-xs text-gray-800">{uid}</td>
-                          <td className="py-2 pr-4 text-gray-600">{u.batch_number || '—'}</td>
-                          <td className="py-2 text-gray-500">{u.received_date ? new Date(u.received_date).toLocaleDateString() : '—'}</td>
+                          <td className="py-2 pr-4 text-gray-600">{u.batch_number || '-'}</td>
+                          <td className="py-2 text-gray-500">{u.received_date ? new Date(u.received_date).toLocaleDateString() : '-'}</td>
                         </tr>
                       );
                     })}

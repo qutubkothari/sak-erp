@@ -73,7 +73,7 @@ export default function ForgotPasswordPage() {
             Reset Password
           </h1>
           <p className="text-sm" style={{ color: '#6F4E37' }}>
-            Enter your email to receive reset instructions
+            Enter your email or username to receive reset instructions
           </p>
         </div>
 
@@ -81,11 +81,11 @@ export default function ForgotPasswordPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label htmlFor="email" className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Email Address
+              Email Address / Username
             </label>
             <input
               id="email"
-              type="email"
+              type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -94,7 +94,7 @@ export default function ForgotPasswordPage() {
                 borderColor: '#E8DCC4',
                 color: '#6F4E37'
               }}
-              placeholder="your.email@company.com"
+              placeholder="email@company.com or username"
             />
           </div>
 

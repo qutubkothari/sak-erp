@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, Calendar, ChevronLeft, ChevronRight, Filter, History, RefreshCw, Search, ShieldCheck, User } from 'lucide-react';
+import DateInput from '../../../components/ui/DateInput';
 
 type AuditUser = {
   id: string;
@@ -416,11 +417,11 @@ export default function AuditTrailsPage() {
           </label>
           <label className="block">
             <span className="text-xs font-medium text-gray-600">From</span>
-            <input type="date" value={fromDate} onChange={(event) => { setFromDate(event.target.value); setOffset(0); }} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-2 text-sm" />
+            <DateInput value={fromDate} onChange={(value) => { setFromDate(value); setOffset(0); }} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-2 text-sm" />
           </label>
           <label className="block">
             <span className="text-xs font-medium text-gray-600">To</span>
-            <input type="date" value={toDate} onChange={(event) => { setToDate(event.target.value); setOffset(0); }} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-2 text-sm" />
+            <DateInput value={toDate} onChange={(value) => { setToDate(value); setOffset(0); }} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-2 text-sm" />
           </label>
         </div>
         <button onClick={resetFilters} className="text-sm font-medium text-[#6F4E37] hover:underline">Clear filters</button>

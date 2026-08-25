@@ -1,18 +1,28 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { UidSupabaseService } from '../../uid/services/uid-supabase.service';
-import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
-import { mkdir, writeFile, unlink } from 'fs/promises';
-import { extname, join, resolve } from 'path';
-import { randomUUID } from 'crypto';
-import { allocatePoSettlement } from '../utils/po-settlement';
-import { buildSapGrnControls } from '../utils/grn-sap-controls';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from "@nestjs/common";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { UidSupabaseService } from "../../uid/services/uid-supabase.service";
+import { normalizeInventoryCategory } from "../../inventory/utils/inventory-category";
+import { mkdir, writeFile, unlink } from "fs/promises";
+import { extname, join, resolve } from "path";
+import { randomUUID } from "crypto";
+import { allocatePoSettlement } from "../utils/po-settlement";
+import { buildSapGrnControls } from "../utils/grn-sap-controls";
+import { hasSuperAdminBypass } from "../../auth/utils/permission-utils";
+import { AccountingService } from "../../accounting/accounting.service";
 
 @Injectable()
 export class GrnService {
   private supabase: SupabaseClient;
 
-  constructor(private uidService: UidSupabaseService) {
+  constructor(
+    private uidService: UidSupabaseService,
+    private readonly accountingService?: AccountingService,
+  ) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!,
@@ -22,16 +32,23 @@ export class GrnService {
   private getUploadsRoot(): string {
     return (
       process.env.UPLOAD_ROOT_DIR ||
-      resolve(process.cwd(), '..', '..', 'uploads')
+      resolve(process.cwd(), "..", "..", "uploads")
     );
   }
 
   private toNumber(value: any): number {
-    const n = typeof value === 'number' ? value : Number.parseFloat(String(value ?? '0'));
+    const n =
+      typeof value === "number"
+        ? value
+        : Number.parseFloat(String(value ?? "0"));
     return Number.isFinite(n) ? n : 0;
   }
 
-  private calculateDiscountedLineAmount(quantity: any, rate: any, discountPercent: any): number {
+  private calculateDiscountedLineAmount(
+    quantity: any,
+    rate: any,
+    discountPercent: any,
+  ): number {
     const qty = Math.max(0, this.toNumber(quantity));
     const unitRate = Math.max(0, this.toNumber(rate));
     const discountRate = Math.max(0, this.toNumber(discountPercent));
@@ -40,20 +57,596 @@ export class GrnService {
     return Math.max(0, gross - discountAmount);
   }
 
-  private async getPoItemPricingMap(poItemIds: string[]) {
-    const ids = Array.from(new Set(poItemIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
-    if (ids.length === 0) return new Map<string, { rate: number; discountPercent: number; taxPercent: number }>();
+  private isUuid(value: any): boolean {
+    return (
+      typeof value === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim())
+    );
+  }
+
+  /**
+   * A GRN needs an immutable server-side reservation for its PO/invoice pair.
+   * Browser checks are advisory only: they cannot protect two tabs, retries, or
+   * concurrent users. The lock table is deliberately independent of legacy GRN
+   * rows so the migration can be installed safely even where bad drafts exist.
+   */
+  private async reserveGrnInvoice(
+    tenantId: string,
+    poId: string,
+    invoiceNumber: string,
+  ) {
+    const invoiceKey = invoiceNumber.trim().toLocaleLowerCase();
+    const { error } = await this.supabase.from("grn_invoice_locks").insert({
+      tenant_id: tenantId,
+      po_id: poId,
+      invoice_key: invoiceKey,
+    });
+
+    if (error) {
+      if ((error as any).code === "23505") {
+        throw new BadRequestException(
+          "A GRN already exists or is being created for this PO and invoice number. Refresh the GRN list before retrying.",
+        );
+      }
+      throw new BadRequestException(error.message);
+    }
+    return invoiceKey;
+  }
+
+  private async releaseGrnInvoiceReservation(
+    tenantId: string,
+    poId: string,
+    invoiceKey: string,
+  ) {
+    await this.supabase
+      .from("grn_invoice_locks")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("po_id", poId)
+      .eq("invoice_key", invoiceKey);
+  }
+
+  private stockBucketKey(itemId: string, category: string) {
+    return `${String(itemId || "").trim()}::${normalizeInventoryCategory(category, "RAW_MATERIAL")}`;
+  }
+
+  private async generateGrnEditMovementNumber(): Promise<string> {
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[-:.TZ]/g, "")
+      .slice(0, 14);
+    const suffix = randomUUID().slice(0, 8).toUpperCase();
+    return `GRN-EDIT-${stamp}-${suffix}`;
+  }
+
+  private async generateGrnReversalMovementNumber(): Promise<string> {
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[-:.TZ]/g, "")
+      .slice(0, 14);
+    const suffix = randomUUID().slice(0, 8).toUpperCase();
+    return `GRN-REV-${stamp}-${suffix}`;
+  }
+
+  private async deductStockEntriesForGrnEdit(params: {
+    tenantId: string;
+    itemId: string;
+    warehouseId: string;
+    quantity: number;
+  }): Promise<Array<{ id: string; previousAvailableQuantity: number }>> {
+    const { tenantId, itemId, warehouseId } = params;
+    let remaining = Math.max(0, this.toNumber(params.quantity));
+    const deductions: Array<{ id: string; previousAvailableQuantity: number }> =
+      [];
+    if (remaining <= 0) return deductions;
+
+    const { data: entries, error } = await this.supabase
+      .from("stock_entries")
+      .select("id, available_quantity, created_at")
+      .eq("tenant_id", tenantId)
+      .eq("item_id", itemId)
+      .eq("warehouse_id", warehouseId)
+      .gt("available_quantity", 0)
+      .order("created_at", { ascending: false });
+
+    if (error) throw new BadRequestException(error.message);
+
+    for (const entry of entries || []) {
+      if (remaining <= 1e-9) break;
+      const available = this.toNumber((entry as any)?.available_quantity);
+      if (available <= 0) continue;
+      const consume = Math.min(available, remaining);
+      const nextAvailable = Math.max(0, available - consume);
+
+      const { error: updateError } = await this.supabase
+        .from("stock_entries")
+        .update({ available_quantity: nextAvailable })
+        .eq("id", (entry as any).id);
+
+      if (updateError) throw new BadRequestException(updateError.message);
+      deductions.push({
+        id: String((entry as any).id),
+        previousAvailableQuantity: available,
+      });
+      remaining -= consume;
+    }
+
+    if (remaining > 1e-6) {
+      throw new BadRequestException(
+        `Unable to reduce GRN stock: stock entries are short by ${remaining.toFixed(3)}.`,
+      );
+    }
+
+    return deductions;
+  }
+
+  private async insertGrnEditStockMovement(params: {
+    tenantId: string;
+    grnId: string;
+    grnNumber: string;
+    itemId: string;
+    itemCode?: string;
+    itemName?: string;
+    warehouseId: string;
+    quantity: number;
+    oldAcceptedQty: number;
+    newAcceptedQty: number;
+    userId?: string;
+  }) {
+    const qty = Math.max(0, this.toNumber(params.quantity));
+    if (qty <= 0) return;
+
+    const { error } = await this.supabase.from("stock_movements").insert({
+      tenant_id: params.tenantId,
+      movement_number: await this.generateGrnEditMovementNumber(),
+      movement_type: "ADJUSTMENT",
+      item_id: params.itemId,
+      from_warehouse_id: params.warehouseId,
+      quantity: qty,
+      reference_type: "GRN",
+      reference_id: params.grnId,
+      reference_number: params.grnNumber,
+      notes: `GRN edit reduced accepted quantity for ${params.itemCode || params.itemId} from ${params.oldAcceptedQty} to ${params.newAcceptedQty}.`,
+      movement_date: new Date().toISOString(),
+      moved_by: params.userId || null,
+    } as any);
+
+    if (error) throw new BadRequestException(error.message);
+  }
+
+  private async insertGrnReversalStockMovement(params: {
+    tenantId: string;
+    grnId: string;
+    grnNumber: string;
+    itemId: string;
+    itemCode?: string;
+    warehouseId: string;
+    quantity: number;
+    reason: string;
+    userId?: string;
+  }): Promise<string | null> {
+    const qty = Math.max(0, this.toNumber(params.quantity));
+    if (qty <= 0) return null;
 
     const { data, error } = await this.supabase
-      .from('purchase_order_items')
-      .select('id, rate, discount_percent, tax_percent')
-      .in('id', ids);
+      .from("stock_movements")
+      .insert({
+        tenant_id: params.tenantId,
+        movement_number: await this.generateGrnReversalMovementNumber(),
+        movement_type: "ADJUSTMENT",
+        item_id: params.itemId,
+        from_warehouse_id: params.warehouseId,
+        quantity: qty,
+        reference_type: "GRN",
+        reference_id: params.grnId,
+        reference_number: params.grnNumber,
+        notes: `GRN reversal for ${params.itemCode || params.itemId}. Reason: ${params.reason}`,
+        movement_date: new Date().toISOString(),
+        moved_by: params.userId || null,
+      } as any)
+      .select("id")
+      .single();
+
+    if (error) throw new BadRequestException(error.message);
+    return data?.id ? String(data.id) : null;
+  }
+
+  private roundMoney(value: number): number {
+    return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100;
+  }
+
+  private async getGrnSettlementSummary(
+    tenantId: string,
+    grnId: string,
+  ): Promise<{
+    entryCount: number;
+    reversalCount: number;
+    postedSettlement: number;
+    reversedSettlement: number;
+    netSettlement: number;
+  }> {
+    const [
+      { data: entries, error: entriesError },
+      { data: reversals, error: reversalsError },
+    ] = await Promise.all([
+      this.supabase
+        .from("grn_payment_entries")
+        .select("amount, tds_amount, short_payment_amount")
+        .eq("tenant_id", tenantId)
+        .eq("grn_id", grnId),
+      this.supabase
+        .from("grn_payment_reversals")
+        .select(
+          "original_amount, original_tds_amount, original_short_payment_amount",
+        )
+        .eq("tenant_id", tenantId)
+        .eq("grn_id", grnId),
+    ]);
+
+    if (entriesError) throw new BadRequestException(entriesError.message);
+    if (reversalsError) throw new BadRequestException(reversalsError.message);
+
+    const postedSettlement = (entries || []).reduce(
+      (sum: number, entry: any) =>
+        sum +
+        this.toNumber(entry?.amount) +
+        this.toNumber(entry?.tds_amount) +
+        this.toNumber(entry?.short_payment_amount),
+      0,
+    );
+    const reversedSettlement = (reversals || []).reduce(
+      (sum: number, reversal: any) =>
+        sum +
+        this.toNumber(reversal?.original_amount) +
+        this.toNumber(reversal?.original_tds_amount) +
+        this.toNumber(reversal?.original_short_payment_amount),
+      0,
+    );
+
+    return {
+      entryCount: (entries || []).length,
+      reversalCount: (reversals || []).length,
+      postedSettlement: this.roundMoney(postedSettlement),
+      reversedSettlement: this.roundMoney(reversedSettlement),
+      netSettlement: this.roundMoney(
+        Math.max(0, postedSettlement - reversedSettlement),
+      ),
+    };
+  }
+
+  private async getGrnSettlementSummaries(
+    tenantId: string,
+    grnIds: string[],
+  ): Promise<
+    Map<
+      string,
+      {
+        entryCount: number;
+        reversalCount: number;
+        postedSettlement: number;
+        reversedSettlement: number;
+        netSettlement: number;
+      }
+    >
+  > {
+    const normalizedIds = Array.from(
+      new Set(grnIds.map((id) => String(id || "").trim()).filter(Boolean)),
+    );
+    const result = new Map<
+      string,
+      {
+        entryCount: number;
+        reversalCount: number;
+        postedSettlement: number;
+        reversedSettlement: number;
+        netSettlement: number;
+      }
+    >();
+    for (const id of normalizedIds) {
+      result.set(id, {
+        entryCount: 0,
+        reversalCount: 0,
+        postedSettlement: 0,
+        reversedSettlement: 0,
+        netSettlement: 0,
+      });
+    }
+    if (normalizedIds.length === 0) return result;
+
+    const [
+      { data: entries, error: entriesError },
+      { data: reversals, error: reversalsError },
+    ] = await Promise.all([
+      this.supabase
+        .from("grn_payment_entries")
+        .select("grn_id, amount, tds_amount, short_payment_amount")
+        .eq("tenant_id", tenantId)
+        .in("grn_id", normalizedIds),
+      this.supabase
+        .from("grn_payment_reversals")
+        .select(
+          "grn_id, original_amount, original_tds_amount, original_short_payment_amount",
+        )
+        .eq("tenant_id", tenantId)
+        .in("grn_id", normalizedIds),
+    ]);
+
+    if (entriesError) throw new BadRequestException(entriesError.message);
+    if (reversalsError) throw new BadRequestException(reversalsError.message);
+
+    for (const entry of entries || []) {
+      const grnId = String((entry as any)?.grn_id || "").trim();
+      if (!grnId) continue;
+      const current = result.get(grnId) || {
+        entryCount: 0,
+        reversalCount: 0,
+        postedSettlement: 0,
+        reversedSettlement: 0,
+        netSettlement: 0,
+      };
+      current.entryCount += 1;
+      current.postedSettlement +=
+        this.toNumber((entry as any)?.amount) +
+        this.toNumber((entry as any)?.tds_amount) +
+        this.toNumber((entry as any)?.short_payment_amount);
+      result.set(grnId, current);
+    }
+
+    for (const reversal of reversals || []) {
+      const grnId = String((reversal as any)?.grn_id || "").trim();
+      if (!grnId) continue;
+      const current = result.get(grnId) || {
+        entryCount: 0,
+        reversalCount: 0,
+        postedSettlement: 0,
+        reversedSettlement: 0,
+        netSettlement: 0,
+      };
+      current.reversalCount += 1;
+      current.reversedSettlement +=
+        this.toNumber((reversal as any)?.original_amount) +
+        this.toNumber((reversal as any)?.original_tds_amount) +
+        this.toNumber((reversal as any)?.original_short_payment_amount);
+      result.set(grnId, current);
+    }
+
+    for (const [grnId, summary] of result.entries()) {
+      summary.postedSettlement = this.roundMoney(summary.postedSettlement);
+      summary.reversedSettlement = this.roundMoney(summary.reversedSettlement);
+      summary.netSettlement = this.roundMoney(
+        Math.max(0, summary.postedSettlement - summary.reversedSettlement),
+      );
+      result.set(grnId, summary);
+    }
+
+    return result;
+  }
+
+  private async attachGrnPaymentCalculation(
+    tenantId: string,
+    grn: any,
+    knownSettlement?: {
+      entryCount: number;
+      reversalCount: number;
+      postedSettlement: number;
+      reversedSettlement: number;
+      netSettlement: number;
+    },
+  ): Promise<any> {
+    if (!grn?.id) return grn;
+
+    const netPayable = this.roundMoney(this.toNumber(grn.net_payable_amount));
+    const settlement =
+      knownSettlement ||
+      (await this.getGrnSettlementSummary(tenantId, String(grn.id)));
+    const totalSettled = this.roundMoney(settlement.netSettlement);
+    const outstanding = this.roundMoney(Math.max(0, netPayable - totalSettled));
+    const paymentStatus =
+      outstanding <= 0.009
+        ? "PAID"
+        : totalSettled > 0.009
+          ? "PARTIAL"
+          : "UNPAID";
+
+    return {
+      ...grn,
+      paid_amount: totalSettled,
+      payment_status: paymentStatus,
+      _payment_calculation: {
+        net_payable: netPayable,
+        total_settled: totalSettled,
+        reversed_settlement: settlement.reversedSettlement,
+        outstanding,
+        payment_status: paymentStatus,
+      },
+    };
+  }
+
+  private normalizeSearchText(value: unknown): string {
+    if (value === null || value === undefined) return "";
+    return String(value)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  private searchTokens(value: unknown): string[] {
+    return this.normalizeSearchText(value)
+      .split(" ")
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+
+  private collectGrnSearchFields(grn: any): string[] {
+    const fields: string[] = [
+      grn?.grn_number,
+      grn?.invoice_number,
+      grn?.invoice_date,
+      grn?.receipt_date,
+      grn?.grn_date,
+      grn?.status,
+      grn?.vendor?.name,
+      grn?.vendor?.code,
+      grn?.vendor?.contact_person,
+      grn?.purchase_order?.po_number,
+      grn?.purchase_order?.po_date,
+      grn?.warehouse?.name,
+      grn?.warehouse?.code,
+      grn?.remarks,
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+
+    for (const item of Array.isArray(grn?.grn_items) ? grn.grn_items : []) {
+      fields.push(
+        item?.item_code,
+        item?.item_name,
+        item?.supplier_hsn_code,
+        item?.batch_number,
+        item?.item?.code,
+        item?.item?.name,
+        item?.item?.hsn_code,
+        item?.item?.uom,
+        item?.item?.oem_part_no,
+        item?.item?.oem_part_number,
+        item?.item?.oem_name,
+        item?.item?.description,
+      );
+    }
+
+    return fields.map((value) => String(value || "").trim()).filter(Boolean);
+  }
+
+  private scoreSearchMatch(fields: string[], rawSearch: unknown): number {
+    const query = this.normalizeSearchText(rawSearch);
+    if (!query) return 0;
+
+    const tokens = this.searchTokens(query);
+    if (!tokens.length) return 0;
+
+    const normalizedFields = fields
+      .map((field) => this.normalizeSearchText(field))
+      .filter(Boolean);
+    const haystack = normalizedFields.join(" ");
+    if (!tokens.every((token) => haystack.includes(token))) return 0;
+
+    let score = 100;
+    for (const field of normalizedFields) {
+      if (field === query) score = Math.max(score, 10000);
+      else if (field.startsWith(query)) score = Math.max(score, 7500);
+      else if (field.includes(query)) score = Math.max(score, 5000);
+
+      const fieldTokens = this.searchTokens(field);
+      if (tokens.every((token, index) => fieldTokens[index] === token))
+        score = Math.max(score, 3500);
+      if (
+        tokens.every((token) =>
+          fieldTokens.some((fieldToken) => fieldToken.startsWith(token)),
+        )
+      )
+        score = Math.max(score, 2500);
+    }
+
+    score += tokens.reduce((sum, token) => {
+      const prefixHits = normalizedFields.filter((field) =>
+        this.searchTokens(field).some((part) => part.startsWith(token)),
+      ).length;
+      return sum + Math.min(prefixHits, 5) * 10;
+    }, 0);
+
+    return score;
+  }
+
+  private parseTermsMetadata(value: any): Record<string, any> {
+    if (!value) return {};
+    if (typeof value === "object") return value;
+    if (typeof value !== "string") return {};
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private async calculateAllocatedPoHeaderCharges(
+    poId: string | null | undefined,
+    grnItemGrossAmount: number,
+  ) {
+    const normalizedPoId = String(poId || "").trim();
+    if (!normalizedPoId || grnItemGrossAmount <= 0) return null;
+
+    const { data: po, error: poError } = await this.supabase
+      .from("purchase_orders")
+      .select("terms_and_conditions")
+      .eq("id", normalizedPoId)
+      .single();
+
+    if (poError || !po) return null;
+
+    const terms = this.parseTermsMetadata((po as any).terms_and_conditions);
+    const freightAmount = this.toNumber(terms.freightAmount);
+    const freightGstAmount = this.toNumber(terms.freightGstAmount);
+    // GRN/AP freight fields must only carry freight. Customs duty and other
+    // statutory charges stay separate at PO level and must not inflate freight.
+    const totalHeaderCharge = freightAmount + freightGstAmount;
+    if (totalHeaderCharge <= 0) return null;
+
+    const { data: poItems } = await this.supabase
+      .from("purchase_order_items")
+      .select("ordered_qty, rate, discount_percent")
+      .eq("po_id", normalizedPoId);
+
+    const poItemGrossAmount = (poItems ?? []).reduce(
+      (sum: number, item: any) =>
+        sum +
+        this.calculateDiscountedLineAmount(
+          item.ordered_qty,
+          item.rate,
+          item.discount_percent,
+        ),
+      0,
+    );
+
+    const allocationRatio =
+      poItemGrossAmount > 0
+        ? Math.min(1, Math.max(0, grnItemGrossAmount / poItemGrossAmount))
+        : 1;
+
+    return {
+      freightAmount: this.roundMoney(freightAmount * allocationRatio),
+      freightGstAmount: this.roundMoney(freightGstAmount * allocationRatio),
+    };
+  }
+
+  private async getPoItemPricingMap(poItemIds: string[]) {
+    const ids = Array.from(
+      new Set(
+        poItemIds.filter(
+          (id) => typeof id === "string" && id.trim().length > 0,
+        ),
+      ),
+    );
+    if (ids.length === 0)
+      return new Map<
+        string,
+        { rate: number; discountPercent: number; taxPercent: number }
+      >();
+
+    const { data, error } = await this.supabase
+      .from("purchase_order_items")
+      .select("id, rate, discount_percent, tax_percent")
+      .in("id", ids);
 
     if (error) {
       throw new BadRequestException(error.message);
     }
 
-    const map = new Map<string, { rate: number; discountPercent: number; taxPercent: number }>();
+    const map = new Map<
+      string,
+      { rate: number; discountPercent: number; taxPercent: number }
+    >();
     for (const row of data ?? []) {
       map.set(String((row as any).id), {
         rate: this.toNumber((row as any).rate),
@@ -64,31 +657,345 @@ export class GrnService {
     return map;
   }
 
-  private async getPoItemQtyMap(poItemIds: string[]) {
-    const ids = Array.from(new Set(poItemIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
-    if (ids.length === 0) return new Map<string, { orderedQty: number; receivedQty: number }>();
+  private qcHasFinalDecision(item: any): boolean {
+    const qcStatus = String(item?.qc_status || "")
+      .trim()
+      .toUpperCase();
+    return (
+      ["ACCEPTED", "PARTIAL", "REJECTED"].includes(qcStatus) ||
+      this.toNumber(item?.accepted_qty) > 0 ||
+      this.toNumber(item?.rejected_qty) > 0
+    );
+  }
+
+  private effectivePoReceiptQty(item: any): number {
+    const receivedQty = this.toNumber(item?.received_qty);
+    const acceptedQty = this.toNumber(item?.accepted_qty);
+    return this.qcHasFinalDecision(item) ? acceptedQty : receivedQty;
+  }
+
+  private async getEffectiveReceiptQtyByPoItem(
+    tenantId: string,
+    poItemIds: string[],
+  ): Promise<Map<string, number>> {
+    const ids = Array.from(
+      new Set(
+        poItemIds.filter(
+          (id) => typeof id === "string" && id.trim().length > 0,
+        ),
+      ),
+    );
+    const map = new Map<string, number>();
+    if (ids.length === 0) return map;
+    for (const id of ids) {
+      map.set(id, 0);
+    }
+
+    const { data: candidateItems, error: candidateItemsError } =
+      await this.supabase
+        .from("grn_items")
+        .select(
+          "grn_id, po_item_id, received_qty, accepted_qty, rejected_qty, qc_status",
+        )
+        .in("po_item_id", ids);
+
+    if (candidateItemsError) {
+      throw new BadRequestException(candidateItemsError.message);
+    }
+
+    const grnIds = Array.from(
+      new Set(
+        (candidateItems || [])
+          .map((row: any) => String(row?.grn_id || "").trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (grnIds.length === 0) return map;
+
+    const { data: candidateGrns, error: candidateGrnsError } =
+      await this.supabase
+        .from("grns")
+        .select("id, status")
+        .eq("tenant_id", tenantId)
+        .in("id", grnIds);
+
+    if (candidateGrnsError) {
+      throw new BadRequestException(candidateGrnsError.message);
+    }
+
+    const activeGrnIds = new Set(
+      (candidateGrns || [])
+        .filter(
+          (grn: any) =>
+            !["REJECTED", "CANCELLED"].includes(
+              String(grn?.status || "")
+                .trim()
+                .toUpperCase(),
+            ),
+        )
+        .map((grn: any) => String(grn?.id || "").trim())
+        .filter(Boolean),
+    );
+
+    for (const row of candidateItems ?? []) {
+      const grnId = String((row as any).grn_id || "").trim();
+      if (!activeGrnIds.has(grnId)) continue;
+      const poItemId = String((row as any).po_item_id || "").trim();
+      if (!poItemId) continue;
+      map.set(
+        poItemId,
+        (map.get(poItemId) ?? 0) + this.effectivePoReceiptQty(row),
+      );
+    }
+
+    return map;
+  }
+
+  private async getPoItemQtyMap(tenantId: string, poItemIds: string[]) {
+    const ids = Array.from(
+      new Set(
+        poItemIds.filter(
+          (id) => typeof id === "string" && id.trim().length > 0,
+        ),
+      ),
+    );
+    if (ids.length === 0)
+      return new Map<
+        string,
+        {
+          orderedQty: number;
+          receivedQty: number;
+          effectiveReceivedQty: number;
+        }
+      >();
 
     const { data, error } = await this.supabase
-      .from('purchase_order_items')
-      .select('id, ordered_qty, received_qty')
-      .in('id', ids);
+      .from("purchase_order_items")
+      .select("id, ordered_qty, received_qty")
+      .in("id", ids);
 
     if (error) {
       throw new BadRequestException(error.message);
     }
 
-    const map = new Map<string, { orderedQty: number; receivedQty: number }>();
+    const effectiveReceiptMap = await this.getEffectiveReceiptQtyByPoItem(
+      tenantId,
+      ids,
+    );
+    const map = new Map<
+      string,
+      { orderedQty: number; receivedQty: number; effectiveReceivedQty: number }
+    >();
     for (const row of data ?? []) {
+      const poItemId = String((row as any).id);
+      const storedReceivedQty = this.toNumber((row as any).received_qty);
       map.set(String((row as any).id), {
         orderedQty: this.toNumber((row as any).ordered_qty),
-        receivedQty: this.toNumber((row as any).received_qty),
+        receivedQty: storedReceivedQty,
+        effectiveReceivedQty: effectiveReceiptMap.has(poItemId)
+          ? this.toNumber(effectiveReceiptMap.get(poItemId))
+          : storedReceivedQty,
       });
     }
     return map;
   }
 
+  private getOrderedQty(item: any): number {
+    return this.toNumber(
+      item?.ordered_qty ??
+        item?.ordered_quantity ??
+        item?.quantity ??
+        item?.qty,
+    );
+  }
+
+  private async syncPurchaseOrderReceiptStatus(
+    tenantId: string,
+    poId?: string | null,
+  ) {
+    const normalizedPoId = String(poId || "").trim();
+    if (!tenantId || !normalizedPoId) return;
+
+    try {
+      const { data: po, error: poError } = await this.supabase
+        .from("purchase_orders")
+        .select("id, status")
+        .eq("tenant_id", tenantId)
+        .eq("id", normalizedPoId)
+        .maybeSingle();
+
+      if (poError || !po?.id) {
+        if (poError)
+          console.warn(
+            `[GRN] Unable to read PO ${normalizedPoId} before receipt status sync: ${poError.message}`,
+          );
+        return;
+      }
+
+      const currentStatus = String((po as any).status || "")
+        .trim()
+        .toUpperCase();
+      // Do not reopen approval/cancellation flows. Receipt sync only applies to approved/open POs.
+      if (["DRAFT", "PENDING", "REJECTED", "CANCELLED"].includes(currentStatus))
+        return;
+
+      const { data: poItems, error: poItemsError } = await this.supabase
+        .from("purchase_order_items")
+        .select("id, ordered_qty, received_qty")
+        .eq("po_id", normalizedPoId);
+
+      if (poItemsError) throw poItemsError;
+
+      const rows = Array.isArray(poItems) ? poItems : [];
+      if (rows.length === 0) return;
+
+      const poItemIds = rows
+        .map((row: any) => String(row?.id || "").trim())
+        .filter(Boolean);
+      const effectiveReceiptMap = await this.getEffectiveReceiptQtyByPoItem(
+        tenantId,
+        poItemIds,
+      );
+
+      let orderedTotal = 0;
+      let receivedTotal = 0;
+      for (const row of rows) {
+        const poItemId = String((row as any).id || "").trim();
+        const orderedQty = this.getOrderedQty(row);
+        const storedReceivedQty = this.toNumber((row as any).received_qty);
+        const effectiveReceivedQty = effectiveReceiptMap.has(poItemId)
+          ? this.toNumber(effectiveReceiptMap.get(poItemId))
+          : storedReceivedQty;
+        orderedTotal += orderedQty;
+        receivedTotal += Math.min(
+          orderedQty,
+          Math.max(0, effectiveReceivedQty),
+        );
+      }
+
+      if (orderedTotal <= 0) return;
+
+      const nextStatus =
+        receivedTotal >= orderedTotal - 1e-9
+          ? "CLOSED"
+          : receivedTotal > 0
+            ? "PARTIAL"
+            : "APPROVED";
+
+      if (nextStatus === currentStatus) return;
+
+      let { error: updateError } = await this.supabase
+        .from("purchase_orders")
+        .update({
+          status: nextStatus,
+          pr_po_status: nextStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("tenant_id", tenantId)
+        .eq("id", normalizedPoId);
+
+      if (updateError && /pr_po_status/i.test(updateError.message || "")) {
+        const retry = await this.supabase
+          .from("purchase_orders")
+          .update({
+            status: nextStatus,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("tenant_id", tenantId)
+          .eq("id", normalizedPoId);
+        updateError = retry.error;
+      }
+
+      if (updateError) {
+        console.warn(
+          `[GRN] Unable to sync PO ${normalizedPoId} status to ${nextStatus}: ${updateError.message}`,
+        );
+      }
+    } catch (error: any) {
+      console.warn(
+        `[GRN] Unable to sync PO ${normalizedPoId} receipt status: ${error?.message || error}`,
+      );
+    }
+  }
+
+  private buildPoAmendmentApprovalPayload(
+    controls: ReturnType<typeof buildSapGrnControls>,
+    actorId?: string,
+  ) {
+    return {
+      ...controls.poAmendmentApproval,
+      requestedBy: actorId || null,
+      requestedAt: controls.poAmendmentApproval.required
+        ? new Date().toISOString()
+        : null,
+      decidedBy: null,
+      decidedAt: null,
+      decisionNote: null,
+    };
+  }
+
+  private async buildSapControlsInputFromPayload(tenantId: string, data: any) {
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const poItemIds = Array.from(
+      new Set(
+        items
+          .map((item: any) => String(item?.poItemId || "").trim())
+          .filter(Boolean),
+      ),
+    );
+
+    const [poQtyMap, poPricingMap] = await Promise.all([
+      this.getPoItemQtyMap(tenantId, poItemIds),
+      this.getPoItemPricingMap(poItemIds),
+    ]);
+
+    return {
+      grnId: undefined,
+      grnNumber: "GRN-PREVIEW",
+      poNumber: null,
+      receiptDate: data?.grnDate || null,
+      status: data?.status || "DRAFT",
+      qcCompleted: false,
+      items: items.map((item: any) => {
+        const poItemId = String(item?.poItemId || "").trim();
+        const poQty = poItemId ? poQtyMap.get(poItemId) : undefined;
+        const poPricing = poItemId ? poPricingMap.get(poItemId) : undefined;
+        return {
+          poItemId,
+          itemId: item?.itemId,
+          itemCode: item?.itemCode,
+          orderedQty: this.toNumber(item?.orderedQty ?? poQty?.orderedQty),
+          previousReceivedQty: this.toNumber(
+            poQty?.effectiveReceivedQty ?? poQty?.receivedQty,
+          ),
+          receivedQty: this.toNumber(item?.receivedQty),
+          acceptedQty: this.toNumber(item?.acceptedQty),
+          rejectedQty: this.toNumber(item?.rejectedQty),
+          poRate: this.toNumber(poPricing?.rate),
+          grnRate: this.toNumber(item?.rate ?? poPricing?.rate),
+        };
+      }),
+    };
+  }
+
+  async previewDiscrepancies(tenantId: string, data: any) {
+    const input = await this.buildSapControlsInputFromPayload(tenantId, data);
+    const controls = buildSapGrnControls(input);
+    return {
+      hasDiscrepancy: controls.poAmendmentApproval.required,
+      toleranceStatus: controls.toleranceStatus,
+      messages: controls.messages,
+      poAmendmentApproval: controls.poAmendmentApproval,
+      items: controls.items,
+    };
+  }
+
   private async validateReceiptsDoNotExceedRemaining(params: {
-    poItemQtyMap: Map<string, { orderedQty: number; receivedQty: number }>;
+    poItemQtyMap: Map<
+      string,
+      { orderedQty: number; receivedQty: number; effectiveReceivedQty?: number }
+    >;
     receivedByPoItemId: Map<string, number>;
     oldReceivedByPoItemId?: Map<string, number>;
   }) {
@@ -101,13 +1008,17 @@ export class GrnService {
       }
 
       const orderedQty = this.toNumber(po.orderedQty);
-      const currentReceived = this.toNumber(po.receivedQty);
-      const oldForThisGrn = this.toNumber(oldReceivedByPoItemId?.get(poItemId) ?? 0);
+      const currentReceived = this.toNumber(
+        po.effectiveReceivedQty ?? po.receivedQty,
+      );
+      const oldForThisGrn = this.toNumber(
+        oldReceivedByPoItemId?.get(poItemId) ?? 0,
+      );
       const baseReceived = Math.max(0, currentReceived - oldForThisGrn);
       const remaining = orderedQty - baseReceived;
 
       if (receiveNow < 0) {
-        throw new BadRequestException('Received quantity cannot be negative');
+        throw new BadRequestException("Received quantity cannot be negative");
       }
 
       // Tiny epsilon to avoid float issues
@@ -132,25 +1043,34 @@ export class GrnService {
     batch_quantity?: number;
     batch_uom?: string;
   } | null> {
-    const grnItemId = String(grnItem?.id || '').trim();
-    const storedItemId = String(grnItem?.item_id || grnItem?.item?.id || '').trim();
-    const itemCode = String(grnItem?.item_code || grnItem?.itemCode || grnItem?.item?.code || '').trim();
-    const poItemId = String(grnItem?.po_item_id || grnItem?.poItemId || '').trim();
+    const grnItemId = String(grnItem?.id || "").trim();
+    const storedItemId = String(
+      grnItem?.item_id || grnItem?.item?.id || "",
+    ).trim();
+    const itemCode = String(
+      grnItem?.item_code || grnItem?.itemCode || grnItem?.item?.code || "",
+    ).trim();
+    const poItemId = String(
+      grnItem?.po_item_id || grnItem?.poItemId || "",
+    ).trim();
 
-    const candidates = new Map<string, {
-      itemId: string;
-      itemCode?: string;
-      category?: string;
-      name?: string;
-      uid_tracking?: boolean;
-      uid_strategy?: string;
-      batch_quantity?: number;
-      batch_uom?: string;
-      source: string;
-    }>();
+    const candidates = new Map<
+      string,
+      {
+        itemId: string;
+        itemCode?: string;
+        category?: string;
+        name?: string;
+        uid_tracking?: boolean;
+        uid_strategy?: string;
+        batch_quantity?: number;
+        batch_uom?: string;
+        source: string;
+      }
+    >();
 
     const addCandidate = (source: string, row: any) => {
-      const itemId = String(row?.id || row?.item_id || '').trim();
+      const itemId = String(row?.id || row?.item_id || "").trim();
       if (!itemId) return;
       candidates.set(source, {
         itemId,
@@ -167,58 +1087,87 @@ export class GrnService {
 
     if (storedItemId) {
       const { data: storedItem, error } = await this.supabase
-        .from('items')
-        .select('id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom')
-        .eq('tenant_id', tenantId)
-        .eq('id', storedItemId)
+        .from("items")
+        .select(
+          "id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom",
+        )
+        .eq("tenant_id", tenantId)
+        .eq("id", storedItemId)
         .maybeSingle();
 
       if (error) {
-        console.error('Failed to validate GRN stored item_id:', { grnItemId, storedItemId, error });
+        console.error("Failed to validate GRN stored item_id:", {
+          grnItemId,
+          storedItemId,
+          error,
+        });
       } else if (storedItem) {
-        addCandidate('stored', storedItem);
+        addCandidate("stored", storedItem);
       }
     }
 
     if (itemCode) {
       const { data: codeMatches, error } = await this.supabase
-        .from('items')
-        .select('id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom')
-        .eq('tenant_id', tenantId)
-        .eq('code', itemCode)
+        .from("items")
+        .select(
+          "id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom",
+        )
+        .eq("tenant_id", tenantId)
+        .eq("code", itemCode)
         .limit(2);
 
       if (error) {
-        console.error('Failed to resolve GRN item by code:', { grnItemId, itemCode, error });
+        console.error("Failed to resolve GRN item by code:", {
+          grnItemId,
+          itemCode,
+          error,
+        });
       } else if (Array.isArray(codeMatches) && codeMatches.length === 1) {
-        addCandidate('code', codeMatches[0]);
+        addCandidate("code", codeMatches[0]);
       } else if (Array.isArray(codeMatches) && codeMatches.length > 1) {
-        console.error('Multiple items match GRN item code; refusing stock update', { grnItemId, itemCode });
+        console.error(
+          "Multiple items match GRN item code; refusing stock update",
+          { grnItemId, itemCode },
+        );
       }
     }
 
     if (poItemId) {
       const { data: poItem, error } = await this.supabase
-        .from('purchase_order_items')
-        .select('item_id, item:items(id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom)')
-        .eq('id', poItemId)
+        .from("purchase_order_items")
+        .select(
+          "item_id, item:items(id, code, name, category, uid_tracking, uid_strategy, batch_quantity, batch_uom)",
+        )
+        .eq("id", poItemId)
         .maybeSingle();
 
       if (error) {
-        console.error('Failed to resolve GRN item by PO item:', { grnItemId, poItemId, error });
+        console.error("Failed to resolve GRN item by PO item:", {
+          grnItemId,
+          poItemId,
+          error,
+        });
       } else if (poItem) {
-        addCandidate('po', (poItem as any).item || { id: (poItem as any).item_id });
+        addCandidate(
+          "po",
+          (poItem as any).item || { id: (poItem as any).item_id },
+        );
       }
     }
 
-    const codeCandidate = candidates.get('code');
-    const storedCandidate = candidates.get('stored');
-    const poCandidate = candidates.get('po');
+    const codeCandidate = candidates.get("code");
+    const storedCandidate = candidates.get("stored");
+    const poCandidate = candidates.get("po");
 
     let resolved = codeCandidate || poCandidate || storedCandidate;
 
-    if (itemCode && storedCandidate && codeCandidate && storedCandidate.itemId !== codeCandidate.itemId) {
-      console.error('Correcting mismatched GRN item_id before stock update', {
+    if (
+      itemCode &&
+      storedCandidate &&
+      codeCandidate &&
+      storedCandidate.itemId !== codeCandidate.itemId
+    ) {
+      console.error("Correcting mismatched GRN item_id before stock update", {
         grnItemId,
         itemCode,
         storedItemId: storedCandidate.itemId,
@@ -227,34 +1176,44 @@ export class GrnService {
       resolved = codeCandidate;
     }
 
-    if (codeCandidate && poCandidate && codeCandidate.itemId !== poCandidate.itemId) {
-      console.error('GRN item code and PO item resolve to different items; refusing stock update', {
-        grnItemId,
-        itemCode,
-        codeItemId: codeCandidate.itemId,
-        poItemId: poCandidate.itemId,
-      });
+    if (
+      codeCandidate &&
+      poCandidate &&
+      codeCandidate.itemId !== poCandidate.itemId
+    ) {
+      console.error(
+        "GRN item code and PO item resolve to different items; refusing stock update",
+        {
+          grnItemId,
+          itemCode,
+          codeItemId: codeCandidate.itemId,
+          poItemId: poCandidate.itemId,
+        },
+      );
       return null;
     }
 
     if (!resolved?.itemId) {
-      console.error('Unable to resolve GRN item identity; refusing stock update', {
-        grnItemId,
-        storedItemId,
-        itemCode,
-        poItemId,
-      });
+      console.error(
+        "Unable to resolve GRN item identity; refusing stock update",
+        {
+          grnItemId,
+          storedItemId,
+          itemCode,
+          poItemId,
+        },
+      );
       return null;
     }
 
     if (grnItemId && storedItemId !== resolved.itemId) {
       const { error } = await this.supabase
-        .from('grn_items')
+        .from("grn_items")
         .update({ item_id: resolved.itemId })
-        .eq('id', grnItemId);
+        .eq("id", grnItemId);
 
       if (error) {
-        console.error('Failed to backfill corrected GRN item_id:', {
+        console.error("Failed to backfill corrected GRN item_id:", {
           grnItemId,
           itemId: resolved.itemId,
           error,
@@ -274,16 +1233,20 @@ export class GrnService {
     };
   }
 
-  async uploadInvoice(tenantId: string, userId: string, file: Express.Multer.File) {
+  async uploadInvoice(
+    tenantId: string,
+    userId: string,
+    file: Express.Multer.File,
+  ) {
     if (!file) {
-      throw new BadRequestException('No file uploaded');
+      throw new BadRequestException("No file uploaded");
     }
 
     const allowedTypes = new Set([
-      'application/pdf',
-      'image/png',
-      'image/jpeg',
-      'image/jpg',
+      "application/pdf",
+      "image/png",
+      "image/jpeg",
+      "image/jpg",
     ]);
 
     if (!file.mimetype || !allowedTypes.has(file.mimetype)) {
@@ -291,16 +1254,16 @@ export class GrnService {
         await unlink((file as any).path).catch(() => undefined);
       }
       throw new BadRequestException(
-        `Unsupported file type: ${file.mimetype || 'unknown'}`,
+        `Unsupported file type: ${file.mimetype || "unknown"}`,
       );
     }
 
     const maxSizeBytes = 50 * 1024 * 1024;
-    if (typeof file.size === 'number' && file.size > maxSizeBytes) {
+    if (typeof file.size === "number" && file.size > maxSizeBytes) {
       if ((file as any).path) {
         await unlink((file as any).path).catch(() => undefined);
       }
-      throw new BadRequestException('File too large (max 50MB)');
+      throw new BadRequestException("File too large (max 50MB)");
     }
 
     // If multer used disk storage, the file is already written; just return the public URL.
@@ -310,23 +1273,23 @@ export class GrnService {
       const relativePath = filePath.startsWith(uploadsRoot)
         ? filePath.slice(uploadsRoot.length)
         : filePath;
-      const urlPath = relativePath.replace(/\\/g, '/');
+      const urlPath = relativePath.replace(/\\/g, "/");
       return {
-        url: `/uploads${urlPath.startsWith('/') ? '' : '/'}${urlPath}`,
-        name: file.originalname || (file as any).filename || 'invoice',
+        url: `/uploads${urlPath.startsWith("/") ? "" : "/"}${urlPath}`,
+        name: file.originalname || (file as any).filename || "invoice",
         type: file.mimetype,
         size: file.size,
       };
     }
 
     const today = new Date().toISOString().slice(0, 10);
-    const extensionFromName = extname(file.originalname || '').toLowerCase();
+    const extensionFromName = extname(file.originalname || "").toLowerCase();
     const safeExtension =
       extensionFromName && extensionFromName.length <= 10
         ? extensionFromName
-        : file.mimetype === 'application/pdf'
-          ? '.pdf'
-          : '';
+        : file.mimetype === "application/pdf"
+          ? ".pdf"
+          : "";
 
     const relativeDir = `grn/invoices/${today}/${tenantId}/${userId}`;
     const fileName = `${randomUUID()}${safeExtension}`;
@@ -345,16 +1308,20 @@ export class GrnService {
     };
   }
 
-  async uploadQcAttachment(tenantId: string, userId: string, file: Express.Multer.File) {
+  async uploadQcAttachment(
+    tenantId: string,
+    userId: string,
+    file: Express.Multer.File,
+  ) {
     if (!file) {
-      throw new BadRequestException('No file uploaded');
+      throw new BadRequestException("No file uploaded");
     }
 
     const allowedTypes = new Set([
-      'application/pdf',
-      'image/png',
-      'image/jpeg',
-      'image/jpg',
+      "application/pdf",
+      "image/png",
+      "image/jpeg",
+      "image/jpg",
     ]);
 
     if (!file.mimetype || !allowedTypes.has(file.mimetype)) {
@@ -362,16 +1329,16 @@ export class GrnService {
         await unlink((file as any).path).catch(() => undefined);
       }
       throw new BadRequestException(
-        `Unsupported file type: ${file.mimetype || 'unknown'}`,
+        `Unsupported file type: ${file.mimetype || "unknown"}`,
       );
     }
 
     const maxSizeBytes = 50 * 1024 * 1024;
-    if (typeof file.size === 'number' && file.size > maxSizeBytes) {
+    if (typeof file.size === "number" && file.size > maxSizeBytes) {
       if ((file as any).path) {
         await unlink((file as any).path).catch(() => undefined);
       }
-      throw new BadRequestException('File too large (max 50MB)');
+      throw new BadRequestException("File too large (max 50MB)");
     }
 
     // If multer used disk storage, the file is already written; just return the public URL.
@@ -381,23 +1348,23 @@ export class GrnService {
       const relativePath = filePath.startsWith(uploadsRoot)
         ? filePath.slice(uploadsRoot.length)
         : filePath;
-      const urlPath = relativePath.replace(/\\/g, '/');
+      const urlPath = relativePath.replace(/\\/g, "/");
       return {
-        url: `/uploads${urlPath.startsWith('/') ? '' : '/'}${urlPath}`,
-        name: file.originalname || (file as any).filename || 'qc',
+        url: `/uploads${urlPath.startsWith("/") ? "" : "/"}${urlPath}`,
+        name: file.originalname || (file as any).filename || "qc",
         type: file.mimetype,
         size: file.size,
       };
     }
 
     const today = new Date().toISOString().slice(0, 10);
-    const extensionFromName = extname(file.originalname || '').toLowerCase();
+    const extensionFromName = extname(file.originalname || "").toLowerCase();
     const safeExtension =
       extensionFromName && extensionFromName.length <= 10
         ? extensionFromName
-        : file.mimetype === 'application/pdf'
-          ? '.pdf'
-          : '';
+        : file.mimetype === "application/pdf"
+          ? ".pdf"
+          : "";
 
     const relativeDir = `grn/qc/${today}/${tenantId}/${userId}`;
     const fileName = `${randomUUID()}${safeExtension}`;
@@ -417,29 +1384,164 @@ export class GrnService {
   }
 
   async create(tenantId: string, userId: string, data: any) {
-    console.log('=== GRN CREATE START ===');
-    console.log('Data items count:', data.items?.length);
+    console.log("=== GRN CREATE START ===");
+    console.log("Data items count:", data.items?.length);
     if (data.items && data.items.length > 0) {
       data.items.forEach((item: any, idx: number) => {
-        console.log(`Item ${idx}: ${item.itemCode}, acceptedQty=${item.acceptedQty}, type=${typeof item.acceptedQty}`);
+        console.log(
+          `Item ${idx}: ${item.itemCode}, acceptedQty=${item.acceptedQty}, type=${typeof item.acceptedQty}`,
+        );
       });
     }
-    
+
     // Validate mandatory fields
     if (!data.invoiceNumber || !data.invoiceNumber.trim()) {
-      throw new BadRequestException('Invoice Number is required');
+      throw new BadRequestException("Invoice Number is required");
     }
-    
+
     if (!data.invoiceDate) {
-      throw new BadRequestException('Invoice Date is required');
+      throw new BadRequestException("Invoice Date is required");
     }
 
     if (!data.invoiceFileUrl) {
-      throw new BadRequestException('Vendor invoice upload is required');
+      throw new BadRequestException("Vendor invoice upload is required");
     }
-    
-    // Allow multiple GRNs for the same PO (partial deliveries)
-    // No duplicate check needed - POs can have multiple GRNs
+
+    const poId = String(data.poId || "").trim();
+    const vendorId = String(data.vendorId || "").trim();
+    const rawItems = Array.isArray(data.items) ? data.items : [];
+    if (!this.isUuid(poId) || !this.isUuid(vendorId)) {
+      throw new BadRequestException(
+        "A valid Purchase Order and supplier are required to create a GRN.",
+      );
+    }
+    if (rawItems.length === 0) {
+      throw new BadRequestException(
+        "At least one material line is required to create a GRN.",
+      );
+    }
+    const invalidLine = rawItems.find(
+      (item: any) =>
+        !this.isUuid(item?.poItemId) ||
+        !this.isUuid(item?.itemId) ||
+        this.toNumber(item?.receivedQty) <= 0,
+    );
+    if (invalidLine) {
+      throw new BadRequestException(
+        "Each GRN line needs a valid PO item, item, and a receipt quantity greater than zero. Refresh the PO and try again.",
+      );
+    }
+
+    // A service is accepted through a Service Entry Sheet (SES), never a GRN.
+    // This protects inventory from being increased for labour/maintenance/etc.
+    const selectedPoItemIds = Array.from(
+      new Set(
+        (Array.isArray(data.items) ? data.items : [])
+          .map((item: any) =>
+            String(item?.poItemId || item?.po_item_id || "").trim(),
+          )
+          .filter(Boolean),
+      ),
+    );
+    const servicePoItemIdSet = new Set<string>();
+    if (selectedPoItemIds.length > 0) {
+      const { data: selectedPoItems, error: selectedPoItemsError } =
+        await this.supabase
+          .from("purchase_order_items")
+          .select("id, item_code, item:items(category)")
+          .eq("po_id", data.poId)
+          .in("id", selectedPoItemIds);
+      if (selectedPoItemsError)
+        throw new BadRequestException(selectedPoItemsError.message);
+      for (const item of selectedPoItems || []) {
+        if (normalizeInventoryCategory(item?.item?.category) === "SERVICES") {
+          servicePoItemIdSet.add(String(item.id));
+        }
+      }
+
+      const serviceLineWithReceipt = (
+        Array.isArray(data.items) ? data.items : []
+      ).find((item: any) => {
+        const poItemId = String(
+          item?.poItemId || item?.po_item_id || "",
+        ).trim();
+        if (!servicePoItemIdSet.has(poItemId)) return false;
+        const receivingQty = this.toNumber(
+          item?.receivedQty ??
+            item?.received_qty ??
+            item?.acceptedQty ??
+            item?.accepted_qty,
+        );
+        return receivingQty > 0;
+      });
+      if (serviceLineWithReceipt) {
+        const serviceLine = (selectedPoItems || []).find(
+          (item: any) =>
+            String(item.id) ===
+            String(
+              serviceLineWithReceipt.poItemId ||
+                serviceLineWithReceipt.po_item_id,
+            ),
+        );
+        throw new BadRequestException(
+          `${serviceLine?.item_code || "This service line"} must be accepted through a Service Entry Sheet, not a GRN.`,
+        );
+      }
+    }
+
+    // Validate all receipt lines before inserting a header. This prevents a
+    // rejected line payload from leaving an empty Draft GRN in production.
+    const poItemIdsForCreate: string[] = [
+      ...new Set<string>(
+        rawItems.map((item: any) => String(item.poItemId).trim()),
+      ),
+    ];
+    const { data: poLines, error: poLinesError } = await this.supabase
+      .from("purchase_order_items")
+      .select("id, item_id")
+      .eq("po_id", poId)
+      .in("id", poItemIdsForCreate);
+    if (poLinesError) throw new BadRequestException(poLinesError.message);
+
+    const poLineById = new Map(
+      (poLines || []).map((line: any) => [String(line.id), line]),
+    );
+    const receivedByPoItemId = new Map<string, number>();
+    for (const item of rawItems) {
+      const poItemId = String(item.poItemId).trim();
+      const poLine = poLineById.get(poItemId);
+      if (
+        !poLine ||
+        String((poLine as any).item_id || "").trim() !==
+          String(item.itemId).trim()
+      ) {
+        throw new BadRequestException(
+          "One or more GRN lines do not belong to the selected PO. Refresh the PO and try again.",
+        );
+      }
+      receivedByPoItemId.set(
+        poItemId,
+        (receivedByPoItemId.get(poItemId) || 0) +
+          this.toNumber(item.receivedQty),
+      );
+    }
+    const poItemQtyMap = await this.getPoItemQtyMap(
+      tenantId,
+      poItemIdsForCreate,
+    );
+    await this.validateReceiptsDoNotExceedRemaining({
+      poItemQtyMap,
+      receivedByPoItemId,
+    });
+
+    // Partial deliveries are valid, but the same supplier invoice cannot be
+    // received twice against one PO. The DB reservation protects retries and
+    // simultaneous browser sessions, unlike a client-side list lookup.
+    const invoiceReservationKey = await this.reserveGrnInvoice(
+      tenantId,
+      poId,
+      String(data.invoiceNumber),
+    );
 
     // Fetch PO items to get GST percentage (for setting on GRN)
     let poGstPercentage: number | undefined = undefined;
@@ -447,12 +1549,14 @@ export class GrnService {
     const poFreightGstAmount = 0;
     try {
       const { data: poItems } = await this.supabase
-        .from('purchase_order_items')
-        .select('tax_percent')
-        .eq('po_id', data.poId);
+        .from("purchase_order_items")
+        .select("tax_percent")
+        .eq("po_id", data.poId);
       if (poItems && poItems.length > 0) {
         // Get the max tax percent from PO items (or 0 if all are 0)
-        const taxRates = poItems.map((item: any) => Number(item.tax_percent || 0));
+        const taxRates = poItems.map((item: any) =>
+          Number(item.tax_percent || 0),
+        );
         const maxTax = Math.max(...taxRates);
         poGstPercentage = maxTax; // Will be 0 if all items have no GST
       }
@@ -464,47 +1568,28 @@ export class GrnService {
     // User assigns freight manually via the Supplier Invoice edit form.
     // poFreightAmount and poFreightGstAmount remain 0.
 
-    if (data.items && data.items.length > 0) {
-      // Validate partial receipt rules before creating the GRN header. A failed
-      // validation must not leave an orphan GRN without line items.
-      const receivedByPoItemId = new Map<string, number>();
-      const poItemIds: string[] = [];
-      for (const item of data.items) {
-        const poItemId = String(item.poItemId || '').trim();
-        if (!poItemId) continue;
-        const receiveNow = this.toNumber(item.receivedQty);
-        if (receiveNow <= 0) continue;
-        poItemIds.push(poItemId);
-        receivedByPoItemId.set(poItemId, (receivedByPoItemId.get(poItemId) ?? 0) + receiveNow);
-      }
-
-      const poItemQtyMap = await this.getPoItemQtyMap(poItemIds);
-      await this.validateReceiptsDoNotExceedRemaining({
-        poItemQtyMap,
-        receivedByPoItemId,
-      });
-    }
-
     // Generate GRN number
     const grnNumber = await this.generateGRNNumber(tenantId);
 
-    const { data: grn, error} = await this.supabase
-      .from('grns')
+    const { data: grn, error } = await this.supabase
+      .from("grns")
       .insert({
         tenant_id: tenantId,
         grn_number: grnNumber,
-        po_id: data.poId?.trim() || null,
-        vendor_id: data.vendorId?.trim() || null,
-        receipt_date: data.grnDate || new Date().toISOString().split('T')[0],
+        po_id: poId,
+        vendor_id: vendorId,
+        receipt_date: data.grnDate || new Date().toISOString().split("T")[0],
         invoice_number: data.invoiceNumber || null,
         invoice_date: data.invoiceDate || null,
         invoice_file_url: data.invoiceFileUrl || null,
         invoice_file_name: data.invoiceFileName || null,
         invoice_file_type: data.invoiceFileType || null,
         invoice_file_size: data.invoiceFileSize || null,
-        additional_invoice_files: Array.isArray(data.additionalInvoiceFiles) ? data.additionalInvoiceFiles : (data.additional_invoice_files || []),
+        additional_invoice_files: Array.isArray(data.additionalInvoiceFiles)
+          ? data.additionalInvoiceFiles
+          : data.additional_invoice_files || [],
         warehouse_id: data.warehouseId?.trim() || null,
-        status: data.status || 'DRAFT',
+        status: data.status || "DRAFT",
         notes: data.remarks || null,
         received_by: userId?.trim() || null,
         gst_percentage: poGstPercentage, // Will be undefined if not fetched, defaults to 18% later
@@ -514,49 +1599,68 @@ export class GrnService {
       .select()
       .single();
 
-    if (error) throw new BadRequestException(error.message);
+    if (error) {
+      await this.releaseGrnInvoiceReservation(
+        tenantId,
+        poId,
+        invoiceReservationKey,
+      );
+      throw new BadRequestException(error.message);
+    }
 
     // Get vendor details for UID generation
     const { data: vendor } = await this.supabase
-      .from('vendors')
-      .select('code, name')
-      .eq('id', data.vendorId)
+      .from("vendors")
+      .select("code, name")
+      .eq("id", data.vendorId)
       .single();
 
     // Get warehouse details
     const { data: warehouse } = await this.supabase
-      .from('warehouses')
-      .select('code, name')
-      .eq('id', data.warehouseId)
+      .from("warehouses")
+      .select("code, name")
+      .eq("id", data.warehouseId)
       .single();
 
     // Insert GRN items
     if (data.items && data.items.length > 0) {
       const poItemIds: string[] = [];
       for (const item of data.items) {
-        const poItemId = String(item.poItemId || '').trim();
+        const poItemId = String(item.poItemId || "").trim();
         if (!poItemId) continue;
         poItemIds.push(poItemId);
       }
 
       // Filter and validate items - ensure valid UUIDs for po_item_id and item_id
       const validItem = (id: any) => {
-        if (!id || typeof id !== 'string') return false;
+        if (!id || typeof id !== "string") return false;
         // UUID format validation: 8-4-4-4-12 hex characters
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const uuidRegex =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         return uuidRegex.test(id.trim());
       };
 
       const poItemPricingMap = await this.getPoItemPricingMap(poItemIds);
 
       const items = data.items
-        .filter((item: any) => validItem(item.poItemId) && validItem(item.itemId))
+        .filter(
+          (item: any) =>
+            validItem(item.poItemId) &&
+            validItem(item.itemId) &&
+            !servicePoItemIdSet.has(String(item.poItemId).trim()),
+        )
         .map((item: any) => {
           const poItemId = item.poItemId.trim();
           const poPricing = poItemPricingMap.get(poItemId);
           const rate = this.toNumber(item.rate ?? poPricing?.rate);
-          const discountPercent = this.toNumber(item.discountPercent ?? item.discount_percent ?? poPricing?.discountPercent ?? 0);
+          const discountPercent = this.toNumber(
+            item.discountPercent ??
+              item.discount_percent ??
+              poPricing?.discountPercent ??
+              0,
+          );
           return {
+            tenant_id: tenantId,
             grn_id: grn.id,
             po_item_id: poItemId,
             item_id: item.itemId.trim(),
@@ -569,36 +1673,75 @@ export class GrnService {
             accepted_qty: item.acceptedQty || 0,
             rejected_qty: item.rejectedQty || 0,
             rejection_reason: item.rejectionReason || null,
-            inspection_status: item.inspectionStatus || 'PENDING',
+            inspection_status: item.inspectionStatus || "PENDING",
             inspection_remarks: item.inspectionRemarks || null,
             batch_number: item.batchNumber || null,
             manufacturing_date: item.manufacturingDate || null,
             expiry_date: item.expiryDate || null,
             rate,
-            amount: this.calculateDiscountedLineAmount(item.receivedQty, rate, discountPercent),
+            amount: this.calculateDiscountedLineAmount(
+              item.receivedQty,
+              rate,
+              discountPercent,
+            ),
             remarks: item.remarks || null,
           };
         });
 
       if (items.length === 0) {
-        throw new BadRequestException('No valid items to save. Items must have valid PO Item ID and Item ID.');
+        await this.supabase
+          .from("grns")
+          .delete()
+          .eq("tenant_id", tenantId)
+          .eq("id", grn.id);
+        await this.releaseGrnInvoiceReservation(
+          tenantId,
+          poId,
+          invoiceReservationKey,
+        );
+        throw new BadRequestException(
+          "No valid items to save. Items must have valid PO Item ID and Item ID.",
+        );
       }
-      
-      console.log('GRN Items before insert:', JSON.stringify(items.map((i: any) => ({ 
-        item_code: i.item_code, 
-        accepted_qty: i.accepted_qty,
-        ordered_qty: i.ordered_qty,
-        received_qty: i.received_qty 
-      })), null, 2));
+
+      console.log(
+        "GRN Items before insert:",
+        JSON.stringify(
+          items.map((i: any) => ({
+            item_code: i.item_code,
+            accepted_qty: i.accepted_qty,
+            ordered_qty: i.ordered_qty,
+            received_qty: i.received_qty,
+          })),
+          null,
+          2,
+        ),
+      );
 
       const { data: insertedItems, error: itemsError } = await this.supabase
-        .from('grn_items')
+        .from("grn_items")
         .insert(items)
-        .select('id, item_id, item_code, item_name, accepted_qty, rejected_qty, received_qty, batch_number, rate');
+        .select(
+          "id, item_id, item_code, item_name, accepted_qty, rejected_qty, received_qty, batch_number, rate",
+        );
 
-      if (itemsError) throw new BadRequestException(itemsError.message);
+      if (itemsError) {
+        await this.supabase
+          .from("grns")
+          .delete()
+          .eq("tenant_id", tenantId)
+          .eq("id", grn.id);
+        await this.releaseGrnInvoiceReservation(
+          tenantId,
+          poId,
+          invoiceReservationKey,
+        );
+        throw new BadRequestException(itemsError.message);
+      }
 
-      const safeInsertedItems = Array.isArray(insertedItems) ? insertedItems : [];
+      const safeInsertedItems = Array.isArray(insertedItems)
+        ? insertedItems
+        : [];
       for (const grnItem of safeInsertedItems) {
         const receivedQty = this.toNumber((grnItem as any).received_qty);
         if (receivedQty > 0) {
@@ -626,21 +1769,24 @@ export class GrnService {
         if (item.poItemId && item.receivedQty) {
           // Get current received qty
           const { data: poItem } = await this.supabase
-            .from('purchase_order_items')
-            .select('received_qty')
-            .eq('id', item.poItemId)
+            .from("purchase_order_items")
+            .select("received_qty")
+            .eq("id", item.poItemId)
             .single();
 
-          const currentReceived = parseFloat(poItem?.received_qty || '0');
-          const newReceived = currentReceived + parseFloat(item.receivedQty || '0');
+          const currentReceived = parseFloat(poItem?.received_qty || "0");
+          const newReceived =
+            currentReceived + parseFloat(item.receivedQty || "0");
 
           // Update PO item
           await this.supabase
-            .from('purchase_order_items')
+            .from("purchase_order_items")
             .update({ received_qty: newReceived })
-            .eq('id', item.poItemId);
+            .eq("id", item.poItemId);
 
-          console.log(`Updated PO item ${item.itemCode}: received_qty ${currentReceived} -> ${newReceived}`);
+          console.log(
+            `Updated PO item ${item.itemCode}: received_qty ${currentReceived} -> ${newReceived}`,
+          );
         }
       }
     }
@@ -648,6 +1794,7 @@ export class GrnService {
     // Calculate totals
     await this.updateGRNTotals(grn.id);
     await this.updateGRNFinancialAmounts(tenantId, grn.id);
+    await this.syncPurchaseOrderReceiptStatus(tenantId, data.poId);
     await this.refreshSapControlsForGrn(tenantId, grn.id, userId);
 
     return this.findOne(tenantId, grn.id);
@@ -655,129 +1802,256 @@ export class GrnService {
 
   async findAll(tenantId: string, filters?: any) {
     if (!tenantId) {
-      throw new BadRequestException('Tenant ID is required');
+      throw new BadRequestException("Tenant ID is required");
     }
 
     let query = this.supabase
-      .from('grns')
-      .select(`
+      .from("grns")
+      .select(
+        `
         *,
         purchase_order:purchase_orders(id, po_number, po_date, terms_and_conditions),
         vendor:vendors(id, code, name, contact_person),
         warehouse:warehouses(id, code, name),
-        grn_items(id, item_id, accepted_qty, rejected_qty, received_qty, uid_count)
-      `)
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false});
+        grn_items(
+          id,
+          item_id,
+          item_code,
+          item_name,
+          supplier_hsn_code,
+          batch_number,
+          accepted_qty,
+          rejected_qty,
+          received_qty,
+          uid_count,
+          item:items(id, code, name, hsn_code, uom, description, oem_part_no, oem_name)
+        )
+      `,
+      )
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false });
 
     if (filters?.status) {
-      query = query.eq('status', filters.status);
+      query = query.eq("status", filters.status);
     }
 
     if (filters?.poId) {
-      query = query.eq('po_id', filters.poId);
+      query = query.eq("po_id", filters.poId);
     }
 
     if (filters?.vendorId) {
-      query = query.eq('vendor_id', filters.vendorId);
-    }
-
-    if (filters?.search) {
-      query = query.or(`grn_number.ilike.%${filters.search}%,invoice_number.ilike.%${filters.search}%`);
+      query = query.eq("vendor_id", filters.vendorId);
     }
 
     const { data, error } = await query;
 
     if (error) {
-      console.error('GRN findAll error:', error);
+      console.error("GRN findAll error:", error);
       throw new BadRequestException(error.message);
     }
-    
-    if (filters?.pendingQc === 'true') {
-      return (data || []).filter((grn: any) => !grn.qc_completed);
+    let rows = data || [];
+
+    if (filters?.pendingQc === "true") {
+      rows = rows.filter((grn: any) => !grn.qc_completed);
     }
 
-    return data || [];
+    if (filters?.search) {
+      rows = rows
+        .map((grn: any) => ({
+          grn,
+          score: this.scoreSearchMatch(
+            this.collectGrnSearchFields(grn),
+            filters.search,
+          ),
+        }))
+        .filter((entry: any) => entry.score > 0)
+        .sort((a: any, b: any) => {
+          if (b.score !== a.score) return b.score - a.score;
+          const bTime =
+            Date.parse(
+              String(
+                b.grn?.created_at ||
+                  b.grn?.receipt_date ||
+                  b.grn?.grn_date ||
+                  "",
+              ),
+            ) || 0;
+          const aTime =
+            Date.parse(
+              String(
+                a.grn?.created_at ||
+                  a.grn?.receipt_date ||
+                  a.grn?.grn_date ||
+                  "",
+              ),
+            ) || 0;
+          return bTime - aTime;
+        })
+        .map((entry: any) => entry.grn);
+    }
+
+    const settlementsByGrnId = await this.getGrnSettlementSummaries(
+      tenantId,
+      rows.map((grn: any) => String(grn?.id || "").trim()).filter(Boolean),
+    );
+    return Promise.all(
+      rows.map((grn: any) =>
+        this.attachGrnPaymentCalculation(
+          tenantId,
+          grn,
+          settlementsByGrnId.get(String(grn?.id || "").trim()),
+        ),
+      ),
+    );
   }
 
   async findOne(tenantId: string, id: string) {
     const { data, error } = await this.supabase
-      .from('grns')
-      .select(`
+      .from("grns")
+      .select(
+        `
         *,
         purchase_order:purchase_orders(id, po_number, po_date),
         vendor:vendors(id, code, name, contact_person),
         warehouse:warehouses(id, code, name),
         grn_items(*, item:items(id, code, name, hsn_code, uom))
-      `)
-      .eq('tenant_id', tenantId)
-      .eq('id', id)
+      `,
+      )
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
       .single();
 
-    if (error) throw new NotFoundException('GRN not found');
+    if (error) throw new NotFoundException("GRN not found");
     (data as any).sap_controls = await this.getSapControlsForGrn(tenantId, id);
-    return data;
+    return this.attachGrnPaymentCalculation(tenantId, data);
   }
 
-  async update(tenantId: string, id: string, data: any) {
+  async update(tenantId: string, id: string, data: any, userId?: string) {
     const { data: existingGrn, error: existingGrnError } = await this.supabase
-      .from('grns')
-      .select('receipt_date')
-      .eq('tenant_id', tenantId)
-      .eq('id', id)
+      .from("grns")
+      .select(
+        "receipt_date, po_id, warehouse_id, grn_number, status, qc_completed",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
       .single();
 
     if (existingGrnError) {
-      throw new NotFoundException('GRN not found');
+      throw new NotFoundException("GRN not found");
     }
 
     if (!data.invoiceNumber || !data.invoiceNumber.trim()) {
-      throw new BadRequestException('Invoice Number is required');
+      throw new BadRequestException("Invoice Number is required");
     }
 
     if (!data.invoiceDate) {
-      throw new BadRequestException('Invoice Date is required');
+      throw new BadRequestException("Invoice Date is required");
     }
 
     if (!data.invoiceFileUrl) {
-      throw new BadRequestException('Vendor invoice upload is required');
+      throw new BadRequestException("Vendor invoice upload is required");
     }
 
     // Fetch existing GRN items to keep PO received_qty consistent
-    const { data: existingItems, error: existingItemsError } = await this.supabase
-      .from('grn_items')
-      .select('po_item_id, received_qty')
-      .eq('grn_id', id);
+    const { data: existingItems, error: existingItemsError } =
+      await this.supabase
+        .from("grn_items")
+        .select(
+          "id, item_id, item_code, item_name, po_item_id, received_qty, accepted_qty, rejected_qty, qc_status, rate, batch_number, expiry_date, item:items(id, code, category, name)",
+        )
+        .eq("grn_id", id);
 
     if (existingItemsError) {
       throw new BadRequestException(existingItemsError.message);
     }
 
     const oldReceivedByPoItemId = new Map<string, number>();
+    const oldAcceptedStockByKey = new Map<
+      string,
+      {
+        itemId: string;
+        itemCode?: string;
+        itemName?: string;
+        category: string;
+        acceptedQty: number;
+      }
+    >();
     for (const row of existingItems ?? []) {
-      const poItemId = String((row as any).po_item_id || '').trim();
+      const poItemId = String((row as any).po_item_id || "").trim();
       if (!poItemId) continue;
-      const oldQty = this.toNumber((row as any).received_qty);
+      const oldQty = this.effectivePoReceiptQty(row);
       if (oldQty <= 0) continue;
-      oldReceivedByPoItemId.set(poItemId, (oldReceivedByPoItemId.get(poItemId) ?? 0) + oldQty);
+      oldReceivedByPoItemId.set(
+        poItemId,
+        (oldReceivedByPoItemId.get(poItemId) ?? 0) + oldQty,
+      );
+    }
+
+    const wasStockPosted =
+      String((existingGrn as any)?.status || "").toUpperCase() ===
+        "COMPLETED" || (existingGrn as any)?.qc_completed === true;
+    if (wasStockPosted) {
+      for (const row of existingItems ?? []) {
+        const acceptedQty = this.toNumber((row as any)?.accepted_qty);
+        if (acceptedQty <= 0) continue;
+        const resolvedItem = await this.resolveGrnItemStockIdentity(
+          tenantId,
+          row,
+        );
+        const itemId = String(
+          resolvedItem?.itemId || (row as any)?.item_id || "",
+        ).trim();
+        if (!itemId) continue;
+        const category = normalizeInventoryCategory(
+          resolvedItem?.category || (row as any)?.item?.category,
+          "RAW_MATERIAL",
+        );
+        const key = this.stockBucketKey(itemId, category);
+        const current = oldAcceptedStockByKey.get(key);
+        oldAcceptedStockByKey.set(key, {
+          itemId,
+          itemCode:
+            resolvedItem?.itemCode ||
+            (row as any)?.item_code ||
+            (row as any)?.item?.code,
+          itemName:
+            resolvedItem?.name ||
+            (row as any)?.item_name ||
+            (row as any)?.item?.name,
+          category,
+          acceptedQty: (current?.acceptedQty ?? 0) + acceptedQty,
+        });
+      }
     }
 
     // Compute incoming received quantities by PO item
     const receivedByPoItemId = new Map<string, number>();
     if (Array.isArray(data.items)) {
       for (const item of data.items) {
-        const poItemId = String(item.poItemId || '').trim();
+        const poItemId = String(item.poItemId || "").trim();
         if (!poItemId) continue;
-        const receiveNow = this.toNumber(item.receivedQuantity ?? item.receivedQty);
+        const receiveNow = this.toNumber(
+          item.receivedQuantity ?? item.receivedQty,
+        );
         if (receiveNow <= 0) continue;
-        receivedByPoItemId.set(poItemId, (receivedByPoItemId.get(poItemId) ?? 0) + receiveNow);
+        receivedByPoItemId.set(
+          poItemId,
+          (receivedByPoItemId.get(poItemId) ?? 0) + receiveNow,
+        );
       }
     }
 
     const affectedPoItemIds = Array.from(
-      new Set([...Array.from(oldReceivedByPoItemId.keys()), ...Array.from(receivedByPoItemId.keys())]),
+      new Set([
+        ...Array.from(oldReceivedByPoItemId.keys()),
+        ...Array.from(receivedByPoItemId.keys()),
+      ]),
     );
-    const poItemQtyMap = await this.getPoItemQtyMap(affectedPoItemIds);
+    const poItemQtyMap = await this.getPoItemQtyMap(
+      tenantId,
+      affectedPoItemIds,
+    );
 
     // Validate partial receiving with old GRN quantities excluded
     await this.validateReceiptsDoNotExceedRemaining({
@@ -787,22 +2061,25 @@ export class GrnService {
     });
 
     const { error } = await this.supabase
-      .from('grns')
+      .from("grns")
       .update({
-        receipt_date: data.grnDate || (existingGrn as any)?.receipt_date || null,
+        receipt_date:
+          data.grnDate || (existingGrn as any)?.receipt_date || null,
         invoice_number: data.invoiceNumber || null,
         invoice_date: data.invoiceDate || null,
         invoice_file_url: data.invoiceFileUrl || null,
         invoice_file_name: data.invoiceFileName || null,
         invoice_file_type: data.invoiceFileType || null,
         invoice_file_size: data.invoiceFileSize || null,
-        additional_invoice_files: Array.isArray(data.additionalInvoiceFiles) ? data.additionalInvoiceFiles : (data.additional_invoice_files || []),
+        additional_invoice_files: Array.isArray(data.additionalInvoiceFiles)
+          ? data.additionalInvoiceFiles
+          : data.additional_invoice_files || [],
         warehouse_id: data.warehouseId?.trim() || null,
         notes: data.remarks || null,
         updated_at: new Date().toISOString(),
       })
-      .eq('tenant_id', tenantId)
-      .eq('id', id);
+      .eq("tenant_id", tenantId)
+      .eq("id", id);
 
     if (error) throw new BadRequestException(error.message);
 
@@ -811,7 +2088,7 @@ export class GrnService {
       const itemIds = Array.from(
         new Set(
           data.items
-            .map((item: any) => String(item.itemId || '').trim())
+            .map((item: any) => String(item.itemId || "").trim())
             .filter(Boolean),
         ),
       );
@@ -819,30 +2096,32 @@ export class GrnService {
 
       if (itemIds.length > 0) {
         const { data: uidRows, error: uidRowsError } = await this.supabase
-          .from('uid_registry')
-          .select('entity_id')
-          .eq('tenant_id', tenantId)
-          .eq('grn_id', id)
-          .in('entity_id', itemIds);
+          .from("uid_registry")
+          .select("entity_id")
+          .eq("tenant_id", tenantId)
+          .eq("grn_id", id)
+          .in("entity_id", itemIds);
 
         if (uidRowsError) throw new BadRequestException(uidRowsError.message);
 
         for (const uidRow of uidRows ?? []) {
-          const itemId = String((uidRow as any).entity_id || '').trim();
+          const itemId = String((uidRow as any).entity_id || "").trim();
           if (!itemId) continue;
           uidCountByItemId.set(itemId, (uidCountByItemId.get(itemId) ?? 0) + 1);
         }
       }
 
       const { error: deleteItemsError } = await this.supabase
-        .from('grn_items')
+        .from("grn_items")
         .delete()
-        .eq('grn_id', id);
+        .eq("grn_id", id);
 
-      if (deleteItemsError) throw new BadRequestException(deleteItemsError.message);
+      if (deleteItemsError)
+        throw new BadRequestException(deleteItemsError.message);
 
       if (data.items.length > 0) {
         const items = data.items.map((item: any) => ({
+          tenant_id: tenantId,
           grn_id: id,
           item_id: item.itemId,
           po_item_id: item.poItemId,
@@ -855,22 +2134,45 @@ export class GrnService {
           accepted_qty: item.acceptedQty ?? item.acceptedQuantity ?? 0,
           rejected_qty: item.rejectedQty ?? item.rejectedQuantity ?? 0,
           rejection_reason: item.rejectionReason || null,
-          inspection_status: item.inspectionStatus || 'PENDING',
+          inspection_status: item.inspectionStatus || "PENDING",
           inspection_remarks: item.inspectionRemarks || null,
           batch_number: item.batchNumber || null,
           manufacturing_date: item.manufacturingDate || null,
           expiry_date: item.expiryDate || null,
           rate: item.rate ?? item.unitPrice,
-          amount: this.calculateDiscountedLineAmount(item.receivedQty ?? item.receivedQuantity, item.rate ?? item.unitPrice, item.discountPercent ?? item.discount_percent ?? item.discount ?? 0),
-          uid_count: uidCountByItemId.get(String(item.itemId || '').trim()) ?? this.toNumber(item.uidCount ?? item.uid_count),
+          amount: this.calculateDiscountedLineAmount(
+            item.receivedQty ?? item.receivedQuantity,
+            item.rate ?? item.unitPrice,
+            item.discountPercent ?? item.discount_percent ?? item.discount ?? 0,
+          ),
+          uid_count:
+            uidCountByItemId.get(String(item.itemId || "").trim()) ??
+            this.toNumber(item.uidCount ?? item.uid_count),
           remarks: item.remarks || item.notes || null,
         }));
 
         const { error: insertItemsError } = await this.supabase
-          .from('grn_items')
+          .from("grn_items")
           .insert(items);
 
-        if (insertItemsError) throw new BadRequestException(insertItemsError.message);
+        if (insertItemsError)
+          throw new BadRequestException(insertItemsError.message);
+      }
+
+      if (wasStockPosted) {
+        await this.reconcileGrnStockAfterItemEdit({
+          tenantId,
+          grnId: id,
+          grnNumber: String((existingGrn as any)?.grn_number || id),
+          warehouseId: String(
+            data.warehouseId?.trim() ||
+              (existingGrn as any)?.warehouse_id ||
+              "",
+          ),
+          oldAcceptedStockByKey,
+          newItems: data.items,
+          userId,
+        });
       }
 
       // Update PO received_qty based on delta (old GRN quantities removed, new added)
@@ -884,14 +2186,18 @@ export class GrnService {
         const finalReceived = baseReceived + newQty;
 
         await this.supabase
-          .from('purchase_order_items')
+          .from("purchase_order_items")
           .update({ received_qty: finalReceived })
-          .eq('id', poItemId);
+          .eq("id", poItemId);
       }
     }
 
     // Recalculate financial amounts after item update
     await this.updateGRNFinancialAmounts(tenantId, id);
+    await this.syncPurchaseOrderReceiptStatus(
+      tenantId,
+      (existingGrn as any)?.po_id,
+    );
     await this.refreshSapControlsForGrn(tenantId, id);
 
     return this.findOne(tenantId, id);
@@ -907,34 +2213,38 @@ export class GrnService {
       const qcStatusDecidedForAll =
         items.length > 0 &&
         items.every((i: any) => {
-          const qcStatus = String(i.qc_status || '').toUpperCase();
-          return qcStatus === 'ACCEPTED' || qcStatus === 'REJECTED' || qcStatus === 'PARTIAL';
+          const qcStatus = String(i.qc_status || "").toUpperCase();
+          return (
+            qcStatus === "ACCEPTED" ||
+            qcStatus === "REJECTED" ||
+            qcStatus === "PARTIAL"
+          );
         });
 
       if (!qcStatusDecidedForAll) {
         throw new BadRequestException(
-          'Cannot submit GRN: QC inspection must be completed first. Please complete QC via the QC Accept action.',
+          "Cannot submit GRN: QC inspection must be completed first. Please complete QC via the QC Accept action.",
         );
       }
 
       await this.supabase
-        .from('grns')
+        .from("grns")
         .update({ qc_completed: true, updated_at: new Date().toISOString() })
-        .eq('tenant_id', tenantId)
-        .eq('id', grn.id);
+        .eq("tenant_id", tenantId)
+        .eq("id", grn.id);
 
       grn.qc_completed = true;
     }
-    
+
     // Update GRN status
     const { error } = await this.supabase
-      .from('grns')
+      .from("grns")
       .update({
-        status: 'COMPLETED',
+        status: "COMPLETED",
         updated_at: new Date().toISOString(),
       })
-      .eq('tenant_id', tenantId)
-      .eq('id', id);
+      .eq("tenant_id", tenantId)
+      .eq("id", id);
 
     if (error) throw new BadRequestException(error.message);
 
@@ -972,10 +2282,12 @@ export class GrnService {
    */
   private async applyPoAdvanceToGrn(tenantId: string, grnId: string) {
     const { data: grn } = await this.supabase
-      .from('grns')
-      .select('id, po_id, net_payable_amount, paid_amount, payment_status, invoice_approved')
-      .eq('tenant_id', tenantId)
-      .eq('id', grnId)
+      .from("grns")
+      .select(
+        "id, po_id, net_payable_amount, paid_amount, payment_status, invoice_approved",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("id", grnId)
       .maybeSingle();
 
     if (!grn || !grn.po_id) return;
@@ -985,15 +2297,17 @@ export class GrnService {
 
     const [{ data: advances }, { data: poGrns }] = await Promise.all([
       this.supabase
-      .from('po_advance_payments')
-      .select('amount')
-      .eq('po_id', grn.po_id)
-      .eq('tenant_id', tenantId),
+        .from("po_advance_payments")
+        .select("amount")
+        .eq("po_id", grn.po_id)
+        .eq("tenant_id", tenantId),
       this.supabase
-        .from('grns')
-        .select('id, invoice_date, receipt_date, created_at, net_payable_amount, gross_amount, paid_amount, tds_amount, short_payment_amount, payment_method, payment_reference')
-        .eq('po_id', grn.po_id)
-        .eq('tenant_id', tenantId),
+        .from("grns")
+        .select(
+          "id, invoice_date, receipt_date, created_at, net_payable_amount, gross_amount, paid_amount, tds_amount, short_payment_amount, payment_method, payment_reference",
+        )
+        .eq("po_id", grn.po_id)
+        .eq("tenant_id", tenantId),
     ]);
 
     const totalAdvance = (advances || []).reduce(
@@ -1004,13 +2318,16 @@ export class GrnService {
     if (totalAdvance <= 0) return;
 
     const grnIds = (poGrns || []).map((invoice: any) => invoice.id);
-    const { data: paymentEntries } = grnIds.length > 0
-      ? await this.supabase
-        .from('grn_payment_entries')
-        .select('grn_id, amount, tds_amount, short_payment_amount, entry_type')
-        .eq('tenant_id', tenantId)
-        .in('grn_id', grnIds)
-      : { data: [] };
+    const { data: paymentEntries } =
+      grnIds.length > 0
+        ? await this.supabase
+            .from("grn_payment_entries")
+            .select(
+              "grn_id, amount, tds_amount, short_payment_amount, entry_type",
+            )
+            .eq("tenant_id", tenantId)
+            .in("grn_id", grnIds)
+        : { data: [] };
     const entriesByGrn = new Map<string, any[]>();
     for (const entry of paymentEntries || []) {
       const entries = entriesByGrn.get(entry.grn_id) || [];
@@ -1018,30 +2335,62 @@ export class GrnService {
       entriesByGrn.set(entry.grn_id, entries);
     }
 
-    const settlement = allocatePoSettlement((poGrns || []).map((invoice: any) => {
-      const entries = entriesByGrn.get(invoice.id) || [];
-      const isAdvanceEntry = (entry: any) =>
-        ['ADVANCE', 'ADVANCE_APPLIED', 'VENDOR_ADVANCE'].includes(String(entry?.entry_type || '').toUpperCase());
-      const hasCashEvidence = entries.length > 0 || Boolean(invoice.payment_method || invoice.payment_reference);
-      return {
-        id: invoice.id,
-        date: invoice.invoice_date || invoice.receipt_date || invoice.created_at,
-        netPayable: this.toNumber(invoice.net_payable_amount ?? invoice.gross_amount),
-        cashPaid: entries.length > 0
-          ? entries.reduce((sum: number, entry: any) => sum + (isAdvanceEntry(entry) ? 0 : this.toNumber(entry.amount)), 0)
-          : hasCashEvidence
-            ? this.toNumber(invoice.paid_amount)
-            : 0,
-        advanceApplied: entries.reduce((sum: number, entry: any) => sum + (isAdvanceEntry(entry) ? this.toNumber(entry.amount) : 0), 0),
-        tds: entries.length > 0
-          ? entries.reduce((sum: number, entry: any) => sum + this.toNumber(entry.tds_amount), 0)
-          : this.toNumber(invoice.tds_amount),
-        shortPayment: entries.length > 0
-          ? entries.reduce((sum: number, entry: any) => sum + this.toNumber(entry.short_payment_amount), 0)
-          : this.toNumber(invoice.short_payment_amount),
-      };
-    }), totalAdvance);
-    const currentSettlement = settlement.invoices.find((invoice) => invoice.id === grnId);
+    const settlement = allocatePoSettlement(
+      (poGrns || []).map((invoice: any) => {
+        const entries = entriesByGrn.get(invoice.id) || [];
+        const isAdvanceEntry = (entry: any) =>
+          ["ADVANCE", "ADVANCE_APPLIED", "VENDOR_ADVANCE"].includes(
+            String(entry?.entry_type || "").toUpperCase(),
+          );
+        const hasCashEvidence =
+          entries.length > 0 ||
+          Boolean(invoice.payment_method || invoice.payment_reference);
+        return {
+          id: invoice.id,
+          date:
+            invoice.invoice_date || invoice.receipt_date || invoice.created_at,
+          netPayable: this.toNumber(
+            invoice.net_payable_amount ?? invoice.gross_amount,
+          ),
+          cashPaid:
+            entries.length > 0
+              ? entries.reduce(
+                  (sum: number, entry: any) =>
+                    sum +
+                    (isAdvanceEntry(entry) ? 0 : this.toNumber(entry.amount)),
+                  0,
+                )
+              : hasCashEvidence
+                ? this.toNumber(invoice.paid_amount)
+                : 0,
+          advanceApplied: entries.reduce(
+            (sum: number, entry: any) =>
+              sum + (isAdvanceEntry(entry) ? this.toNumber(entry.amount) : 0),
+            0,
+          ),
+          tds:
+            entries.length > 0
+              ? entries.reduce(
+                  (sum: number, entry: any) =>
+                    sum + this.toNumber(entry.tds_amount),
+                  0,
+                )
+              : this.toNumber(invoice.tds_amount),
+          shortPayment:
+            entries.length > 0
+              ? entries.reduce(
+                  (sum: number, entry: any) =>
+                    sum + this.toNumber(entry.short_payment_amount),
+                  0,
+                )
+              : this.toNumber(invoice.short_payment_amount),
+        };
+      }),
+      totalAdvance,
+    );
+    const currentSettlement = settlement.invoices.find(
+      (invoice) => invoice.id === grnId,
+    );
     if (!currentSettlement || currentSettlement.advanceApplied <= 0) return;
 
     const advanceApplied = currentSettlement.advanceApplied;
@@ -1050,7 +2399,7 @@ export class GrnService {
 
     console.log(
       `[applyPoAdvanceToGrn] GRN ${grnId}: netPayable=${netPayable}, ` +
-      `advancePool=${totalAdvance}, applied=${advanceApplied}, status=${paymentStatus}`,
+        `advancePool=${totalAdvance}, applied=${advanceApplied}, status=${paymentStatus}`,
     );
 
     const updates: any = {
@@ -1061,60 +2410,83 @@ export class GrnService {
     if (isFullyCovered) {
       updates.invoice_approved = true;
       updates.invoice_approved_at = new Date().toISOString();
-      updates.invoice_approval_notes = 'Auto-approved: fully covered by PO advance payment';
+      updates.invoice_approval_notes =
+        "Auto-approved: fully covered by PO advance payment";
     }
 
     await this.supabase
-      .from('grns')
+      .from("grns")
       .update(updates)
-      .eq('tenant_id', tenantId)
-      .eq('id', grnId);
+      .eq("tenant_id", tenantId)
+      .eq("id", grnId);
   }
 
-  async updateStatus(tenantId: string, id: string, status: string, userId: string) {
+  async updateStatus(
+    tenantId: string,
+    id: string,
+    status: string,
+    userId: string,
+    options: { overrideMakerChecker?: boolean } = {},
+  ) {
     // Accept frontend values (APPROVED/REJECTED) and database values.
     // Note: production `grn_status` enum includes REJECTED but may not include CANCELLED.
-    const validStatuses = ['DRAFT', 'COMPLETED', 'APPROVED', 'REJECTED'];
+    const validStatuses = ["DRAFT", "COMPLETED", "APPROVED", "REJECTED"];
     if (!validStatuses.includes(status)) {
-      throw new BadRequestException(`Invalid status: ${status}. Must be one of: ${validStatuses.join(', ')}`);
+      throw new BadRequestException(
+        `Invalid status: ${status}. Must be one of: ${validStatuses.join(", ")}`,
+      );
     }
 
     // Get current GRN
     const grn = await this.findOne(tenantId, id);
 
+    if (
+      ["APPROVED", "REJECTED"].includes(String(status || "").toUpperCase()) &&
+      !options.overrideMakerChecker &&
+      String((grn as any)?.created_by || "") === String(userId || "")
+    ) {
+      throw new BadRequestException(
+        "Maker-checker violation: the GRN creator cannot approve or reject their own GRN.",
+      );
+    }
+
     // Map frontend values to database enum values
     let dbStatus = status;
-    if (status === 'APPROVED') {
-      dbStatus = 'COMPLETED';  // Approval means processing complete
-    } else if (status === 'REJECTED') {
-      dbStatus = 'REJECTED';  // Rejection remains REJECTED in GRN status enum
+    if (status === "APPROVED") {
+      dbStatus = "COMPLETED"; // Approval means processing complete
+    } else if (status === "REJECTED") {
+      dbStatus = "REJECTED"; // Rejection remains REJECTED in GRN status enum
     }
 
     // If approved, check if QC is completed before generating UIDs
-    if (status === 'APPROVED') {
+    if (status === "APPROVED") {
       // Check if QC is completed
       if (!grn.qc_completed) {
         const items = Array.isArray(grn.grn_items) ? grn.grn_items : [];
         const qcStatusDecidedForAll =
           items.length > 0 &&
           items.every((i: any) => {
-            const qcStatus = String(i.qc_status || '').toUpperCase();
-            return qcStatus === 'ACCEPTED' || qcStatus === 'REJECTED' || qcStatus === 'PARTIAL';
+            const qcStatus = String(i.qc_status || "").toUpperCase();
+            return (
+              qcStatus === "ACCEPTED" ||
+              qcStatus === "REJECTED" ||
+              qcStatus === "PARTIAL"
+            );
           });
 
         if (!qcStatusDecidedForAll) {
           throw new BadRequestException(
-            'Cannot approve GRN: QC inspection must be completed first. Please complete QC via the QC Accept action.',
+            "Cannot approve GRN: QC inspection must be completed first. Please complete QC via the QC Accept action.",
           );
         }
 
         // Backward compatible: QC was completed on items but header flag wasn't updated.
         // Mark qc_completed so approval can proceed.
         await this.supabase
-          .from('grns')
+          .from("grns")
           .update({ qc_completed: true, updated_at: new Date().toISOString() })
-          .eq('tenant_id', tenantId)
-          .eq('id', grn.id);
+          .eq("tenant_id", tenantId)
+          .eq("id", grn.id);
 
         grn.qc_completed = true;
       }
@@ -1122,49 +2494,66 @@ export class GrnService {
       // Ensure stock is increased for accepted items regardless of UID tracking.
       await this.ensureStockEntriesForGrnAccepted(tenantId, grn);
 
-      console.log('=== UID GENERATION START ===');
-      console.log('GRN object:', JSON.stringify(grn, null, 2));
-      console.log('Has grn_items:', !!grn.grn_items);
-      console.log('grn_items length:', grn.grn_items?.length || 0);
-      
+      console.log("=== UID GENERATION START ===");
+      console.log("GRN object:", JSON.stringify(grn, null, 2));
+      console.log("Has grn_items:", !!grn.grn_items);
+      console.log("grn_items length:", grn.grn_items?.length || 0);
+
       if (grn.grn_items && grn.grn_items.length > 0) {
-        console.log('Processing', grn.grn_items.length, 'items for UID generation');
+        console.log(
+          "Processing",
+          grn.grn_items.length,
+          "items for UID generation",
+        );
         for (const item of grn.grn_items) {
-          console.log('=== FULL ITEM DATA ===');
-          console.log('Item keys:', Object.keys(item));
-          console.log('Full item:', JSON.stringify(item, null, 2));
-          console.log('Item accepted_qty:', item.accepted_qty, 'Type:', typeof item.accepted_qty);
-          console.log('Item accepted_quantity:', item.accepted_quantity, 'Type:', typeof item.accepted_quantity);
-          console.log('======================');
-          
+          console.log("=== FULL ITEM DATA ===");
+          console.log("Item keys:", Object.keys(item));
+          console.log("Full item:", JSON.stringify(item, null, 2));
+          console.log(
+            "Item accepted_qty:",
+            item.accepted_qty,
+            "Type:",
+            typeof item.accepted_qty,
+          );
+          console.log(
+            "Item accepted_quantity:",
+            item.accepted_quantity,
+            "Type:",
+            typeof item.accepted_quantity,
+          );
+          console.log("======================");
+
           const acceptedQty = item.accepted_qty || item.accepted_quantity || 0;
           if (acceptedQty > 0) {
             await this.generateUIDsForItem(tenantId, userId, grn, item);
             // Stock entry creation is handled separately (QC accept / GRN create / approve).
           } else {
-            console.log('Skipping item due to accepted_qty <= 0. Value was:', acceptedQty);
+            console.log(
+              "Skipping item due to accepted_qty <= 0. Value was:",
+              acceptedQty,
+            );
           }
         }
       } else {
-        console.log('No grn_items found or array is empty');
+        console.log("No grn_items found or array is empty");
       }
-      console.log('=== UID GENERATION END ===');
+      console.log("=== UID GENERATION END ===");
     }
 
     // Update GRN status
     const { error } = await this.supabase
-      .from('grns')
+      .from("grns")
       .update({
         status: dbStatus,
         updated_at: new Date().toISOString(),
       })
-      .eq('tenant_id', tenantId)
-      .eq('id', id);
+      .eq("tenant_id", tenantId)
+      .eq("id", id);
 
     if (error) throw new BadRequestException(error.message);
 
     // If status is COMPLETED, calculate financial amounts with GST
-    if (dbStatus === 'COMPLETED') {
+    if (dbStatus === "COMPLETED") {
       await this.updateGRNFinancialAmounts(tenantId, id);
       await this.refreshSapControlsForGrn(tenantId, id, userId);
     }
@@ -1172,21 +2561,30 @@ export class GrnService {
     return this.findOne(tenantId, id);
   }
 
-  private async generateUIDsForItem(tenantId: string, userId: string, grn: any, grnItem: any) {
+  private async generateUIDsForItem(
+    tenantId: string,
+    userId: string,
+    grn: any,
+    grnItem: any,
+  ) {
     try {
-      console.log('generateUIDsForItem called for:', grnItem.item_code);
-      console.log('grnItem data:', JSON.stringify(grnItem, null, 2));
-      
-      const acceptedQty = Number(grnItem.accepted_qty ?? grnItem.accepted_quantity ?? 0) || 0;
-      console.log('Parsed acceptedQty:', acceptedQty);
+      console.log("generateUIDsForItem called for:", grnItem.item_code);
+      console.log("grnItem data:", JSON.stringify(grnItem, null, 2));
+
+      const acceptedQty =
+        Number(grnItem.accepted_qty ?? grnItem.accepted_quantity ?? 0) || 0;
+      console.log("Parsed acceptedQty:", acceptedQty);
       const uidsCreated = [];
 
       if (acceptedQty === 0) {
-        console.log('Skipping UID generation - acceptedQty is 0');
+        console.log("Skipping UID generation - acceptedQty is 0");
         return [];
       }
 
-      const resolvedItem = await this.resolveGrnItemStockIdentity(tenantId, grnItem);
+      const resolvedItem = await this.resolveGrnItemStockIdentity(
+        tenantId,
+        grnItem,
+      );
       const item = resolvedItem
         ? {
             id: resolvedItem.itemId,
@@ -1200,73 +2598,83 @@ export class GrnService {
           }
         : null;
 
-      console.log('Item found:', item ? item.code : 'NOT FOUND');
+      console.log("Item found:", item ? item.code : "NOT FOUND");
       if (!item) return; // Skip if item not found
 
       // Check UID tracking settings
-      if (item.uid_tracking === false || item.uid_strategy === 'NONE') {
-        console.log(`Skipping UID generation - item ${item.code} has uid_tracking=false or uid_strategy=NONE`);
+      if (item.uid_tracking === false || item.uid_strategy === "NONE") {
+        console.log(
+          `Skipping UID generation - item ${item.code} has uid_tracking=false or uid_strategy=NONE`,
+        );
         return [];
       }
 
       // Calculate number of UIDs to generate based on strategy
       let uidsToGenerate = acceptedQty;
       const batchQuantity = this.toNumber(item.batch_quantity);
-      if (item.uid_strategy === 'BATCHED' && batchQuantity > 0) {
+      if (item.uid_strategy === "BATCHED" && batchQuantity > 0) {
         uidsToGenerate = Math.ceil(acceptedQty / batchQuantity);
-        console.log(`BATCHED strategy: ${acceptedQty} pcs / ${batchQuantity} per ${item.batch_uom || 'container'} = ${uidsToGenerate} UIDs`);
+        console.log(
+          `BATCHED strategy: ${acceptedQty} pcs / ${batchQuantity} per ${item.batch_uom || "container"} = ${uidsToGenerate} UIDs`,
+        );
       } else {
-        console.log(`SERIALIZED strategy: Generating ${uidsToGenerate} UIDs (one per piece)`);
+        console.log(
+          `SERIALIZED strategy: Generating ${uidsToGenerate} UIDs (one per piece)`,
+        );
       }
 
       // Check if UIDs already exist for THIS SPECIFIC ITEM in this GRN to prevent duplicates
       const { data: existingUIDs, count } = await this.supabase
-        .from('uid_registry')
-        .select('uid', { count: 'exact' })
-        .eq('grn_id', grn.id)
-        .eq('entity_id', item.id)
-        .eq('tenant_id', tenantId);
-      
+        .from("uid_registry")
+        .select("uid", { count: "exact" })
+        .eq("grn_id", grn.id)
+        .eq("entity_id", item.id)
+        .eq("tenant_id", tenantId);
+
       if (count && count > 0) {
-        console.log(`UIDs already exist for item ${item.code} in this GRN (${count} UIDs found). Skipping generation to prevent duplicates.`);
+        console.log(
+          `UIDs already exist for item ${item.code} in this GRN (${count} UIDs found). Skipping generation to prevent duplicates.`,
+        );
 
         // Keep grn_items.uid_count in sync so list views show the right UID totals.
         // Some historical flows may have created UIDs without updating uid_count.
         if (grnItem?.id) {
           await this.supabase
-            .from('grn_items')
+            .from("grn_items")
             .update({ uid_count: count, uid_generated: true })
-            .eq('id', grnItem.id);
+            .eq("id", grnItem.id);
         }
 
         return (existingUIDs || []).map((u: any) => u.uid);
       }
 
       // Determine entity type based on item category
-      let entityType = 'RM'; // Raw Material
-      if (item.category?.includes('COMPONENT')) entityType = 'CP';
-      else if (item.category?.includes('FINISHED')) entityType = 'FG';
-      else if (item.category?.includes('ASSEMBLY')) entityType = 'SA';
+      let entityType = "RM"; // Raw Material
+      if (item.category?.includes("COMPONENT")) entityType = "CP";
+      else if (item.category?.includes("FINISHED")) entityType = "FG";
+      else if (item.category?.includes("ASSEMBLY")) entityType = "SA";
 
-      console.log(`Starting loop to generate ${uidsToGenerate} UIDs, entityType: ${entityType}`);
+      console.log(
+        `Starting loop to generate ${uidsToGenerate} UIDs, entityType: ${entityType}`,
+      );
       const tenantCode = await this.uidService.resolveTenantCode(tenantId);
-      
+
       // Generate UIDs based on strategy
       for (let i = 0; i < uidsToGenerate; i++) {
         console.log(`Loop iteration ${i + 1}/${acceptedQty}`);
-        
+
         // Generate UID using the UID service
         const uid = await this.uidService.generateUID(
           tenantCode,
-          'MFG',  // plant code
+          "MFG", // plant code
           entityType,
         );
-        
+
         console.log(`Generated UID: ${uid}`);
 
         // Create UID record with complete purchase trail
         const { error: uidError } = await this.supabase
-          .from('uid_registry')
+          .from("uid_registry")
           .insert({
             tenant_id: tenantId,
             uid: uid,
@@ -1276,13 +2684,13 @@ export class GrnService {
             purchase_order_id: grn.po_id,
             grn_id: grn.id,
             batch_number: grnItem.batch_number,
-            location: grn.warehouse?.name || 'Warehouse',
-            status: 'GENERATED',
+            location: grn.warehouse?.name || "Warehouse",
+            status: "GENERATED",
             lifecycle: JSON.stringify([
               {
-                stage: 'RECEIVED',
+                stage: "RECEIVED",
                 timestamp: new Date().toISOString(),
-                location: grn.warehouse?.name || 'Warehouse',
+                location: grn.warehouse?.name || "Warehouse",
                 reference: `GRN ${grn.grn_number}`,
                 user: userId,
               },
@@ -1297,30 +2705,34 @@ export class GrnService {
             }),
           });
 
-        console.log(`UID insert result - Error: ${uidError ? JSON.stringify(uidError) : 'none'}`);
-        
+        console.log(
+          `UID insert result - Error: ${uidError ? JSON.stringify(uidError) : "none"}`,
+        );
+
         if (!uidError) {
           uidsCreated.push(uid);
         }
       }
 
-      console.log(`Generated ${uidsCreated.length} UIDs for GRN ${grn.grn_number}, Item: ${grnItem.item_code}`);
-      
+      console.log(
+        `Generated ${uidsCreated.length} UIDs for GRN ${grn.grn_number}, Item: ${grnItem.item_code}`,
+      );
+
       // Update uid_count in grn_items
       if (uidsCreated.length > 0) {
         await this.supabase
-          .from('grn_items')
-          .update({ 
+          .from("grn_items")
+          .update({
             uid_count: uidsCreated.length,
-            uid_generated: true 
+            uid_generated: true,
           })
-          .eq('id', grnItem.id);
+          .eq("id", grnItem.id);
         console.log(`Updated grn_item uid_count to ${uidsCreated.length}`);
       }
-      
+
       return uidsCreated;
     } catch (error) {
-      console.error('Error generating UIDs:', error);
+      console.error("Error generating UIDs:", error);
       // Don't throw - allow GRN to be submitted even if UID generation fails
       return [];
     }
@@ -1336,10 +2748,10 @@ export class GrnService {
       const grnNumber = grn?.grn_number;
       if (!warehouseId || !grnNumber) {
         const { data: freshGrn } = await this.supabase
-          .from('grns')
-          .select('id, warehouse_id, grn_number')
-          .eq('tenant_id', tenantId)
-          .eq('id', grnId)
+          .from("grns")
+          .select("id, warehouse_id, grn_number")
+          .eq("tenant_id", tenantId)
+          .eq("id", grnId)
           .maybeSingle();
 
         if (freshGrn) {
@@ -1361,41 +2773,52 @@ export class GrnService {
         new Set(
           items
             .filter((it: any) => {
-              const acceptedQty = Number(it?.accepted_qty ?? it?.accepted_quantity ?? 0) || 0;
+              const acceptedQty =
+                Number(it?.accepted_qty ?? it?.accepted_quantity ?? 0) || 0;
               const itemId = it?.item_id || it?.item?.id;
               const itemCode = it?.item_code ?? it?.itemCode;
               return acceptedQty > 0 && !itemId && !!itemCode;
             })
-            .map((it: any) => String(it?.item_code ?? it?.itemCode))
-        )
+            .map((it: any) => String(it?.item_code ?? it?.itemCode)),
+        ),
       );
 
       const itemIdByCode = new Map<string, string>();
       if (missingItemIdCodes.length > 0) {
-        const { data: resolvedItems, error: resolvedItemsError } = await this.supabase
-          .from('items')
-          .select('id, code')
-          .eq('tenant_id', tenantId)
-          .in('code', missingItemIdCodes);
+        const { data: resolvedItems, error: resolvedItemsError } =
+          await this.supabase
+            .from("items")
+            .select("id, code")
+            .eq("tenant_id", tenantId)
+            .in("code", missingItemIdCodes);
 
         if (resolvedItemsError) {
-          console.error('⚠️ Failed to resolve item IDs by code for GRN stock updates:', resolvedItemsError);
+          console.error(
+            "⚠️ Failed to resolve item IDs by code for GRN stock updates:",
+            resolvedItemsError,
+          );
         } else {
           for (const it of resolvedItems || []) {
-            if (it?.code && it?.id) itemIdByCode.set(String(it.code), String(it.id));
+            if (it?.code && it?.id)
+              itemIdByCode.set(String(it.code), String(it.id));
           }
         }
       }
 
       for (const item of items) {
-        const acceptedQty = Number(item?.accepted_qty ?? item?.accepted_quantity ?? 0) || 0;
+        const acceptedQty =
+          Number(item?.accepted_qty ?? item?.accepted_quantity ?? 0) || 0;
         if (acceptedQty <= 0) continue;
 
-        const resolvedItem = await this.resolveGrnItemStockIdentity(tenantId, item);
+        const resolvedItem = await this.resolveGrnItemStockIdentity(
+          tenantId,
+          item,
+        );
         const grnItemId = item?.id;
         if (!resolvedItem?.itemId || !grnItemId) continue;
 
-        const unitPrice = Number(item?.rate ?? item?.unit_price ?? item?.unitPrice ?? 0) || 0;
+        const unitPrice =
+          Number(item?.rate ?? item?.unit_price ?? item?.unitPrice ?? 0) || 0;
 
         await this.createStockEntry({
           tenant_id: tenantId,
@@ -1408,45 +2831,262 @@ export class GrnService {
           batch_number: item?.batch_number ?? item?.batchNumber ?? null,
           expiry_date: item?.expiry_date ?? item?.expiryDate ?? null,
           grn_reference: effectiveGrnNumber,
-          created_from: 'GRN_APPROVE',
+          created_from: "GRN_APPROVE",
           metadata: {
             grn_item_id: grnItemId,
-            item_code: resolvedItem.itemCode || item?.item_code || item?.item?.code,
+            item_code:
+              resolvedItem.itemCode || item?.item_code || item?.item?.code,
           },
         });
       }
     } catch (e) {
-      console.error('❌ ensureStockEntriesForGrnAccepted failed:', e);
+      console.error("❌ ensureStockEntriesForGrnAccepted failed:", e);
+    }
+  }
+
+  private async reconcileGrnStockAfterItemEdit(params: {
+    tenantId: string;
+    grnId: string;
+    grnNumber: string;
+    warehouseId: string;
+    oldAcceptedStockByKey: Map<
+      string,
+      {
+        itemId: string;
+        itemCode?: string;
+        itemName?: string;
+        category: string;
+        acceptedQty: number;
+      }
+    >;
+    newItems: any[];
+    userId?: string;
+  }) {
+    const {
+      tenantId,
+      grnId,
+      grnNumber,
+      warehouseId,
+      oldAcceptedStockByKey,
+      newItems,
+      userId,
+    } = params;
+    if (!tenantId || !grnId || !warehouseId || oldAcceptedStockByKey.size === 0)
+      return;
+
+    const newAcceptedStockByKey = new Map<
+      string,
+      {
+        itemId: string;
+        itemCode?: string;
+        itemName?: string;
+        category: string;
+        acceptedQty: number;
+        unitPrice?: number;
+      }
+    >();
+    for (const item of Array.isArray(newItems) ? newItems : []) {
+      const acceptedQty = this.toNumber(
+        item?.acceptedQty ?? item?.acceptedQuantity ?? item?.accepted_qty,
+      );
+      if (acceptedQty <= 0) continue;
+
+      const resolvedItem = await this.resolveGrnItemStockIdentity(tenantId, {
+        item_id: item?.itemId ?? item?.item_id,
+        item_code: item?.itemCode ?? item?.item_code,
+        po_item_id: item?.poItemId ?? item?.po_item_id,
+      });
+      const itemId = String(
+        resolvedItem?.itemId || item?.itemId || item?.item_id || "",
+      ).trim();
+      if (!itemId) continue;
+
+      const category = normalizeInventoryCategory(
+        resolvedItem?.category,
+        "RAW_MATERIAL",
+      );
+      const key = this.stockBucketKey(itemId, category);
+      const current = newAcceptedStockByKey.get(key);
+      newAcceptedStockByKey.set(key, {
+        itemId,
+        itemCode: resolvedItem?.itemCode || item?.itemCode || item?.item_code,
+        itemName: resolvedItem?.name || item?.itemName || item?.item_name,
+        category,
+        acceptedQty: (current?.acceptedQty ?? 0) + acceptedQty,
+        unitPrice: this.toNumber(
+          item?.rate ?? item?.unitPrice ?? item?.unit_price,
+        ),
+      });
+    }
+
+    const allKeys = new Set([
+      ...Array.from(oldAcceptedStockByKey.keys()),
+      ...Array.from(newAcceptedStockByKey.keys()),
+    ]);
+    for (const key of allKeys) {
+      const oldLine = oldAcceptedStockByKey.get(key);
+      const newLine = newAcceptedStockByKey.get(key);
+      const line = newLine || oldLine;
+      if (!line?.itemId) continue;
+
+      const delta =
+        this.toNumber(newLine?.acceptedQty ?? 0) -
+        this.toNumber(oldLine?.acceptedQty ?? 0);
+      if (Math.abs(delta) <= 1e-9) continue;
+
+      if (delta < 0) {
+        const reductionQty = Math.abs(delta);
+        const { data: stockRows, error: stockError } = await this.supabase
+          .from("inventory_stock")
+          .select("available_quantity, quantity")
+          .eq("tenant_id", tenantId)
+          .eq("item_id", line.itemId)
+          .eq("warehouse_id", warehouseId)
+          .eq("category", line.category);
+
+        if (stockError) throw new BadRequestException(stockError.message);
+        const available = (stockRows || []).reduce(
+          (sum: number, row: any) =>
+            sum + this.toNumber(row?.available_quantity ?? row?.quantity),
+          0,
+        );
+        if (available + 1e-9 < Math.abs(delta)) {
+          throw new BadRequestException(
+            `Cannot reduce accepted quantity for ${line.itemCode || line.itemId}; available stock ${available} is less than adjustment ${Math.abs(delta)}.`,
+          );
+        }
+
+        const { data: stockEntryRows, error: stockEntryReadError } =
+          await this.supabase
+            .from("stock_entries")
+            .select("available_quantity")
+            .eq("tenant_id", tenantId)
+            .eq("item_id", line.itemId)
+            .eq("warehouse_id", warehouseId)
+            .gt("available_quantity", 0);
+
+        if (stockEntryReadError)
+          throw new BadRequestException(stockEntryReadError.message);
+        const stockEntryAvailable = (stockEntryRows || []).reduce(
+          (sum: number, row: any) =>
+            sum + this.toNumber(row?.available_quantity),
+          0,
+        );
+        if (stockEntryAvailable + 1e-9 < reductionQty) {
+          throw new BadRequestException(
+            `Cannot reduce accepted quantity for ${line.itemCode || line.itemId}; available stock entries ${stockEntryAvailable} are less than adjustment ${reductionQty}.`,
+          );
+        }
+      }
+
+      let { error: adjustError } = await this.supabase.rpc(
+        "adjust_inventory_stock",
+        {
+          p_tenant_id: tenantId,
+          p_item_id: line.itemId,
+          p_warehouse_id: warehouseId,
+          p_location_id: null,
+          p_quantity_change: delta,
+          p_category: line.category,
+        },
+      );
+
+      if (
+        adjustError &&
+        /inventory_category/i.test(adjustError.message || "") &&
+        line.category !== "RAW_MATERIAL"
+      ) {
+        const retry = await this.supabase.rpc("adjust_inventory_stock", {
+          p_tenant_id: tenantId,
+          p_item_id: line.itemId,
+          p_warehouse_id: warehouseId,
+          p_location_id: null,
+          p_quantity_change: delta,
+          p_category: "RAW_MATERIAL",
+        });
+        adjustError = retry.error;
+      }
+
+      if (adjustError) throw new BadRequestException(adjustError.message);
+
+      if (delta > 0) {
+        const { error: stockEntryError } = await this.supabase
+          .from("stock_entries")
+          .insert({
+            tenant_id: tenantId,
+            item_id: line.itemId,
+            warehouse_id: warehouseId,
+            quantity: delta,
+            available_quantity: delta,
+            allocated_quantity: 0,
+            unit_price: newLine?.unitPrice ?? null,
+            metadata: {
+              created_from: "GRN_EDIT_ADJUSTMENT",
+              grn_id: grnId,
+              grn_number: grnNumber,
+              grn_reference: `${grnNumber || grnId}:EDIT:${Date.now()}`,
+              item_code: line.itemCode || null,
+              item_name: line.itemName || null,
+              previous_accepted_qty: this.toNumber(oldLine?.acceptedQty ?? 0),
+              updated_accepted_qty: this.toNumber(newLine?.acceptedQty ?? 0),
+              quantity_delta: delta,
+            },
+          });
+
+        if (stockEntryError)
+          throw new BadRequestException(stockEntryError.message);
+      } else {
+        const reductionQty = Math.abs(delta);
+        await this.deductStockEntriesForGrnEdit({
+          tenantId,
+          itemId: line.itemId,
+          warehouseId,
+          quantity: reductionQty,
+        });
+        await this.insertGrnEditStockMovement({
+          tenantId,
+          grnId,
+          grnNumber,
+          itemId: line.itemId,
+          itemCode: line.itemCode,
+          itemName: line.itemName,
+          warehouseId,
+          quantity: reductionQty,
+          oldAcceptedQty: this.toNumber(oldLine?.acceptedQty ?? 0),
+          newAcceptedQty: this.toNumber(newLine?.acceptedQty ?? 0),
+          userId,
+        });
+      }
     }
   }
 
   async delete(tenantId: string, id: string) {
     const { data: grn, error: grnError } = await this.supabase
-      .from('grns')
-      .select('status, qc_completed, invoice_approved')
-      .eq('tenant_id', tenantId)
-      .eq('id', id)
+      .from("grns")
+      .select("status, qc_completed, invoice_approved, po_id, invoice_number")
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
       .single();
 
     if (grnError || !grn) {
-      throw new NotFoundException('GRN not found');
+      throw new NotFoundException("GRN not found");
     }
 
     if (
-      String((grn as any).status || '').toUpperCase() === 'COMPLETED' ||
+      String((grn as any).status || "").toUpperCase() === "COMPLETED" ||
       (grn as any).qc_completed ||
       (grn as any).invoice_approved
     ) {
       throw new BadRequestException(
-        'Completed, QC-posted, or invoice-approved GRNs cannot be deleted. Use a GRN reversal/void flow to preserve stock and AP audit history.',
+        "Completed, QC-posted, or invoice-approved GRNs cannot be deleted. Use a GRN reversal/void flow to preserve stock and AP audit history.",
       );
     }
 
     // Roll back PO received quantities before deleting
     const { data: grnItems, error: grnItemsError } = await this.supabase
-      .from('grn_items')
-      .select('po_item_id, received_qty')
-      .eq('grn_id', id);
+      .from("grn_items")
+      .select("po_item_id, received_qty")
+      .eq("grn_id", id);
 
     if (grnItemsError) {
       throw new BadRequestException(grnItemsError.message);
@@ -1454,67 +3094,91 @@ export class GrnService {
 
     const rollbackByPoItemId = new Map<string, number>();
     for (const row of grnItems ?? []) {
-      const poItemId = String((row as any).po_item_id || '').trim();
+      const poItemId = String((row as any).po_item_id || "").trim();
       if (!poItemId) continue;
       const qty = this.toNumber((row as any).received_qty);
       if (qty <= 0) continue;
-      rollbackByPoItemId.set(poItemId, (rollbackByPoItemId.get(poItemId) ?? 0) + qty);
+      rollbackByPoItemId.set(
+        poItemId,
+        (rollbackByPoItemId.get(poItemId) ?? 0) + qty,
+      );
     }
 
-    const poItemQtyMap = await this.getPoItemQtyMap(Array.from(rollbackByPoItemId.keys()));
+    const poItemQtyMap = await this.getPoItemQtyMap(
+      tenantId,
+      Array.from(rollbackByPoItemId.keys()),
+    );
     for (const [poItemId, rollbackQty] of rollbackByPoItemId.entries()) {
       const po = poItemQtyMap.get(poItemId);
       const currentReceived = this.toNumber(po?.receivedQty ?? 0);
       const nextReceived = Math.max(0, currentReceived - rollbackQty);
       await this.supabase
-        .from('purchase_order_items')
+        .from("purchase_order_items")
         .update({ received_qty: nextReceived })
-        .eq('id', poItemId);
+        .eq("id", poItemId);
     }
 
     // Delete child items first (safer across FK setups)
     const { error: delItemsError } = await this.supabase
-      .from('grn_items')
+      .from("grn_items")
       .delete()
-      .eq('grn_id', id);
+      .eq("grn_id", id);
     if (delItemsError) throw new BadRequestException(delItemsError.message);
 
     const { error } = await this.supabase
-      .from('grns')
+      .from("grns")
       .delete()
-      .eq('tenant_id', tenantId)
-      .eq('id', id);
+      .eq("tenant_id", tenantId)
+      .eq("id", id);
 
     if (error) throw new BadRequestException(error.message);
-    return { message: 'GRN deleted successfully' };
+    const invoiceKey = String((grn as any).invoice_number || "")
+      .trim()
+      .toLocaleLowerCase();
+    if (invoiceKey && (grn as any).po_id) {
+      await this.releaseGrnInvoiceReservation(
+        tenantId,
+        String((grn as any).po_id),
+        invoiceKey,
+      );
+    }
+    await this.syncPurchaseOrderReceiptStatus(tenantId, (grn as any)?.po_id);
+    return { message: "GRN deleted successfully" };
   }
 
   async rebuildStockEntries(tenantId: string, grnId: string) {
     const { data: grn, error } = await this.supabase
-      .from('grns')
-      .select('id, tenant_id, warehouse_id, grn_number, grn_items(*)')
-      .eq('tenant_id', tenantId)
-      .eq('id', grnId)
+      .from("grns")
+      .select("id, tenant_id, warehouse_id, grn_number, grn_items(*)")
+      .eq("tenant_id", tenantId)
+      .eq("id", grnId)
       .single();
 
-    if (error || !grn) throw new NotFoundException('GRN not found');
+    if (error || !grn) throw new NotFoundException("GRN not found");
 
     await this.ensureStockEntriesForGrnAccepted(tenantId, grn);
-    return { message: 'Stock rebuild triggered', grnId };
+    return { message: "Stock rebuild triggered", grnId };
   }
 
-  async reverse(tenantId: string, grnId: string, userId: string, body: any = {}) {
-    const reason = String(body?.reason || body?.remarks || '').trim();
+  async reverse(
+    tenantId: string,
+    grnId: string,
+    userId: string,
+    body: any = {},
+  ) {
+    const reason = String(body?.reason || body?.remarks || "").trim();
     if (!reason) {
-      throw new BadRequestException('Reversal reason is required');
+      throw new BadRequestException("Reversal reason is required");
     }
 
     const { data: grn, error } = await this.supabase
-      .from('grns')
-      .select(`
+      .from("grns")
+      .select(
+        `
         id,
         tenant_id,
         grn_number,
+        po_id,
         status,
         qc_completed,
         invoice_approved,
@@ -1533,72 +3197,163 @@ export class GrnService {
           debit_note_id,
           item:items(id, code, category)
         )
-      `)
-      .eq('tenant_id', tenantId)
-      .eq('id', grnId)
+      `,
+      )
+      .eq("tenant_id", tenantId)
+      .eq("id", grnId)
       .single();
 
     if (error || !grn) {
-      throw new NotFoundException('GRN not found');
+      throw new NotFoundException("GRN not found");
     }
 
-    const status = String((grn as any).status || '').toUpperCase();
-    if (status === 'REJECTED') {
-      throw new BadRequestException('GRN is already reversed/rejected');
+    const status = String((grn as any).status || "").toUpperCase();
+    if (status === "REJECTED") {
+      throw new BadRequestException("GRN is already reversed/rejected");
     }
-    if (status !== 'COMPLETED' && !(grn as any).qc_completed) {
-      throw new BadRequestException('Only completed/QC-posted GRNs can be reversed. Draft GRNs can be deleted.');
+    if (status !== "COMPLETED" && !(grn as any).qc_completed) {
+      throw new BadRequestException(
+        "Only completed/QC-posted GRNs can be reversed. Draft GRNs can be deleted.",
+      );
     }
     if ((grn as any).invoice_approved) {
-      throw new BadRequestException('Cannot reverse GRN because the supplier invoice is approved. Reverse/credit the invoice first.');
+      throw new BadRequestException(
+        "Cannot reverse GRN because the supplier invoice is approved. Reverse/credit the invoice first.",
+      );
     }
     const paidAmount = this.toNumber((grn as any).paid_amount);
-    const paymentStatus = String((grn as any).payment_status || '').toUpperCase();
-    if (paidAmount > 0 || paymentStatus === 'PAID' || paymentStatus === 'PARTIAL') {
-      throw new BadRequestException('Cannot reverse GRN because supplier payment exists. Reverse the payment/AP settlement first.');
+    const paymentStatus = String(
+      (grn as any).payment_status || "",
+    ).toUpperCase();
+    const settlement = await this.getGrnSettlementSummary(tenantId, grnId);
+    const hasActivePaymentTrailSettlement = settlement.netSettlement > 0.009;
+    const hasLegacyHeaderSettlement =
+      settlement.entryCount === 0 &&
+      (paidAmount > 0 ||
+        paymentStatus === "PAID" ||
+        paymentStatus === "PARTIAL");
+    if (hasActivePaymentTrailSettlement || hasLegacyHeaderSettlement) {
+      throw new BadRequestException(
+        "Cannot reverse GRN because supplier payment exists. Reverse the payment/AP settlement first.",
+      );
     }
     if (this.toNumber((grn as any).debit_note_amount) > 0) {
-      throw new BadRequestException('Cannot reverse GRN because debit note value exists. Reverse/void the debit note first.');
+      throw new BadRequestException(
+        "Cannot reverse GRN because debit note value exists. Reverse/void the debit note first.",
+      );
     }
 
-    const items = Array.isArray((grn as any).grn_items) ? (grn as any).grn_items : [];
+    const items = Array.isArray((grn as any).grn_items)
+      ? (grn as any).grn_items
+      : [];
     if (items.some((item: any) => item?.debit_note_id)) {
-      throw new BadRequestException('Cannot reverse GRN because one or more lines are linked to debit notes.');
-    }
-
-    const warehouseId = String((grn as any).warehouse_id || '').trim();
-    if (!warehouseId) {
-      throw new BadRequestException('Cannot reverse GRN without warehouse reference');
+      throw new BadRequestException(
+        "Cannot reverse GRN because one or more lines are linked to debit notes.",
+      );
     }
 
     const reversalLines = items
       .map((item: any) => ({
-        grnItemId: String(item?.id || '').trim(),
-        itemId: String(item?.item_id || item?.item?.id || '').trim(),
-        itemCode: String(item?.item_code || item?.item?.code || '').trim(),
-        category: normalizeInventoryCategory(item?.item?.category, 'RAW_MATERIAL'),
-        poItemId: String(item?.po_item_id || '').trim(),
+        grnItemId: String(item?.id || "").trim(),
+        itemId: String(item?.item_id || item?.item?.id || "").trim(),
+        itemCode: String(item?.item_code || item?.item?.code || "").trim(),
+        category: normalizeInventoryCategory(
+          item?.item?.category,
+          "RAW_MATERIAL",
+        ),
+        poItemId: String(item?.po_item_id || "").trim(),
         receivedQty: this.toNumber(item?.received_qty),
         acceptedQty: this.toNumber(item?.accepted_qty),
       }))
-      .filter((line) => line.grnItemId && line.itemId && (line.acceptedQty > 0 || line.receivedQty > 0));
+      .filter(
+        (line) =>
+          line.grnItemId &&
+          line.itemId &&
+          (line.acceptedQty > 0 || line.receivedQty > 0),
+      );
 
     const stockLines = reversalLines.filter((line) => line.acceptedQty > 0);
+    let warehouseId = String((grn as any).warehouse_id || "").trim();
+    if (!warehouseId && stockLines.length > 0) {
+      const grnItemIds = stockLines
+        .map((line) => line.grnItemId)
+        .filter(Boolean);
+      const grnNumber = String((grn as any).grn_number || "").trim();
+
+      for (const grnItemId of grnItemIds) {
+        const { data: stockWarehouseRows, error: stockWarehouseError } =
+          await this.supabase
+            .from("stock_entries")
+            .select("warehouse_id")
+            .eq("tenant_id", tenantId)
+            .filter("metadata->>grn_item_id", "eq", grnItemId)
+            .not("warehouse_id", "is", null)
+            .limit(1);
+
+        if (stockWarehouseError) {
+          throw new BadRequestException(stockWarehouseError.message);
+        }
+
+        warehouseId = String(
+          stockWarehouseRows?.[0]?.warehouse_id || "",
+        ).trim();
+        if (warehouseId) break;
+      }
+
+      if (!warehouseId && grnNumber) {
+        const { data: stockWarehouseRows, error: stockWarehouseError } =
+          await this.supabase
+            .from("stock_entries")
+            .select("warehouse_id")
+            .eq("tenant_id", tenantId)
+            .filter("metadata->>grn_reference", "eq", grnNumber)
+            .not("warehouse_id", "is", null)
+            .limit(1);
+
+        if (stockWarehouseError) {
+          throw new BadRequestException(stockWarehouseError.message);
+        }
+
+        warehouseId = String(
+          stockWarehouseRows?.[0]?.warehouse_id || "",
+        ).trim();
+      }
+
+      if (warehouseId) {
+        await this.supabase
+          .from("grns")
+          .update({
+            warehouse_id: warehouseId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("tenant_id", tenantId)
+          .eq("id", grnId)
+          .is("warehouse_id", null);
+      }
+    }
+
+    if (stockLines.length > 0 && !warehouseId) {
+      throw new BadRequestException(
+        "Cannot reverse GRN without warehouse reference",
+      );
+    }
+
     for (const line of stockLines) {
       const { data: stockRows, error: stockError } = await this.supabase
-        .from('inventory_stock')
-        .select('available_quantity, quantity')
-        .eq('tenant_id', tenantId)
-        .eq('item_id', line.itemId)
-        .eq('warehouse_id', warehouseId)
-        .eq('category', line.category);
+        .from("inventory_stock")
+        .select("available_quantity, quantity")
+        .eq("tenant_id", tenantId)
+        .eq("item_id", line.itemId)
+        .eq("warehouse_id", warehouseId)
+        .eq("category", line.category);
 
       if (stockError) {
         throw new BadRequestException(stockError.message);
       }
 
       const available = (stockRows || []).reduce(
-        (sum: number, row: any) => sum + this.toNumber(row?.available_quantity ?? row?.quantity),
+        (sum: number, row: any) =>
+          sum + this.toNumber(row?.available_quantity ?? row?.quantity),
         0,
       );
 
@@ -1609,51 +3364,54 @@ export class GrnService {
       }
     }
 
-    const insertedStockEntryIds: string[] = [];
     const adjustedStockLines: typeof stockLines = [];
-    const poRollbackStates: Array<{ poItemId: string; previousReceivedQty: number }> = [];
+    const stockEntryDeductions: Array<{
+      id: string;
+      previousAvailableQuantity: number;
+    }> = [];
+    const insertedStockMovementIds: string[] = [];
+    const poRollbackStates: Array<{
+      poItemId: string;
+      previousReceivedQty: number;
+    }> = [];
     try {
       for (const line of stockLines) {
-        const { error: adjustError } = await this.supabase.rpc('adjust_inventory_stock', {
-          p_tenant_id: tenantId,
-          p_item_id: line.itemId,
-          p_warehouse_id: warehouseId,
-          p_location_id: null,
-          p_quantity_change: -line.acceptedQty,
-          p_category: line.category,
-        });
+        const { error: adjustError } = await this.supabase.rpc(
+          "adjust_inventory_stock",
+          {
+            p_tenant_id: tenantId,
+            p_item_id: line.itemId,
+            p_warehouse_id: warehouseId,
+            p_location_id: null,
+            p_quantity_change: -line.acceptedQty,
+            p_category: line.category,
+          },
+        );
         if (adjustError) {
           throw new BadRequestException(adjustError.message);
         }
         adjustedStockLines.push(line);
 
-        const { data: reversalEntry, error: stockEntryError } = await this.supabase
-          .from('stock_entries')
-          .insert({
-            tenant_id: tenantId,
-            item_id: line.itemId,
-            warehouse_id: warehouseId,
-            quantity: -line.acceptedQty,
-            available_quantity: -line.acceptedQty,
-            allocated_quantity: 0,
-            metadata: {
-              created_from: 'GRN_REVERSAL',
-              grn_id: grnId,
-              grn_number: (grn as any).grn_number,
-              grn_item_id: line.grnItemId,
-              item_code: line.itemCode || null,
-              reversal_reason: reason,
-              reversed_by: userId || null,
-              reversed_at: new Date().toISOString(),
-            },
-          })
-          .select('id')
-          .single();
+        const deductions = await this.deductStockEntriesForGrnEdit({
+          tenantId,
+          itemId: line.itemId,
+          warehouseId,
+          quantity: line.acceptedQty,
+        });
+        stockEntryDeductions.push(...deductions);
 
-        if (stockEntryError) {
-          throw new BadRequestException(stockEntryError.message);
-        }
-        if (reversalEntry?.id) insertedStockEntryIds.push(reversalEntry.id);
+        const movementId = await this.insertGrnReversalStockMovement({
+          tenantId,
+          grnId,
+          grnNumber: (grn as any).grn_number,
+          itemId: line.itemId,
+          itemCode: line.itemCode,
+          warehouseId,
+          quantity: line.acceptedQty,
+          reason,
+          userId,
+        });
+        if (movementId) insertedStockMovementIds.push(movementId);
       }
 
       const receivedRollbackByPoItemId = new Map<string, number>();
@@ -1661,48 +3419,65 @@ export class GrnService {
         if (!line.poItemId || line.receivedQty <= 0) continue;
         receivedRollbackByPoItemId.set(
           line.poItemId,
-          (receivedRollbackByPoItemId.get(line.poItemId) ?? 0) + line.receivedQty,
+          (receivedRollbackByPoItemId.get(line.poItemId) ?? 0) +
+            line.receivedQty,
         );
       }
 
-      const poQtyMap = await this.getPoItemQtyMap(Array.from(receivedRollbackByPoItemId.keys()));
-      for (const [poItemId, rollbackQty] of receivedRollbackByPoItemId.entries()) {
-        const currentReceived = this.toNumber(poQtyMap.get(poItemId)?.receivedQty);
-        poRollbackStates.push({ poItemId, previousReceivedQty: currentReceived });
+      const poQtyMap = await this.getPoItemQtyMap(
+        tenantId,
+        Array.from(receivedRollbackByPoItemId.keys()),
+      );
+      for (const [
+        poItemId,
+        rollbackQty,
+      ] of receivedRollbackByPoItemId.entries()) {
+        const currentReceived = this.toNumber(
+          poQtyMap.get(poItemId)?.receivedQty,
+        );
+        poRollbackStates.push({
+          poItemId,
+          previousReceivedQty: currentReceived,
+        });
         await this.supabase
-          .from('purchase_order_items')
+          .from("purchase_order_items")
           .update({ received_qty: Math.max(0, currentReceived - rollbackQty) })
-          .eq('id', poItemId);
+          .eq("id", poItemId);
       }
 
-      const previousNotes = String((grn as any).notes || '').trim();
-      const reversalNote = `Reversed on ${new Date().toISOString()} by ${userId || 'system'}: ${reason}`;
+      const previousNotes = String((grn as any).notes || "").trim();
+      const reversalNote = `Reversed on ${new Date().toISOString()} by ${userId || "system"}: ${reason}`;
       const { error: grnUpdateError } = await this.supabase
-        .from('grns')
+        .from("grns")
         .update({
-          status: 'REJECTED',
+          status: "REJECTED",
           qc_completed: false,
-          notes: previousNotes ? `${previousNotes}\n${reversalNote}` : reversalNote,
+          paid_amount: 0,
+          payment_status: "DUE",
+          notes: previousNotes
+            ? `${previousNotes}\n${reversalNote}`
+            : reversalNote,
           updated_at: new Date().toISOString(),
         })
-        .eq('tenant_id', tenantId)
-        .eq('id', grnId);
+        .eq("tenant_id", tenantId)
+        .eq("id", grnId);
 
       if (grnUpdateError) {
         throw new BadRequestException(grnUpdateError.message);
       }
 
       await this.refreshSapControlsForGrn(tenantId, grnId, userId);
+      await this.syncPurchaseOrderReceiptStatus(tenantId, (grn as any)?.po_id);
 
       return {
-        message: 'GRN reversed successfully',
+        message: "GRN reversed successfully",
         grnId,
         grnNumber: (grn as any).grn_number,
         reversedStockLines: stockLines.length,
       };
     } catch (reversalError) {
       for (const line of adjustedStockLines.reverse()) {
-        await this.supabase.rpc('adjust_inventory_stock', {
+        await this.supabase.rpc("adjust_inventory_stock", {
           p_tenant_id: tenantId,
           p_item_id: line.itemId,
           p_warehouse_id: warehouseId,
@@ -1711,14 +3486,23 @@ export class GrnService {
           p_category: line.category,
         });
       }
-      if (insertedStockEntryIds.length > 0) {
-        await this.supabase.from('stock_entries').delete().in('id', insertedStockEntryIds);
+      if (insertedStockMovementIds.length > 0) {
+        await this.supabase
+          .from("stock_movements")
+          .delete()
+          .in("id", insertedStockMovementIds);
+      }
+      for (const deduction of stockEntryDeductions.reverse()) {
+        await this.supabase
+          .from("stock_entries")
+          .update({ available_quantity: deduction.previousAvailableQuantity })
+          .eq("id", deduction.id);
       }
       for (const state of poRollbackStates.reverse()) {
         await this.supabase
-          .from('purchase_order_items')
+          .from("purchase_order_items")
           .update({ received_qty: state.previousReceivedQty })
-          .eq('id', state.poItemId);
+          .eq("id", state.poItemId);
       }
       throw reversalError;
     }
@@ -1726,11 +3510,11 @@ export class GrnService {
 
   async qcAccept(tenantId: string, grnId: string, userId: string, body: any) {
     // body contains: items array with { itemId, acceptedQty, rejectedQty, qcNotes, rejectionReason }
-    console.log('=== QC ACCEPT START ===');
-    console.log('GRN ID:', grnId);
-    console.log('User ID:', userId);
-    console.log('Body items:', JSON.stringify(body.items, null, 2));
-    
+    console.log("=== QC ACCEPT START ===");
+    console.log("GRN ID:", grnId);
+    console.log("User ID:", userId);
+    console.log("Body items:", JSON.stringify(body.items, null, 2));
+
     try {
       const now = new Date().toISOString();
       const uidPrintItems: Array<{
@@ -1740,14 +3524,23 @@ export class GrnService {
         acceptedQty: number;
         generatedUids: string[];
       }> = [];
-      
+
       // Update each GRN item with QC results
       for (const item of body.items) {
-        console.log('Processing item:', item.itemId, 'acceptedQty:', item.acceptedQty, 'rejectedQty:', item.rejectedQty);
-        const qcStatus = 
-          item.rejectedQty > 0 && item.acceptedQty > 0 ? 'PARTIAL' :
-          item.rejectedQty > 0 ? 'REJECTED' :
-          'ACCEPTED';
+        console.log(
+          "Processing item:",
+          item.itemId,
+          "acceptedQty:",
+          item.acceptedQty,
+          "rejectedQty:",
+          item.rejectedQty,
+        );
+        const qcStatus =
+          item.rejectedQty > 0 && item.acceptedQty > 0
+            ? "PARTIAL"
+            : item.rejectedQty > 0
+              ? "REJECTED"
+              : "ACCEPTED";
 
         const updatePayload: any = {
           accepted_qty: item.acceptedQty,
@@ -1765,53 +3558,88 @@ export class GrnService {
         };
 
         let { error } = await this.supabase
-          .from('grn_items')
+          .from("grn_items")
           .update(updatePayload)
-          .eq('id', item.itemId);
+          .eq("id", item.itemId);
 
         // Backward compatible: if DB doesn't have qc_file_* columns, retry without them.
-        if (error && /qc_file_(url|name|type|size)/i.test(error.message || '')) {
-          const { qc_file_url, qc_file_name, qc_file_type, qc_file_size, ...fallbackPayload } = updatePayload;
+        if (
+          error &&
+          /qc_file_(url|name|type|size)/i.test(error.message || "")
+        ) {
+          const {
+            qc_file_url,
+            qc_file_name,
+            qc_file_type,
+            qc_file_size,
+            ...fallbackPayload
+          } = updatePayload;
           const retry = await this.supabase
-            .from('grn_items')
+            .from("grn_items")
             .update(fallbackPayload)
-            .eq('id', item.itemId);
+            .eq("id", item.itemId);
           error = retry.error;
         }
 
-        console.log('GRN item update result:', error ? `ERROR: ${error.message}` : 'SUCCESS');
-        if (error) throw new Error(`Failed to update item ${item.itemId}: ${error.message}`);
+        console.log(
+          "GRN item update result:",
+          error ? `ERROR: ${error.message}` : "SUCCESS",
+        );
+        if (error)
+          throw new Error(
+            `Failed to update item ${item.itemId}: ${error.message}`,
+          );
 
         // Update stock entries: only accepted quantity goes to available stock
         // Rejected quantity may require debit note creation (future enhancement)
         if (item.acceptedQty > 0) {
-          console.log('🟢 Calling createStockEntry from qcAccept for item:', item.itemId, 'qty:', item.acceptedQty);
-          
+          console.log(
+            "🟢 Calling createStockEntry from qcAccept for item:",
+            item.itemId,
+            "qty:",
+            item.acceptedQty,
+          );
+
           const { data: grnItem, error: grnItemError } = await this.supabase
-            .from('grn_items')
-            .select('id, item_id, po_item_id, grn_id, rate, batch_number, item_code')
-            .eq('id', item.itemId)
+            .from("grn_items")
+            .select(
+              "id, item_id, po_item_id, grn_id, rate, batch_number, item_code",
+            )
+            .eq("id", item.itemId)
             .single();
 
           if (grnItemError || !grnItem) {
-            console.error(`Failed to retrieve GRN item details for id: ${item.itemId}`, grnItemError);
+            console.error(
+              `Failed to retrieve GRN item details for id: ${item.itemId}`,
+              grnItemError,
+            );
             continue; // Skip to next item
           }
 
-          const resolvedItem = await this.resolveGrnItemStockIdentity(tenantId, grnItem);
+          const resolvedItem = await this.resolveGrnItemStockIdentity(
+            tenantId,
+            grnItem,
+          );
           if (!resolvedItem) {
-            console.error('Skipping stock entry because GRN item identity could not be verified:', item.itemId);
+            console.error(
+              "Skipping stock entry because GRN item identity could not be verified:",
+              item.itemId,
+            );
             continue;
           }
 
           const { data: grn } = await this.supabase
-            .from('grns')
-            .select('warehouse_id, grn_number, vendor_id, po_id, invoice_number, warehouse:warehouses(name)')
-            .eq('id', grnItem.grn_id)
+            .from("grns")
+            .select(
+              "warehouse_id, grn_number, vendor_id, po_id, invoice_number, warehouse:warehouses(name)",
+            )
+            .eq("id", grnItem.grn_id)
             .single();
 
           if (!grn) {
-            console.error(`Failed to retrieve GRN header for item: ${grnItem.item_id}`);
+            console.error(
+              `Failed to retrieve GRN header for item: ${grnItem.item_id}`,
+            );
             continue; // Skip to next item
           }
 
@@ -1825,7 +3653,7 @@ export class GrnService {
             unit_price: grnItem.rate,
             batch_number: grnItem.batch_number,
             grn_reference: grn.grn_number,
-            created_from: 'GRN_QC_ACCEPT',
+            created_from: "GRN_QC_ACCEPT",
             metadata: {
               grn_item_id: item.itemId,
               item_code: resolvedItem.itemCode || grnItem.item_code,
@@ -1840,8 +3668,11 @@ export class GrnService {
               grn_number: grn.grn_number,
               vendor_id: (grn as any).vendor_id || null,
               po_id: (grn as any).po_id || null,
-              invoice_number: (grn as any).invoice_number || body?.metadata?.invoiceNumber || null,
-              warehouse: (grn as any).warehouse || { name: 'Warehouse' },
+              invoice_number:
+                (grn as any).invoice_number ||
+                body?.metadata?.invoiceNumber ||
+                null,
+              warehouse: (grn as any).warehouse || { name: "Warehouse" },
             },
             {
               ...grnItem,
@@ -1854,66 +3685,81 @@ export class GrnService {
 
           if (Array.isArray(generatedUids) && generatedUids.length > 0) {
             uidPrintItems.push({
-              itemId: String(resolvedItem.itemId || item.itemId || '').trim(),
-              itemCode: String(resolvedItem.itemCode || grnItem.item_code || item.itemCode || '').trim(),
-              itemName: String(item.itemName || '').trim(),
+              itemId: String(resolvedItem.itemId || item.itemId || "").trim(),
+              itemCode: String(
+                resolvedItem.itemCode ||
+                  grnItem.item_code ||
+                  item.itemCode ||
+                  "",
+              ).trim(),
+              itemName: String(item.itemName || "").trim(),
               acceptedQty: Number(item.acceptedQty || 0),
-              generatedUids: generatedUids.map((uid) => String(uid || '').trim()).filter(Boolean),
+              generatedUids: generatedUids
+                .map((uid) => String(uid || "").trim())
+                .filter(Boolean),
             });
           }
         }
 
         // Handle rejections - update rejection amount and status
         if (item.rejectedQty > 0) {
-          console.log('Item has rejections, calculating debit amount...');
-          
+          console.log("Item has rejections, calculating debit amount...");
+
           // Get item price from GRN item (column is 'rate' not 'unit_price')
           const { data: grnItemData } = await this.supabase
-            .from('grn_items')
-            .select('rate')
-            .eq('id', item.itemId)
+            .from("grn_items")
+            .select("rate")
+            .eq("id", item.itemId)
             .single();
 
           if (grnItemData?.rate) {
             const rejectionAmount = item.rejectedQty * grnItemData.rate;
-            console.log(`Rejection amount: ${item.rejectedQty} x ${grnItemData.rate} = ${rejectionAmount}`);
-            
+            console.log(
+              `Rejection amount: ${item.rejectedQty} x ${grnItemData.rate} = ${rejectionAmount}`,
+            );
+
             // Update grn_item with rejection details
             await this.supabase
-              .from('grn_items')
+              .from("grn_items")
               .update({
-                return_status: 'PENDING_RETURN',
+                return_status: "PENDING_RETURN",
                 rejection_amount: rejectionAmount,
               })
-              .eq('id', item.itemId);
+              .eq("id", item.itemId);
           }
         }
       }
 
-      console.log('Checking if all items have QC completed...');
+      console.log("Checking if all items have QC completed...");
       // Update GRN status if all items have QC completed
       const { data: allItems } = await this.supabase
-        .from('grn_items')
-        .select('qc_status')
-        .eq('grn_id', grnId);
+        .from("grn_items")
+        .select("qc_status")
+        .eq("grn_id", grnId);
 
-      const allCompleted = allItems?.every(item => 
-        item.qc_status === 'ACCEPTED' || 
-        item.qc_status === 'REJECTED' || 
-        item.qc_status === 'PARTIAL'
+      const allCompleted = allItems?.every(
+        (item) =>
+          item.qc_status === "ACCEPTED" ||
+          item.qc_status === "REJECTED" ||
+          item.qc_status === "PARTIAL",
       );
 
       if (allCompleted) {
-        console.log('All items QC completed, updating GRN qc_completed flag and status...');
+        console.log(
+          "All items QC completed, updating GRN qc_completed flag and status...",
+        );
         const { error: grnUpdateError } = await this.supabase
-          .from('grns')
-          .update({ qc_completed: true, status: 'COMPLETED', updated_at: now })
-          .eq('id', grnId)
-          .eq('tenant_id', tenantId);
+          .from("grns")
+          .update({ qc_completed: true, status: "COMPLETED", updated_at: now })
+          .eq("id", grnId)
+          .eq("tenant_id", tenantId);
 
-        console.log('GRN qc_completed update result:', grnUpdateError ? `ERROR: ${grnUpdateError.message}` : 'SUCCESS');
+        console.log(
+          "GRN qc_completed update result:",
+          grnUpdateError ? `ERROR: ${grnUpdateError.message}` : "SUCCESS",
+        );
         if (grnUpdateError) {
-          console.error('Failed to update GRN qc_completed:', grnUpdateError);
+          console.error("Failed to update GRN qc_completed:", grnUpdateError);
         }
 
         // Auto-create debit note for any rejected items
@@ -1922,30 +3768,46 @@ export class GrnService {
         // Calculate and update financial amounts with GST
         await this.updateGRNFinancialAmounts(tenantId, grnId);
         await this.refreshSapControlsForGrn(tenantId, grnId, userId);
+
+        const { data: grnHeaderForStatusSync } = await this.supabase
+          .from("grns")
+          .select("po_id")
+          .eq("tenant_id", tenantId)
+          .eq("id", grnId)
+          .maybeSingle();
+        await this.syncPurchaseOrderReceiptStatus(
+          tenantId,
+          (grnHeaderForStatusSync as any)?.po_id,
+        );
       }
 
-      console.log('=== QC ACCEPT COMPLETE ===');
+      console.log("=== QC ACCEPT COMPLETE ===");
       return {
-        message: 'QC acceptance recorded successfully',
+        message: "QC acceptance recorded successfully",
         qcCompleted: allCompleted,
         generatedUidPrintItems: uidPrintItems,
       };
     } catch (error) {
-      console.error('QC ACCEPT ERROR:', error);
+      console.error("QC ACCEPT ERROR:", error);
       throw new BadRequestException(`QC acceptance failed: ${error.message}`);
     }
   }
 
   // Auto-create debit note for rejected materials
-  private async createDebitNoteForRejections(tenantId: string, grnId: string, userId: string) {
+  private async createDebitNoteForRejections(
+    tenantId: string,
+    grnId: string,
+    userId: string,
+  ) {
     try {
-      console.log('Checking for rejected items to create debit note...');
-      console.log('GRN ID:', grnId, 'Tenant ID:', tenantId);
-      
+      console.log("Checking for rejected items to create debit note...");
+      console.log("GRN ID:", grnId, "Tenant ID:", tenantId);
+
       // Get GRN details and rejected items
       const { data: grn, error: grnError } = await this.supabase
-        .from('grns')
-        .select(`
+        .from("grns")
+        .select(
+          `
           id,
           vendor_id,
           grn_items (
@@ -1957,16 +3819,17 @@ export class GrnService {
             rejection_reason,
             rejection_amount
           )
-        `)
-        .eq('id', grnId)
-        .eq('tenant_id', tenantId)
+        `,
+        )
+        .eq("id", grnId)
+        .eq("tenant_id", tenantId)
         .single();
 
-      console.log('GRN query result:', grn ? 'Found GRN' : 'No GRN found');
-      if (grnError) console.log('GRN query error:', grnError);
+      console.log("GRN query result:", grn ? "Found GRN" : "No GRN found");
+      if (grnError) console.log("GRN query error:", grnError);
       if (grn) {
-        console.log('GRN items count:', grn.grn_items?.length || 0);
-        console.log('GRN items:', JSON.stringify(grn.grn_items, null, 2));
+        console.log("GRN items count:", grn.grn_items?.length || 0);
+        console.log("GRN items:", JSON.stringify(grn.grn_items, null, 2));
       }
 
       if (!grn) return;
@@ -1983,21 +3846,23 @@ export class GrnService {
         if (!item.rate && item.po_item_id) {
           if (!poItemCache.has(item.po_item_id)) {
             const { data: poItem } = await this.supabase
-              .from('po_items')
-              .select('id, item_id, rate, unit_price')
-              .eq('id', item.po_item_id)
+              .from("po_items")
+              .select("id, item_id, rate, unit_price")
+              .eq("id", item.po_item_id)
               .maybeSingle();
             poItemCache.set(item.po_item_id, poItem || null);
           }
           const poItem = poItemCache.get(item.po_item_id);
-          fallbackRate = parseFloat(poItem?.rate ?? poItem?.unit_price ?? '0') || 0;
+          fallbackRate =
+            parseFloat(poItem?.rate ?? poItem?.unit_price ?? "0") || 0;
         }
 
         const rate = parseFloat(item.rate ?? fallbackRate) || 0;
-        const computedAmount = item.rejection_amount ?? (rate * item.rejected_qty);
+        const computedAmount =
+          item.rejection_amount ?? rate * item.rejected_qty;
 
         if (!computedAmount || computedAmount <= 0) {
-          console.log('Skipping rejected item due to zero/invalid amount', {
+          console.log("Skipping rejected item due to zero/invalid amount", {
             grn_item_id: item.id,
             rejected_qty: item.rejected_qty,
             rate,
@@ -2009,13 +3874,13 @@ export class GrnService {
 
         // Persist the computed rejection amount so future runs have a value
         await this.supabase
-          .from('grn_items')
+          .from("grn_items")
           .update({
             rejection_amount: item.rejection_amount ?? computedAmount,
             rate: item.rate ?? rate,
-            return_status: 'PENDING_RETURN',
+            return_status: "PENDING_RETURN",
           })
-          .eq('id', item.id);
+          .eq("id", item.id);
 
         rejectedItems.push({
           ...item,
@@ -2024,43 +3889,51 @@ export class GrnService {
         });
       }
 
-      console.log('Rejected items after filter:', rejectedItems.length);
+      console.log("Rejected items after filter:", rejectedItems.length);
       if (rejectedItems.length === 0) {
-        console.log('No rejected items found, skipping debit note creation');
+        console.log("No rejected items found, skipping debit note creation");
         return;
       }
 
-      console.log(`Found ${rejectedItems.length} rejected items, creating debit note...`);
+      console.log(
+        `Found ${rejectedItems.length} rejected items, creating debit note...`,
+      );
 
       // Get GRN's GST percentage
       const { data: grnData } = await this.supabase
-        .from('grns')
-        .select('gst_percentage')
-        .eq('id', grnId)
+        .from("grns")
+        .select("gst_percentage")
+        .eq("id", grnId)
         .single();
 
       const gstPercentage = grnData?.gst_percentage ?? 0;
 
       // Calculate total debit amount (gross amount before GST)
-      const grossAmount = rejectedItems.reduce((sum: number, item: any) => 
-        sum + parseFloat(item.computed_amount), 0
+      const grossAmount = rejectedItems.reduce(
+        (sum: number, item: any) => sum + parseFloat(item.computed_amount),
+        0,
       );
 
       // Calculate GST amount
-      const taxAmount = Math.round(grossAmount * (gstPercentage / 100) * 100) / 100;
-      
+      const taxAmount =
+        Math.round(grossAmount * (gstPercentage / 100) * 100) / 100;
+
       // Calculate total amount including GST
       const totalAmount = grossAmount + taxAmount;
 
-      console.log(`Debit Note Calculation: Gross=₹${grossAmount}, GST(${gstPercentage}%)=₹${taxAmount}, Total=₹${totalAmount}`);
+      console.log(
+        `Debit Note Calculation: Gross=₹${grossAmount}, GST(${gstPercentage}%)=₹${taxAmount}, Total=₹${totalAmount}`,
+      );
 
       // Generate debit note number
-      const { data: dnNumber } = await this.supabase
-        .rpc('generate_debit_note_number', { p_tenant_id: tenantId });
+      const { data: dnNumber } = await this.supabase.rpc(
+        "generate_debit_note_number",
+        { p_tenant_id: tenantId },
+      );
 
       // Create debit note with GST
       const { data: debitNote, error: dnError } = await this.supabase
-        .from('debit_notes')
+        .from("debit_notes")
         .insert({
           tenant_id: tenantId,
           debit_note_number: dnNumber || `DN-${Date.now()}`,
@@ -2070,24 +3943,25 @@ export class GrnService {
           gst_percentage: gstPercentage,
           tax_amount: taxAmount,
           total_amount: totalAmount,
-          reason: 'QC Rejection - Materials failed quality inspection',
-          status: 'DRAFT',
+          reason: "QC Rejection - Materials failed quality inspection",
+          status: "DRAFT",
           created_by: userId,
         })
         .select()
         .single();
 
       if (dnError) {
-        console.error('Failed to create debit note:', dnError);
+        console.error("Failed to create debit note:", dnError);
         return;
       }
 
-      console.log('Debit note created:', debitNote.debit_note_number);
+      console.log("Debit note created:", debitNote.debit_note_number);
 
       // Create debit note items with GST calculation
       const dnItems = rejectedItems.map((item: any) => {
         const itemGrossAmount = item.computed_amount;
-        const itemTaxAmount = Math.round(itemGrossAmount * (gstPercentage / 100) * 100) / 100;
+        const itemTaxAmount =
+          Math.round(itemGrossAmount * (gstPercentage / 100) * 100) / 100;
         return {
           debit_note_id: debitNote.id,
           grn_item_id: item.id,
@@ -2097,63 +3971,69 @@ export class GrnService {
           amount: itemGrossAmount,
           gst_percentage: gstPercentage,
           tax_amount: itemTaxAmount,
-          rejection_reason: item.rejection_reason || 'Quality inspection failed',
-          return_status: 'PENDING',
+          rejection_reason:
+            item.rejection_reason || "Quality inspection failed",
+          return_status: "PENDING",
         };
       });
 
       const { error: itemsError } = await this.supabase
-        .from('debit_note_items')
+        .from("debit_note_items")
         .insert(dnItems);
 
       if (itemsError) {
-        console.error('Failed to create debit note items:', itemsError);
+        console.error("Failed to create debit note items:", itemsError);
         return;
       }
 
       // Link debit note to grn_items
       for (const item of rejectedItems) {
         await this.supabase
-          .from('grn_items')
+          .from("grn_items")
           .update({ debit_note_id: debitNote.id })
-          .eq('id', item.id);
+          .eq("id", item.id);
       }
 
       // Update GRN amounts
       const { data: grnAmounts } = await this.supabase
-        .from('grn_items')
-        .select('unit_price, received_qty')
-        .eq('grn_id', grnId);
+        .from("grn_items")
+        .select("rate, received_qty")
+        .eq("grn_id", grnId);
 
-      const grnGrossAmount = grnAmounts?.reduce((sum: number, item: any) => 
-        sum + (parseFloat(item.unit_price) * parseFloat(item.received_qty)), 0
-      ) || 0;
+      const grnGrossAmount =
+        grnAmounts?.reduce(
+          (sum: number, item: any) =>
+            sum + parseFloat(item.rate) * parseFloat(item.received_qty),
+          0,
+        ) || 0;
 
       // Get current GST percentage (default 18%)
       const { data: currentGRN } = await this.supabase
-        .from('grns')
-        .select('gst_percentage')
-        .eq('id', grnId)
+        .from("grns")
+        .select("gst_percentage")
+        .eq("id", grnId)
         .single();
 
       const grnGstPercentage = currentGRN?.gst_percentage ?? 0;
-      const grnTaxAmount = Math.round(grnGrossAmount * (grnGstPercentage / 100) * 100) / 100;
+      const grnTaxAmount =
+        Math.round(grnGrossAmount * (grnGstPercentage / 100) * 100) / 100;
 
       await this.supabase
-        .from('grns')
+        .from("grns")
         .update({
           gross_amount: grnGrossAmount,
           tax_amount: grnTaxAmount,
           debit_note_amount: totalAmount,
           net_payable_amount: grnGrossAmount + grnTaxAmount - totalAmount,
         })
-        .eq('id', grnId)
-        .eq('tenant_id', tenantId);
+        .eq("id", grnId)
+        .eq("tenant_id", tenantId);
 
-      console.log(`Debit note ${debitNote.debit_note_number} created for ₹${totalAmount}`);
-      
+      console.log(
+        `Debit note ${debitNote.debit_note_number} created for ₹${totalAmount}`,
+      );
     } catch (error) {
-      console.error('Error in createDebitNoteForRejections:', error);
+      console.error("Error in createDebitNoteForRejections:", error);
       // Don't throw - this is a background operation
     }
   }
@@ -2161,58 +4041,73 @@ export class GrnService {
   // Helper method to create stock entries
   private async createStockEntry(stockData: any) {
     try {
-      console.log('=== CREATE STOCK ENTRY CALLED ===');
-      console.log('Stock Data:', JSON.stringify(stockData, null, 2));
+      console.log("=== CREATE STOCK ENTRY CALLED ===");
+      console.log("Stock Data:", JSON.stringify(stockData, null, 2));
 
       const tenantId = stockData?.tenant_id as string | undefined;
       if (!tenantId) {
-        console.error('❌ createStockEntry: missing tenant_id; skipping');
+        console.error("❌ createStockEntry: missing tenant_id; skipping");
         return;
       }
 
-
       if (!stockData?.warehouse_id) {
-        const { data: fallbackWarehouse, error: fallbackWarehouseError } = await this.supabase
-          .from('warehouses')
-          .select('id')
-          .eq('tenant_id', tenantId)
-          .eq('is_active', true)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle();
+        const { data: fallbackWarehouse, error: fallbackWarehouseError } =
+          await this.supabase
+            .from("warehouses")
+            .select("id")
+            .eq("tenant_id", tenantId)
+            .eq("is_active", true)
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .maybeSingle();
 
         if (fallbackWarehouseError) {
-          console.error('createStockEntry: failed to resolve fallback warehouse:', fallbackWarehouseError);
+          console.error(
+            "createStockEntry: failed to resolve fallback warehouse:",
+            fallbackWarehouseError,
+          );
         }
 
         if (fallbackWarehouse?.id) {
           stockData.warehouse_id = fallbackWarehouse.id;
-          console.log('createStockEntry: using fallback warehouse:', fallbackWarehouse.id);
+          console.log(
+            "createStockEntry: using fallback warehouse:",
+            fallbackWarehouse.id,
+          );
         }
       }
 
       if (!stockData?.warehouse_id) {
-        console.error('createStockEntry: missing warehouse_id and no active fallback warehouse; skipping');
+        console.error(
+          "createStockEntry: missing warehouse_id and no active fallback warehouse; skipping",
+        );
         return;
       }
 
       // Idempotency for GRN flows: if we have a grn_item_id, ensure we don't double-add stock.
       const grnItemIdForDedup =
-        stockData?.metadata && typeof stockData.metadata === 'object'
+        stockData?.metadata && typeof stockData.metadata === "object"
           ? (stockData.metadata.grn_item_id as string | undefined)
           : undefined;
       if (grnItemIdForDedup) {
         const { data: existing, error: existingError } = await this.supabase
-          .from('stock_entries')
-          .select('id')
-          .eq('tenant_id', stockData.tenant_id)
-          .filter('metadata->>grn_item_id', 'eq', grnItemIdForDedup)
+          .from("stock_entries")
+          .select("id")
+          .eq("tenant_id", stockData.tenant_id)
+          .filter("metadata->>grn_item_id", "eq", grnItemIdForDedup)
           .limit(1);
 
         if (existingError) {
-          console.error('⚠️ Could not check existing stock entry for grn_item_id:', grnItemIdForDedup, existingError);
+          console.error(
+            "⚠️ Could not check existing stock entry for grn_item_id:",
+            grnItemIdForDedup,
+            existingError,
+          );
         } else if (Array.isArray(existing) && existing.length > 0) {
-          console.log('ℹ️ Stock entry already exists for grn_item_id, skipping:', grnItemIdForDedup);
+          console.log(
+            "ℹ️ Stock entry already exists for grn_item_id, skipping:",
+            grnItemIdForDedup,
+          );
           return;
         }
       }
@@ -2220,99 +4115,134 @@ export class GrnService {
       // Secondary idempotency: dedup by grn_reference + item_id to catch cases where
       // grn_item_id is absent (e.g. QC acceptance path) — prevents double stock entries.
       const grnRefForDedup =
-        stockData?.metadata && typeof stockData.metadata === 'object'
+        stockData?.metadata && typeof stockData.metadata === "object"
           ? ((stockData.metadata as any).grn_reference as string | undefined) ||
             ((stockData.metadata as any).grn_number as string | undefined)
           : undefined;
       if (grnRefForDedup && stockData?.item_id) {
-        const { data: existingByRef, error: existingByRefError } = await this.supabase
-          .from('stock_entries')
-          .select('id')
-          .eq('tenant_id', stockData.tenant_id)
-          .eq('item_id', stockData.item_id)
-          .filter('metadata->>grn_reference', 'eq', grnRefForDedup)
-          .limit(1);
+        const { data: existingByRef, error: existingByRefError } =
+          await this.supabase
+            .from("stock_entries")
+            .select("id")
+            .eq("tenant_id", stockData.tenant_id)
+            .eq("item_id", stockData.item_id)
+            .filter("metadata->>grn_reference", "eq", grnRefForDedup)
+            .limit(1);
 
         if (existingByRefError) {
-          console.error('⚠️ Could not check existing stock entry for grn_reference:', grnRefForDedup, existingByRefError);
+          console.error(
+            "⚠️ Could not check existing stock entry for grn_reference:",
+            grnRefForDedup,
+            existingByRefError,
+          );
         } else if (Array.isArray(existingByRef) && existingByRef.length > 0) {
-          console.log('ℹ️ Stock entry already exists for grn_reference + item_id, skipping:', grnRefForDedup, stockData.item_id);
+          console.log(
+            "ℹ️ Stock entry already exists for grn_reference + item_id, skipping:",
+            grnRefForDedup,
+            stockData.item_id,
+          );
           return;
         }
       }
 
       const quantityChange = Number(stockData.quantity ?? 0) || 0;
       if (quantityChange === 0) {
-        console.log('ℹ️ createStockEntry: zero quantity; skipping');
+        console.log("ℹ️ createStockEntry: zero quantity; skipping");
         return;
       }
       const availableQuantity =
-        stockData.available_quantity === undefined || stockData.available_quantity === null
+        stockData.available_quantity === undefined ||
+        stockData.available_quantity === null
           ? quantityChange
-          : (Number(stockData.available_quantity) || 0);
+          : Number(stockData.available_quantity) || 0;
       const allocatedQuantity = Number(stockData.allocated_quantity ?? 0) || 0;
       const unitPrice =
         stockData.unit_price === undefined || stockData.unit_price === null
           ? null
-          : (Number(stockData.unit_price) || 0);
+          : Number(stockData.unit_price) || 0;
 
       const metadataFromCaller =
-        stockData.metadata && typeof stockData.metadata === 'object' ? stockData.metadata : {};
+        stockData.metadata && typeof stockData.metadata === "object"
+          ? stockData.metadata
+          : {};
 
       // Some older GRN flows stored item_code but did not set item_id.
       // Resolve item_id from tenant_id + item_code as a best-effort so inventory stays consistent.
       let resolvedItemCategory: string | undefined;
       if (!stockData?.item_id) {
         const candidateItemCode =
-          (typeof stockData?.item_code === 'string' && stockData.item_code) ||
-          (typeof stockData?.itemCode === 'string' && stockData.itemCode) ||
-          (typeof metadataFromCaller?.item_code === 'string' && metadataFromCaller.item_code);
+          (typeof stockData?.item_code === "string" && stockData.item_code) ||
+          (typeof stockData?.itemCode === "string" && stockData.itemCode) ||
+          (typeof metadataFromCaller?.item_code === "string" &&
+            metadataFromCaller.item_code);
 
-        const normalizedCode = typeof candidateItemCode === 'string' ? candidateItemCode.trim() : '';
+        const normalizedCode =
+          typeof candidateItemCode === "string" ? candidateItemCode.trim() : "";
         if (normalizedCode) {
           const tryResolve = async (useIlike: boolean) => {
             const q = this.supabase
-              .from('items')
-              .select('id, category, code')
-              .eq('tenant_id', tenantId);
+              .from("items")
+              .select("id, category, code")
+              .eq("tenant_id", tenantId);
 
-            return useIlike ? q.ilike('code', normalizedCode).limit(5) : q.eq('code', normalizedCode).limit(5);
+            return useIlike
+              ? q.ilike("code", normalizedCode).limit(5)
+              : q.eq("code", normalizedCode).limit(5);
           };
 
-          const { data: exactMatches, error: exactError } = await tryResolve(false);
+          const { data: exactMatches, error: exactError } =
+            await tryResolve(false);
           if (exactError) {
-            console.error('⚠️ createStockEntry: failed to resolve item by exact code:', normalizedCode, exactError);
+            console.error(
+              "⚠️ createStockEntry: failed to resolve item by exact code:",
+              normalizedCode,
+              exactError,
+            );
           }
 
-          const matches = Array.isArray(exactMatches) && exactMatches.length > 0 ? exactMatches : undefined;
-          const { data: ilikeMatches, error: ilikeError } =
-            !matches ? await tryResolve(true) : { data: undefined, error: null };
+          const matches =
+            Array.isArray(exactMatches) && exactMatches.length > 0
+              ? exactMatches
+              : undefined;
+          const { data: ilikeMatches, error: ilikeError } = !matches
+            ? await tryResolve(true)
+            : { data: undefined, error: null };
           if (ilikeError) {
-            console.error('⚠️ createStockEntry: failed to resolve item by ilike code:', normalizedCode, ilikeError);
+            console.error(
+              "⚠️ createStockEntry: failed to resolve item by ilike code:",
+              normalizedCode,
+              ilikeError,
+            );
           }
 
-          const resolvedList = matches || (Array.isArray(ilikeMatches) ? ilikeMatches : []);
+          const resolvedList =
+            matches || (Array.isArray(ilikeMatches) ? ilikeMatches : []);
           if (resolvedList.length > 1) {
             console.error(
-              '⚠️ createStockEntry: multiple items matched code; using first match',
+              "⚠️ createStockEntry: multiple items matched code; using first match",
               normalizedCode,
-              resolvedList.map((r) => r?.id)
+              resolvedList.map((r) => r?.id),
             );
           }
           if (resolvedList.length >= 1 && resolvedList[0]?.id) {
             stockData.item_id = String(resolvedList[0].id);
-            if (resolvedList[0]?.category) resolvedItemCategory = String(resolvedList[0].category);
+            if (resolvedList[0]?.category)
+              resolvedItemCategory = String(resolvedList[0].category);
 
             // Best-effort backfill for grn_items.item_id so future reads have it.
             if (grnItemIdForDedup) {
               const { error: backfillError } = await this.supabase
-                .from('grn_items')
+                .from("grn_items")
                 .update({ item_id: stockData.item_id })
-                .eq('id', grnItemIdForDedup)
-                .is('item_id', null);
+                .eq("id", grnItemIdForDedup)
+                .is("item_id", null);
 
               if (backfillError) {
-                console.error('⚠️ createStockEntry: failed to backfill grn_items.item_id:', grnItemIdForDedup, backfillError);
+                console.error(
+                  "⚠️ createStockEntry: failed to backfill grn_items.item_id:",
+                  grnItemIdForDedup,
+                  backfillError,
+                );
               }
             }
           }
@@ -2320,24 +4250,31 @@ export class GrnService {
       }
 
       if (!stockData?.item_id) {
-        console.error('❌ createStockEntry: missing item_id; cannot create stock entry', {
-          tenant_id: tenantId,
-          warehouse_id: stockData?.warehouse_id,
-          item_code: metadataFromCaller?.item_code ?? stockData?.item_code,
-          metadata: metadataFromCaller,
-        });
+        console.error(
+          "❌ createStockEntry: missing item_id; cannot create stock entry",
+          {
+            tenant_id: tenantId,
+            warehouse_id: stockData?.warehouse_id,
+            item_code: metadataFromCaller?.item_code ?? stockData?.item_code,
+            metadata: metadataFromCaller,
+          },
+        );
         return;
       }
 
       const metadata = {
         ...metadataFromCaller,
-        ...(stockData.grn_reference ? { grn_reference: stockData.grn_reference } : {}),
-        ...(stockData.created_from ? { created_from: stockData.created_from } : {}),
+        ...(stockData.grn_reference
+          ? { grn_reference: stockData.grn_reference }
+          : {}),
+        ...(stockData.created_from
+          ? { created_from: stockData.created_from }
+          : {}),
       };
 
       // 1) Insert into stock_entries (used by items stock display)
-      const { error: stockEntryError } = await this.supabase
-        .from('stock_entries')
+      const { data: stockEntry, error: stockEntryError } = await this.supabase
+        .from("stock_entries")
         .insert({
           tenant_id: stockData.tenant_id,
           item_id: stockData.item_id,
@@ -2349,56 +4286,106 @@ export class GrnService {
           batch_number: stockData.batch_number ?? null,
           expiry_date: stockData.expiry_date ?? null,
           metadata,
-        });
+        })
+        .select("id")
+        .single();
 
       if (stockEntryError) {
-        console.error('❌ ERROR inserting stock_entries row:', stockEntryError);
-        console.error('Error details:', JSON.stringify(stockEntryError, null, 2));
+        console.error("❌ ERROR inserting stock_entries row:", stockEntryError);
+        console.error(
+          "Error details:",
+          JSON.stringify(stockEntryError, null, 2),
+        );
       } else {
-        console.log('✅ stock_entries row inserted successfully');
+        // Preserve the received cost against the FIFO layer as operational
+        // valuation evidence. This deliberately does not create a journal:
+        // inventory/AP posting remains subject to Finance's approved rules.
+        const receiptReference = String(
+          stockData.grn_reference ?? metadataFromCaller?.grn_reference ?? metadataFromCaller?.reference_number ?? "",
+        ).trim();
+        const { error: costEventError } = await this.supabase
+          .from("inventory_cost_events")
+          .upsert(
+            {
+              tenant_id: stockData.tenant_id,
+              event_type: "PURCHASE_RECEIPT",
+              item_id: stockData.item_id,
+              stock_entry_id: stockEntry?.id ?? null,
+              quantity: Math.abs(Number(quantityChange) || 0),
+              unit_cost: Number(unitPrice) || 0,
+              total_cost: Number((Math.abs(Number(quantityChange) || 0) * (Number(unitPrice) || 0)).toFixed(4)),
+              reference_type: "GRN",
+              reference_number: receiptReference || null,
+              metadata: { valuation_method: "FIFO", warehouse_id: stockData.warehouse_id ?? null },
+            },
+            { onConflict: "tenant_id,event_type,stock_entry_id,reference_number", ignoreDuplicates: true },
+          );
+        if (costEventError) {
+          console.error("[GRN] FIFO receipt cost-event capture failed:", costEventError.message);
+        }
       }
-      
+
       const { data: item } = await this.supabase
-        .from('items')
-        .select('category')
-        .eq('id', stockData.item_id)
+        .from("items")
+        .select("category")
+        .eq("id", stockData.item_id)
         .single();
 
       // 2) Keep inventory_stock in sync (used by other modules)
-      const inventoryCategory = normalizeInventoryCategory(resolvedItemCategory ?? item?.category, 'RAW_MATERIAL');
-      let { error } = await this.supabase.rpc('adjust_inventory_stock', {
+      const inventoryCategory = normalizeInventoryCategory(
+        resolvedItemCategory ?? item?.category,
+        "RAW_MATERIAL",
+      );
+      // Older TEST/LIVE inventory_stock enum accepts a narrower set than the
+      // Item Master category list. Keep the richer item category, but post
+      // consumables/packing into RAW_MATERIAL stock bucket so the first RPC
+      // call does not fail and then retry noisily.
+      const stockRpcCategory = ["CONSUMABLE", "PACKING_MATERIAL"].includes(
+        inventoryCategory,
+      )
+        ? "RAW_MATERIAL"
+        : inventoryCategory;
+      let { error } = await this.supabase.rpc("adjust_inventory_stock", {
         p_tenant_id: stockData.tenant_id,
         p_item_id: stockData.item_id,
         p_warehouse_id: stockData.warehouse_id,
         p_location_id: null, // Assuming null location for now
         p_quantity_change: quantityChange,
-        p_category: inventoryCategory,
+        p_category: stockRpcCategory,
       });
 
-      if (error && /inventory_category/i.test(error.message || '') && inventoryCategory !== 'RAW_MATERIAL') {
-        console.error('adjust_inventory_stock rejected category; retrying as RAW_MATERIAL:', inventoryCategory, error.message);
-        const retry = await this.supabase.rpc('adjust_inventory_stock', {
+      if (
+        error &&
+        /inventory_category/i.test(error.message || "") &&
+        stockRpcCategory !== "RAW_MATERIAL"
+      ) {
+        console.error(
+          "adjust_inventory_stock rejected category; retrying as RAW_MATERIAL:",
+          stockRpcCategory,
+          error.message,
+        );
+        const retry = await this.supabase.rpc("adjust_inventory_stock", {
           p_tenant_id: stockData.tenant_id,
           p_item_id: stockData.item_id,
           p_warehouse_id: stockData.warehouse_id,
           p_location_id: null,
           p_quantity_change: quantityChange,
-          p_category: 'RAW_MATERIAL',
+          p_category: "RAW_MATERIAL",
         });
         error = retry.error;
       }
 
       if (error) {
-        console.error('❌ ERROR creating stock entry:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
+        console.error("❌ ERROR creating stock entry:", error);
+        console.error("Error details:", JSON.stringify(error, null, 2));
       } else {
-        console.log('✅ Stock entry created successfully!');
+        console.log("✅ Stock entry created successfully!");
         console.log(`Created new stock entry for item ${stockData.item_id}`);
       }
-      console.log('=== CREATE STOCK ENTRY COMPLETED ===');
+      console.log("=== CREATE STOCK ENTRY COMPLETED ===");
     } catch (error) {
-      console.error('❌ EXCEPTION in createStockEntry:', error);
-      console.error('Exception details:', JSON.stringify(error, null, 2));
+      console.error("❌ EXCEPTION in createStockEntry:", error);
+      console.error("Exception details:", JSON.stringify(error, null, 2));
       // Don't throw - allow GRN to continue even if stock creation fails
     }
   }
@@ -2406,17 +4393,18 @@ export class GrnService {
   async generateUIDs(tenantId: string, grnItemId: string, data: any) {
     // Get GRN item details
     const { data: grnItem, error } = await this.supabase
-      .from('grn_items')
-      .select('*')
-      .eq('id', grnItemId)
+      .from("grn_items")
+      .select("*")
+      .eq("id", grnItemId)
       .single();
     if (error || !grnItem) {
-      throw new NotFoundException('GRN item not found');
+      throw new NotFoundException("GRN item not found");
     }
 
     // Call the stored function to generate UIDs
-    const { data: result, error: generateError } = await this.supabase
-      .rpc('generate_uids_for_grn_item', {
+    const { data: result, error: generateError } = await this.supabase.rpc(
+      "generate_uids_for_grn_item",
+      {
         p_grn_item_id: grnItemId,
         p_tenant_id: tenantId,
         p_item_code: grnItem.item_code,
@@ -2425,7 +4413,8 @@ export class GrnService {
         p_manufacturing_date: grnItem.manufacturing_date || null,
         p_accepted_qty: data.acceptedQty || grnItem.accepted_qty,
         p_warranty_months: data.warrantyMonths || 12,
-      });
+      },
+    );
 
     if (generateError) {
       throw new BadRequestException(generateError.message);
@@ -2433,9 +4422,9 @@ export class GrnService {
 
     // Get generated UIDs
     const { data: uids } = await this.supabase
-      .from('uids')
-      .select('*')
-      .eq('grn_item_id', grnItemId);
+      .from("uids")
+      .select("*")
+      .eq("grn_item_id", grnItemId);
 
     return {
       grnItemId,
@@ -2445,71 +4434,76 @@ export class GrnService {
   }
 
   async getUIDsByGRN(tenantId: string, grnId: string) {
-    console.log('=== GET UIDs BY GRN ===');
-    console.log('TenantId:', tenantId);
-    console.log('GRN ID:', grnId);
-    
+    console.log("=== GET UIDs BY GRN ===");
+    console.log("TenantId:", tenantId);
+    console.log("GRN ID:", grnId);
+
     // First, get UIDs from uid_registry
     const { data: uidData, error: uidError } = await this.supabase
-      .from('uid_registry')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .eq('grn_id', grnId)
-      .order('created_at', { ascending: false });
+      .from("uid_registry")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("grn_id", grnId)
+      .order("created_at", { ascending: false });
 
     if (uidError) {
-      console.error('Error fetching UIDs:', uidError);
+      console.error("Error fetching UIDs:", uidError);
       throw new BadRequestException(uidError.message);
     }
 
     if (!uidData || uidData.length === 0) {
-      console.log('No UIDs found');
+      console.log("No UIDs found");
       return [];
     }
 
-    console.log('UIDs found:', uidData.length);
+    console.log("UIDs found:", uidData.length);
 
     // Get unique entity_ids where entity_type is ITEM or similar
-    const itemEntityIds = [...new Set(
-      uidData
-        .filter(uid => uid.entity_type && uid.entity_id)
-        .map(uid => uid.entity_id)
-    )].filter(Boolean);
-    
+    const itemEntityIds = [
+      ...new Set(
+        uidData
+          .filter((uid) => uid.entity_type && uid.entity_id)
+          .map((uid) => uid.entity_id),
+      ),
+    ].filter(Boolean);
+
     // Fetch items data if we have entity_ids
     let itemsMap = new Map();
     if (itemEntityIds.length > 0) {
       const { data: itemsData } = await this.supabase
-        .from('items')
-        .select('id, code, name')
-        .in('id', itemEntityIds);
+        .from("items")
+        .select("id, code, name")
+        .in("id", itemEntityIds);
 
-      itemsMap = new Map(itemsData?.map(item => [item.id, item]) || []);
+      itemsMap = new Map(itemsData?.map((item) => [item.id, item]) || []);
     }
 
     // Attach item data to each UID based on entity_id
-    const enrichedData = uidData.map(uid => ({
+    const enrichedData = uidData.map((uid) => ({
       ...uid,
       item: uid.entity_id ? itemsMap.get(uid.entity_id) : null,
     }));
 
-    console.log('Sample UIDs with items:', enrichedData.slice(0, 3).map(u => ({ 
-      uid: u.uid, 
-      grn_id: u.grn_id,
-      entity_type: u.entity_type,
-      entity_id: u.entity_id,
-      item: u.item 
-    })));
-    
+    console.log(
+      "Sample UIDs with items:",
+      enrichedData.slice(0, 3).map((u) => ({
+        uid: u.uid,
+        grn_id: u.grn_id,
+        entity_type: u.entity_type,
+        entity_id: u.entity_id,
+        item: u.item,
+      })),
+    );
+
     return enrichedData;
   }
 
   private async updateGRNTotals(grnId: string) {
     // Get sum of quantities from items
     const { data: items } = await this.supabase
-      .from('grn_items')
-      .select('received_qty, accepted_qty, rejected_qty')
-      .eq('grn_id', grnId);
+      .from("grn_items")
+      .select("received_qty, accepted_qty, rejected_qty")
+      .eq("grn_id", grnId);
 
     if (items && items.length > 0) {
       const totals = items.reduce(
@@ -2518,17 +4512,17 @@ export class GrnService {
           accepted: acc.accepted + (parseFloat(item.accepted_qty) || 0),
           rejected: acc.rejected + (parseFloat(item.rejected_qty) || 0),
         }),
-        { total: 0, accepted: 0, rejected: 0 }
+        { total: 0, accepted: 0, rejected: 0 },
       );
 
       await this.supabase
-        .from('grns')
+        .from("grns")
         .update({
           total_quantity: totals.total,
           accepted_quantity: totals.accepted,
           rejected_quantity: totals.rejected,
         })
-        .eq('id', grnId);
+        .eq("id", grnId);
     }
   }
 
@@ -2538,49 +4532,87 @@ export class GrnService {
   private async updateGRNFinancialAmounts(tenantId: string, grnId: string) {
     // Get all GRN items with po_item_id so we can look up discount_percent
     const { data: grnItems } = await this.supabase
-      .from('grn_items')
-      .select('rate, received_qty, amount, po_item_id')
-      .eq('grn_id', grnId);
+      .from("grn_items")
+      .select(
+        "rate, received_qty, accepted_qty, rejected_qty, qc_status, amount, po_item_id",
+      )
+      .eq("grn_id", grnId);
 
     // Collect all po_item_ids and fetch their discount_percent in one query
     const poItemIds = (grnItems ?? [])
-      .map((i: any) => String(i.po_item_id || '').trim())
+      .map((i: any) => String(i.po_item_id || "").trim())
       .filter(Boolean);
     const poPricingMap = await this.getPoItemPricingMap(poItemIds);
 
     // Calculate gross amount applying discount per line (pre-tax, items only)
     const grossAmount = (grnItems ?? []).reduce((sum: number, item: any) => {
-      const poItemId = String(item.po_item_id || '').trim();
-      const discountPercent = poItemId ? (poPricingMap.get(poItemId)?.discountPercent ?? 0) : 0;
-      const lineAmount = this.calculateDiscountedLineAmount(item.received_qty, item.rate, discountPercent);
+      const poItemId = String(item.po_item_id || "").trim();
+      const discountPercent = poItemId
+        ? (poPricingMap.get(poItemId)?.discountPercent ?? 0)
+        : 0;
+      const qcStatus = String(item.qc_status || "")
+        .trim()
+        .toUpperCase();
+      const receivedQty = this.toNumber(item.received_qty);
+      const acceptedQty = this.toNumber(item.accepted_qty);
+      const rejectedQty = this.toNumber(item.rejected_qty);
+      const qcRecorded =
+        ["ACCEPTED", "PARTIAL", "REJECTED"].includes(qcStatus) ||
+        acceptedQty > 0 ||
+        rejectedQty > 0;
+      const payableQty = qcRecorded ? acceptedQty : receivedQty;
+      const lineAmount = this.calculateDiscountedLineAmount(
+        payableQty,
+        item.rate,
+        discountPercent,
+      );
       return sum + lineAmount;
     }, 0);
 
-    // Get current GRN to get GST percentage and freight
+    // Get current GRN to get GST percentage and existing charge values
     const { data: currentGRN } = await this.supabase
-      .from('grns')
-      .select('gst_percentage, debit_note_amount, freight_amount, freight_gst_amount')
-      .eq('id', grnId)
+      .from("grns")
+      .select(
+        "po_id, gst_percentage, debit_note_amount, freight_amount, freight_gst_amount",
+      )
+      .eq("id", grnId)
       .single();
 
     const gstPercentage = currentGRN?.gst_percentage ?? 0;
-    const taxAmount = Math.round(grossAmount * (gstPercentage / 100) * 100) / 100;
+    const taxAmount =
+      Math.round(grossAmount * (gstPercentage / 100) * 100) / 100;
     const debitNoteAmount = currentGRN?.debit_note_amount || 0;
-    const freightAmount = parseFloat(currentGRN?.freight_amount || 0) || 0;
-    const freightGstAmount = parseFloat(currentGRN?.freight_gst_amount || 0) || 0;
-    const netPayableAmount = Math.round(grossAmount + taxAmount + freightAmount + freightGstAmount - debitNoteAmount);
+    const allocatedCharges = await this.calculateAllocatedPoHeaderCharges(
+      currentGRN?.po_id,
+      grossAmount,
+    );
+    const freightAmount = allocatedCharges
+      ? allocatedCharges.freightAmount
+      : parseFloat(currentGRN?.freight_amount || 0) || 0;
+    const freightGstAmount = allocatedCharges
+      ? allocatedCharges.freightGstAmount
+      : parseFloat(currentGRN?.freight_gst_amount || 0) || 0;
+    const netPayableAmount = Math.round(
+      grossAmount +
+        taxAmount +
+        freightAmount +
+        freightGstAmount -
+        debitNoteAmount,
+    );
 
     // Update GRN with calculated amounts
     await this.supabase
-      .from('grns')
+      .from("grns")
       .update({
         gross_amount: grossAmount,
         tax_amount: taxAmount,
+        freight_amount: freightAmount,
+        freight_gst_amount: freightGstAmount,
         net_payable_amount: netPayableAmount,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', grnId)
-      .eq('tenant_id', tenantId);
+      .eq("id", grnId)
+      .eq("tenant_id", tenantId);
 
     console.log(`GRN ${grnId} financial amounts updated:`, {
       gross_amount: grossAmount,
@@ -2595,8 +4627,9 @@ export class GrnService {
 
   private async buildSapControlsInput(tenantId: string, grnId: string) {
     const { data: grn, error } = await this.supabase
-      .from('grns')
-      .select(`
+      .from("grns")
+      .select(
+        `
         id,
         grn_number,
         receipt_date,
@@ -2614,32 +4647,36 @@ export class GrnService {
           rejected_qty,
           rate
         )
-      `)
-      .eq('tenant_id', tenantId)
-      .eq('id', grnId)
+      `,
+      )
+      .eq("tenant_id", tenantId)
+      .eq("id", grnId)
       .maybeSingle();
 
     if (error || !grn) return null;
 
-    const grnItems = Array.isArray((grn as any).grn_items) ? (grn as any).grn_items : [];
+    const grnItems = Array.isArray((grn as any).grn_items)
+      ? (grn as any).grn_items
+      : [];
     const poItemIds = Array.from(
       new Set(
         grnItems
-          .map((item: any) => String(item?.po_item_id || '').trim())
+          .map((item: any) => String(item?.po_item_id || "").trim())
           .filter(Boolean),
       ),
     );
 
-    const poQtyMap = await this.getPoItemQtyMap(poItemIds);
+    const poQtyMap = await this.getPoItemQtyMap(tenantId, poItemIds);
     const poPricingMap = await this.getPoItemPricingMap(poItemIds);
     const currentReceivedByPoItemId = new Map<string, number>();
 
     for (const item of grnItems) {
-      const poItemId = String(item?.po_item_id || '').trim();
+      const poItemId = String(item?.po_item_id || "").trim();
       if (!poItemId) continue;
       currentReceivedByPoItemId.set(
         poItemId,
-        (currentReceivedByPoItemId.get(poItemId) ?? 0) + this.toNumber(item?.received_qty),
+        (currentReceivedByPoItemId.get(poItemId) ?? 0) +
+          this.toNumber(item?.received_qty),
       );
     }
 
@@ -2651,34 +4688,80 @@ export class GrnService {
       status: (grn as any).status || null,
       qcCompleted: Boolean((grn as any).qc_completed),
       items: grnItems.map((item: any) => {
-        const poItemId = String(item?.po_item_id || '').trim();
+        const poItemId = String(item?.po_item_id || "").trim();
         const poQty = poItemId ? poQtyMap.get(poItemId) : undefined;
-        const currentReceivedForLine = poItemId ? (currentReceivedByPoItemId.get(poItemId) ?? 0) : 0;
-        const currentPoReceived = poQty ? this.toNumber(poQty.receivedQty) : 0;
+        const currentReceivedForLine = poItemId
+          ? (currentReceivedByPoItemId.get(poItemId) ?? 0)
+          : 0;
+        const currentPoReceived = poQty
+          ? this.toNumber(poQty.effectiveReceivedQty ?? poQty.receivedQty)
+          : 0;
         return {
           id: item?.id,
           poItemId,
           itemId: item?.item_id,
           itemCode: item?.item_code,
           orderedQty: this.toNumber(item?.ordered_qty ?? poQty?.orderedQty),
-          previousReceivedQty: Math.max(0, currentPoReceived - currentReceivedForLine),
+          previousReceivedQty: Math.max(
+            0,
+            currentPoReceived - currentReceivedForLine,
+          ),
           receivedQty: this.toNumber(item?.received_qty),
           acceptedQty: this.toNumber(item?.accepted_qty),
           rejectedQty: this.toNumber(item?.rejected_qty),
-          poRate: poItemId ? this.toNumber(poPricingMap.get(poItemId)?.rate) : 0,
+          poRate: poItemId
+            ? this.toNumber(poPricingMap.get(poItemId)?.rate)
+            : 0,
           grnRate: this.toNumber(item?.rate),
         };
       }),
     };
   }
 
-  private async refreshSapControlsForGrn(tenantId: string, grnId: string, userId?: string) {
+  private async refreshSapControlsForGrn(
+    tenantId: string,
+    grnId: string,
+    userId?: string,
+  ) {
     try {
       const input = await this.buildSapControlsInput(tenantId, grnId);
       if (!input) return;
 
       const controls = buildSapGrnControls(input);
       const now = new Date().toISOString();
+      const { data: existingControl } = await this.supabase
+        .from("grn_sap_controls")
+        .select("metadata")
+        .eq("tenant_id", tenantId)
+        .eq("grn_id", grnId)
+        .maybeSingle();
+      const existingMetadata =
+        existingControl?.metadata &&
+        typeof existingControl.metadata === "object"
+          ? existingControl.metadata
+          : {};
+      const existingApproval = (existingMetadata as any).po_amendment_approval;
+      let poAmendmentApproval = this.buildPoAmendmentApprovalPayload(
+        controls,
+        userId,
+      );
+      if (
+        existingApproval?.status === "APPROVED" ||
+        existingApproval?.status === "REJECTED"
+      ) {
+        poAmendmentApproval = existingApproval;
+      } else if (
+        existingApproval?.status === "PENDING_APPROVAL" &&
+        poAmendmentApproval.status === "PENDING_APPROVAL"
+      ) {
+        poAmendmentApproval = {
+          ...poAmendmentApproval,
+          requestedBy:
+            existingApproval.requestedBy || poAmendmentApproval.requestedBy,
+          requestedAt:
+            existingApproval.requestedAt || poAmendmentApproval.requestedAt,
+        };
+      }
       const controlPayload = {
         tenant_id: tenantId,
         grn_id: grnId,
@@ -2698,25 +4781,29 @@ export class GrnService {
         metadata: {
           po_number: input.poNumber,
           messages: controls.messages,
+          po_amendment_approval: poAmendmentApproval,
         },
       };
 
       const { data: control, error: controlError } = await this.supabase
-        .from('grn_sap_controls')
-        .upsert(controlPayload, { onConflict: 'tenant_id,grn_id' })
-        .select('id')
+        .from("grn_sap_controls")
+        .upsert(controlPayload, { onConflict: "tenant_id,grn_id" })
+        .select("id")
         .single();
 
       if (controlError || !control?.id) {
-        console.error('refreshSapControlsForGrn: unable to save GRN SAP controls', controlError);
+        console.error(
+          "refreshSapControlsForGrn: unable to save GRN SAP controls",
+          controlError,
+        );
         return;
       }
 
       await this.supabase
-        .from('grn_sap_control_items')
+        .from("grn_sap_control_items")
         .delete()
-        .eq('tenant_id', tenantId)
-        .eq('grn_sap_control_id', control.id);
+        .eq("tenant_id", tenantId)
+        .eq("grn_sap_control_id", control.id);
 
       if (controls.items.length > 0) {
         const itemPayload = controls.items.map((item) => ({
@@ -2741,29 +4828,38 @@ export class GrnService {
           tolerance_status: item.toleranceStatus,
           metadata: {
             messages: item.toleranceMessages,
+            po_amendment_required: item.poAmendmentRequired,
+            proposed_ordered_qty: item.proposedOrderedQty,
+            proposed_rate: item.proposedRate,
           },
         }));
 
         const { error: itemsError } = await this.supabase
-          .from('grn_sap_control_items')
+          .from("grn_sap_control_items")
           .insert(itemPayload);
 
         if (itemsError) {
-          console.error('refreshSapControlsForGrn: unable to save GRN SAP control items', itemsError);
+          console.error(
+            "refreshSapControlsForGrn: unable to save GRN SAP control items",
+            itemsError,
+          );
         }
       }
     } catch (error) {
-      console.error('refreshSapControlsForGrn failed; GRN transaction left untouched', error);
+      console.error(
+        "refreshSapControlsForGrn failed; GRN transaction left untouched",
+        error,
+      );
     }
   }
 
   private async getSapControlsForGrn(tenantId: string, grnId: string) {
     try {
       const { data: control, error } = await this.supabase
-        .from('grn_sap_controls')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .eq('grn_id', grnId)
+        .from("grn_sap_controls")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("grn_id", grnId)
         .maybeSingle();
 
       if (error || !control) {
@@ -2788,6 +4884,8 @@ export class GrnService {
           metadata: {
             po_number: input.poNumber,
             messages: transient.messages,
+            po_amendment_approval:
+              this.buildPoAmendmentApprovalPayload(transient),
             transient: true,
           },
           items: transient.items.map((item) => ({
@@ -2809,17 +4907,20 @@ export class GrnService {
             tolerance_status: item.toleranceStatus,
             metadata: {
               messages: item.toleranceMessages,
+              po_amendment_required: item.poAmendmentRequired,
+              proposed_ordered_qty: item.proposedOrderedQty,
+              proposed_rate: item.proposedRate,
             },
           })),
         };
       }
 
       const { data: items } = await this.supabase
-        .from('grn_sap_control_items')
-        .select('*')
-        .eq('tenant_id', tenantId)
-        .eq('grn_sap_control_id', control.id)
-        .order('created_at', { ascending: true });
+        .from("grn_sap_control_items")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("grn_sap_control_id", control.id)
+        .order("created_at", { ascending: true });
 
       return {
         ...control,
@@ -2830,53 +4931,264 @@ export class GrnService {
     }
   }
 
+  async decidePoAmendment(
+    tenantId: string,
+    grnId: string,
+    userId: string,
+    decision: "APPROVED" | "REJECTED",
+    note?: string,
+  ) {
+    const { data: control, error } = await this.supabase
+      .from("grn_sap_controls")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("grn_id", grnId)
+      .maybeSingle();
+
+    if (error || !control) {
+      throw new NotFoundException("GRN SAP controls not found");
+    }
+
+    const metadata =
+      control.metadata && typeof control.metadata === "object"
+        ? control.metadata
+        : {};
+    const approval = metadata.po_amendment_approval || {};
+    if (approval.status !== "PENDING_APPROVAL") {
+      throw new BadRequestException(
+        "No pending PO amendment approval found for this GRN",
+      );
+    }
+
+    const approvalItems = Array.isArray(approval.items) ? approval.items : [];
+    const now = new Date().toISOString();
+
+    if (decision === "APPROVED") {
+      const affectedPoIds = new Set<string>();
+      for (const item of approvalItems) {
+        const poItemId = String(item?.poItemId || "").trim();
+        if (!poItemId) continue;
+
+        const { data: poItem, error: poItemError } = await this.supabase
+          .from("purchase_order_items")
+          .select("id, po_id, ordered_qty, rate, tax_percent, discount_percent")
+          .eq("id", poItemId)
+          .maybeSingle();
+
+        if (poItemError) {
+          throw new BadRequestException(
+            `Unable to load the PO line for this amendment: ${poItemError.message}`,
+          );
+        }
+        if (!poItem) {
+          throw new BadRequestException(
+            "The PO line for this amendment no longer exists",
+          );
+        }
+
+        const nextQty =
+          item.proposedOrderedQty != null
+            ? Math.max(
+                this.toNumber(poItem.ordered_qty),
+                this.toNumber(item.proposedOrderedQty),
+              )
+            : this.toNumber(poItem.ordered_qty);
+        const nextRate =
+          item.proposedRate != null
+            ? this.toNumber(item.proposedRate)
+            : this.toNumber(poItem.rate);
+        const taxableAmount = this.calculateDiscountedLineAmount(
+          nextQty,
+          nextRate,
+          poItem.discount_percent,
+        );
+        const finalAmount =
+          taxableAmount +
+          taxableAmount * (this.toNumber(poItem.tax_percent) / 100);
+
+        const { error: poItemUpdateError } = await this.supabase
+          .from("purchase_order_items")
+          .update({
+            ordered_qty: nextQty,
+            rate: nextRate,
+            amount: this.roundMoney(finalAmount),
+          })
+          .eq("id", poItemId);
+
+        if (poItemUpdateError) {
+          throw new BadRequestException(
+            `Unable to update the PO line: ${poItemUpdateError.message}`,
+          );
+        }
+        if (poItem.po_id) affectedPoIds.add(String(poItem.po_id));
+      }
+
+      const { data: grn } = await this.supabase
+        .from("grns")
+        .select("po_id")
+        .eq("tenant_id", tenantId)
+        .eq("id", grnId)
+        .maybeSingle();
+
+      const headerPoId = String((grn as any)?.po_id || "").trim();
+      if (headerPoId) affectedPoIds.add(headerPoId);
+
+      // Older GRNs may not have po_id on the header. The approved PO line is
+      // still authoritative, so recalculate every PO touched by the amendment.
+      for (const poId of affectedPoIds) {
+        const { data: poItems } = await this.supabase
+          .from("purchase_order_items")
+          .select("ordered_qty, rate, tax_percent, discount_percent")
+          .eq("po_id", poId);
+
+        const subtotal = (poItems || []).reduce(
+          (sum: number, row: any) =>
+            sum +
+            this.calculateDiscountedLineAmount(
+              row.ordered_qty,
+              row.rate,
+              row.discount_percent,
+            ),
+          0,
+        );
+        const taxAmount = (poItems || []).reduce((sum: number, row: any) => {
+          const taxable = this.calculateDiscountedLineAmount(
+            row.ordered_qty,
+            row.rate,
+            row.discount_percent,
+          );
+          return sum + taxable * (this.toNumber(row.tax_percent) / 100);
+        }, 0);
+
+        await this.supabase
+          .from("purchase_orders")
+          .update({
+            total_amount: this.roundMoney(subtotal),
+            tax_amount: this.roundMoney(taxAmount),
+            grand_total: this.roundMoney(subtotal + taxAmount),
+            updated_at: now,
+          })
+          .eq("id", poId)
+          .eq("tenant_id", tenantId);
+      }
+    }
+
+    const nextApproval = {
+      ...approval,
+      status: decision,
+      decidedBy: userId || null,
+      decidedAt: now,
+      decisionNote: note || null,
+    };
+
+    const { error: updateError } = await this.supabase
+      .from("grn_sap_controls")
+      .update({
+        metadata: {
+          ...metadata,
+          po_amendment_approval: nextApproval,
+        },
+        updated_at: now,
+      })
+      .eq("id", control.id)
+      .eq("tenant_id", tenantId);
+
+    if (updateError) throw new BadRequestException(updateError.message);
+
+    return this.findOne(tenantId, grnId);
+  }
+
   private async generateGRNNumber(tenantId: string): Promise<string> {
     const now = new Date();
     const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, "0");
     const prefix = `GRN-${year}-${month}`;
 
     // Fetch ALL GRN numbers to find the global max sequence (never resets on month rollover)
     const { data } = await this.supabase
-      .from('grns')
-      .select('grn_number')
-      .eq('tenant_id', tenantId)
-      .like('grn_number', 'GRN-%');
+      .from("grns")
+      .select("grn_number")
+      .eq("tenant_id", tenantId)
+      .like("grn_number", "GRN-%");
 
     let maxSeq = 0;
-    for (const row of (data || [])) {
-      const match = /^GRN-\d{4}-\d{2}-(\d+)$/.exec(row.grn_number || '');
+    for (const row of data || []) {
+      const match = /^GRN-\d{4}-\d{2}-(\d+)$/.exec(row.grn_number || "");
       if (match) {
         const seq = parseInt(match[1], 10);
         if (seq > maxSeq) maxSeq = seq;
       }
     }
 
-    return `${prefix}-${String(maxSeq + 1).padStart(3, '0')}`;
+    return `${prefix}-${String(maxSeq + 1).padStart(3, "0")}`;
   }
 
-  async updateInvoiceAmounts(tenantId: string, grnId: string, data: any) {
-    console.log('[updateInvoiceAmounts] Input data:', data);
-    const grossAmount = parseFloat(data.gross_amount ?? 0);
-    const taxAmount = parseFloat(data.tax_amount ?? 0);
-    const gstPercentage = data.gst_percentage !== undefined ? parseFloat(data.gst_percentage) : undefined;
-    const notes = data.notes ?? null;
+  async updateInvoiceAmounts(
+    tenantId: string,
+    grnId: string,
+    data: any,
+    userId?: string,
+  ) {
+    console.log("[updateInvoiceAmounts] Input data:", data);
+    const notes = String(data.notes ?? "").trim() || null;
 
     // Fetch current GRN to get PO ID and current amounts
     const { data: currentGRN, error: fetchError } = await this.supabase
-      .from('grns')
-      .select('po_id, net_payable_amount, freight_amount, freight_gst_amount')
-      .eq('id', grnId)
-      .eq('tenant_id', tenantId)
+      .from("grns")
+      .select(
+        "id, grn_number, po_id, gross_amount, tax_amount, gst_percentage, net_payable_amount, freight_amount, freight_gst_amount, debit_note_amount, invoice_approved",
+      )
+      .eq("id", grnId)
+      .eq("tenant_id", tenantId)
       .single();
     if (fetchError || !currentGRN) {
-      throw new BadRequestException('GRN not found');
+      throw new BadRequestException("GRN not found");
+    }
+
+    const grossAmount = parseFloat(currentGRN.gross_amount || 0) || 0;
+    const taxAmount = parseFloat(currentGRN.tax_amount || 0) || 0;
+    const gstPercentage =
+      currentGRN.gst_percentage !== undefined &&
+      currentGRN.gst_percentage !== null
+        ? parseFloat(currentGRN.gst_percentage)
+        : undefined;
+    const submittedGross =
+      data.gross_amount !== undefined
+        ? parseFloat(data.gross_amount)
+        : grossAmount;
+    const submittedTax =
+      data.tax_amount !== undefined ? parseFloat(data.tax_amount) : taxAmount;
+    const submittedGst =
+      data.gst_percentage !== undefined
+        ? parseFloat(data.gst_percentage)
+        : gstPercentage;
+    if (Math.round(submittedGross * 100) !== Math.round(grossAmount * 100)) {
+      throw new BadRequestException(
+        "Gross amount is purchase/GRN derived and cannot be edited from Supplier Invoices. Use freight adjustment for invoice freight differences.",
+      );
+    }
+    if (Math.round(submittedTax * 100) !== Math.round(taxAmount * 100)) {
+      throw new BadRequestException(
+        "Tax amount is purchase/GRN derived and cannot be edited from Supplier Invoices. Use freight adjustment for invoice freight differences.",
+      );
+    }
+    if (
+      submittedGst !== undefined &&
+      gstPercentage !== undefined &&
+      Math.round(submittedGst * 1000) !== Math.round(gstPercentage * 1000)
+    ) {
+      throw new BadRequestException(
+        "GST percentage is purchase/GRN derived and cannot be edited from Supplier Invoices.",
+      );
     }
 
     // Use freight from payload if provided, otherwise fall back to current DB value
     let freightAmount: number;
     let freightGstAmount: number;
-    if (data.freight_amount !== undefined || data.freight_gst_amount !== undefined) {
+    if (
+      data.freight_amount !== undefined ||
+      data.freight_gst_amount !== undefined
+    ) {
       freightAmount = parseFloat(data.freight_amount ?? 0) || 0;
       freightGstAmount = parseFloat(data.freight_gst_amount ?? 0) || 0;
     } else {
@@ -2884,57 +5196,93 @@ export class GrnService {
       freightGstAmount = parseFloat(currentGRN?.freight_gst_amount || 0) || 0;
     }
 
-    // If net_payable_amount is not explicitly provided, calculate including freight (rounded)
-    const netPayable = data.net_payable_amount !== undefined
-      ? Math.round(parseFloat(data.net_payable_amount))
-      : Math.round(grossAmount + taxAmount + freightAmount + freightGstAmount);
+    const oldFreight = parseFloat(currentGRN?.freight_amount || 0) || 0;
+    const oldFreightGst = parseFloat(currentGRN?.freight_gst_amount || 0) || 0;
+    const freightChanged =
+      Math.round(oldFreight * 100) !== Math.round(freightAmount * 100) ||
+      Math.round(oldFreightGst * 100) !== Math.round(freightGstAmount * 100);
+    if (freightChanged && !notes) {
+      throw new BadRequestException(
+        "Reason / note is required when invoice freight is changed.",
+      );
+    }
 
-    console.log('[updateInvoiceAmounts] Parsed:', { grossAmount, taxAmount, netPayable, gstPercentage, freightAmount, freightGstAmount });
+    const debitNoteAmount = parseFloat(currentGRN.debit_note_amount || 0) || 0;
+    const netPayable = Math.round(
+      grossAmount +
+        taxAmount +
+        freightAmount +
+        freightGstAmount -
+        debitNoteAmount,
+    );
+
+    console.log("[updateInvoiceAmounts] Parsed:", {
+      grossAmount,
+      taxAmount,
+      netPayable,
+      gstPercentage,
+      freightAmount,
+      freightGstAmount,
+    });
 
     // VALIDATION: Total invoices for a PO must not exceed PO grand_total
     const poId = currentGRN.po_id;
-    if (poId) {
+    // Freight differences are supplier-invoice liabilities and may legitimately
+    // differ from the original PO. Gross/tax are locked above, so this endpoint
+    // only adjusts freight and records the reason/audit trail.
+    if (false && poId) {
       // Get PO grand_total
       const { data: po, error: poError } = await this.supabase
-        .from('purchase_orders')
-        .select('grand_total, po_number')
-        .eq('id', poId)
-        .eq('tenant_id', tenantId)
+        .from("purchase_orders")
+        .select("grand_total, po_number")
+        .eq("id", poId)
+        .eq("tenant_id", tenantId)
         .single();
       if (poError || !po) {
-        throw new BadRequestException('Purchase Order not found');
+        throw new BadRequestException("Purchase Order not found");
       }
       const poTotal = parseFloat(po.grand_total || 0);
 
       // Get sum of all other GRNs' net_payable for this PO (excluding current GRN)
       const { data: otherGRNs, error: sumError } = await this.supabase
-        .from('grns')
-        .select('net_payable_amount')
-        .eq('po_id', poId)
-        .eq('tenant_id', tenantId)
-        .neq('id', grnId);
+        .from("grns")
+        .select("net_payable_amount")
+        .eq("po_id", poId)
+        .eq("tenant_id", tenantId)
+        .neq("id", grnId);
       if (sumError) {
-        throw new BadRequestException('Failed to calculate existing invoices total');
+        throw new BadRequestException(
+          "Failed to calculate existing invoices total",
+        );
       }
-      const otherInvoicesTotal = (otherGRNs || []).reduce((sum: number, g: any) => sum + (parseFloat(g.net_payable_amount) || 0), 0);
+      const otherInvoicesTotal = (otherGRNs || []).reduce(
+        (sum: number, g: any) => sum + (parseFloat(g.net_payable_amount) || 0),
+        0,
+      );
       const newTotal = otherInvoicesTotal + netPayable;
 
-      console.log('[updateInvoiceAmounts] PO validation:', { poNumber: po.po_number, poTotal, otherInvoicesTotal, thisInvoice: netPayable, newTotal });
+      console.log("[updateInvoiceAmounts] PO validation:", {
+        poNumber: po.po_number,
+        poTotal,
+        otherInvoicesTotal,
+        thisInvoice: netPayable,
+        newTotal,
+      });
 
-      if (newTotal > poTotal + 0.01) { // Allow 1 paisa tolerance for rounding
+      if (newTotal > poTotal + 0.01) {
+        // Allow 1 paisa tolerance for rounding
         throw new BadRequestException(
           `Invoice amount (₹${netPayable.toLocaleString()}) would exceed PO total (₹${poTotal.toLocaleString()}). ` +
-          `Already invoiced: ₹${otherInvoicesTotal.toLocaleString()}, Remaining: ₹${Math.max(0, poTotal - otherInvoicesTotal).toLocaleString()}`
+            `Already invoiced: ₹${otherInvoicesTotal.toLocaleString()}, Remaining: ₹${Math.max(0, poTotal - otherInvoicesTotal).toLocaleString()}`,
         );
       }
     }
 
     const updateData: any = {
-      gross_amount: grossAmount,
-      tax_amount: taxAmount,
       freight_amount: freightAmount,
       freight_gst_amount: freightGstAmount,
       net_payable_amount: netPayable,
+      invoice_approval_notes: notes,
       // Reset approval when amounts are edited
       invoice_approved: false,
       invoice_approved_by: null,
@@ -2942,64 +5290,110 @@ export class GrnService {
       updated_at: new Date().toISOString(),
     };
 
-    // Only update gst_percentage if explicitly provided
-    if (gstPercentage !== undefined) {
-      updateData.gst_percentage = gstPercentage;
-      console.log('[updateInvoiceAmounts] Adding gst_percentage to update:', gstPercentage);
-    }
-
-    console.log('[updateInvoiceAmounts] Final updateData:', updateData);
+    console.log("[updateInvoiceAmounts] Final updateData:", updateData);
 
     const { error } = await this.supabase
-      .from('grns')
+      .from("grns")
       .update(updateData)
-      .eq('id', grnId)
-      .eq('tenant_id', tenantId);
+      .eq("id", grnId)
+      .eq("tenant_id", tenantId);
 
     if (error) {
-      console.log('[updateInvoiceAmounts] Error:', error);
+      console.log("[updateInvoiceAmounts] Error:", error);
       throw new BadRequestException(error.message);
     }
+    if (freightChanged) {
+      await this.supabase.from("activity_logs").insert({
+        tenant_id: tenantId,
+        user_id: userId || null,
+        action: "FREIGHT_ADJUSTMENT",
+        resource_type: "GRN_INVOICE",
+        resource_id: grnId,
+        resource_code: currentGRN.grn_number || null,
+        resource_name: "Supplier invoice freight update before sanction",
+        old_value: {
+          freight_amount: oldFreight,
+          freight_gst_amount: oldFreightGst,
+          net_payable_amount: Number(currentGRN.net_payable_amount || 0),
+        },
+        new_value: {
+          freight_amount: freightAmount,
+          freight_gst_amount: freightGstAmount,
+          net_payable_amount: netPayable,
+          reason: notes,
+        },
+        metadata: {
+          reason: notes,
+          source: "SUPPLIER_INVOICES",
+          po_freight_updated: false,
+        },
+      });
+    }
     const result = await this.findOne(tenantId, grnId);
-    console.log('[updateInvoiceAmounts] Result:', result);
+    console.log("[updateInvoiceAmounts] Result:", result);
     return result;
   }
 
-  async approveInvoice(tenantId: string, grnId: string, userId: string, data: any) {
+  async approveInvoice(
+    tenantId: string,
+    grnId: string,
+    userOrId: any,
+    data: any,
+  ) {
+    const userId =
+      typeof userOrId === "string"
+        ? userOrId
+        : String(userOrId?.userId || userOrId?.id || "");
+    const canOverrideMakerChecker =
+      typeof userOrId === "string" ? false : hasSuperAdminBypass(userOrId);
     const { data: currentGrn, error: fetchError } = await this.supabase
-      .from('grns')
-      .select('id, grn_number, status, qc_completed, invoice_approved, received_by, net_payable_amount')
-      .eq('id', grnId)
-      .eq('tenant_id', tenantId)
+      .from("grns")
+      .select(
+        "id, grn_number, status, qc_completed, invoice_approved, received_by, net_payable_amount",
+      )
+      .eq("id", grnId)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (fetchError || !currentGrn) {
-      throw new NotFoundException('GRN not found');
+      throw new NotFoundException("GRN not found");
     }
 
-    if (currentGrn.received_by && currentGrn.received_by === userId) {
-      throw new ForbiddenException('Receiver cannot sanction their own supplier invoice');
+    if (
+      currentGrn.received_by &&
+      currentGrn.received_by === userId &&
+      !canOverrideMakerChecker
+    ) {
+      throw new ForbiddenException(
+        "Receiver cannot sanction their own supplier invoice",
+      );
     }
 
-    if (String(currentGrn.status || '').toUpperCase() !== 'COMPLETED') {
-      throw new BadRequestException('Only completed GRNs can be sanctioned for Accounts Payable');
+    if (String(currentGrn.status || "").toUpperCase() !== "COMPLETED") {
+      throw new BadRequestException(
+        "Only completed GRNs can be sanctioned for Accounts Payable",
+      );
     }
 
     if (!currentGrn.qc_completed) {
-      throw new BadRequestException('QC must be completed before supplier invoice sanction');
+      throw new BadRequestException(
+        "QC must be completed before supplier invoice sanction",
+      );
     }
 
     if (currentGrn.invoice_approved) {
-      throw new BadRequestException('Supplier invoice is already sanctioned');
+      throw new BadRequestException("Supplier invoice is already sanctioned");
     }
 
     if (this.toNumber(currentGrn.net_payable_amount) <= 0) {
-      throw new BadRequestException('Supplier invoice has no payable amount to sanction');
+      throw new BadRequestException(
+        "Supplier invoice has no payable amount to sanction",
+      );
     }
 
-    const approvalNotes = String(data?.notes || '').trim() || null;
+    const approvalNotes = String(data?.notes || "").trim() || null;
     const { error } = await this.supabase
-      .from('grns')
+      .from("grns")
       .update({
         invoice_approved: true,
         invoice_approved_by: userId,
@@ -3007,47 +5401,75 @@ export class GrnService {
         invoice_approval_notes: approvalNotes,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', grnId)
-      .eq('tenant_id', tenantId);
+      .eq("id", grnId)
+      .eq("tenant_id", tenantId);
 
     if (error) throw new BadRequestException(error.message);
-    return this.findOne(tenantId, grnId);
+    const sanctioned = await this.findOne(tenantId, grnId);
+    // Supplier liability is prepared only after GRN QC and invoice sanction.
+    // Finance may enable the PURCHASE_INVOICE posting rule when its chart is
+    // ready; absence of a rule never blocks operational receiving.
+    await this.accountingService?.queueAutomaticOperationalPosting(tenantId, userId, {
+      source_type: 'PURCHASE_INVOICE', source_id: sanctioned.id, source_number: sanctioned.grn_number,
+      amount: this.toNumber(sanctioned.net_payable_amount),
+      journal_date: String(sanctioned.received_date || sanctioned.created_at || new Date().toISOString()).slice(0, 10),
+      narration: `Supplier invoice sanctioned for GRN ${sanctioned.grn_number}`,
+    });
+    return sanctioned;
   }
 
-  async unapproveInvoice(tenantId: string, grnId: string, userId?: string, data?: any) {
+  async unapproveInvoice(
+    tenantId: string,
+    grnId: string,
+    userId?: string,
+    data?: any,
+  ) {
     const { data: currentGrn, error: fetchError } = await this.supabase
-      .from('grns')
-      .select('id, grn_number, invoice_approved, paid_amount, payment_status')
-      .eq('id', grnId)
-      .eq('tenant_id', tenantId)
+      .from("grns")
+      .select("id, grn_number, invoice_approved, paid_amount, payment_status")
+      .eq("id", grnId)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (fetchError || !currentGrn) {
-      throw new NotFoundException('GRN not found');
+      throw new NotFoundException("GRN not found");
     }
 
     if (!currentGrn.invoice_approved) {
-      throw new BadRequestException('Supplier invoice is already marked as payment due');
+      throw new BadRequestException(
+        "Supplier invoice is already marked as payment due",
+      );
     }
 
-    if (this.toNumber(currentGrn.paid_amount) > 0 || String(currentGrn.payment_status || '').toUpperCase() === 'PAID') {
-      throw new BadRequestException('Cannot revert supplier invoice sanction after payment is recorded');
+    const settlement = await this.getGrnSettlementSummary(tenantId, grnId);
+    const cachedPaidAmount = this.toNumber(currentGrn.paid_amount);
+    const cachedPaymentStatus = String(
+      currentGrn.payment_status || "",
+    ).toUpperCase();
+    const hasActivePaymentTrailSettlement = settlement.netSettlement > 0.009;
+    const hasLegacyHeaderSettlement =
+      settlement.entryCount === 0 &&
+      (cachedPaidAmount > 0 ||
+        cachedPaymentStatus === "PAID" ||
+        cachedPaymentStatus === "PARTIAL");
+    if (hasActivePaymentTrailSettlement || hasLegacyHeaderSettlement) {
+      throw new BadRequestException(
+        "Cannot revert supplier invoice sanction after payment is recorded",
+      );
     }
 
-    const reversalNote = String(data?.notes || '').trim();
+    const reversalNote = String(data?.notes || "").trim();
     const { error } = await this.supabase
-      .from('grns')
+      .from("grns")
       .update({
         invoice_approved: false,
         invoice_approved_by: null,
         invoice_approved_at: null,
-        invoice_approval_notes: reversalNote
-          ? `Sanction reverted${userId ? ` by ${userId}` : ''}: ${reversalNote}`
-          : null,
+        invoice_approval_notes: reversalNote || null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', grnId)
-      .eq('tenant_id', tenantId);
+      .eq("id", grnId)
+      .eq("tenant_id", tenantId);
 
     if (error) throw new BadRequestException(error.message);
     return this.findOne(tenantId, grnId);
@@ -3057,45 +5479,78 @@ export class GrnService {
    * Generate additional UIDs for a GRN item when accepted_qty exceeds existing UID count
    * Returns the number of new UIDs generated
    */
-  async generateMissingUIDs(tenantId: string, userId: string, grnId: string, grnItemId: string) {
-    console.log('[generateMissingUIDs] Starting:', { grnId, grnItemId, tenantId });
-    
+  async generateMissingUIDs(
+    tenantId: string,
+    userId: string,
+    grnId: string,
+    grnItemId: string,
+  ) {
+    console.log("[generateMissingUIDs] Starting:", {
+      grnId,
+      grnItemId,
+      tenantId,
+    });
+
     // Get GRN details
     const { data: grn, error: grnError } = await this.supabase
-      .from('grns')
-      .select('*, warehouse:warehouses(name)')
-      .eq('id', grnId)
-      .eq('tenant_id', tenantId)
+      .from("grns")
+      .select("*, warehouse:warehouses(name)")
+      .eq("id", grnId)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (grnError || !grn) {
-      console.log('[generateMissingUIDs] GRN not found:', grnError);
-      throw new NotFoundException('GRN not found');
+      console.log("[generateMissingUIDs] GRN not found:", grnError);
+      throw new NotFoundException("GRN not found");
     }
 
     // Get GRN item details
-    console.log('[generateMissingUIDs] Fetching grn_item:', { grnItemId, grnId });
+    console.log("[generateMissingUIDs] Fetching grn_item:", {
+      grnItemId,
+      grnId,
+    });
     const { data: grnItem, error: itemError } = await this.supabase
-      .from('grn_items')
-      .select('*')
-      .eq('id', grnItemId)
-      .eq('grn_id', grnId)
+      .from("grn_items")
+      .select("*")
+      .eq("id", grnItemId)
+      .eq("grn_id", grnId)
       .single();
 
     if (itemError || !grnItem) {
-      console.log('[generateMissingUIDs] GRN item not found:', itemError);
-      throw new NotFoundException('GRN item not found');
+      console.log("[generateMissingUIDs] GRN item not found:", itemError);
+      throw new NotFoundException("GRN item not found");
     }
 
-    console.log('[generateMissingUIDs] GRN item found:', { id: grnItem.id, item_code: grnItem.item_code, accepted_qty: grnItem.accepted_qty, accepted_quantity: grnItem.accepted_quantity, uid_count: grnItem.uid_count });
-    const acceptedQty = Number(grnItem.accepted_qty ?? grnItem.accepted_quantity ?? 0);
-    console.log('[generateMissingUIDs] acceptedQty calculated:', acceptedQty, 'from fields:', { accepted_qty: grnItem.accepted_qty, accepted_quantity: grnItem.accepted_quantity });
-    
+    console.log("[generateMissingUIDs] GRN item found:", {
+      id: grnItem.id,
+      item_code: grnItem.item_code,
+      accepted_qty: grnItem.accepted_qty,
+      accepted_quantity: grnItem.accepted_quantity,
+      uid_count: grnItem.uid_count,
+    });
+    const acceptedQty = Number(
+      grnItem.accepted_qty ?? grnItem.accepted_quantity ?? 0,
+    );
+    console.log(
+      "[generateMissingUIDs] acceptedQty calculated:",
+      acceptedQty,
+      "from fields:",
+      {
+        accepted_qty: grnItem.accepted_qty,
+        accepted_quantity: grnItem.accepted_quantity,
+      },
+    );
+
     if (acceptedQty === 0) {
-      throw new BadRequestException('No accepted quantity to generate UIDs for');
+      throw new BadRequestException(
+        "No accepted quantity to generate UIDs for",
+      );
     }
 
-    const resolvedItem = await this.resolveGrnItemStockIdentity(tenantId, grnItem);
+    const resolvedItem = await this.resolveGrnItemStockIdentity(
+      tenantId,
+      grnItem,
+    );
     const item = resolvedItem
       ? {
           id: resolvedItem.itemId,
@@ -3110,64 +5565,109 @@ export class GrnService {
       : null;
 
     if (!item) {
-      throw new NotFoundException(`Item not found for GRN line ${grnItem.item_code || grnItem.id}`);
+      throw new NotFoundException(
+        `Item not found for GRN line ${grnItem.item_code || grnItem.id}`,
+      );
     }
 
-    console.log('[generateMissingUIDs] Item:', { id: item.id, code: item.code, uid_strategy: item.uid_strategy, batch_quantity: item.batch_quantity });
+    console.log("[generateMissingUIDs] Item:", {
+      id: item.id,
+      code: item.code,
+      uid_strategy: item.uid_strategy,
+      batch_quantity: item.batch_quantity,
+    });
 
-    if (item.uid_tracking === false || item.uid_strategy === 'NONE') {
-      throw new BadRequestException('Item does not require UID tracking');
+    if (item.uid_tracking === false || item.uid_strategy === "NONE") {
+      throw new BadRequestException("Item does not require UID tracking");
     }
 
     // Count existing UIDs
-    console.log('[generateMissingUIDs] Counting UIDs with query:', { grnId, entity_id: item.id, tenantId });
-    const { data: existingUIDs, count: existingCount, error: countError } = await this.supabase
-      .from('uid_registry')
-      .select('uid', { count: 'exact' })
-      .eq('grn_id', grnId)
-      .eq('entity_id', item.id)
-      .eq('tenant_id', tenantId);
+    console.log("[generateMissingUIDs] Counting UIDs with query:", {
+      grnId,
+      entity_id: item.id,
+      tenantId,
+    });
+    const {
+      data: existingUIDs,
+      count: existingCount,
+      error: countError,
+    } = await this.supabase
+      .from("uid_registry")
+      .select("uid", { count: "exact" })
+      .eq("grn_id", grnId)
+      .eq("entity_id", item.id)
+      .eq("tenant_id", tenantId);
 
-    console.log('[generateMissingUIDs] Existing UIDs count:', existingCount, 'error:', countError, 'sample data:', existingUIDs?.slice(0, 3));
+    console.log(
+      "[generateMissingUIDs] Existing UIDs count:",
+      existingCount,
+      "error:",
+      countError,
+      "sample data:",
+      existingUIDs?.slice(0, 3),
+    );
 
     // Calculate missing UIDs using the item's UID strategy.
     const currentCount = existingCount || 0;
     const batchQuantity = this.toNumber(item.batch_quantity);
-    const targetUidCount = item.uid_strategy === 'BATCHED' && batchQuantity > 0
-      ? Math.ceil(acceptedQty / batchQuantity)
-      : acceptedQty;
+    const targetUidCount =
+      item.uid_strategy === "BATCHED" && batchQuantity > 0
+        ? Math.ceil(acceptedQty / batchQuantity)
+        : acceptedQty;
     const missingCount = targetUidCount - currentCount;
 
-    console.log('[generateMissingUIDs] Calculation:', { currentCount, acceptedQty, targetUidCount, missingCount, willGenerate: missingCount > 0 });
+    console.log("[generateMissingUIDs] Calculation:", {
+      currentCount,
+      acceptedQty,
+      targetUidCount,
+      missingCount,
+      willGenerate: missingCount > 0,
+    });
 
     // Always sync uid_count in grn_items to match actual UID registry count
     if (grnItem.uid_count !== currentCount) {
-      console.log('[generateMissingUIDs] Syncing uid_count from', grnItem.uid_count, 'to', currentCount);
+      console.log(
+        "[generateMissingUIDs] Syncing uid_count from",
+        grnItem.uid_count,
+        "to",
+        currentCount,
+      );
       await this.supabase
-        .from('grn_items')
+        .from("grn_items")
         .update({ uid_count: currentCount })
-        .eq('id', grnItemId);
+        .eq("id", grnItemId);
     }
 
     if (missingCount <= 0) {
-      console.log('[generateMissingUIDs] Returning early - no UIDs to generate');
-      return { generated: 0, message: 'No additional UIDs needed', current: currentCount, target: targetUidCount };
+      console.log(
+        "[generateMissingUIDs] Returning early - no UIDs to generate",
+      );
+      return {
+        generated: 0,
+        message: "No additional UIDs needed",
+        current: currentCount,
+        target: targetUidCount,
+      };
     }
-    console.log('[generateMissingUIDs] Will generate', missingCount, 'UIDs');
+    console.log("[generateMissingUIDs] Will generate", missingCount, "UIDs");
 
     // Generate the missing UIDs
     const uidsCreated: string[] = [];
     const tenantCode = await this.uidService.resolveTenantCode(tenantId);
-    let entityType = 'RM';
-    if (item.category?.includes('COMPONENT')) entityType = 'CP';
-    else if (item.category?.includes('FINISHED')) entityType = 'FG';
-    else if (item.category?.includes('ASSEMBLY')) entityType = 'SA';
+    let entityType = "RM";
+    if (item.category?.includes("COMPONENT")) entityType = "CP";
+    else if (item.category?.includes("FINISHED")) entityType = "FG";
+    else if (item.category?.includes("ASSEMBLY")) entityType = "SA";
 
     for (let i = 0; i < missingCount; i++) {
-      const uid = await this.uidService.generateUID(tenantCode, 'MFG', entityType);
+      const uid = await this.uidService.generateUID(
+        tenantCode,
+        "MFG",
+        entityType,
+      );
 
       const { error: uidError } = await this.supabase
-        .from('uid_registry')
+        .from("uid_registry")
         .insert({
           tenant_id: tenantId,
           uid: uid,
@@ -3177,15 +5677,17 @@ export class GrnService {
           purchase_order_id: grn.po_id,
           grn_id: grn.id,
           batch_number: grnItem.batch_number,
-          location: grn.warehouse?.name || 'Warehouse',
-          status: 'GENERATED',
-          lifecycle: JSON.stringify([{
-            stage: 'RECEIVED',
-            timestamp: new Date().toISOString(),
-            location: grn.warehouse?.name || 'Warehouse',
-            reference: `GRN ${grn.grn_number} (Additional)`,
-            user: userId,
-          }]),
+          location: grn.warehouse?.name || "Warehouse",
+          status: "GENERATED",
+          lifecycle: JSON.stringify([
+            {
+              stage: "RECEIVED",
+              timestamp: new Date().toISOString(),
+              location: grn.warehouse?.name || "Warehouse",
+              reference: `GRN ${grn.grn_number} (Additional)`,
+              user: userId,
+            },
+          ]),
           metadata: JSON.stringify({
             item_code: grnItem.item_code,
             item_name: grnItem.item_name,
@@ -3204,9 +5706,9 @@ export class GrnService {
     // Update uid_count in grn_items
     const newTotal = currentCount + uidsCreated.length;
     await this.supabase
-      .from('grn_items')
+      .from("grn_items")
       .update({ uid_count: newTotal, uid_generated: true })
-      .eq('id', grnItemId);
+      .eq("id", grnItemId);
 
     return {
       generated: uidsCreated.length,

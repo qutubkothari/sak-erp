@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
@@ -8,10 +8,12 @@ import { getTodayDateInputValue } from '@/lib/date';
 import { buildDocumentBranding, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import { hasModulePermission, hasScreenPermission, readStoredUser } from '@/lib/rbac';
 import SearchableSelect from '../../../../components/SearchableSelect';
+import DateInput from '../../../../components/ui/DateInput';
 import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
 import { Check, ClipboardCheck, GitBranch, History, PackageCheck, Plus, Printer, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react';
 
 const AUTO_REFRESH_MS = 30000;
+const SRV_VIEW_STORAGE_KEY = 'sak-erp:srv-active-view';
 
 function getApiV1BaseUrl(): string | null {
   const raw = (process.env.NEXT_PUBLIC_API_URL || '').trim();
@@ -104,7 +106,7 @@ function getSrvRowIdentity(row: ReceiptVoucherRow | null | undefined): string {
 }
 
 export default function SrvPage() {
-  const currentUser = readStoredUser();
+  const [currentUser, setCurrentUser] = useState<ReturnType<typeof readStoredUser>>(null);
   const canCreate = hasModulePermission(currentUser, 'Inventory', 'create');
   const canApprove = hasModulePermission(currentUser, 'Inventory', 'approve');
   const canDelete = hasModulePermission(currentUser, 'Inventory', 'delete');
@@ -126,6 +128,19 @@ export default function SrvPage() {
   const [manualSrvForm, setManualSrvForm] = useState({ itemId: '', quantity: '', warehouseId: '', receiverName: '', receiverPhone: '', notes: '', movementDate: '' });
   const [manualSrvSaving, setManualSrvSaving] = useState(false);
   const [manualSrvAlert, setManualSrvAlert] = useState<{type: 'error'|'success'; message: string} | null>(null);
+
+  const switchSrvView = useCallback((view: 'open' | 'history') => {
+    setActiveSrvView(view);
+    try {
+      window.localStorage.setItem(SRV_VIEW_STORAGE_KEY, view);
+    } catch {
+      // Ignore storage restrictions; in-memory state remains active.
+    }
+  }, []);
+
+  useEffect(() => {
+    setCurrentUser(readStoredUser());
+  }, []);
 
   // View SRV Details (GRN-like)
   const [showViewModal, setShowViewModal] = useState(false);
@@ -198,7 +213,13 @@ export default function SrvPage() {
       setSrvHistory(hist || []);
     } catch (err: any) {
       if (!options?.silent) {
-        alert('Failed to load SRV data: ' + (err?.message || err));
+        await confirmDialog({
+          title: 'SRV Data Not Loaded',
+          message: 'Failed to load SRV data: ' + (err?.message || err),
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'danger',
+        });
       }
     } finally {
       if (!options?.silent) {
@@ -210,6 +231,17 @@ export default function SrvPage() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(SRV_VIEW_STORAGE_KEY);
+      if (stored === 'open' || stored === 'history') {
+        setActiveSrvView(stored);
+      }
+    } catch {
+      // Ignore storage restrictions.
+    }
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -379,11 +411,23 @@ export default function SrvPage() {
     async (file: File, index: number) => {
       const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
       if (!validTypes.includes(file.type)) {
-        alert('Please upload PNG, JPG, or PDF files only');
+        await confirmDialog({
+          title: 'Invalid QC File',
+          message: 'Please upload PNG, JPG, or PDF files only.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'warning',
+        });
         return;
       }
       if (file.size > 10 * 1024 * 1024) {
-        alert('File size must be less than 10MB');
+        await confirmDialog({
+          title: 'QC File Too Large',
+          message: 'File size must be less than 10MB.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'warning',
+        });
         return;
       }
 
@@ -407,14 +451,26 @@ export default function SrvPage() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          alert(`QC upload failed: ${errorData.message || response.statusText}`);
+          await confirmDialog({
+            title: 'QC Upload Failed',
+            message: `QC upload failed: ${errorData.message || response.statusText}`,
+            confirmLabel: 'OK',
+            cancelLabel: 'Close',
+            variant: 'danger',
+          });
           return;
         }
 
         const data = await response.json();
         const url = String(data?.url || '').trim();
         if (!url) {
-          alert('QC upload failed: no URL returned');
+          await confirmDialog({
+            title: 'QC Upload Failed',
+            message: 'QC upload failed: no URL returned.',
+            confirmLabel: 'OK',
+            cancelLabel: 'Close',
+            variant: 'danger',
+          });
           return;
         }
 
@@ -440,7 +496,13 @@ export default function SrvPage() {
           return next;
         });
       } catch (e) {
-        alert('QC upload failed. Please try again.');
+        await confirmDialog({
+          title: 'QC Upload Failed',
+          message: 'QC upload failed. Please try again.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'danger',
+        });
       }
     },
     [],
@@ -539,9 +601,46 @@ export default function SrvPage() {
     await apiClient.put(`/job-orders/store/receipt-vouchers/${entryOrJobOrderId}/approve`, {});
   }, []);
 
+  const approveSrvWithFeedback = useCallback(async (row: ReceiptVoucherRow) => {
+    const confirmed = await confirmDialog({
+      title: 'Approve SRV',
+      message: `Approve SRV for ${row.job_order_number || row.item_code || 'this receipt'}?`,
+      confirmLabel: 'Approve',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
+    try {
+      await approveSrv(row);
+      await loadAll();
+      await confirmDialog({
+        title: 'SRV Approved',
+        message: 'The selected SRV receipt has been approved.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+      });
+    } catch (err: any) {
+      await confirmDialog({
+        title: 'Approval Failed',
+        message: 'Failed to approve SRV: ' + (err?.message || err),
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'danger',
+      });
+    }
+  }, [approveSrv, loadAll]);
+
   const approveAllPending = useCallback(async () => {
     const pending = srvHistory.filter((r) => !r.approved_by);
-    if (pending.length === 0) { alert('No pending SRVs to approve.'); return; }
+    if (pending.length === 0) {
+      await confirmDialog({
+        title: 'Nothing To Approve',
+        message: 'No pending SRVs to approve.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
+      return;
+    }
     const confirmed = await confirmDialog({
       title: 'Bulk Approve SRVs',
       message: `Approve all ${pending.length} pending SRV(s)?`,
@@ -549,20 +648,29 @@ export default function SrvPage() {
       variant: 'warning',
     });
     if (!confirmed) return;
-    setBulkApproving(true);
-    let succeeded = 0;
-    let failed = 0;
-    for (const row of pending) {
-      try {
-        await apiClient.put(`/job-orders/store/receipt-vouchers/${String(row.entry_id || row.id || '').trim()}/approve`, {});
-        succeeded++;
-      } catch {
-        failed++;
+    try {
+      setBulkApproving(true);
+      let succeeded = 0;
+      let failed = 0;
+      for (const row of pending) {
+        try {
+          await apiClient.put(`/job-orders/store/receipt-vouchers/${String(row.entry_id || row.id || '').trim()}/approve`, {});
+          succeeded++;
+        } catch {
+          failed++;
+        }
       }
+      await loadAll();
+      await confirmDialog({
+        title: 'Bulk Approval Complete',
+        message: `Bulk approve done: ${succeeded} approved${failed > 0 ? `, ${failed} failed` : ''}.`,
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: failed > 0 ? 'warning' : undefined,
+      });
+    } finally {
+      setBulkApproving(false);
     }
-    await loadAll();
-    setBulkApproving(false);
-    alert(`Bulk approve done: ${succeeded} approved${failed > 0 ? `, ${failed} failed` : ''}.`);
   }, [srvHistory, loadAll]);
 
   const qcAcceptSrv = useCallback(
@@ -588,9 +696,20 @@ export default function SrvPage() {
       try {
         await apiClient.delete(`/job-orders/store/receipt-vouchers/${movementId}`);
         await loadAll();
-        alert('SRV goods receipt reversed successfully!');
+        await confirmDialog({
+          title: 'SRV Reversed',
+          message: 'SRV goods receipt has been reversed and stock/UID movement has been adjusted.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+        });
       } catch (err: any) {
-        alert('Failed to reverse SRV: ' + (err.message || err));
+        await confirmDialog({
+          title: 'Reverse Failed',
+          message: 'Failed to reverse SRV: ' + (err.message || err),
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'danger',
+        });
       }
     },
     [loadAll]
@@ -606,12 +725,18 @@ export default function SrvPage() {
     const generatedOn = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Popup blocked. Please allow popups to print SRV.');
+      await confirmDialog({
+        title: 'Popup Blocked',
+        message: 'Please allow popups for this site to print the SRV.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
 
     printWindow.document.open();
-    printWindow.document.write('<!doctype html><html><head><title>Preparing SRV...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing SRV…</body></html>');
+    printWindow.document.write('<!doctype html><html><head><title>Preparing SRV...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing SRV...</body></html>');
     printWindow.document.close();
 
     const company = await apiClient.get<any>('/tenant/current').catch(() => null);
@@ -747,12 +872,18 @@ export default function SrvPage() {
 
     const printWindow = preOpenedWindow || window.open('', '_blank');
     if (!printWindow) {
-      alert(`QC completed, but the UID print window was blocked. Generated UIDs: ${generatedUids.join(', ')}`);
+      await confirmDialog({
+        title: 'UID Print Blocked',
+        message: `QC completed, but the UID print window was blocked. Generated UIDs: ${generatedUids.join(', ')}`,
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
 
     printWindow.document.open();
-    printWindow.document.write('<!doctype html><html><head><title>Preparing UID print...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing UID print…</body></html>');
+    printWindow.document.write('<!doctype html><html><head><title>Preparing UID print...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing UID print...</body></html>');
     printWindow.document.close();
 
     const jobOrderNumber = escapePrintHtml(payload.jobOrderNumber || '-');
@@ -1012,7 +1143,7 @@ export default function SrvPage() {
             <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setActiveSrvView('open')}
+              onClick={() => switchSrvView('open')}
               className={`inline-flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors ${
                 activeSrvView === 'open'
                   ? 'border-[#8B6F47] bg-[#8B6F47] text-white'
@@ -1024,7 +1155,7 @@ export default function SrvPage() {
             </button>
             <button
               type="button"
-              onClick={() => setActiveSrvView('history')}
+              onClick={() => switchSrvView('history')}
               className={`inline-flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors ${
                 activeSrvView === 'history'
                   ? 'border-[#8B6F47] bg-[#8B6F47] text-white'
@@ -1204,7 +1335,13 @@ export default function SrvPage() {
                       </td>
                     </tr>
                   )}
-                  {srvHistory.map((row) => (
+                  {[...srvHistory]
+                    .sort((a, b) => {
+                      const aTs = a.movement_date ? new Date(a.movement_date).getTime() || 0 : 0;
+                      const bTs = b.movement_date ? new Date(b.movement_date).getTime() || 0 : 0;
+                      return bTs - aTs;
+                    })
+                    .map((row) => (
                     <tr key={getSrvRowIdentity(row)} className="hover:bg-[#FFFCF5]">
                       <td className="px-4 py-3 text-sm font-semibold text-[#4A3426]">
                         {row.job_order_number || row.job_order_id}
@@ -1250,10 +1387,7 @@ export default function SrvPage() {
                           </ErpButton>
                           {canApprove && !row.approved_by && (
                           <ErpButton
-                            onClick={async () => {
-                              await approveSrv(row);
-                              await loadAll();
-                            }}
+                            onClick={() => void approveSrvWithFeedback(row)}
                             variant="primary"
                             size="sm"
                           >
@@ -1294,7 +1428,7 @@ export default function SrvPage() {
                   }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
-                  ×
+                  x
                 </button>
               </div>
 
@@ -1400,7 +1534,7 @@ export default function SrvPage() {
 
                       {isManualSrv ? (
                         <div className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
-                          ✅ This is a <strong>Manual SRV</strong> — stock and UIDs were auto-approved at creation. No QC step required.
+                          OK: This is a <strong>Manual SRV</strong> - stock and UIDs were auto-approved at creation. No QC step required.
                         </div>
                       ) : (
                         <>
@@ -1449,17 +1583,35 @@ export default function SrvPage() {
                           onClick={async () => {
                             if (qcSummaryLoading) return;
                             if (qcCompleted) {
-                              alert('QC already completed for this SRV.');
+                              await confirmDialog({
+                                title: 'QC Already Completed',
+                                message: 'QC is already completed for this SRV.',
+                                confirmLabel: 'OK',
+                                cancelLabel: 'Close',
+                                variant: 'info',
+                              });
                               return;
                             }
                             if (srvApproved) {
-                              alert('SRV already approved.');
+                              await confirmDialog({
+                                title: 'SRV Already Approved',
+                                message: 'This SRV is already approved.',
+                                confirmLabel: 'OK',
+                                cancelLabel: 'Close',
+                                variant: 'info',
+                              });
                               return;
                             }
 
                             const qty = Number(receivedQty || 0);
                             if (!Number.isFinite(qty) || qty <= 0) {
-                              alert('Receive Qty must be > 0');
+                              await confirmDialog({
+                                title: 'Invalid Receive Quantity',
+                                message: 'Receive Qty must be greater than 0.',
+                                confirmLabel: 'OK',
+                                cancelLabel: 'Close',
+                                variant: 'warning',
+                              });
                               return;
                             }
 
@@ -1495,14 +1647,21 @@ export default function SrvPage() {
                               });
                               setShowQcModal(true);
                             } catch (err: any) {
-                              alert('Failed to start QC: ' + (err?.response?.data?.message || err.message || err));
+                              await confirmDialog({
+                                title: 'QC Not Started',
+                                message: 'Failed to start QC: ' + (err?.response?.data?.message || err.message || err),
+                                confirmLabel: 'OK',
+                                cancelLabel: 'Close',
+                                variant: 'danger',
+                              });
                             }
                           }}
-                          className={`px-6 py-2 text-white rounded-lg ${!qcActionsDisabled ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
+                          className={`inline-flex items-center gap-2 px-6 py-2 text-white rounded-lg ${!qcActionsDisabled ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'}`}
                           disabled={qcActionsDisabled}
-                          title={qcSummaryLoading ? 'Checking QC status…' : qcCompleted ? 'QC already completed' : undefined}
+                          title={qcSummaryLoading ? 'Checking QC status...' : qcCompleted ? 'QC already completed' : undefined}
                         >
-                          🔍 QC Accept
+                          <ClipboardCheck className="h-4 w-4" />
+                          QC Accept
                         </button>}
                       </div>
                       <button
@@ -1521,7 +1680,10 @@ export default function SrvPage() {
                       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
                         <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
                           <div className="sticky top-0 z-10 p-6 border-b border-gray-200 flex justify-between items-center gap-4 bg-blue-50">
-                            <h2 className="text-2xl font-bold text-gray-900">🔍 QC Inspection</h2>
+                            <h2 className="flex items-center gap-2 text-2xl font-bold text-gray-900">
+                              <ClipboardCheck className="h-6 w-6 text-blue-700" />
+                              QC Inspection
+                            </h2>
                             <div className="flex items-center gap-3">
                               <button
                                 onClick={() => setShowQcModal(false)}
@@ -1538,18 +1700,36 @@ export default function SrvPage() {
                                       (it) => it.rejectedQty > 0 && !it.rejectionReason?.trim(),
                                     );
                                     if (hasRejectedWithoutReason) {
-                                      alert('Please provide rejection reason for all rejected items');
+                                      await confirmDialog({
+                                        title: 'Rejection Reason Required',
+                                        message: 'Please provide rejection reason for all rejected items.',
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                        variant: 'warning',
+                                      });
                                       return;
                                     }
 
                                     if (!qcMetadata.qcDate) {
-                                      alert('QC Date is required');
+                                      await confirmDialog({
+                                        title: 'QC Date Required',
+                                        message: 'QC Date is required.',
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                        variant: 'warning',
+                                      });
                                       return;
                                     }
 
                                     const jobOrderId = String(selectedRow?.job_order_id || selectedRow?.id || '').trim();
                                     if (!jobOrderId) {
-                                      alert('Missing Job Order ID');
+                                      await confirmDialog({
+                                        title: 'Missing Job Order',
+                                        message: 'Missing Job Order ID.',
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                        variant: 'danger',
+                                      });
                                       return;
                                     }
 
@@ -1558,22 +1738,40 @@ export default function SrvPage() {
                                     const received = qcFormData.reduce((sum, it) => sum + (Number(it.receivedQty) || 0), 0);
 
                                     if (!Number.isFinite(accepted) || accepted <= 0) {
-                                      alert('Accepted Qty must be > 0');
+                                      await confirmDialog({
+                                        title: 'Invalid Accepted Quantity',
+                                        message: 'Accepted Qty must be greater than 0.',
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                        variant: 'warning',
+                                      });
                                       return;
                                     }
                                     if (!Number.isFinite(rejected) || rejected < 0) {
-                                      alert('Rejected Qty must be >= 0');
+                                      await confirmDialog({
+                                        title: 'Invalid Rejected Quantity',
+                                        message: 'Rejected Qty must be greater than or equal to 0.',
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                        variant: 'warning',
+                                      });
                                       return;
                                     }
                                     if (accepted + rejected > received) {
-                                      alert(`Accepted + Rejected cannot exceed Received (${received}).`);
+                                      await confirmDialog({
+                                        title: 'Quantity Mismatch',
+                                        message: `Accepted + Rejected cannot exceed Received (${received}).`,
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                        variant: 'warning',
+                                      });
                                       return;
                                     }
 
                                     // Open print window now (synchronous user-gesture context) to avoid popup blocker
                                     uidPrintWindow = window.open('', '_blank');
                                     if (uidPrintWindow) {
-                                      uidPrintWindow.document.write('<!doctype html><html><head><title>Preparing UID print…</title></head><body style="font-family:Arial,sans-serif;padding:16px">Preparing UID print…</body></html>');
+                                      uidPrintWindow.document.write('<!doctype html><html><head><title>Preparing UID print...</title></head><body style="font-family:Arial,sans-serif;padding:16px">Preparing UID print...</body></html>');
                                       uidPrintWindow.document.close();
                                     }
 
@@ -1622,22 +1820,36 @@ export default function SrvPage() {
                                                   .join(' '),
                                               ).trim() || '-',
                                       }, uidPrintWindow);
-                                      alert(
-                                        `QC completed successfully. ${generatedUids.length} UID(s) were generated and opened for print.`,
-                                      );
+                                      await confirmDialog({
+                                        title: 'QC Completed',
+                                        message: `QC completed successfully. ${generatedUids.length} UID(s) were generated and opened for print.`,
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                      });
                                     } else {
-                                      // No UIDs generated — close the pre-opened window
+                                      // No UIDs generated - close the pre-opened window
                                       uidPrintWindow?.close();
-                                      alert(qcResult?.message || 'QC completed successfully!');
+                                      await confirmDialog({
+                                        title: 'QC Completed',
+                                        message: qcResult?.message || 'QC completed successfully.',
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                      });
                                     }
                                   } catch (err: any) {
                                     uidPrintWindow?.close();
-                                    alert('Failed to QC Accept: ' + (err?.response?.data?.message || err.message || err));
+                                    await confirmDialog({
+                                      title: 'QC Accept Failed',
+                                      message: 'Failed to QC Accept: ' + (err?.response?.data?.message || err.message || err),
+                                      confirmLabel: 'OK',
+                                      cancelLabel: 'Close',
+                                      variant: 'danger',
+                                    });
                                   }
                                 }}
                                 className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                               >
-                                ✓ Complete QC Inspection
+                                OK Complete QC Inspection
                               </button>
                             </div>
                           </div>
@@ -1658,11 +1870,10 @@ export default function SrvPage() {
                                 </div>
                                 <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-1">QC Date *</label>
-                                  <input
-                                    type="date"
+                                  <DateInput
                                     max={todayDate}
                                     value={qcMetadata.qcDate}
-                                    onChange={(e) => setQcMetadata({ ...qcMetadata, qcDate: e.target.value })}
+                                    onChange={(value) => setQcMetadata({ ...qcMetadata, qcDate: value })}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                                   />
                                 </div>
@@ -1790,7 +2001,7 @@ export default function SrvPage() {
                                                 className="text-red-600 hover:text-red-800 font-bold"
                                                 title="Remove file"
                                               >
-                                                ×
+                                                x
                                               </button>
                                             </div>
                                           </div>
@@ -1848,9 +2059,9 @@ export default function SrvPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Date</label>
-                  <input type="date"
+                  <DateInput
                     value={manualSrvForm.movementDate}
-                    onChange={(e) => setManualSrvForm({ ...manualSrvForm, movementDate: e.target.value })}
+                    onChange={(value) => setManualSrvForm({ ...manualSrvForm, movementDate: value })}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500" />
                 </div>
               </div>
@@ -1864,7 +2075,7 @@ export default function SrvPage() {
                   >
                     <option value="">Default warehouse</option>
                     {warehouses.map(w => (
-                      <option key={w.id} value={w.id}>{w.code ? `${w.code} — ` : ''}{w.name || w.id}</option>
+                      <option key={w.id} value={w.id}>{w.code ? `${w.code} - ` : ''}{w.name || w.id}</option>
                     ))}
                   </select>
                 </div>
@@ -1910,7 +2121,7 @@ export default function SrvPage() {
                     // Open print window now (in sync user-gesture context) to avoid popup blocker
                     const uidPrintWin = window.open('', '_blank');
                     if (uidPrintWin) {
-                      uidPrintWin.document.write('<!doctype html><html><head><title>Preparing UID print…</title></head><body style="font-family:Arial,sans-serif;padding:16px">Preparing UID print…</body></html>');
+                      uidPrintWin.document.write('<!doctype html><html><head><title>Preparing UID print...</title></head><body style="font-family:Arial,sans-serif;padding:16px">Preparing UID print...</body></html>');
                       uidPrintWin.document.close();
                     }
 

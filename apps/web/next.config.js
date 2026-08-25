@@ -88,7 +88,7 @@ const nextConfig = {
       },
       {
         key: 'Permissions-Policy',
-        value: 'camera=(), microphone=(), geolocation=(), payment=()', // Disable unnecessary APIs
+        value: 'camera=(self), microphone=(), geolocation=(self), payment=()', // Attendance uses camera/photo capture and GPS stamping
       },
       {
         key: 'Strict-Transport-Security',

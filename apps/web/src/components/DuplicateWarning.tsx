@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface DuplicateMatch {
   id: string;
@@ -29,14 +30,23 @@ export default function DuplicateWarning({
   formatRecord,
 }: DuplicateWarningProps) {
   const [acknowledged, setAcknowledged] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) setAcknowledged(false);
+  }, [isOpen]);
+
+  if (!isOpen || !mounted) return null;
 
   const hasExactMatches = exactMatches.length > 0;
   const hasFuzzyMatches = fuzzyMatches.length > 0;
 
-  return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+  return createPortal(
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-[3000]">
       <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[80vh] overflow-y-auto">
         <div className="flex items-start mb-4">
           <div className="flex-shrink-0">
@@ -184,7 +194,8 @@ export default function DuplicateWarning({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

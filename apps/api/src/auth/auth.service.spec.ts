@@ -1,4 +1,3 @@
-import { UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
@@ -15,6 +14,13 @@ describe('AuthService multi-tenant login', () => {
       select: jest.fn(() => candidateQuery),
       ilike: jest.fn(() => candidateQuery),
       eq: jest.fn(() => candidateQuery),
+      in: jest.fn().mockResolvedValue({
+        data: [
+          { id: 'tenant-1', name: 'Company One' },
+          { id: 'tenant-2', name: 'Company Two' },
+        ],
+        error: null,
+      }),
       limit: jest.fn().mockResolvedValue({ data: candidates, error: null }),
       update: jest.fn(() => ({ eq: jest.fn().mockResolvedValue({ error: null }) })),
     };
@@ -42,14 +48,38 @@ describe('AuthService multi-tenant login', () => {
     expect(result.user.tenantId).toBe('tenant-2');
   });
 
-  it('blocks an ambiguous login shared by multiple tenants', async () => {
+  it('treats an email-looking value as username, not email', async () => {
+    const service = makeService([
+      {
+        id: 'user-1',
+        username: 'support@saifseas.com',
+        email: 'support-user@example.com',
+        password: 'password',
+        is_active: true,
+        tenant_id: 'tenant-1',
+      },
+    ]);
+
+    const result = await service.login({ username: 'support@saifseas.com', password: 'password' });
+
+    expect(result.user.id).toBe('user-1');
+    const query = ((service as any).supabase.from as jest.Mock).mock.results[0].value;
+    expect(query.ilike).toHaveBeenCalledWith('username', 'support@saifseas.com');
+    expect(query.ilike).not.toHaveBeenCalledWith('email', 'support@saifseas.com');
+  });
+
+  it('returns company choices for an ambiguous login shared by multiple tenants', async () => {
     const service = makeService([
       { id: 'user-1', username: 'admin', email: 'one@example.com', password: 'same-password', is_active: true, tenant_id: 'tenant-1' },
       { id: 'user-2', username: 'admin', email: 'two@example.com', password: 'same-password', is_active: true, tenant_id: 'tenant-2' },
     ]);
 
-    await expect(service.login({ username: 'admin', password: 'same-password' })).rejects.toThrow(
-      new UnauthorizedException('Multiple company accounts use these credentials. Contact your administrator to select the correct tenant.'),
-    );
+    const result = await service.login({ username: 'admin', password: 'same-password' });
+
+    expect(result.requiresTenantSelection).toBe(true);
+    expect(result.tenants).toEqual([
+      expect.objectContaining({ tenantId: 'tenant-1', companyName: 'Company One' }),
+      expect.objectContaining({ tenantId: 'tenant-2', companyName: 'Company Two' }),
+    ]);
   });
 });

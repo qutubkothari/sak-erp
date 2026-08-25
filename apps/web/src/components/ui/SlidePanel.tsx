@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -40,6 +40,12 @@ export function SlidePanel({
   children,
   footer,
 }: SlidePanelProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Lock body scroll when open
   useEffect(() => {
     if (open) {
@@ -61,7 +67,7 @@ export function SlidePanel({
     return () => window.removeEventListener('keydown', handler);
   }, [open, onClose]);
 
-  if (typeof document === 'undefined') return null;
+  if (!mounted || !open) return null;
 
   return createPortal(
     <>

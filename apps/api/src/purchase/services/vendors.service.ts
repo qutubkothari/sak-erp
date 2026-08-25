@@ -71,6 +71,32 @@ const parseBooleanFilter = (value: any): boolean | undefined => {
   return undefined;
 };
 
+const MAX_VENDOR_CREDIT_LIMIT = 9999999999999.99; // vendors.credit_limit DECIMAL(15,2)
+
+function parseVendorDecimal(
+  value: any,
+  fallback: any,
+  fieldLabel: string,
+  options: { min?: number; max?: number; scale?: number } = {},
+) {
+  const source = value !== undefined ? value : fallback;
+  if (source === undefined || source === null || source === '') return null;
+
+  const parsed = Number(String(source).replace(/,/g, '').trim());
+  if (!Number.isFinite(parsed)) {
+    throw new BadRequestException(`${fieldLabel} must be a valid number.`);
+  }
+  if (options.min !== undefined && parsed < options.min) {
+    throw new BadRequestException(`${fieldLabel} cannot be less than ${options.min}.`);
+  }
+  if (options.max !== undefined && parsed > options.max) {
+    throw new BadRequestException(`${fieldLabel} cannot be greater than ${options.max}.`);
+  }
+
+  const scale = options.scale ?? 2;
+  return Number(parsed.toFixed(scale));
+}
+
 type GstinPortalData = {
   legalName: string;
   tradeName?: string;
@@ -264,6 +290,21 @@ function normalizeVendorTaxId(value: any): string | null {
   return normalized || null;
 }
 
+function extractVendorPan(value: any): string | null {
+  const normalized = normalizeVendorTaxId(value);
+  if (!normalized) return null;
+
+  if (/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(normalized)) {
+    return normalized;
+  }
+
+  if (/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(normalized)) {
+    return normalized.slice(2, 12);
+  }
+
+  return null;
+}
+
 function firstNonEmpty(...values: any[]): string | undefined {
   for (const value of values) {
     const text = String(value || '').trim();
@@ -278,6 +319,47 @@ function compactJoin(values: any[], separator = ', '): string | undefined {
 }
 
 const VENDOR_ATTACHMENT_TYPES = new Set(['GST', 'PAN', 'MSME', 'CANCELLED_CHEQUE', 'OTHER']);
+const OPTIONAL_VENDOR_SCHEMA_COLUMNS = new Set([
+  'legal_name',
+  'tax_id',
+  'category',
+  'rating',
+  'payment_terms',
+  'credit_limit',
+  'contact_person',
+  'email',
+  'phone',
+  'address',
+  'billing_line2',
+  'street',
+  'city',
+  'state',
+  'country',
+  'pincode',
+  'shipping_street',
+  'shipping_city',
+  'shipping_state',
+  'shipping_country',
+  'shipping_pincode',
+  'is_active',
+  'bank_name',
+  'bank_account_number',
+  'bank_ifsc_code',
+  'bank_branch',
+  'bank_account_type',
+  'approval_status',
+  'approval_reason',
+  'approved_at',
+  'approved_by',
+  'rejected_at',
+  'rejected_by',
+  'created_by',
+  'verified_at',
+  'verified_by',
+  'bank_verification_status',
+  'bank_verified_at',
+  'bank_verified_by',
+]);
 
 function normalizeVendorApprovalStatus(value: any): 'PENDING' | 'APPROVED' | 'REJECTED' {
   const normalized = String(value || '').trim().toUpperCase();
@@ -370,6 +452,82 @@ export class VendorsService {
     );
   }
 
+  private getMissingOptionalVendorColumn(error: any, payload: Record<string, any>): string | null {
+    const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`;
+    for (const column of OPTIONAL_VENDOR_SCHEMA_COLUMNS) {
+      if (Object.prototype.hasOwnProperty.call(payload, column) && message.includes(column)) {
+        return column;
+      }
+    }
+    const match = message.match(/'([^']+)'\s+column/i);
+    const column = match?.[1];
+    if (column && OPTIONAL_VENDOR_SCHEMA_COLUMNS.has(column) && Object.prototype.hasOwnProperty.call(payload, column)) {
+      return column;
+    }
+    return null;
+  }
+
+  private async updateVendorWithSchemaFallback(
+    tenantId: string,
+    id: string,
+    payload: Record<string, any>,
+    options: { select?: boolean } = {},
+  ) {
+    const updatePayload = { ...payload };
+    const removedColumns: string[] = [];
+
+    for (let attempt = 0; attempt <= OPTIONAL_VENDOR_SCHEMA_COLUMNS.size; attempt += 1) {
+      let query = this.supabase
+        .from('vendors')
+        .update(updatePayload)
+        .eq('tenant_id', tenantId)
+        .eq('id', id);
+
+      if (options.select) query = query.select().single() as any;
+      const { data, error } = await query as any;
+      if (!error) {
+        if (removedColumns.length > 0) {
+          this.logger.warn(`Vendor update ${id} skipped optional schema columns: ${removedColumns.join(', ')}`);
+        }
+        return data;
+      }
+
+      const missingColumn = this.getMissingOptionalVendorColumn(error, updatePayload);
+      if (!missingColumn) throw new BadRequestException(error.message);
+      delete updatePayload[missingColumn];
+      removedColumns.push(missingColumn);
+    }
+
+    throw new BadRequestException('Unable to update vendor because optional vendor schema columns are unavailable.');
+  }
+
+  private async insertVendorWithSchemaFallback(payload: Record<string, any>) {
+    const insertPayload = { ...payload };
+    const removedColumns: string[] = [];
+
+    for (let attempt = 0; attempt <= OPTIONAL_VENDOR_SCHEMA_COLUMNS.size; attempt += 1) {
+      const { data, error } = await this.supabase
+        .from('vendors')
+        .insert(insertPayload)
+        .select()
+        .single();
+
+      if (!error) {
+        if (removedColumns.length > 0) {
+          this.logger.warn(`Vendor create skipped optional schema columns: ${removedColumns.join(', ')}`);
+        }
+        return data;
+      }
+
+      const missingColumn = this.getMissingOptionalVendorColumn(error, insertPayload);
+      if (!missingColumn) throw new BadRequestException(error.message);
+      delete insertPayload[missingColumn];
+      removedColumns.push(missingColumn);
+    }
+
+    throw new BadRequestException('Unable to create vendor because optional vendor schema columns are unavailable.');
+  }
+
   private buildVendorPayload(data: any, existingVendor?: any) {
     const metadata = safeObject(existingVendor?.metadata);
     const contacts = normalizeContacts(data?.contacts);
@@ -413,6 +571,16 @@ export class VendorsService {
     const nextShippingPincode = useSameAsBilling
       ? nextPincode
       : String(data?.shippingPincode ?? existingVendor?.shipping_pincode ?? '').trim() || null;
+    const rating = parseVendorDecimal(data?.rating, existingVendor?.rating ?? 0, 'Quality rating', {
+      min: 0,
+      max: 5,
+      scale: 2,
+    });
+    const creditLimit = parseVendorDecimal(data?.creditLimit, existingVendor?.credit_limit ?? 0, 'Credit limit', {
+      min: 0,
+      max: MAX_VENDOR_CREDIT_LIMIT,
+      scale: 2,
+    });
 
     return {
       code: toUpperCode(data.code || existingVendor?.code),
@@ -420,9 +588,9 @@ export class VendorsService {
       legal_name: toTitleCase(data.legalName || data.name || existingVendor?.legal_name || existingVendor?.name),
       tax_id: toUpperCode(data.taxId ?? existingVendor?.tax_id ?? '') || null,
       category: data.category ?? existingVendor?.category,
-      rating: data.rating ?? existingVendor?.rating,
+      rating,
       payment_terms: data.paymentTerms ?? existingVendor?.payment_terms,
-      credit_limit: data.creditLimit ?? existingVendor?.credit_limit,
+      credit_limit: creditLimit,
       contact_person: defaultContact?.name || null,
       email: defaultContact?.email || null,
       phone: defaultContact?.phone || null,
@@ -504,30 +672,81 @@ export class VendorsService {
     };
   }
 
-  private async assertUniqueTaxId(tenantId: string, rawTaxId: any, excludeVendorId?: string) {
+  private async assertUniqueTaxIdentity(tenantId: string, rawTaxId: any, excludeVendorId?: string) {
     const taxId = normalizeVendorTaxId(rawTaxId);
     if (!taxId) return;
+    const pan = extractVendorPan(taxId);
 
     let query = this.supabase
       .from('vendors')
       .select('id, name, code, tax_id')
       .eq('tenant_id', tenantId)
-      .eq('tax_id', taxId)
+      .not('tax_id', 'is', null);
+
+    if (excludeVendorId) {
+      query = query.neq('id', excludeVendorId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    const duplicate = (data || []).find((vendor: any) => {
+      const existingTaxId = normalizeVendorTaxId(vendor?.tax_id);
+      if (!existingTaxId) return false;
+      if (existingTaxId === taxId) return true;
+
+      const existingPan = extractVendorPan(existingTaxId);
+      return Boolean(pan && existingPan && existingPan === pan);
+    });
+
+    if (duplicate) {
+      const vendorLabel = String(duplicate.name || duplicate.code || 'another vendor').trim();
+      const existingTaxId = normalizeVendorTaxId(duplicate.tax_id);
+      const duplicateType = existingTaxId === taxId ? 'GST/PAN number' : `PAN number ${pan}`;
+      throw new BadRequestException(`Vendor ${duplicateType} already exists for ${vendorLabel}. Use the existing vendor instead of creating a duplicate.`);
+    }
+  }
+
+  private isUniqueVendorCodeError(error: any): boolean {
+    const message = String(error?.message || '');
+    const details = String(error?.details || '');
+    const constraint = String(error?.constraint || '');
+    return (
+      error?.code === '23505' &&
+      (
+        constraint.includes('vendors_tenant_id_code_key') ||
+        message.includes('vendors_tenant_id_code_key') ||
+        details.includes('vendors_tenant_id_code_key') ||
+        message.toLowerCase().includes('duplicate key value') && message.toLowerCase().includes('code')
+      )
+    );
+  }
+
+  private async assertUniqueVendorCode(tenantId: string, rawCode: any, excludeVendorId?: string) {
+    const code = toUpperCode(rawCode || '');
+    if (!code) return;
+
+    let query = this.supabase
+      .from('vendors')
+      .select('id, name, code')
+      .eq('tenant_id', tenantId)
+      .eq('code', code)
       .limit(1);
 
     if (excludeVendorId) {
       query = query.neq('id', excludeVendorId);
     }
 
-    const { data, error } = await query.maybeSingle();
+    const { data, error } = await query;
+    if (error) throw new BadRequestException(error.message);
 
-    if (error) {
-      throw new BadRequestException(error.message);
-    }
-
-    if (data) {
-      const vendorLabel = String(data.name || data.code || 'another vendor').trim();
-      throw new BadRequestException(`Vendor GST Number already exists for ${vendorLabel}. Use the existing vendor instead of creating a new one.`);
+    const existing = data?.[0];
+    if (existing) {
+      const label = String(existing.name || existing.code || 'an existing vendor').trim();
+      throw new BadRequestException(`Vendor code ${code} already exists for ${label}. Please use a different code or select the existing vendor.`);
     }
   }
 
@@ -560,7 +779,27 @@ export class VendorsService {
       if (message.includes('vendor_approval_history') || message.includes('schema cache')) return [];
       throw new BadRequestException(error.message);
     }
-    return data || [];
+
+    const rows = data || [];
+    const actorIds = Array.from(new Set(rows.map((row: any) => String(row.actor_id || '').trim()).filter(Boolean)));
+    const actorsById = new Map<string, string>();
+
+    if (actorIds.length > 0) {
+      const { data: users } = await this.supabase
+        .from('users')
+        .select('id, first_name, last_name, email')
+        .in('id', actorIds);
+
+      (users || []).forEach((user: any) => {
+        const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+        actorsById.set(String(user.id), displayName || user.email || 'Unknown user');
+      });
+    }
+
+    return rows.map((row: any) => ({
+      ...row,
+      actor_name: actorsById.get(String(row.actor_id)) || 'Unknown user',
+    }));
   }
 
   private async logApprovalHistory(params: {
@@ -604,11 +843,12 @@ export class VendorsService {
     const code = data.code || await this.generateVendorCode(tenantId);
     const payload = this.buildVendorPayload({ ...data, code });
 
-    await this.assertUniqueTaxId(tenantId, payload.tax_id);
+    await this.assertUniqueVendorCode(tenantId, payload.code);
+    await this.assertUniqueTaxIdentity(tenantId, payload.tax_id);
 
-    const { data: vendor, error } = await this.supabase
-      .from('vendors')
-      .insert({
+    let vendor: any;
+    try {
+      vendor = await this.insertVendorWithSchemaFallback({
         tenant_id: tenantId,
         ...payload,
         is_verified: false,
@@ -624,11 +864,13 @@ export class VendorsService {
             submittedBy: userId,
           },
         },
-      })
-      .select()
-      .single();
-
-    if (error) throw new BadRequestException(error.message);
+      });
+    } catch (error: any) {
+      if (this.isUniqueVendorCodeError(error)) {
+        throw new BadRequestException(`Vendor code ${payload.code} already exists. Please use a different code or try again.`);
+      }
+      throw error;
+    }
     await this.logApprovalHistory({
       tenantId,
       vendorId: vendor.id,
@@ -706,37 +948,30 @@ export class VendorsService {
     const approvedVendorChanged = existing.is_verified === true || fromStatus === 'APPROVED';
     const now = new Date().toISOString();
 
-    await this.assertUniqueTaxId(tenantId, payload.tax_id, id);
+    await this.assertUniqueTaxIdentity(tenantId, payload.tax_id, id);
 
-    const { data: vendor, error } = await this.supabase
-      .from('vendors')
-      .update({
-        ...payload,
-        is_verified: approvedVendorChanged ? false : existing.is_verified,
-        approval_status: approvedVendorChanged ? 'PENDING' : fromStatus,
-        approval_reason: approvedVendorChanged ? 'Approved vendor edited; reapproval required.' : existing.approval_reason || null,
-        approved_at: approvedVendorChanged ? null : existing.approved_at || null,
-        approved_by: approvedVendorChanged ? null : existing.approved_by || null,
-        metadata: {
-          ...payload.metadata,
-          vendorApproval: approvedVendorChanged
-            ? {
-                status: 'PENDING',
-                submittedAt: now,
-                submittedBy: userId,
-                reason: 'Approved vendor edited; reapproval required.',
-                previousStatus: fromStatus,
-              }
-            : payload.metadata.vendorApproval,
-        },
-        updated_at: now,
-      })
-      .eq('tenant_id', tenantId)
-      .eq('id', id)
-      .select()
-      .single();
+    const vendor = await this.updateVendorWithSchemaFallback(tenantId, id, {
+      ...payload,
+      is_verified: approvedVendorChanged ? false : existing.is_verified,
+      approval_status: approvedVendorChanged ? 'PENDING' : fromStatus,
+      approval_reason: approvedVendorChanged ? 'Approved vendor edited; reapproval required.' : existing.approval_reason || null,
+      approved_at: approvedVendorChanged ? null : existing.approved_at || null,
+      approved_by: approvedVendorChanged ? null : existing.approved_by || null,
+      metadata: {
+        ...payload.metadata,
+        vendorApproval: approvedVendorChanged
+          ? {
+              status: 'PENDING',
+              submittedAt: now,
+              submittedBy: userId,
+              reason: 'Approved vendor edited; reapproval required.',
+              previousStatus: fromStatus,
+            }
+          : payload.metadata.vendorApproval,
+      },
+      updated_at: now,
+    }, { select: true });
 
-    if (error) throw new BadRequestException(error.message);
     if (!vendor) throw new NotFoundException('Vendor not found or not updated');
     await this.logApprovalHistory({
       tenantId,
@@ -750,9 +985,9 @@ export class VendorsService {
     return this.findOne(tenantId, id);
   }
 
-  async setVerification(tenantId: string, userId: string, id: string, isVerified: boolean) {
+  async setVerification(tenantId: string, userId: string, id: string, isVerified: boolean, options: { overrideMakerChecker?: boolean } = {}) {
     const existing = await this.findOne(tenantId, id);
-    this.assertMakerChecker(existing, userId, isVerified ? 'approve' : 'reset approval for');
+    if (!options.overrideMakerChecker) this.assertMakerChecker(existing, userId, isVerified ? 'approve' : 'reset approval for');
     const metadata = safeObject(existing?.metadata);
     const now = new Date().toISOString();
     const fromStatus = normalizeVendorApprovalStatus(existing.approval_status);
@@ -812,13 +1047,7 @@ export class VendorsService {
           },
         };
 
-    const { error } = await this.supabase
-      .from('vendors')
-      .update(updateData)
-      .eq('tenant_id', tenantId)
-      .eq('id', id);
-
-    if (error) throw new BadRequestException(error.message);
+    await this.updateVendorWithSchemaFallback(tenantId, id, updateData);
     await this.logApprovalHistory({
       tenantId,
       vendorId: id,
@@ -830,14 +1059,14 @@ export class VendorsService {
     return this.findOne(tenantId, id);
   }
 
-  async rejectVerification(tenantId: string, userId: string, id: string, reason: any) {
+  async rejectVerification(tenantId: string, userId: string, id: string, reason: any, options: { overrideMakerChecker?: boolean } = {}) {
     const normalizedReason = String(reason || '').trim();
     if (!normalizedReason) {
       throw new BadRequestException('A rejection reason is required.');
     }
 
     const existing = await this.findOne(tenantId, id);
-    this.assertMakerChecker(existing, userId, 'reject');
+    if (!options.overrideMakerChecker) this.assertMakerChecker(existing, userId, 'reject');
     const metadata = safeObject(existing?.metadata);
     const now = new Date().toISOString();
     const fromStatus = normalizeVendorApprovalStatus(existing.approval_status);
@@ -857,29 +1086,23 @@ export class VendorsService {
       },
     ];
 
-    const { error } = await this.supabase
-      .from('vendors')
-      .update({
-        is_verified: false,
-        verified_at: null,
-        verified_by: null,
-        approval_status: 'REJECTED',
-        approval_reason: normalizedReason,
-        approved_at: null,
-        approved_by: null,
-        rejected_at: now,
-        rejected_by: userId,
-        updated_at: now,
-        metadata: {
-          ...metadata,
-          vendorApproval,
-          vendorApprovalTrail,
-        },
-      })
-      .eq('tenant_id', tenantId)
-      .eq('id', id);
-
-    if (error) throw new BadRequestException(error.message);
+    await this.updateVendorWithSchemaFallback(tenantId, id, {
+      is_verified: false,
+      verified_at: null,
+      verified_by: null,
+      approval_status: 'REJECTED',
+      approval_reason: normalizedReason,
+      approved_at: null,
+      approved_by: null,
+      rejected_at: now,
+      rejected_by: userId,
+      updated_at: now,
+      metadata: {
+        ...metadata,
+        vendorApproval,
+        vendorApprovalTrail,
+      },
+    });
     await this.logApprovalHistory({
       tenantId,
       vendorId: id,
@@ -910,9 +1133,9 @@ export class VendorsService {
     // if (data.is_verified !== true) throw new BadRequestException(`Vendor ${data.name || data.code || ''} is not verified by admin and cannot be used.`);
   }
 
-  async verifyBank(tenantId: string, userId: string, id: string) {
+  async verifyBank(tenantId: string, userId: string, id: string, options: { overrideMakerChecker?: boolean } = {}) {
     const existing = await this.findOne(tenantId, id);
-    this.assertMakerChecker(existing, userId, 'verify bank details for');
+    if (!options.overrideMakerChecker) this.assertMakerChecker(existing, userId, 'verify bank details for');
     const metadata = safeObject(existing?.metadata);
     const ifsc = normalizeIfsc(existing.bank_ifsc_code || metadata.bankIfscCode);
     const accountNumber = String(existing.bank_account_number || metadata.bankAccountNumber || '').trim();
@@ -945,22 +1168,16 @@ export class VendorsService {
         : 'IFSC format verified. Public bank directory lookup was unavailable.',
     };
 
-    const { error } = await this.supabase
-      .from('vendors')
-      .update({
-        bank_verification_status: bankVerification.status,
-        bank_verified_at: now,
-        bank_verified_by: userId,
-        metadata: {
-          ...metadata,
-          bankVerification,
-        },
-        updated_at: now,
-      })
-      .eq('tenant_id', tenantId)
-      .eq('id', id);
-
-    if (error) throw new BadRequestException(error.message);
+    await this.updateVendorWithSchemaFallback(tenantId, id, {
+      bank_verification_status: bankVerification.status,
+      bank_verified_at: now,
+      bank_verified_by: userId,
+      metadata: {
+        ...metadata,
+        bankVerification,
+      },
+      updated_at: now,
+    });
     await this.logApprovalHistory({
       tenantId,
       vendorId: id,
@@ -1378,18 +1595,28 @@ export class VendorsService {
   private async generateVendorCode(tenantId: string): Promise<string> {
     const prefix = 'VEN';
 
-    // Get the count of all vendors to generate a unique code
-    const { count, error } = await this.supabase
+    const { data, error } = await this.supabase
       .from('vendors')
-      .select('*', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId);
+      .select('code')
+      .eq('tenant_id', tenantId)
+      .ilike('code', `${prefix}%`);
 
     if (error) {
-      // Fallback to timestamp-based code if count fails
       return `${prefix}${Date.now().toString().slice(-6)}`;
     }
 
-    const nextNumber = (count || 0) + 1;
+    const usedNumbers = new Set<number>();
+    for (const vendor of data || []) {
+      const code = String(vendor?.code || '').trim().toUpperCase();
+      const match = code.match(/^VEN(\d+)$/);
+      if (!match) continue;
+      const number = Number(match[1]);
+      if (Number.isInteger(number) && number > 0) usedNumbers.add(number);
+    }
+
+    let nextNumber = 1;
+    while (usedNumbers.has(nextNumber)) nextNumber += 1;
+
     return `${prefix}${String(nextNumber).padStart(3, '0')}`;
   }
 }

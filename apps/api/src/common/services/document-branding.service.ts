@@ -14,6 +14,15 @@ export interface DocumentBranding {
   website: string;
   taxId: string;
   logoUrl: string;
+  headerImageUrl?: string;
+  footerImageUrl?: string;
+  headerTitle?: string;
+  headerSubtitle?: string;
+  footerText?: string;
+  footerContactLine?: string;
+  showLogo?: boolean;
+  showTaxId?: boolean;
+  showContact?: boolean;
   initials: string;
   addressLines: string[];
   contactLine: string;
@@ -49,6 +58,8 @@ type StandardPdfHeaderOptions = {
 export type PdfBrandingAssets = {
   scriptLogo?: PDFImage;
   markLogo?: PDFImage;
+  headerImage?: PDFImage;
+  footerImage?: PDFImage;
 };
 
 @Injectable()
@@ -70,48 +81,61 @@ export class DocumentBrandingService {
     const fallback = this.getFallbackBranding();
     const useTenantBranding = this.hasStructuredBranding(tenant);
 
+    const letterhead = this.getLetterheadSettings(tenant);
     const companyName = this.normalizeCompanyName(this.getFirstNonEmptyValue(
+      letterhead.companyName,
       useTenantBranding ? tenant?.name : '',
       overrides?.companyName,
       fallback.companyName,
     ));
-    const legalName = overrides?.legalName || companyName;
+    const legalName = this.getFirstNonEmptyValue(letterhead.legalName, overrides?.legalName, companyName);
     const address = this.getFirstNonEmptyValue(
+      letterhead.address,
       useTenantBranding ? tenant?.address : '',
       overrides?.address,
       fallback.address,
     );
     const phone = this.getFirstNonEmptyValue(
+      letterhead.phone,
       useTenantBranding ? tenant?.phone : '',
       overrides?.phone,
       fallback.phone,
     );
     const email = this.getFirstNonEmptyValue(
+      letterhead.email,
       useTenantBranding ? tenant?.email : '',
       overrides?.email,
       fallback.email,
     );
     const website = this.normalizeWebsite(
       this.getFirstNonEmptyValue(
+        letterhead.website,
         useTenantBranding ? tenant?.domain : '',
         overrides?.website,
         fallback.website,
       ),
     );
     const taxId = this.getFirstNonEmptyValue(
+      letterhead.taxId,
       useTenantBranding ? tenant?.tax_id : '',
       overrides?.taxId,
       fallback.taxId,
     );
     const logoUrl = this.getFirstNonEmptyValue(
+      letterhead.logoUrl,
       useTenantBranding ? tenant?.logo_url : '',
       overrides?.logoUrl,
       fallback.logoUrl,
     );
+    const headerImageUrl = this.getFirstNonEmptyValue(letterhead.headerImageUrl);
+    const footerImageUrl = this.getFirstNonEmptyValue(letterhead.footerImageUrl);
     const addressLines = this.toAddressLines(address);
-    const contactLine = [phone ? `Phone: ${phone}` : '', email ? `Email: ${email}` : '', website ? website : '']
+    const showContact = letterhead.showContact !== false;
+    const showTaxId = letterhead.showTaxId !== false;
+    const showLogo = letterhead.showLogo !== false;
+    const contactLine = showContact ? [phone ? `Phone: ${phone}` : '', email ? `Email: ${email}` : '', website ? website : '']
       .filter(Boolean)
-      .join('  |  ');
+      .join('  |  ') : '';
 
     return {
       companyName,
@@ -122,13 +146,22 @@ export class DocumentBrandingService {
       website,
       taxId,
       logoUrl,
+      headerImageUrl,
+      footerImageUrl,
+      headerTitle: this.getFirstNonEmptyValue(letterhead.headerTitle, companyName),
+      headerSubtitle: this.getFirstNonEmptyValue(letterhead.headerSubtitle),
+      footerText: this.getFirstNonEmptyValue(letterhead.footerText, `Computer-generated document from ${companyName}.`),
+      footerContactLine: this.getFirstNonEmptyValue(letterhead.footerContactLine, contactLine),
+      showLogo,
+      showTaxId,
+      showContact,
       initials: this.getInitials(companyName),
       addressLines,
       contactLine,
     };
   }
 
-  async preparePdfBrandingAssets(pdfDoc: PDFDocument): Promise<PdfBrandingAssets> {
+  async preparePdfBrandingAssets(pdfDoc: PDFDocument, branding?: DocumentBranding): Promise<PdfBrandingAssets> {
     const assets: PdfBrandingAssets = {};
 
     const scriptLogoPath = this.resolveExistingAsset(['po-logo-script.jpg']);
@@ -147,6 +180,14 @@ export class DocumentBrandingService {
       } catch (error) {
         this.logger.warn(`Failed to embed mark logo: ${String((error as any)?.message || error)}`);
       }
+    }
+
+    if (branding?.headerImageUrl) {
+      assets.headerImage = await this.tryEmbedImage(pdfDoc, branding.headerImageUrl, 'header letterhead');
+    }
+
+    if (branding?.footerImageUrl) {
+      assets.footerImage = await this.tryEmbedImage(pdfDoc, branding.footerImageUrl, 'footer letterhead');
     }
 
     return assets;
@@ -179,7 +220,16 @@ export class DocumentBrandingService {
       color: DOCUMENT_BRAND_COLORS.white,
     });
 
-    if (assets?.markLogo && markDims) {
+    if (assets?.headerImage) {
+      page.drawImage(assets.headerImage, {
+        x: marginX,
+        y: headerY,
+        width,
+        height: headerHeight,
+      });
+    } else {
+
+    if (branding.showLogo !== false && assets?.markLogo && markDims) {
       page.drawImage(assets.markLogo, {
         x: marginX + 12,
         y: logoBlockCenterY - markDims.height / 2,
@@ -188,7 +238,7 @@ export class DocumentBrandingService {
       });
     }
 
-    if (assets?.scriptLogo && scriptDims) {
+    if (branding.showLogo !== false && assets?.scriptLogo && scriptDims) {
       page.drawImage(assets.scriptLogo, {
         x: marginX + 70,
         y: logoBlockCenterY - scriptDims.height / 2 + 2,
@@ -205,55 +255,69 @@ export class DocumentBrandingService {
       });
     }
 
-    const companyNameSize = 12;
-    const companyNameWidth = fontBold.widthOfTextAtSize(branding.companyName, companyNameSize);
-    page.drawText(branding.companyName, {
-      x: rightBlockX + rightBlockWidth - companyNameWidth,
-      y: headerY + 62,
-      size: companyNameSize,
-      font: fontBold,
-      color: DOCUMENT_BRAND_COLORS.text,
-    });
+    if (branding.headerSubtitle) {
+      const subtitle = this.wrapText(branding.headerSubtitle, 250, 8, font).slice(0, 1)[0];
+      page.drawText(subtitle, {
+        x: marginX + 12,
+        y: headerY + 24,
+        size: 8,
+        font,
+        color: DOCUMENT_BRAND_COLORS.muted,
+      });
+    }
+    }
 
-    let infoY = headerY + 48;
-    addressLines.filter(Boolean).forEach((line) => {
-      const wrapped = this.wrapText(line, rightBlockWidth, 8, font);
-      wrapped.forEach((part) => {
-        const textWidth = font.widthOfTextAtSize(part, 8);
-        page.drawText(part, {
-          x: rightBlockX + rightBlockWidth - textWidth,
-          y: infoY,
+    if (!assets?.headerImage) {
+      const companyNameSize = 12;
+      const companyNameWidth = fontBold.widthOfTextAtSize(branding.companyName, companyNameSize);
+      page.drawText(branding.companyName, {
+        x: rightBlockX + rightBlockWidth - companyNameWidth,
+        y: headerY + 62,
+        size: companyNameSize,
+        font: fontBold,
+        color: DOCUMENT_BRAND_COLORS.text,
+      });
+
+      let infoY = headerY + 48;
+      addressLines.filter(Boolean).forEach((line) => {
+        const wrapped = this.wrapText(line, rightBlockWidth, 8, font);
+        wrapped.forEach((part) => {
+          const textWidth = font.widthOfTextAtSize(part, 8);
+          page.drawText(part, {
+            x: rightBlockX + rightBlockWidth - textWidth,
+            y: infoY,
+            size: 8,
+            font,
+            color: DOCUMENT_BRAND_COLORS.text,
+          });
+          infoY -= 9;
+        });
+      });
+
+      if (branding.showContact !== false && branding.email) {
+        const emailLine = `Email : ${branding.email}`;
+        const emailWidth = font.widthOfTextAtSize(emailLine, 8);
+        page.drawText(emailLine, {
+          x: rightBlockX + rightBlockWidth - emailWidth,
+          y: infoY - 1,
           size: 8,
           font,
           color: DOCUMENT_BRAND_COLORS.text,
         });
-        infoY -= 9;
-      });
-    });
+        infoY -= 10;
+      }
 
-    if (branding.email) {
-      const emailLine = `Email : ${branding.email}`;
-      const emailWidth = font.widthOfTextAtSize(emailLine, 8);
-      page.drawText(emailLine, {
-        x: rightBlockX + rightBlockWidth - emailWidth,
-        y: infoY - 1,
-        size: 8,
-        font,
-        color: DOCUMENT_BRAND_COLORS.text,
-      });
-      infoY -= 10;
-    }
-
-    if (branding.taxId) {
-      const gstLine = `GSTIN : ${branding.taxId}`;
-      const gstWidth = font.widthOfTextAtSize(gstLine, 8);
-      page.drawText(gstLine, {
-        x: rightBlockX + rightBlockWidth - gstWidth,
-        y: infoY - 1,
-        size: 8,
-        font,
-        color: DOCUMENT_BRAND_COLORS.text,
-      });
+      if (branding.showTaxId !== false && branding.taxId) {
+        const gstLine = `GSTIN : ${branding.taxId}`;
+        const gstWidth = font.widthOfTextAtSize(gstLine, 8);
+        page.drawText(gstLine, {
+          x: rightBlockX + rightBlockWidth - gstWidth,
+          y: infoY - 1,
+          size: 8,
+          font,
+          color: DOCUMENT_BRAND_COLORS.text,
+        });
+      }
     }
 
     page.drawLine({
@@ -293,7 +357,9 @@ export class DocumentBrandingService {
     try {
       const { data, error } = await this.supabase
         .from('tenants')
-        .select('name, address, phone, email, tax_id, logo_url, domain')
+        // The canonical tenant table stores branding inside settings.  Keep
+        // this projection compatible with both current and legacy schemas.
+        .select('name, domain, settings')
         .eq('id', tenantId)
         .single();
 
@@ -330,6 +396,17 @@ export class DocumentBrandingService {
       website,
       taxId,
       logoUrl,
+      headerImageUrl: '',
+      footerImageUrl: '',
+      headerTitle: companyName,
+      headerSubtitle: '',
+      footerText: `Computer-generated document from ${companyName}.`,
+      footerContactLine: [phone ? `Phone: ${phone}` : '', email ? `Email: ${email}` : '', website ? website : '']
+        .filter(Boolean)
+        .join('  |  '),
+      showLogo: true,
+      showTaxId: true,
+      showContact: true,
       initials: this.getInitials(companyName),
       addressLines: this.toAddressLines(address),
       contactLine: [phone ? `Phone: ${phone}` : '', email ? `Email: ${email}` : '', website ? website : '']
@@ -350,15 +427,81 @@ export class DocumentBrandingService {
   }
 
   private hasStructuredBranding(tenant?: Record<string, unknown> | null): boolean {
+    const letterhead = this.getLetterheadSettings(tenant);
     return Boolean(
       this.getFirstNonEmptyValue(
+        tenant?.name,
+        tenant?.domain,
         tenant?.address,
         tenant?.phone,
         tenant?.email,
         tenant?.tax_id,
         tenant?.logo_url,
+        letterhead.companyName,
+        letterhead.address,
+        letterhead.logoUrl,
       ),
     );
+  }
+
+  private getLetterheadSettings(tenant?: Record<string, unknown> | null): Record<string, any> {
+    const settings = tenant?.settings;
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return {};
+    }
+
+    const letterhead = (settings as any).letterhead;
+    if (!letterhead || typeof letterhead !== 'object' || Array.isArray(letterhead)) {
+      return {};
+    }
+
+    return letterhead;
+  }
+
+  private async tryEmbedImage(pdfDoc: PDFDocument, imageUrl: string, label: string): Promise<PDFImage | undefined> {
+    try {
+      const bytes = await this.loadImageBytes(imageUrl);
+      if (!bytes) return undefined;
+      const lower = imageUrl.toLowerCase();
+      if (lower.includes('.png') || lower.includes('image/png')) {
+        return await pdfDoc.embedPng(bytes);
+      }
+      return await pdfDoc.embedJpg(bytes);
+    } catch (error) {
+      this.logger.warn(`Failed to embed ${label}: ${String((error as any)?.message || error)}`);
+      return undefined;
+    }
+  }
+
+  private async loadImageBytes(imageUrl: string): Promise<Uint8Array | undefined> {
+    const cleanUrl = this.cleanText(imageUrl);
+    if (!cleanUrl) return undefined;
+
+    if (cleanUrl.startsWith('/uploads/')) {
+      const uploadsRoot =
+        this.configService.get<string>('UPLOAD_ROOT_DIR') ||
+        path.resolve(process.cwd(), '..', '..', 'uploads');
+      const relative = cleanUrl.replace(/^\/uploads\//, '');
+      const candidate = path.resolve(uploadsRoot, relative);
+      if (!candidate.startsWith(path.resolve(uploadsRoot)) || !fs.existsSync(candidate)) {
+        return undefined;
+      }
+      return fs.readFileSync(candidate);
+    }
+
+    if (/^https?:\/\//i.test(cleanUrl)) {
+      const response = await fetch(cleanUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    }
+
+    if (fs.existsSync(cleanUrl)) {
+      return fs.readFileSync(cleanUrl);
+    }
+
+    return undefined;
   }
 
   private cleanText(value: unknown): string {

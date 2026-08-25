@@ -32,6 +32,15 @@ describe('DebitNoteService payment reversal controls', () => {
       select: jest.fn(() => paymentQuery),
       eq: jest.fn(() => paymentQuery),
       maybeSingle: jest.fn().mockResolvedValue({ data: paymentEntry, error: null }),
+      in: jest.fn().mockResolvedValue({ data: [], error: null }),
+    };
+    const grnQuery: any = {
+      select: jest.fn(() => grnQuery),
+      eq: jest.fn(() => grnQuery),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: { id: 'grn-1', po_id: 'po-1', vendor_id: 'vendor-1' },
+        error: null,
+      }),
     };
     const reversalQuery: any = {
       insert: jest.fn(() => reversalQuery),
@@ -43,6 +52,7 @@ describe('DebitNoteService payment reversal controls', () => {
       from: jest.fn((table: string) => {
         if (table === 'grn_payment_entries') return paymentQuery;
         if (table === 'grn_payment_reversals') return reversalQuery;
+        if (table === 'grns') return grnQuery;
         throw new Error(`Unexpected table ${table}`);
       }),
     };
@@ -70,7 +80,7 @@ describe('DebitNoteService payment reversal controls', () => {
       original_payment_reference: 'UTR-123',
       reversal_reason: 'Wrong payment mapped to GRN',
       reversed_by: 'user-1',
-      original_entry: paymentEntry,
+      original_entry: expect.objectContaining(paymentEntry),
     }));
     expect(deletePayment).toHaveBeenCalledWith('tenant-1', 'grn-1', 'pay-1');
     expect(result).toEqual(expect.objectContaining({
@@ -190,6 +200,12 @@ describe('DebitNoteService GRN payment-status register', () => {
       select: jest.fn(() => grnQuery),
       eq: jest.fn(() => grnQuery),
     };
+    const emptyQuery: any = {
+      select: jest.fn(() => emptyQuery),
+      eq: jest.fn(() => emptyQuery),
+      in: jest.fn(() => emptyQuery),
+      order: jest.fn().mockResolvedValue({ data: [], error: null }),
+    };
     grnQuery.then = (resolve: any) => resolve({
       data: [
         {
@@ -207,7 +223,10 @@ describe('DebitNoteService GRN payment-status register', () => {
     });
 
     (service as any).supabase = {
-      from: jest.fn(() => grnQuery),
+      from: jest.fn((table: string) => {
+        if (table === 'grns') return grnQuery;
+        return emptyQuery;
+      }),
     };
     jest.spyOn(service, 'getPoSettlement').mockRejectedValue(new Error('Failed to fetch PO invoices: fetch failed'));
 
@@ -219,6 +238,101 @@ describe('DebitNoteService GRN payment-status register', () => {
       paid_amount: 100,
       outstanding: 900,
       payment_status: 'PARTIAL',
+    }));
+  });
+});
+
+describe('DebitNoteService invoice freight adjustment controls', () => {
+  it('requires Accounts to record a reason for every freight adjustment', async () => {
+    const service = new DebitNoteService({} as any);
+
+    await expect(service.adjustInvoiceFreight(
+      'tenant-1',
+      'grn-1',
+      'accounts-user-1',
+      { freight_amount: 500, freight_gst_amount: 90, reason: '   ' },
+    )).rejects.toThrow('Reason for freight adjustment is required');
+  });
+
+  it('recalculates the invoice payable and records one old/new freight audit entry', async () => {
+    const service = new DebitNoteService({} as any);
+    const grn = {
+      id: 'grn-1',
+      grn_number: 'GRN-2026-07-001',
+      status: 'COMPLETED',
+      invoice_approved: true,
+      gross_amount: 10000,
+      tax_amount: 1800,
+      debit_note_amount: 100,
+      freight_amount: 200,
+      freight_gst_amount: 36,
+      net_payable_amount: 11936,
+      paid_amount: 0,
+      tds_amount: 0,
+      short_payment_amount: 0,
+      payment_status: 'UNPAID',
+    };
+
+    const fetchQuery: any = {
+      select: jest.fn(() => fetchQuery),
+      eq: jest.fn(() => fetchQuery),
+      maybeSingle: jest.fn().mockResolvedValue({ data: grn, error: null }),
+    };
+    const paymentQuery: any = {
+      select: jest.fn(() => paymentQuery),
+      eq: jest.fn(() => paymentQuery),
+      limit: jest.fn().mockResolvedValue({ data: [], error: null }),
+    };
+    const updateQuery: any = {
+      update: jest.fn(() => updateQuery),
+      eq: jest.fn(() => updateQuery),
+      then: (resolve: any) => resolve({ error: null }),
+    };
+    const auditQuery: any = {
+      insert: jest.fn().mockResolvedValue({ error: null }),
+    };
+
+    (service as any).supabase = {
+      from: jest.fn()
+        .mockReturnValueOnce(fetchQuery)
+        .mockReturnValueOnce(paymentQuery)
+        .mockReturnValueOnce(updateQuery)
+        .mockReturnValueOnce(auditQuery),
+    };
+    jest.spyOn(service, 'getGrnPayableDetail').mockResolvedValue({ id: 'grn-1' } as any);
+
+    await service.adjustInvoiceFreight(
+      'tenant-1',
+      'grn-1',
+      'accounts-user-1',
+      { freight_amount: 500, freight_gst_amount: 90, reason: 'Supplier invoice has revised freight' },
+    );
+
+    expect(updateQuery.update).toHaveBeenCalledWith(expect.objectContaining({
+      freight_amount: 500,
+      freight_gst_amount: 90,
+      net_payable_amount: 12290,
+    }));
+    expect(auditQuery.insert).toHaveBeenCalledWith(expect.objectContaining({
+      tenant_id: 'tenant-1',
+      user_id: 'accounts-user-1',
+      action: 'FREIGHT_ADJUSTMENT',
+      resource_type: 'GRN_INVOICE',
+      resource_id: 'grn-1',
+      old_value: expect.objectContaining({
+        freight_amount: 200,
+        freight_gst_amount: 36,
+        net_payable_amount: 11936,
+      }),
+      new_value: expect.objectContaining({
+        freight_amount: 500,
+        freight_gst_amount: 90,
+        net_payable_amount: 12290,
+      }),
+      metadata: expect.objectContaining({
+        reason: 'Supplier invoice has revised freight',
+        po_freight_updated: false,
+      }),
     }));
   });
 });
@@ -299,5 +413,135 @@ describe('DebitNoteService accounts payable payment posting controls', () => {
       payment_method: 'NEFT',
       close_invoice: true,
     })).rejects.toThrow('Short payment amount must cover the remaining balance before closing the invoice');
+  });
+
+  it('retries payment entry insert with legacy columns when live schema is behind', async () => {
+    const service = new DebitNoteService({} as any);
+    const insert = jest
+      .fn()
+      .mockResolvedValueOnce({ error: { code: 'PGRST204', message: "Could not find the 'entry_type' column" } })
+      .mockResolvedValueOnce({ error: null });
+
+    (service as any).supabase = {
+      from: jest.fn(() => ({ insert })),
+    };
+
+    await (service as any).insertGrnPaymentEntry('tenant-1', 'grn-1', {
+      payment_date: '2026-07-11',
+      amount: 4040,
+      payment_method: 'NEFT',
+      payment_reference: null,
+      tds_amount: 0,
+      short_payment_amount: 0,
+      short_payment_reason: null,
+      payment_notes: null,
+      entry_type: 'PAYMENT',
+      created_by: 'user-1',
+    });
+
+    expect(insert).toHaveBeenCalledTimes(2);
+    expect(insert.mock.calls[0][0]).toMatchObject({ entry_type: 'PAYMENT', short_payment_reason: null });
+    expect(insert.mock.calls[1][0]).not.toHaveProperty('entry_type');
+    expect(insert.mock.calls[1][0]).not.toHaveProperty('short_payment_reason');
+  });
+
+  it('keeps short payment posting usable when live schema lacks short payment reason column', async () => {
+    const service = new DebitNoteService({} as any);
+    const insert = jest
+      .fn()
+      .mockResolvedValueOnce({ error: { code: 'PGRST204', message: "Could not find the 'entry_type' column" } })
+      .mockResolvedValueOnce({ error: { code: 'PGRST204', message: "Could not find the 'short_payment_reason' column" } })
+      .mockResolvedValueOnce({ error: null });
+
+    (service as any).supabase = {
+      from: jest.fn(() => ({ insert })),
+    };
+
+    await (service as any).insertGrnPaymentEntry('tenant-1', 'grn-1', {
+      payment_date: '2026-07-28',
+      amount: 0,
+      payment_method: 'NEFT',
+      payment_reference: null,
+      tds_amount: 0,
+      short_payment_amount: 8863.36,
+      short_payment_reason: 'Foreign exchange difference on assessable value',
+      payment_notes: null,
+      entry_type: 'PAYMENT',
+      created_by: 'user-1',
+    });
+
+    expect(insert).toHaveBeenCalledTimes(3);
+    expect(insert.mock.calls[1][0]).toMatchObject({
+      short_payment_reason: 'Foreign exchange difference on assessable value',
+    });
+    expect(insert.mock.calls[2][0]).not.toHaveProperty('entry_type');
+    expect(insert.mock.calls[2][0]).not.toHaveProperty('short_payment_reason');
+    expect(insert.mock.calls[2][0].payment_notes).toContain('Foreign exchange difference on assessable value');
+  });
+
+  it('falls back to legacy payment-entry totals when entry_type column is unavailable', async () => {
+    const service = new DebitNoteService({} as any);
+    const makeQuery = (result: any) => {
+      let eqCount = 0;
+      const query: any = {
+        select: jest.fn(() => query),
+        eq: jest.fn(() => {
+          eqCount += 1;
+          return eqCount >= 2 ? Promise.resolve(result) : query;
+        }),
+      };
+      return query;
+    };
+    const modernQuery = makeQuery({
+      error: { code: 'PGRST204', message: "Could not find the 'entry_type' column" },
+      data: null,
+    });
+    const legacyQuery = makeQuery({
+      error: null,
+      data: [{ amount: 4040, tds_amount: 0, short_payment_amount: 0 }],
+    });
+    const from = jest.fn()
+      .mockReturnValueOnce(modernQuery)
+      .mockReturnValueOnce(legacyQuery);
+
+    (service as any).supabase = { from };
+
+    const totals = await (service as any).fetchGrnPaymentEntryTotals('tenant-1', 'grn-1');
+
+    expect(totals).toEqual([{ amount: 4040, tds_amount: 0, short_payment_amount: 0, entry_type: 'PAYMENT' }]);
+  });
+
+  it('uses the latest actual payment metadata for the paid-invoice register', () => {
+    const service = new DebitNoteService({} as any);
+
+    const metadata = (service as any).latestPaymentMetadata([
+      {
+        entry_type: 'PAYMENT',
+        payment_date: '2026-08-10',
+        payment_method: 'NEFT',
+        payment_reference: 'OLD-REF',
+        created_at: '2026-08-10T10:00:00Z',
+      },
+      {
+        entry_type: 'ADVANCE_APPLIED',
+        payment_date: '2026-08-15',
+        payment_reference: 'ADVANCE-REF',
+      },
+      {
+        entry_type: 'PAYMENT',
+        payment_date: '2026-08-12',
+        payment_method: 'BANK_TRANSFER',
+        payment_reference: 'NEW-REF',
+        payment_notes: 'Corrected payment',
+        created_at: '2026-08-12T10:00:00Z',
+      },
+    ]);
+
+    expect(metadata).toEqual({
+      payment_date: '2026-08-12',
+      payment_method: 'BANK_TRANSFER',
+      payment_reference: 'NEW-REF',
+      payment_notes: 'Corrected payment',
+    });
   });
 });

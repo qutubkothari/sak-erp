@@ -65,3 +65,20 @@ export function normalizePersonName(value: unknown, label = 'Person name'): stri
   }
   return personName;
 }
+
+export function normalizeRegionalPhone(value: unknown, marketProfile: unknown = 'INDIA'): string {
+  const market = String(marketProfile || 'INDIA').trim().toUpperCase();
+  if (market !== 'UAE') return normalizeIndianMobile(value);
+
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  let national = digits;
+  if (national.startsWith('00971')) national = national.slice(5);
+  else if (national.startsWith('971')) national = national.slice(3);
+  else if (national.startsWith('0')) national = national.slice(1);
+
+  // UAE mobile numbers contain nine national digits and start with 5.
+  if (/^5\d{8}$/.test(national)) return `+971${national}`;
+  throw new BadRequestException('Enter a valid UAE mobile number.');
+}

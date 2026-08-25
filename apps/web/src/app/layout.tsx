@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import '../lib/install-date-format';
 import './globals.css';
@@ -6,6 +6,8 @@ import { Providers } from '@/components/providers';
 import DateLocaleBootstrap from '@/components/DateLocaleBootstrap';
 import ModalEnhancer from '@/components/ModalEnhancer';
 import VersionRefreshNotice from '@/components/VersionRefreshNotice';
+import PWARegister from '@/components/PWARegister';
+import PWAStatus from '@/components/PWAStatus';
 import { buildDocumentBranding } from '@/lib/document-branding';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -14,9 +16,31 @@ const appBranding = buildDocumentBranding(null);
 export const metadata: Metadata = {
   title: `${appBranding.companyName} - Manufacturing ERP`,
   description: `${appBranding.companyName} manufacturing ERP system with multi-tenant, multi-plant, and traceability support`,
+  manifest: '/manifest.webmanifest',
+  applicationName: 'SAIF ERP',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'SAIF ERP',
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
+  formatDetection: {
+    telephone: false,
+  },
   icons: {
     icon: '/favicon.svg',
+    apple: '/pwa-icon-192.png',
   },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: 'cover',
+  themeColor: '#8B6F47',
 };
 
 export default function RootLayout({
@@ -25,10 +49,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en-GB">
-      <body className={inter.className}>
+    <html lang="en-GB" suppressHydrationWarning>
+      <head>
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+      </head>
+      <body className={inter.className} suppressHydrationWarning>
         <Providers>
           <DateLocaleBootstrap />
+          <PWARegister />
+          <PWAStatus />
           <VersionRefreshNotice />
           {children}
           <ModalEnhancer />

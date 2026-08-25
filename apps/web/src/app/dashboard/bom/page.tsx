@@ -6,7 +6,8 @@ import { apiClient } from '../../../../lib/api-client';
 import { confirmDialog } from '../../../components/ui/ConfirmDialog';
 import ItemSearch from '../../../components/ItemSearch';
 import DrawingManager from '../../../components/DrawingManager';
-import { readStoredUser, hasModulePermission } from '../../../lib/rbac';
+import DateInput from '../../../components/ui/DateInput';
+import { readStoredUser, hasModulePermission, type StoredUser } from '../../../lib/rbac';
 import { getTodayDateInputValue } from '../../../lib/date';
 
 const fileToDataUrl = (file: File): Promise<string> =>
@@ -154,6 +155,7 @@ export default function BOMPage() {
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<{ id: string; code: string; name: string } | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+  const [storedUser, setStoredUser] = useState<StoredUser | null>(null);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -182,13 +184,14 @@ export default function BOMPage() {
   });
   const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
 
-  const canEditBom = hasModulePermission(readStoredUser(), 'BOM & Engineering', 'edit');
-  const canCreate = hasModulePermission(readStoredUser(), 'BOM & Engineering', 'create');
-  const canDelete = hasModulePermission(readStoredUser(), 'BOM & Engineering', 'delete');
+  const canEditBom = hasModulePermission(storedUser, 'BOM & Engineering', 'edit');
+  const canCreate = hasModulePermission(storedUser, 'BOM & Engineering', 'create');
+  const canDelete = hasModulePermission(storedUser, 'BOM & Engineering', 'delete');
 
   const isEditMode = Boolean(editingBomId);
 
   useEffect(() => {
+    setStoredUser(readStoredUser());
     fetchBOMs();
     if (showModal) {
       fetchAvailableBOMs();
@@ -1225,11 +1228,10 @@ export default function BOMPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Effective From</label>
-                  <input
-                    type="date"
+                  <DateInput
                     max={todayDate}
                     value={formData.effectiveFrom}
-                    onChange={(e) => setFormData({ ...formData, effectiveFrom: e.target.value })}
+                    onChange={(value) => setFormData({ ...formData, effectiveFrom: value })}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
                   />
                 </div>

@@ -40,14 +40,38 @@ const FUTURE_ALLOWED_FIELDS = new Set([
   'response_deadline',
   'dueDate',
   'due_date',
+  'dueBy',
+  'due_by',
   'plannedDate',
   'planned_date',
   'targetDate',
   'target_date',
   'expectedDate',
   'expected_date',
+  'expectedCompletionDate',
+  'expected_completion_date',
   'scheduledDate',
   'scheduled_date',
+  'scheduledStartDate',
+  'scheduled_start_date',
+  'scheduledEndDate',
+  'scheduled_end_date',
+  // Customer commercial planning controls.
+  'renewalDate',
+  'renewal_date',
+  'scheduledFor',
+  'scheduled_for',
+  // Commercial validity/expiry dates describe a future planning boundary;
+  // they are not accounting or posting dates.
+  'validUntil',
+  'valid_until',
+  // Contract and warranty boundaries are validity windows, not posting dates.
+  'startDate',
+  'start_date',
+  'endDate',
+  'end_date',
+  'warrantyUntil',
+  'warranty_until',
 ]);
 
 const assertNoFutureDateString = (value: string, path: string) => {

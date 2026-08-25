@@ -26,7 +26,7 @@ describe('PurchaseOrdersService controls', () => {
     };
 
     await expect(service.updateStatus('tenant-1', 'po-1', 'APPROVED', 'creator-1')).rejects.toThrow(
-      new BadRequestException('You cannot approve your own purchase order.'),
+      new BadRequestException('You cannot approve a purchase order that you created or last edited.'),
     );
   });
 
@@ -49,7 +49,7 @@ describe('PurchaseOrdersService controls', () => {
     };
 
     await expect(service.updateStatus('tenant-1', 'po-1', 'REJECTED', 'creator-1')).rejects.toThrow(
-      new BadRequestException('You cannot reject your own purchase order.'),
+      new BadRequestException('You cannot reject a purchase order that you created or last edited.'),
     );
   });
 

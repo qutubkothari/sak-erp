@@ -95,14 +95,14 @@ export class AuditInterceptor implements NestInterceptor {
       : auditMetadata?.action || this.inferAction(method, routePath);
 
     const responsePayload = this.extractPayload(responseBody);
-    const resourceId = this.pickFirstString(
+    const resourceId = this.toUuidOrNull(this.pickFirstString(
       request.params?.id,
       request.params?.uid,
       request.params?.runId,
       request.params?.docId,
       responsePayload?.id,
       responsePayload?.data?.id,
-    );
+    ));
     const resourceCode = this.pickFirstString(
       responsePayload?.po_number,
       responsePayload?.pr_number,
@@ -219,6 +219,12 @@ export class AuditInterceptor implements NestInterceptor {
       if (normalized) return normalized;
     }
     return null;
+  }
+
+  private toUuidOrNull(value: string | null): string | null {
+    return value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+      ? value
+      : null;
   }
 
   private sanitize(value: any, depth = 0): any {

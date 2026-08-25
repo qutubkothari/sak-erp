@@ -1,5 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 type ModulePermission = {
   module?: string;
@@ -9,6 +10,7 @@ type ModulePermission = {
   edit?: boolean;
   delete?: boolean;
   approve?: boolean;
+  download?: boolean;
 };
 
 type PermissionActionKey = keyof Omit<ModulePermission, 'module' | 'screen'>;
@@ -17,7 +19,7 @@ const MODULE_RESOURCE_MAP: Record<string, string[]> = {
   'Purchase Management': ['vendors', 'purchase_requisitions', 'purchase_orders', 'grns', 'debit_notes'],
   'Sales Management': ['sales'],
   Inventory: ['items', 'uid', 'grns'],
-  Production: ['job_orders'],
+  Production: ['job_orders', 'projects'],
   'Quality Control': ['quality'],
   'HR Management': ['hr'],
   'Service Management': ['service'],
@@ -31,22 +33,28 @@ const SCREEN_RESOURCE_MAP: Record<string, string[]> = {
   'purchase-vendors': ['vendors'],
   'purchase-requisitions': ['purchase_requisitions'],
   'purchase-orders': ['purchase_orders'],
+  'purchase-service-entries': ['purchase_orders'],
   'purchase-grn': ['grns'],
   'purchase-debit-notes': ['debit_notes'],
   'accounts-payables': ['debit_notes'],
   'inventory-siv': ['job_orders'],
   'inventory-srv': ['job_orders'],
   'inventory-items': ['items'],
+  'inventory-low-stock': ['items', 'purchase_requisitions'],
   'inventory-store-vouchers': ['items'],
   'uid-overview': ['uid'],
   'uid-deployment': ['uid'],
   'uid-traceability': ['uid'],
   'production-job-orders': ['job_orders'],
+  'production-projects': ['projects'],
   'production-create-job-order': ['job_orders'],
   'production-smart-job-order': ['job_orders'],
   'production-job-order-vouchers': ['job_orders'],
   'production-work-stations': ['job_orders'],
   'production-shop-floor': ['job_orders'],
+  'hr-overview': ['hr'],
+  'hr-self-service': ['hr'],
+  'hr-management': ['hr'],
   'bom-overview': ['bom'],
   'bom-routing': ['bom'],
   'settings-overview': ['users', 'roles'],
@@ -60,6 +68,7 @@ const MODULE_ACTION_TO_RESOURCE_ACTIONS: Record<PermissionActionKey, string[]> =
   edit: ['update', 'edit'],
   delete: ['delete'],
   approve: ['approve'],
+  download: ['download'],
 };
 
 const MODULE_ACTION_RESOURCE_OVERRIDES: Partial<Record<PermissionActionKey, Record<string, string[]>>> = {
@@ -70,7 +79,11 @@ const MODULE_ACTION_RESOURCE_OVERRIDES: Partial<Record<PermissionActionKey, Reco
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  private readonly supabase: SupabaseClient;
+
+  constructor(private reflector: Reflector) {
+    this.supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
+  }
 
   private isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null;
@@ -90,6 +103,7 @@ export class PermissionsGuard implements CanActivate {
       edit: !!value.edit,
       delete: !!value.delete,
       approve: !!value.approve,
+      download: !!value.download,
     };
   }
 
@@ -190,7 +204,115 @@ export class PermissionsGuard implements CanActivate {
     return false;
   }
 
-  canActivate(context: ExecutionContext): boolean {
+  private hasSuperAdminBypass(user: any): boolean {
+    const normalize = (value: unknown) =>
+      String(value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, '_')
+        .replace(/[^A-Z0-9_]/g, '');
+
+    const directRole = user?.role;
+    if (typeof directRole === 'string' && normalize(directRole) === 'SUPER_ADMIN') {
+      return true;
+    }
+
+    if (directRole && typeof directRole === 'object' && normalize(directRole.name) === 'SUPER_ADMIN') {
+      return true;
+    }
+
+    const roleEntries = Array.isArray(user?.roles) ? user.roles : [];
+    return roleEntries.some((entry: any) => {
+      const roleObj = entry?.role || entry;
+      return normalize(roleObj?.name) === 'SUPER_ADMIN';
+    });
+  }
+
+  private async enforceMakerChecker(request: any, user: any, requiredPermissions: string[]) {
+    const approvalPermission = requiredPermissions.find((permission) => permission.endsWith(':approve'));
+    if (!approvalPermission) return;
+
+    const resource = approvalPermission.split(':')[0];
+    const routePath = String(request?.route?.path || request?.originalUrl || '').toLowerCase();
+    const tenantId = String(user?.tenantId || '').trim();
+    const userId = String(user?.userId || user?.id || '').trim();
+
+    if (resource === 'job_orders' && tenantId && userId) {
+      const movementId = String(request?.params?.movementId || '').trim();
+      const entryId = String(request?.params?.entryId || '').trim();
+      const jobOrderId = String(request?.params?.id || '').trim();
+      let makerId = '';
+
+      if (movementId) {
+        const { data } = await this.supabase
+          .from('stock_movements')
+          .select('id, moved_by')
+          .eq('tenant_id', tenantId)
+          .eq('id', movementId)
+          .maybeSingle();
+        makerId = String((data as any)?.moved_by || '').trim();
+      } else if (entryId) {
+        const { data } = await this.supabase
+          .from('stock_entries')
+          .select('id, metadata')
+          .eq('tenant_id', tenantId)
+          .eq('id', entryId)
+          .maybeSingle();
+        makerId = String((data as any)?.metadata?.received_by || '').trim();
+      } else if (jobOrderId) {
+        const { data } = await this.supabase
+          .from('production_job_orders')
+          .select('id, created_by')
+          .eq('tenant_id', tenantId)
+          .eq('id', jobOrderId)
+          .maybeSingle();
+        makerId = String((data as any)?.created_by || '').trim();
+      }
+
+      if (makerId && makerId === userId) {
+        throw new ForbiddenException(
+          'Maker-checker violation: the creator cannot approve or reject their own record. Only Super Admin may override.',
+        );
+      }
+      return;
+    }
+
+    const sourceMap: Record<string, { table: string; creator: string; paramNames: string[] }> = {
+      vendors: { table: 'vendors', creator: 'created_by', paramNames: ['id'] },
+      items: { table: 'items', creator: 'created_by', paramNames: ['id'] },
+      purchase_requisitions: { table: 'purchase_requisitions', creator: 'created_by', paramNames: ['id'] },
+      purchase_orders: { table: 'purchase_orders', creator: 'created_by', paramNames: ['id'] },
+      grns: { table: 'grns', creator: 'created_by', paramNames: ['id'] },
+      debit_notes: { table: 'debit_notes', creator: 'created_by', paramNames: ['id'] },
+      sales: { table: 'quotations', creator: 'created_by', paramNames: ['quotationId', 'id'] },
+      documents: { table: 'documents', creator: 'created_by', paramNames: ['documentId', 'id'] },
+    };
+    const source = sourceMap[resource];
+    if (!source) return;
+    if (resource === 'sales' && !routePath.includes('quotation')) return;
+
+    const recordId = source.paramNames
+      .map((name) => String(request?.params?.[name] || '').trim())
+      .find(Boolean);
+    if (!recordId || !tenantId || !userId) return;
+
+    const { data, error } = await this.supabase
+      .from(source.table)
+      .select(`id, ${source.creator}`)
+      .eq('tenant_id', tenantId)
+      .eq('id', recordId)
+      .maybeSingle();
+
+    // Existing service-level checks remain the fallback for legacy schemas.
+    if (error || !data) return;
+    if (String((data as any)[source.creator] || '') === userId) {
+      throw new ForbiddenException(
+        'Maker-checker violation: the creator cannot approve or reject their own record. Only Super Admin may override.',
+      );
+    }
+  }
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredPermissions = this.reflector.getAllAndOverride<string[]>('permissions', [
       context.getHandler(),
       context.getClass(),
@@ -207,16 +329,14 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('User not authenticated');
     }
 
-    // Admin bypass for role-based full access users
-    if (this.hasAdminBypass(user)) {
-      return true;
-    }
+    const hasAdminFullAccess = this.hasAdminBypass(user);
+    const hasSuperAdminOverride = this.hasSuperAdminBypass(user);
 
     // Get user permissions from their role
     const userPermissions = this.getUserPermissions(user);
 
     // Check if user has all required permissions
-    const hasPermission = requiredPermissions.every(permission => 
+    const hasPermission = hasAdminFullAccess || requiredPermissions.every(permission => 
       userPermissions.includes(permission)
     );
 
@@ -228,6 +348,10 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException(
         `Access denied. Missing permissions: ${missingPermissions.join(', ')}`
       );
+    }
+
+    if (!hasSuperAdminOverride) {
+      await this.enforceMakerChecker(request, user, requiredPermissions);
     }
 
     return true;

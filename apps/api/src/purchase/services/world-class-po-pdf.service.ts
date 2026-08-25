@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { PDFDocument, rgb, StandardFonts, PDFPage, PDFFont } from 'pdf-lib';
-import { DocumentBrandingService } from '../../common/services/document-branding.service';
+import { existsSync } from 'fs';
+import { readFile } from 'fs/promises';
+import { isAbsolute, resolve } from 'path';
+import { PDFDocument, degrees, rgb, StandardFonts, PDFPage, PDFFont } from 'pdf-lib';
+import { DocumentBranding, DocumentBrandingService, PdfBrandingAssets } from '../../common/services/document-branding.service';
 
 interface POItem {
   sl_no?: number;
@@ -149,10 +152,10 @@ export class WorldClassPoPdfService {
     const font       = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold   = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
-    const assets     = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc);
     const pages: PDFPage[] = [];
     const branding = await this.documentBrandingService.getBranding(tenantId || undefined, SAIF_PO_ISSUER);
-    const normalizedData = {
+    const assets     = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc, branding);
+    const normalizedData = this.withRoundedGrandTotal({
       ...data,
       companyName: branding.companyName,
       companyAddress: branding.address || data.companyAddress,
@@ -160,7 +163,7 @@ export class WorldClassPoPdfService {
       companyPhone: branding.phone || data.companyPhone,
       companyWebsite: branding.website || data.companyWebsite,
       companyGSTIN: branding.taxId || data.companyGSTIN,
-    };
+    });
     pdfDoc.setAuthor(branding.companyName);
     pdfDoc.setCreator('SAK ERP');
     pdfDoc.setProducer('SAK ERP');
@@ -169,19 +172,188 @@ export class WorldClassPoPdfService {
     let s = await this.newPage(ctx);
     s = await this.drawReferenceStylePurchaseOrder(s, ctx);
     s = await this.drawGeneralTermsPage(ctx);
-    this.drawFooters(pages, font);
+    this.drawFooters(pages, font, branding, assets);
 
     return Buffer.from(await pdfDoc.save());
   }
 
-  generateFilename(poNumber: string): string {
-    return `PO_${poNumber}_${new Date().toISOString().split('T')[0]}.pdf`;
+  generateFilename(poNumber: string, supplierName?: string, isDraft = false): string {
+    const safePart = (value: unknown, fallback: string) => {
+      const normalized = String(value || '')
+        .trim()
+        .replace(/[^a-zA-Z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      return normalized || fallback;
+    };
+
+    const supplier = safePart(supplierName, 'Supplier');
+    const po = safePart(poNumber, 'PO');
+    return `${supplier}_${po}${isDraft ? '_DRAFT' : ''}.pdf`;
+  }
+
+  async applyDraftWatermark(pdfBuffer: Buffer): Promise<Buffer> {
+    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    for (const page of pdfDoc.getPages()) {
+      const { width, height } = page.getSize();
+      const size = Math.max(54, Math.min(width, height) * 0.16);
+      const text = 'DRAFT';
+      const textWidth = font.widthOfTextAtSize(text, size);
+
+      page.drawText(text, {
+        x: (width - textWidth) / 2,
+        y: height / 2 - size / 3,
+        size,
+        font,
+        color: rgb(0.72, 0.08, 0.08),
+        opacity: 0.18,
+        rotate: degrees(45),
+      });
+    }
+
+    return Buffer.from(await pdfDoc.save());
   }
 
   /**
    * Append item drawings (PDF or image files) as extra pages after the main PO pages.
    * Each drawing is fetched via its URL and merged into the main PDF document.
    */
+  async loadFileBuffer(fileUrl: string): Promise<Buffer> {
+    const cleanUrl = String(fileUrl || '').trim();
+    if (!cleanUrl) throw new Error('Missing file URL');
+
+    if (cleanUrl.startsWith('data:')) {
+      const commaIndex = cleanUrl.indexOf(',');
+      if (commaIndex === -1) throw new Error('Invalid data URL');
+      return Buffer.from(cleanUrl.slice(commaIndex + 1), cleanUrl.slice(0, commaIndex).includes(';base64') ? 'base64' : 'utf8');
+    }
+
+    if (/^https?:\/\//i.test(cleanUrl)) {
+      const response = await fetch(cleanUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return Buffer.from(await response.arrayBuffer());
+    }
+
+    const uploadsRoot = process.env.UPLOAD_ROOT_DIR || resolve(process.cwd(), '..', '..', 'uploads');
+    const resolvedUploadsRoot = resolve(uploadsRoot);
+    const relativeUploadPath = cleanUrl
+      .replace(/^file:\/\//i, '')
+      .replace(/^\/?uploads[\\/]/i, '')
+      .replace(/^[/\\]+/, '');
+
+    const localCandidates = [
+      isAbsolute(cleanUrl) ? cleanUrl : '',
+      resolve(resolvedUploadsRoot, relativeUploadPath),
+      resolve(process.cwd(), cleanUrl.replace(/^[/\\]+/, '')),
+    ].filter(Boolean);
+
+    const localPath = localCandidates.find((candidate) => {
+      const resolvedCandidate = resolve(candidate);
+      return (
+        existsSync(resolvedCandidate) &&
+        (resolvedCandidate.startsWith(resolvedUploadsRoot) || isAbsolute(cleanUrl))
+      );
+    });
+
+    if (!localPath) throw new Error(`Local file not found: ${cleanUrl}`);
+    return readFile(localPath);
+  }
+
+  private repairPdfCatalogAndXrefForPdfLib(pdfBuffer: Buffer): Buffer {
+    const source = pdfBuffer.toString('latin1');
+    const xrefIndex = source.lastIndexOf('\nxref');
+    if (xrefIndex < 0) return pdfBuffer;
+
+    const trailerSection = source.slice(xrefIndex);
+    const rootMatch = trailerSection.match(/\/Root\s+(\d+)\s+(\d+)\s+R/);
+    if (!rootMatch) return pdfBuffer;
+
+    const rootObjNo = Number(rootMatch[1]);
+    const rootGenNo = Number(rootMatch[2] || 0);
+    let body = source.slice(0, xrefIndex + 1);
+
+    const rootObjectPattern = new RegExp(`${rootObjNo}\\s+${rootGenNo}\\s+obj\\s*<<([\\s\\S]*?)>>`);
+    const rootDict = (body.match(rootObjectPattern) || [])[1] || '';
+    const pagesMatch = rootDict.match(/\/Pages\s+(\d+)\s+(\d+)\s+R/);
+    const pagesObjNo = pagesMatch ? Number(pagesMatch[1]) : null;
+
+    // Some CAD exports (e.g. SpaceClaim) create PDFs Acrobat can open but omit
+    // required /Type markers on Catalog/Page tree/Page dictionaries. pdf-lib is
+    // stricter and refuses to traverse those documents, so normalize them before
+    // embedding as PO drawing appendices.
+    body = body.replace(
+      /(\d+)\s+(\d+)\s+obj\s*<<([\s\S]*?)>>\s*(stream|endobj)/g,
+      (full, objNoText, genNoText, dict, terminator) => {
+        const objNo = Number(objNoText);
+        let nextDict = String(dict || '');
+        const isRoot = objNo === rootObjNo;
+        const isPages = pagesObjNo !== null && objNo === pagesObjNo;
+        const isPage = /\/MediaBox\s*\[/.test(nextDict) && /\/Parent\s+\d+\s+\d+\s+R/.test(nextDict);
+
+        if (isRoot && !/\/Type\s*\/Catalog\b/.test(nextDict)) {
+          nextDict = `/Type /Catalog ${nextDict}`;
+        }
+        if (isPages && !/\/Type\s*\/Pages\b/.test(nextDict)) {
+          nextDict = `/Type /Pages ${nextDict}`;
+        }
+        if (isPage && !/\/Type\s*\/Page\b/.test(nextDict)) {
+          nextDict = `/Type /Page ${nextDict}`;
+        }
+
+        return `${objNoText} ${genNoText} obj <<${nextDict}>> ${terminator}`;
+      },
+    );
+
+    const offsets: number[] = [];
+    const objectRegex = /(^|\n)(\d+)\s+(\d+)\s+obj\b/g;
+    let objectMatch: RegExpExecArray | null;
+    while ((objectMatch = objectRegex.exec(body)) !== null) {
+      const objectNo = Number(objectMatch[2]);
+      offsets[objectNo] = objectMatch.index + (objectMatch[1] ? 1 : 0);
+    }
+
+    const maxObjectNo = Math.max(0, ...Object.keys(offsets).map((value) => Number(value)));
+    let xref = `xref\n0 ${maxObjectNo + 1}\n`;
+    for (let index = 0; index <= maxObjectNo; index += 1) {
+      xref += index === 0 || offsets[index] === undefined
+        ? '0000000000 65535 f \n'
+        : `${String(offsets[index]).padStart(10, '0')} 00000 n \n`;
+    }
+
+    const infoMatch = trailerSection.match(/\/Info\s+(\d+)\s+(\d+)\s+R/);
+    const idMatch = trailerSection.match(/\/ID\s*\[[\s\S]*?\]/);
+    let trailer = `<</Root ${rootObjNo} ${rootGenNo} R /Size ${maxObjectNo + 1}`;
+    if (infoMatch) trailer += ` /Info ${infoMatch[1]} ${infoMatch[2]} R`;
+    if (idMatch) trailer += ` ${idMatch[0]}`;
+    trailer += '>>';
+
+    const startXref = Buffer.byteLength(body, 'latin1');
+    return Buffer.from(
+      `${body}${xref}trailer ${trailer}\nstartxref\n${startXref}\n%%EOF\n`,
+      'latin1',
+    );
+  }
+
+  private async loadPdfDocumentForAppend(pdfBuffer: Buffer): Promise<PDFDocument> {
+    try {
+      const loaded = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true } as any);
+      // pdf-lib can defer structural failures until page traversal.
+      loaded.getPageCount();
+      return loaded;
+    } catch (originalError: any) {
+      const repaired = this.repairPdfCatalogAndXrefForPdfLib(pdfBuffer);
+      if (repaired === pdfBuffer) throw originalError;
+      try {
+        const loaded = await PDFDocument.load(repaired, { ignoreEncryption: true } as any);
+        loaded.getPageCount();
+        return loaded;
+      } catch {
+        throw originalError;
+      }
+    }
+  }
+
   async appendDrawings(
     mainPdfBuffer: Buffer,
     drawings: Array<{ file_url: string; file_name?: string; file_type?: string }>,
@@ -194,12 +366,7 @@ export class WorldClassPoPdfService {
     for (const drawing of drawings) {
       if (!drawing.file_url) continue;
       try {
-        const response = await fetch(drawing.file_url);
-        if (!response.ok) {
-          console.warn(`[PoPdf] Drawing fetch failed (${response.status}): ${drawing.file_name}`);
-          continue;
-        }
-        const fileBuffer = Buffer.from(await response.arrayBuffer());
+        const fileBuffer = await this.loadFileBuffer(drawing.file_url);
         const fileType = (drawing.file_type || '').toLowerCase();
         const fileName = (drawing.file_name || '').toLowerCase();
 
@@ -211,7 +378,7 @@ export class WorldClassPoPdfService {
         );
 
         if (isPdf) {
-          const drawingDoc = await PDFDocument.load(fileBuffer, { ignoreEncryption: true } as any);
+          const drawingDoc = await this.loadPdfDocumentForAppend(fileBuffer);
           const indices = Array.from({ length: drawingDoc.getPageCount() }, (_, i) => i);
           const copiedPages = await mainDoc.copyPages(drawingDoc, indices);
           for (const pg of copiedPages) mainDoc.addPage(pg);
@@ -441,13 +608,14 @@ export class WorldClassPoPdfService {
     const { font, fontBold, data } = ctx;
     const cols = [
       { key: 'sl', title: 'Sr.\nNo', width: 24, align: 'center' as const },
-      { key: 'desc', title: 'Name Of Particulars', width: 190, align: 'left' as const },
+      { key: 'desc', title: 'Name Of Particulars', width: 165, align: 'left' as const },
       { key: 'hsn', title: 'HSN\nSAC', width: 48, align: 'center' as const },
       { key: 'qty', title: 'Qty', width: 42, align: 'right' as const },
       { key: 'rate', title: 'Rate', width: 56, align: 'right' as const },
-      { key: 'amount', title: 'Amount', width: 62, align: 'right' as const },
+      { key: 'disc', title: 'Disc %', width: 42, align: 'right' as const },
+      { key: 'amount', title: 'Amount', width: 58, align: 'right' as const },
       { key: 'tax', title: 'GST', width: 47, align: 'center' as const },
-      { key: 'total', title: 'Total', width: 54, align: 'right' as const },
+      { key: 'total', title: 'Total', width: 45, align: 'right' as const },
     ];
     const tw = cols.reduce((sum, col) => sum + col.width, 0);
     state = await this.referenceEnsureSpace(state, 42, ctx);
@@ -475,6 +643,7 @@ export class WorldClassPoPdfService {
         hsn: item.hsn_code || '',
         qty: `${this.fmtNum(item.quantity)} ${item.uom || ''}`.trim(),
         rate: this.fmtCur(item.unit_price),
+        disc: `${this.fmtNum(item.discount_percent || 0)}%`,
         amount: this.fmtCur(item.taxable_amount || 0),
         total: this.fmtCur(item.total_price || 0),
       };
@@ -595,6 +764,8 @@ export class WorldClassPoPdfService {
     if (customsDuty > 0) rows.push([`Customs Duty : ${this.amountInWords(customsDuty)} Only`, `Customs Duty : ${this.fmtCur(customsDuty)}`]);
     if (additionalExpenses > 0) rows.push([`Additional Expenses : ${this.amountInWords(additionalExpenses)} Only`, `Additional Expenses : ${this.fmtCur(additionalExpenses)}`]);
     rows.push([`Total Tax Amount : ${this.amountInWords(taxTotal)} Only`, `Tax Amount : ${this.fmtCur(taxTotal)}`]);
+    const roundOff = this.safeNumber(data.roundOff);
+    if (Math.abs(roundOff) >= 0.01) rows.push([`Rounding : ${this.fmtCur(roundOff)}`, `Rounding : ${this.fmtCur(roundOff)}`]);
     rows.push([`Total Amount : ${this.amountInWords(data.grandTotal || 0)} Only`, `Total Amount (INR) : ${this.fmtCur(data.grandTotal || 0)}`]);
     return rows;
   }
@@ -942,7 +1113,7 @@ export class WorldClassPoPdfService {
     if (data.freightGstAmount) rows.push([`Freight GST @ ${this.fmtNum(data.freightGstPercent || 0)}%`, data.freightGstAmount]);
     if (data.customsDuty) rows.push(['Customs Duty', data.customsDuty]);
     if (data.additionalExpenses) rows.push(['Additional Expenses', data.additionalExpenses]);
-    if (data.roundOff)  rows.push(['Round Off', data.roundOff]);
+    if (Math.abs(this.safeNumber(data.roundOff)) >= 0.01) rows.push(['Rounding', data.roundOff]);
     rows.push(['Grand Total', data.grandTotal]);
 
     const remarkText  = data.specialInstructions || data.remarks || '-';
@@ -1175,15 +1346,27 @@ export class WorldClassPoPdfService {
      PAGE FOOTERS
      ═══════════════════════════════════════════════════════════════════════════*/
 
-  private drawFooters(pages: PDFPage[], font: PDFFont) {
+  private drawFooters(pages: PDFPage[], font: PDFFont, branding: DocumentBranding, assets?: PdfBrandingAssets) {
     for (let i = 0; i < pages.length; i++) {
       const page  = pages[i];
       const left  = `Page ${i + 1} of ${pages.length}`;
-      const right = 'Computer-generated PO \u2013 no physical signature required.';
+      const right = branding.footerText || 'Computer-generated PO - no physical signature required.';
+      const contact = branding.footerContactLine || '';
+      if (assets?.footerImage) {
+        page.drawImage(assets.footerImage, {
+          x: MX,
+          y: MY_BOT - 2,
+          width: PAGE_W - MX * 2,
+          height: 28,
+        });
+        page.drawText(left, { x: MX, y: MY_BOT + 30, size: 6.5, font, color: MID_GRAY });
+        continue;
+      }
       page.drawLine({ start: { x: MX, y: MY_BOT + 10 }, end: { x: PAGE_W - MX, y: MY_BOT + 10 }, thickness: 0.5, color: BORDER });
       page.drawText(left, { x: MX, y: MY_BOT, size: 6.5, font, color: MID_GRAY });
-      const rw = font.widthOfTextAtSize(right, 6);
-      page.drawText(right, { x: PAGE_W - MX - rw, y: MY_BOT, size: 6, font, color: MID_GRAY });
+      const fittedRight = this.fitText(contact ? `${right} | ${contact}` : right, PAGE_W - MX * 2 - 80, font, 6);
+      const rw = font.widthOfTextAtSize(fittedRight, 6);
+      page.drawText(fittedRight, { x: PAGE_W - MX - rw, y: MY_BOT, size: 6, font, color: MID_GRAY });
     }
   }
 
@@ -1325,6 +1508,26 @@ export class WorldClassPoPdfService {
   private fmtCur(value: number): string {
     const n = Number.isFinite(Number(value)) ? Number(value) : 0;
     return this.indianFormat(n);
+  }
+
+  private safeNumber(value: unknown): number {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private withRoundedGrandTotal(data: POPdfData): POPdfData {
+    const exactGrandTotal = this.safeNumber(data.grandTotal);
+    const suppliedRoundOff = this.safeNumber(data.roundOff);
+    const roundedGrandTotal = Math.round(exactGrandTotal);
+    const roundOff = Math.abs(suppliedRoundOff) >= 0.01
+      ? Number(suppliedRoundOff.toFixed(2))
+      : Number((roundedGrandTotal - exactGrandTotal).toFixed(2));
+
+    return {
+      ...data,
+      roundOff: Math.abs(roundOff) >= 0.01 ? roundOff : 0,
+      grandTotal: roundedGrandTotal,
+    };
   }
 
   private fmtNum(value: number): string {

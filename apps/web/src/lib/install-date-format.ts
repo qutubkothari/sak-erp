@@ -9,6 +9,10 @@ type PatchedDateConstructor = DateConstructor & {
 const originalToLocaleDateString = Date.prototype.toLocaleDateString;
 const originalToLocaleString = Date.prototype.toLocaleString;
 
+function normalizeDateSeparators(value: string): string {
+  return value.replace(/^(\d{2})\/(\d{2})\/(\d{4})/, '$1-$2-$3');
+}
+
 function shouldNormalizeLocale(locales?: DateLocaleArg): boolean {
   if (locales == null) return true;
   if (Array.isArray(locales)) {
@@ -31,7 +35,7 @@ function buildNormalizedDateOptions(
   delete normalized.era;
   normalized.day = '2-digit';
   normalized.month = '2-digit';
-  normalized.year = '2-digit';
+  normalized.year = 'numeric';
 
   const hasExplicitTimeOptions = Boolean(
     normalized.timeStyle ||
@@ -42,8 +46,10 @@ function buildNormalizedDateOptions(
       normalized.timeZoneName,
   );
 
+  const requestedTimeStyle = normalized.timeStyle;
+  delete normalized.timeStyle;
+
   if (!includeTime) {
-    delete normalized.timeStyle;
     delete normalized.hour;
     delete normalized.minute;
     delete normalized.second;
@@ -58,6 +64,12 @@ function buildNormalizedDateOptions(
     normalized.minute = '2-digit';
     normalized.second = '2-digit';
     normalized.hour12 = false;
+  } else if (requestedTimeStyle && !normalized.hour && !normalized.minute && !normalized.second) {
+    normalized.hour = '2-digit';
+    normalized.minute = '2-digit';
+    if (requestedTimeStyle === 'medium' || requestedTimeStyle === 'long' || requestedTimeStyle === 'full') {
+      normalized.second = '2-digit';
+    }
   }
 
   return normalized;
@@ -75,10 +87,12 @@ export function installDateFormatDefaults(): void {
       return originalToLocaleDateString.call(this, locales as any, options);
     }
 
-    return originalToLocaleDateString.call(
-      this,
-      'en-GB',
-      buildNormalizedDateOptions(options, false),
+    return normalizeDateSeparators(
+      originalToLocaleDateString.call(
+        this,
+        'en-GB',
+        buildNormalizedDateOptions(options, false),
+      ),
     );
   };
 
@@ -90,10 +104,12 @@ export function installDateFormatDefaults(): void {
       return originalToLocaleString.call(this, locales as any, options);
     }
 
-    return originalToLocaleString.call(
-      this,
-      'en-GB',
-      buildNormalizedDateOptions(options, true),
+    return normalizeDateSeparators(
+      originalToLocaleString.call(
+        this,
+        'en-GB',
+        buildNormalizedDateOptions(options, true),
+      ),
     );
   };
 

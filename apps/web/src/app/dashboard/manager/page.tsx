@@ -3,15 +3,16 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
-import { hasModulePermission, getUserRoleNames, readStoredUser } from '@/lib/rbac';
-import { FileText, Package, ClipboardCheck, Wrench, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { hasModulePermission, getUserRoleNames, isAdminLike, readStoredUser } from '@/lib/rbac';
+import { FileText, Package, ClipboardCheck, Wrench, CheckCircle2, Clock, AlertCircle, FileCheck2 } from 'lucide-react';
+import type { DashboardReminderQueue } from '@/components/DashboardReminders';
 
 export const dynamic = 'force-dynamic';
 
 interface PendingApproval {
   id: string;
   number: string;
-  type: 'PR' | 'PO' | 'GRN' | 'JO' | 'QC';
+  type: 'PR' | 'PO' | 'GRN' | 'JO' | 'QC' | 'SES';
   requestedBy: string;
   requestedDate: string;
   amount?: number;
@@ -26,7 +27,28 @@ interface ApprovalStats {
   grnCount: number;
   joCount: number;
   qcCount: number;
+  sesCount: number;
 }
+
+type PendingPO = {
+  id: string;
+  po_number?: string;
+  vendor?: { name?: string } | null;
+  created_at?: string;
+  order_date?: string;
+  total_amount?: number;
+  status?: string;
+};
+
+type PendingGRN = {
+  id: string;
+  grn_number?: string;
+  vendor?: { name?: string } | null;
+  purchase_order?: { po_number?: string } | null;
+  created_at?: string;
+  receipt_date?: string;
+  status?: string;
+};
 
 export default function ManagerDashboardPage() {
   const router = useRouter();
@@ -37,6 +59,7 @@ export default function ManagerDashboardPage() {
     grnCount: 0,
     joCount: 0,
     qcCount: 0,
+    sesCount: 0,
   });
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +79,7 @@ export default function ManagerDashboardPage() {
       ['MANAGER', 'HR MANAGER', 'MANAGER_HR', 'DEPARTMENT MANAGER', 'TEAM LEAD', 'SUPERVISOR'].includes(name.toUpperCase())
     );
 
-    if (!isManager && !hasModulePermission(user, 'HR Management', 'approve')) {
+    if (!isManager && !isAdminLike(user) && !hasModulePermission(user, 'HR Management', 'approve')) {
       alert('Access Denied: This dashboard is only available for managers');
       router.replace('/dashboard');
       return;
@@ -65,10 +88,91 @@ export default function ManagerDashboardPage() {
     fetchApprovals();
   }, [router]);
 
+  useEffect(() => {
+    const applyReminderQueue = (queue: DashboardReminderQueue) => {
+      const poApprovals: PendingApproval[] = queue.pendingPOs.map((po) => ({
+        id: po.id,
+        number: po.po_number || po.id,
+        type: 'PO',
+        requestedBy: po.vendor?.name || 'Supplier not assigned',
+        requestedDate: po.created_at || po.order_date || new Date().toISOString(),
+        amount: Number(po.total_amount || 0),
+        status: po.status || 'Pending approval',
+      }));
+      const qcApprovals: PendingApproval[] = queue.pendingQC.map((grn) => ({
+        id: grn.id,
+        number: grn.grn_number || grn.id,
+        type: 'QC',
+        requestedBy: grn.vendor?.name || grn.purchase_order?.po_number || 'Goods receipt',
+        requestedDate: grn.created_at || grn.receipt_date || new Date().toISOString(),
+        status: grn.status || 'QC pending',
+      }));
+
+      setApprovals((current) => {
+        const otherApprovals = current.filter((item) => item.type !== 'PO' && item.type !== 'QC');
+        const next = [...otherApprovals, ...poApprovals, ...qcApprovals];
+        setStats({
+          totalPending: next.length,
+          prCount: next.filter((item) => item.type === 'PR').length,
+          poCount: poApprovals.length,
+          grnCount: next.filter((item) => item.type === 'GRN').length,
+          joCount: next.filter((item) => item.type === 'JO').length,
+          qcCount: qcApprovals.length,
+          sesCount: next.filter((item) => item.type === 'SES').length,
+        });
+        return next;
+      });
+      setLoading(false);
+    };
+
+    const existing = (window as Window & { __sakPendingReminders?: DashboardReminderQueue }).__sakPendingReminders;
+    if (existing) applyReminderQueue(existing);
+    const listener = (event: Event) => applyReminderQueue((event as CustomEvent<DashboardReminderQueue>).detail);
+    window.addEventListener('sak:pending-reminders', listener);
+    return () => window.removeEventListener('sak:pending-reminders', listener);
+  }, []);
+
   const fetchApprovals = async () => {
     try {
       setLoading(true);
-      const data = await apiClient.get('/manager/pending-approvals');
+      // The action-required widget already uses these two live queues.  Keep the
+      // dashboard on the same sources so a PO/QC item cannot be visible in one
+      // place and disappear from the manager worklist.
+      const [managerResult, poResult, qcResult] = await Promise.allSettled([
+        apiClient.get<PendingApproval[]>('/manager/pending-approvals'),
+        apiClient.get<PendingPO[]>('/purchase/orders?status=PENDING'),
+        apiClient.get<PendingGRN[]>('/purchase/grn?pendingQc=true'),
+      ]);
+
+      const managerApprovals = managerResult.status === 'fulfilled' && Array.isArray(managerResult.value)
+        ? managerResult.value
+        : [];
+      const poApprovals: PendingApproval[] = poResult.status === 'fulfilled' && Array.isArray(poResult.value)
+        ? poResult.value.map((po) => ({
+            id: po.id,
+            number: po.po_number || po.id,
+            type: 'PO' as const,
+            requestedBy: po.vendor?.name || 'Supplier not assigned',
+            requestedDate: po.created_at || po.order_date || new Date().toISOString(),
+            amount: Number(po.total_amount || 0),
+            status: po.status || 'Pending approval',
+          }))
+        : [];
+      const qcApprovals: PendingApproval[] = qcResult.status === 'fulfilled' && Array.isArray(qcResult.value)
+        ? qcResult.value.map((grn) => ({
+            id: grn.id,
+            number: grn.grn_number || grn.id,
+            type: 'QC' as const,
+            requestedBy: grn.vendor?.name || grn.purchase_order?.po_number || 'Goods receipt',
+            requestedDate: grn.created_at || grn.receipt_date || new Date().toISOString(),
+            status: grn.status || 'QC pending',
+          }))
+        : [];
+
+      // Manager endpoint can also return PO/QC records. De-duplicate by type + id.
+      const data = [...managerApprovals, ...poApprovals, ...qcApprovals].filter(
+        (approval, index, all) => all.findIndex((item) => item.type === approval.type && item.id === approval.id) === index,
+      );
       
       // Calculate stats
       const prCount = data.filter((a: PendingApproval) => a.type === 'PR').length;
@@ -76,6 +180,7 @@ export default function ManagerDashboardPage() {
       const grnCount = data.filter((a: PendingApproval) => a.type === 'GRN').length;
       const joCount = data.filter((a: PendingApproval) => a.type === 'JO').length;
       const qcCount = data.filter((a: PendingApproval) => a.type === 'QC').length;
+      const sesCount = data.filter((a: PendingApproval) => a.type === 'SES').length;
 
       setStats({
         totalPending: data.length,
@@ -84,6 +189,7 @@ export default function ManagerDashboardPage() {
         grnCount,
         joCount,
         qcCount,
+        sesCount,
       });
       setApprovals(data);
     } catch (error) {
@@ -103,6 +209,7 @@ export default function ManagerDashboardPage() {
       case 'GRN': return <ClipboardCheck className="w-5 h-5" />;
       case 'JO': return <Wrench className="w-5 h-5" />;
       case 'QC': return <CheckCircle2 className="w-5 h-5" />;
+      case 'SES': return <FileCheck2 className="w-5 h-5" />;
       default: return <FileText className="w-5 h-5" />;
     }
   };
@@ -114,6 +221,7 @@ export default function ManagerDashboardPage() {
       case 'GRN': return '#6B8E23';
       case 'JO': return '#4682B4';
       case 'QC': return '#DC2626';
+      case 'SES': return '#087A55';
       default: return '#8B6F47';
     }
   };
@@ -124,16 +232,19 @@ export default function ManagerDashboardPage() {
         router.push('/dashboard/purchase/requisitions');
         break;
       case 'PO':
-        router.push('/dashboard/purchase/orders');
+        router.push(`/dashboard/purchase/orders?viewId=${approval.id}`);
         break;
       case 'GRN':
-        router.push('/dashboard/purchase/grn');
+        router.push(`/dashboard/purchase/grn?viewId=${approval.id}`);
         break;
       case 'JO':
         router.push('/dashboard/production/job-orders');
         break;
       case 'QC':
-        router.push('/dashboard/quality');
+        router.push(`/dashboard/purchase/grn?viewId=${approval.id}`);
+        break;
+      case 'SES':
+        router.push('/dashboard/purchase/service-entries');
         break;
     }
   };
@@ -161,13 +272,14 @@ export default function ManagerDashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
         {[
           { title: 'Purchase Requisitions', value: stats.prCount, type: 'PR', icon: FileText, color: '#8B6F47' },
           { title: 'Purchase Orders', value: stats.poCount, type: 'PO', icon: Package, color: '#6F4E37' },
           { title: 'Goods Receipt', value: stats.grnCount, type: 'GRN', icon: ClipboardCheck, color: '#6B8E23' },
           { title: 'Job Orders', value: stats.joCount, type: 'JO', icon: Wrench, color: '#4682B4' },
           { title: 'Quality Control', value: stats.qcCount, type: 'QC', icon: CheckCircle2, color: '#DC2626' },
+          { title: 'Service Acceptance', value: stats.sesCount, type: 'SES', icon: FileCheck2, color: '#087A55' },
         ].map((card, index) => (
           <div
             key={index}
@@ -212,7 +324,7 @@ export default function ManagerDashboardPage() {
           >
             All ({stats.totalPending})
           </button>
-          {['PR', 'PO', 'GRN', 'JO', 'QC'].map(type => {
+          {['PR', 'PO', 'GRN', 'JO', 'QC', 'SES'].map(type => {
             const count = stats[`${type.toLowerCase()}Count` as keyof ApprovalStats] as number;
             return (
               <button

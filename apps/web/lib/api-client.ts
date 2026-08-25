@@ -87,12 +87,39 @@ interface LoginData {
   username: string;
   password: string;
   tenantId?: string;
+  accountId?: string;
+}
+
+function masterDataGovernanceDetail(endpoint: string, method: string, body: unknown, data: any) {
+  const payload = data?.message?.code ? data.message : data;
+  if (payload?.code !== 'MASTER_DATA_GOVERNANCE_REQUIRED') return null;
+  let proposed_data: Record<string, unknown> = {};
+  if (typeof body === 'string') {
+    try { proposed_data = JSON.parse(body); } catch { /* request body is not JSON */ }
+  }
+  return {
+    entity_type: payload.entity_type,
+    operation: method === 'DELETE' ? 'DEACTIVATE' : method === 'POST' ? 'CREATE' : 'UPDATE',
+    target_id: endpoint.match(/\/([0-9a-f-]+)\/?$/i)?.[1] || null,
+    proposed_data,
+    source_endpoint: endpoint,
+  };
 }
 
 interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
-  user: {
+  accessToken?: string;
+  refreshToken?: string;
+  requiresTenantSelection?: boolean;
+  message?: string;
+  tenants?: Array<{
+    accountId: string;
+    tenantId: string;
+    companyName: string;
+    displayName?: string;
+    username?: string;
+    email?: string;
+  }>;
+  user?: {
     id: string;
     username?: string;
     email: string;
@@ -130,6 +157,29 @@ class ApiClient {
 
   constructor(baseUrl?: string) {
     this.baseUrl = normalizeBaseUrl(baseUrl ?? getApiBaseUrl());
+  }
+
+  private decodeJwtPayload(token: string): any | null {
+    try {
+      const payload = token.split('.')[1];
+      if (!payload) return null;
+      const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+      return JSON.parse(atob(padded));
+    } catch {
+      return null;
+    }
+  }
+
+  private isTokenExpired(token: string | null, skewSeconds = 30): boolean {
+    if (!token) return true;
+    if (typeof window === 'undefined') return false;
+
+    const payload = this.decodeJwtPayload(token);
+    if (!payload?.exp) return false;
+
+    const expiresAtMs = Number(payload.exp) * 1000;
+    return Date.now() + skewSeconds * 1000 >= expiresAtMs;
   }
 
   private async refreshAccessToken(): Promise<string | null> {
@@ -200,8 +250,24 @@ class ApiClient {
         }
       };
 
+      const isAuthEndpoint = endpoint.startsWith('/auth/');
+      let accessToken = this.getToken();
+
+      if (!isAuthEndpoint && typeof window !== 'undefined') {
+        if (this.isTokenExpired(accessToken)) {
+          accessToken = await this.refreshAccessToken();
+        }
+
+        if (!accessToken) {
+          return {
+            success: false,
+            error: 'Not authenticated',
+          };
+        }
+      }
+
       // Add auth token if available
-      applyAuthHeader(this.getToken());
+      applyAuthHeader(accessToken);
 
       const execute = async () => {
         const response = await fetch(url, {
@@ -224,7 +290,6 @@ class ApiClient {
       let { response, data } = await execute();
 
       // If access token expired, attempt a single refresh + retry.
-      const isAuthEndpoint = endpoint.startsWith('/auth/');
       if (
         response.status === 401 &&
         !isAuthEndpoint &&
@@ -238,6 +303,10 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        const governance = masterDataGovernanceDetail(endpoint, String(options.method || 'GET').toUpperCase(), options.body, data);
+        if (governance && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('master-data-governance-required', { detail: governance }));
+        }
         return {
           success: false,
           error: buildHttpErrorMessage(response.status, response.statusText, data),
@@ -320,7 +389,7 @@ class ApiClient {
       body: JSON.stringify(data),
     });
 
-    if (response.success && response.data) {
+    if (response.success && response.data?.accessToken && response.data?.refreshToken && response.data?.user) {
       this.saveTokens(response.data.accessToken, response.data.refreshToken);
 
       // Persist user for role-based UI and employee self-service mapping
@@ -410,7 +479,15 @@ class ApiClient {
    * Check if user is authenticated
    */
   isAuthenticated(): boolean {
-    return !!this.getToken();
+    const token = this.getToken();
+    if (!token) return false;
+
+    if (this.isTokenExpired(token)) {
+      this.clearTokens();
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -436,6 +513,28 @@ class ApiClient {
       throw new Error(response.error || 'Request failed');
     }
     return response.data as T;
+  }
+
+  async getBlob(endpoint: string): Promise<Blob> {
+    const url = `${this.baseUrl}${endpoint}`;
+    let accessToken = this.getToken();
+    if (typeof window !== 'undefined' && this.isTokenExpired(accessToken)) {
+      accessToken = await this.refreshAccessToken();
+    }
+    if (!accessToken) throw new Error('Not authenticated');
+    const execute = (token: string) => fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    let response = await execute(accessToken);
+    if (response.status === 401) {
+      const refreshedToken = await this.refreshAccessToken();
+      if (refreshedToken) response = await execute(refreshedToken);
+    }
+    if (!response.ok) {
+      const text = await response.text();
+      let data: any = text;
+      try { data = text ? JSON.parse(text) : null; } catch { /* keep response text */ }
+      throw new Error(buildHttpErrorMessage(response.status, response.statusText, data));
+    }
+    return response.blob();
   }
 
   /**
@@ -474,6 +573,21 @@ class ApiClient {
     const payload = data ? prepareDataQualityPayload(endpoint, data) : undefined;
     const response = await this.request<T>(endpoint, {
       method: 'PUT',
+      body: payload ? JSON.stringify(payload) : undefined,
+    });
+    if (!response.success) {
+      throw new Error(response.error || 'Request failed');
+    }
+    return response.data as T;
+  }
+
+  /**
+   * Generic PATCH request
+   */
+  async patch<T = any>(endpoint: string, data?: any): Promise<T> {
+    const payload = data ? prepareDataQualityPayload(endpoint, data) : undefined;
+    const response = await this.request<T>(endpoint, {
+      method: 'PATCH',
       body: payload ? JSON.stringify(payload) : undefined,
     });
     if (!response.success) {

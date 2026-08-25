@@ -21,18 +21,21 @@ export function SecurityWrapper({ children }: { children: React.ReactNode }) {
   const { user } = useAuthStore();
   const [showWarning, setShowWarning] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(WARNING_BEFORE_LOGOUT);
-  const [lastActivity, setLastActivity] = useState(Date.now());
+  const [lastActivity, setLastActivity] = useState(0);
   const [isSecurityEnabled, setIsSecurityEnabled] = useState(false);
+  const [watermarkTimestamp, setWatermarkTimestamp] = useState('');
 
   useEffect(() => {
     // Disabled security features globally per user request
     setIsSecurityEnabled(false);
+    setLastActivity(Date.now());
+    setWatermarkTimestamp(new Date().toISOString());
   }, []);
 
   // Get user info for watermark (name may come from various fields)
   const userEmail = user?.email || 'Unknown';
   const userName = (user as any)?.name || (user as any)?.username || user?.first_name || user?.firstName || user?.email || 'Unknown User';
-  const watermarkText = `${userName} | ${new Date().toISOString()} | CONFIDENTIAL`;
+  const watermarkText = `${userName} | ${watermarkTimestamp || 'SESSION'} | CONFIDENTIAL`;
 
   // Session timeout logic
   useEffect(() => {

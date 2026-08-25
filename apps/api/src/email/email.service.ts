@@ -92,6 +92,68 @@ export class EmailService {
     return Boolean(smtpUser && smtpPass);
   }
 
+  private getForcedRecipients(): string[] {
+    const recipient =
+      this.configService.get<string>('EMAIL_FORCE_RECIPIENT') ||
+      this.configService.get<string>('EMAIL_RECIPIENT_OVERRIDE') ||
+      this.configService.get<string>('EMAIL_TEST_RECIPIENT');
+
+    if (typeof recipient !== 'string' || !recipient.trim()) return [];
+
+    return recipient
+      .split(/[;,]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  private stringifyRecipients(value: nodemailer.SendMailOptions['to']): string {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => {
+          if (!entry) return '';
+          if (typeof entry === 'string') return entry;
+          return String((entry as any).address || (entry as any).name || '');
+        })
+        .filter(Boolean)
+        .join(', ');
+    }
+    return String((value as any).address || (value as any).name || '');
+  }
+
+  private applyForcedRecipient(mailOptions: nodemailer.SendMailOptions): nodemailer.SendMailOptions {
+    const forcedRecipients = this.getForcedRecipients();
+    if (forcedRecipients.length === 0) return mailOptions;
+
+    const originalTo = this.stringifyRecipients(mailOptions.to);
+    const originalCc = this.stringifyRecipients(mailOptions.cc as any);
+    const originalBcc = this.stringifyRecipients(mailOptions.bcc as any);
+    const originalRecipients = [originalTo && `to=${originalTo}`, originalCc && `cc=${originalCc}`, originalBcc && `bcc=${originalBcc}`]
+      .filter(Boolean)
+      .join('; ');
+
+    const forcedRecipientLabel = forcedRecipients.join(', ');
+
+    console.log(
+      `Email recipient override active: redirecting outbound email to ${forcedRecipientLabel}${
+        originalRecipients ? ` (original ${originalRecipients})` : ''
+      }`,
+    );
+
+    return {
+      ...mailOptions,
+      to: forcedRecipients,
+      cc: undefined,
+      bcc: undefined,
+      headers: {
+        ...(mailOptions.headers || {}),
+        'X-SAK-Email-Recipient-Override': 'true',
+        ...(originalRecipients ? { 'X-SAK-Original-Recipients': originalRecipients } : {}),
+      },
+    };
+  }
+
   private isAuthError(error: unknown): boolean {
     const message = String((error as any)?.message || '').toLowerCase();
     return (
@@ -104,7 +166,19 @@ export class EmailService {
 
   public async applyFromAndReplyTo(
     mailOptions: nodemailer.SendMailOptions,
-    fromType: 'admin' | 'sales' | 'support' | 'technical' | 'purchase' | 'hr' | 'noreply' = 'noreply',
+    fromType:
+      | 'admin'
+      | 'sales'
+      | 'support'
+      | 'technical'
+      | 'purchase'
+      | 'production'
+      | 'accounts'
+      | 'reminders'
+      | 'quality'
+      | 'documents'
+      | 'hr'
+      | 'noreply' = 'noreply',
     companyName?: string,
   ): Promise<nodemailer.SendMailOptions> {
     const transportUser = this.getTransportUser();
@@ -385,6 +459,8 @@ export class EmailService {
   }
 
   private async sendMail(mailOptions: nodemailer.SendMailOptions) {
+    mailOptions = this.applyForcedRecipient(mailOptions);
+
     const oauthEnabled = Boolean(this.gmailOAuth2Service?.isConfigured());
     const smtpEnabled = this.hasSmtpCredentials();
 

@@ -1,22 +1,22 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
-import { hasModulePermission } from '@/lib/rbac';
+import { getUserRoleNames, hasMakerCheckerOverride, hasModulePermission, isAdminLike } from '@/lib/rbac';
 import { useAuthStore } from '@/stores/auth.store';
-import { getTodayDateInputValue } from '@/lib/date';
+import { formatDateInputDisplay, getTodayDateInputValue, parseDisplayDateToInputValue } from '@/lib/date';
 import { loadDeliveryAddresses, saveDeliveryAddress, type DeliveryAddressOption } from '@/lib/delivery-addresses';
 import { toast } from 'sonner';
-import { Plus, Trash2, Eye, FileText, CheckCircle, Search, Edit, X, RefreshCw, Send, History, Check } from 'lucide-react';
+import { Plus, Trash2, Eye, FileText, CheckCircle, Search, Edit, X, RefreshCw, Send, History, Check, Copy } from 'lucide-react';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
-import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { SlidePanel } from '../../../../components/ui/SlidePanel';
 import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import DateInput from '../../../../components/ui/DateInput';
+import RndTemporaryItemModal, { type RndTemporaryItem } from '../../../../components/RndTemporaryItemModal';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 
 interface PRItem {
@@ -31,7 +31,7 @@ interface PRItem {
   estimatedPrice?: number;
   specifications?: string;
   paymentTerms?: string;
-  deliveryTerms?: string;
+  requiredDate?: string;
 }
 
 interface Item {
@@ -40,6 +40,17 @@ interface Item {
   name: string;
   uom: string;
   standard_cost?: number;
+  oem_part_no?: string | null;
+  oem_name?: string | null;
+}
+interface ItemAvailability {
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  uom?: string;
+  currentStockQty: number;
+  pendingPoQty: number;
+  openPrQty: number;
 }
 
 type RawItem = Record<string, any>;
@@ -54,26 +65,31 @@ const REQUISITION_FORM_SECTIONS: Array<{ id: RequisitionFormSection; label: stri
 ];
 
 const DEPARTMENT_OPTIONS = [
-  'PRODUCTION',
-  'PROCUREMENT',
-  'INVENTORY',
-  'QUALITY',
-  'SALES',
-  'SERVICE',
-  'ACCOUNTS',
-  'HR',
-  'ADMINISTRATION',
-].map((department) => ({ value: department, label: department }));
+  { value: 'PRODUCTION', label: 'Production' },
+  { value: 'R&D', label: 'R&D' },
+];
+
+const ADD_PROJECT_OPTION = '__ADD_PROJECT__';
+const RFQ_EMAIL_SENDING_ENABLED = true;
 
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map((priority) => ({
   value: priority,
   label: priority,
 }));
 
+const PRIORITY_RANK: Record<string, number> = {
+  URGENT: 4,
+  HIGH: 3,
+  MEDIUM: 2,
+  LOW: 1,
+};
+
 interface Requisition {
   id: string;
   pr_number: string;
   department: string;
+  project_id?: string | null;
+  project_name?: string | null;
   request_date: string;
   required_date: string;
   status: string;
@@ -90,6 +106,20 @@ interface Requisition {
     sentCount?: number;
     receivedCount?: number;
     nextFollowUpDate?: string | null;
+  };
+  po_summary?: {
+    total?: number;
+    draftCount?: number;
+    pendingCount?: number;
+    approvedCount?: number;
+    rejectedCount?: number;
+    cancelledCount?: number;
+    totalOrderedQty?: number;
+    totalReceivedQty?: number;
+    grnCount?: number;
+    completedGrnCount?: number;
+    poNumbers?: string[];
+    grnNumbers?: string[];
   };
 }
 
@@ -110,6 +140,7 @@ interface PRDetailItem {
   remarks?: string;
   payment_terms?: string;
   delivery_terms?: string;
+  required_date?: string;
   updated_at?: string;
   updated_by?: string;
 }
@@ -118,6 +149,8 @@ interface PRDetail {
   id: string;
   pr_number: string;
   department: string;
+  project_id?: string | null;
+  project_name?: string | null;
   request_date: string;
   required_date: string;
   status: string;
@@ -143,6 +176,20 @@ interface PRDetail {
     sentCount?: number;
     receivedCount?: number;
     nextFollowUpDate?: string | null;
+  };
+  po_summary?: {
+    total?: number;
+    draftCount?: number;
+    pendingCount?: number;
+    approvedCount?: number;
+    rejectedCount?: number;
+    cancelledCount?: number;
+    totalOrderedQty?: number;
+    totalReceivedQty?: number;
+    grnCount?: number;
+    completedGrnCount?: number;
+    poNumbers?: string[];
+    grnNumbers?: string[];
   };
   purchase_requisition_items: PRDetailItem[];
 }
@@ -190,6 +237,14 @@ interface RfqRecord {
   }>;
 }
 
+interface ProjectOption {
+  id: string;
+  project_code: string;
+  project_name: string;
+  department: string;
+  status: string;
+}
+
 interface ApprovalHistoryEntry {
   id: string;
   action: string;
@@ -217,22 +272,78 @@ function getPrWorkflowLabel(pr: Pick<Requisition, 'workflow_status_label' | 'sta
   return String(pr?.workflow_status_label || pr?.status || 'UNKNOWN').trim();
 }
 
+function canUseApprovedPrActions(pr: Pick<Requisition, 'workflow_status' | 'status'> | null | undefined): boolean {
+  const rawStatus = String(pr?.status || '').trim().toUpperCase();
+  const status = getPrWorkflowStatus(pr);
+  return rawStatus === 'APPROVED' && ['APPROVED', 'RFQ_ISSUED', 'RFQ_RCVD'].includes(status);
+}
+
+function canRoleApprovePurchase(user: any): boolean {
+  if (isAdminLike(user)) return true;
+  return getUserRoleNames(user).some((role) => {
+    const normalized = String(role || '').toUpperCase().replace(/[_-]+/g, ' ');
+    return ['MANAGER', 'DIRECTOR', 'OWNER'].some((keyword) => normalized.includes(keyword));
+  });
+}
+
+function normalizePriority(value: string | null | undefined): string {
+  const normalized = String(value || 'MEDIUM').trim().toUpperCase();
+  return PRIORITY_RANK[normalized] ? normalized : 'MEDIUM';
+}
+
+function getPriorityClass(priority: string | null | undefined): string {
+  const normalized = normalizePriority(priority);
+  if (normalized === 'URGENT') return 'border-red-200 bg-red-50 text-red-700';
+  if (normalized === 'HIGH') return 'border-orange-200 bg-orange-50 text-orange-700';
+  if (normalized === 'LOW') return 'border-slate-200 bg-slate-50 text-slate-600';
+  return 'border-amber-200 bg-amber-50 text-amber-700';
+}
+
+function PriorityBadge({ priority }: { priority?: string | null }) {
+  const normalized = normalizePriority(priority);
+  return (
+    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${getPriorityClass(normalized)}`}>
+      {normalized}
+    </span>
+  );
+}
+
+function parsePrDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const isoDateTime = raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if (isoDateTime) {
+    const year = Number(isoDateTime[1]);
+    if (year < 2000 || year > 2100) return null;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const normalized = parseDisplayDateToInputValue(raw);
+  if (!normalized) return null;
+  const year = Number(normalized.slice(0, 4));
+  if (year < 2000 || year > 2100) return null;
+  const [yearText, monthText, dayText] = normalized.split('-');
+  const parsed = new Date(Number(yearText), Number(monthText) - 1, Number(dayText));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function formatPrDate(value: string | null | undefined): string {
-  if (!value) return '-';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '-';
+  const parsed = parsePrDate(value);
+  if (!parsed) return '-';
   return new Intl.DateTimeFormat('en-IN', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     timeZone: 'Asia/Kolkata',
-  }).format(parsed);
+  }).format(parsed).replace(/\//g, '-');
 }
 
 function formatPrDateTime(value: string | null | undefined): string {
-  if (!value) return '-';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '-';
+  const parsed = parsePrDate(value);
+  if (!parsed) return '-';
   return new Intl.DateTimeFormat('en-IN', {
     day: '2-digit',
     month: '2-digit',
@@ -240,7 +351,7 @@ function formatPrDateTime(value: string | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
     timeZone: 'Asia/Kolkata',
-  }).format(parsed);
+  }).format(parsed).replace(/\//g, '-');
 }
 
 function normalizeDateInputValue(value: string | null | undefined): string {
@@ -248,31 +359,54 @@ function normalizeDateInputValue(value: string | null | undefined): string {
   if (!raw) return '';
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    return raw;
+    const [year, month, day] = raw.split('-').map(Number);
+    const parsed = new Date(year, month - 1, day);
+    const isValid =
+      parsed.getFullYear() === year &&
+      parsed.getMonth() === month - 1 &&
+      parsed.getDate() === day &&
+      year >= 2000 &&
+      year <= 2100;
+    return isValid ? raw : '';
   }
 
-  const ddmmyyyy = raw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/);
-  if (ddmmyyyy) {
-    const [, day, month, year] = ddmmyyyy;
-    return `${year}-${month}-${day}`;
+  const ddmmyy = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2}|\d{4})$/);
+  if (ddmmyy) {
+    const [, dayText, monthText, yearText] = ddmmyy;
+    const year = yearText.length === 2 ? 2000 + Number(yearText) : Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
+    return normalizeDateInputValue(
+      `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+    );
   }
 
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) {
-    return '';
+  const isoDateTime = raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if (isoDateTime) {
+    return normalizeDateInputValue(`${isoDateTime[1]}-${isoDateTime[2]}-${isoDateTime[3]}`);
   }
 
-  const year = parsed.getFullYear();
-  const month = String(parsed.getMonth() + 1).padStart(2, '0');
-  const day = String(parsed.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return '';
 }
 
 const AUTO_REFRESH_MS = 30000;
 
+function freshCloneLineId(prefix = 'clone'): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function futureOrTodayDate(value: string | null | undefined, today: string): string {
+  const normalized = normalizeDateInputValue(value);
+  if (!normalized) return today;
+  return today && normalized < today ? today : normalized;
+}
+
 function PRContent() {
-  const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user: currentUser, hydrate: hydrateAuth } = useAuthStore();
   const [todayDate, setTodayDate] = useState('');
   const [isMounted, setIsMounted] = useState(false);
@@ -283,17 +417,20 @@ function PRContent() {
   }, [hydrateAuth]);
   const permissionUser = isMounted ? currentUser : null;
   const currentUserId = String((permissionUser as any)?.id || (permissionUser as any)?.userId || '');
-  const canApprovePR = hasModulePermission(permissionUser, 'Purchase Management', 'approve');
+  const canApprovePR = hasModulePermission(permissionUser, 'Purchase Management', 'approve') || canRoleApprovePurchase(permissionUser);
+  const canBypassPrMakerChecker = hasMakerCheckerOverride(permissionUser);
   const canCreatePR = hasModulePermission(permissionUser, 'Purchase Management', 'create');
   const canEditPR = hasModulePermission(permissionUser, 'Purchase Management', 'edit');
   const canDeletePR = hasModulePermission(permissionUser, 'Purchase Management', 'delete');
   const itemEntryRef = useRef<HTMLDivElement>(null);
+  const handledDeepLinkRef = useRef('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [items, setItems] = useState<PRItem[]>([]);
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [loadingRequisitions, setLoadingRequisitions] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterVendor, setFilterVendor] = useState('');
+  const [filterPriority, setFilterPriority] = useState('');
   const [selectedPR, setSelectedPR] = useState<PRDetail | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -307,11 +444,15 @@ function PRContent() {
   const [formSection, setFormSection] = useState<RequisitionFormSection>('general');
   const [formData, setFormData] = useState({
     department: '',
+    projectId: '',
+    projectName: '',
     requiredDate: '',
     priority: 'MEDIUM',
     deliveryAddress: '',
     notes: '',
   });
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [projectSaving, setProjectSaving] = useState(false);
   const [deliveryAddresses, setDeliveryAddresses] = useState<DeliveryAddressOption[]>([]);
   const [deliveryAddressName, setDeliveryAddressName] = useState('');
   const [deliveryAddressSaving, setDeliveryAddressSaving] = useState(false);
@@ -325,7 +466,6 @@ function PRContent() {
     estimatedPrice: '',
     specifications: '',
     paymentTerms: '',
-    deliveryTerms: '',
     requiredDate: '',
   });
 
@@ -338,10 +478,12 @@ function PRContent() {
     po_number?: string;
     po_date?: string;
   } | null>(null);
+  const [showRndTemporaryItem, setShowRndTemporaryItem] = useState(false);
 
   const [rfqPanelOpen, setRfqPanelOpen] = useState(false);
   const [rfqVendors, setRfqVendors] = useState<Vendor[]>([]);
   const [rfqItemVendors, setRfqItemVendors] = useState<Record<string, string[]>>({});
+  const [preferredVendorByPrItemId, setPreferredVendorByPrItemId] = useState<Record<string, string>>({});
   const [rfqVendorDrafts, setRfqVendorDrafts] = useState<Record<string, string>>({});
   const [rfqLoadingVendors, setRfqLoadingVendors] = useState(false);
   const [rfqSending, setRfqSending] = useState(false);
@@ -384,6 +526,37 @@ function PRContent() {
     items: [],
   });
 
+  const buildPrItemSearchText = (requisition: Requisition) => {
+    const items = Array.isArray((requisition as any).purchase_requisition_items)
+      ? (requisition as any).purchase_requisition_items
+      : Array.isArray((requisition as any).items)
+        ? (requisition as any).items
+        : [];
+
+    return items
+      .map((item: any) => [
+        item?.item_code,
+        item?.itemCode,
+        item?.item_name,
+        item?.itemName,
+        item?.item_description,
+        item?.description,
+        item?.specifications,
+        item?.notes,
+        item?.remarks,
+        item?.oem_part_no,
+        item?.oem_part_number,
+        item?.oem_name,
+        item?.item?.code,
+        item?.item?.name,
+        item?.item?.description,
+        item?.item?.oem_part_no,
+        item?.item?.oem_part_number,
+        item?.item?.oem_name,
+      ].filter(Boolean).join(' '))
+      .join(' ');
+  };
+
   const requisitionsTableColumns: Array<ListTableColumn<Requisition>> = [
     {
       id: 'pr_number',
@@ -395,6 +568,13 @@ function PRContent() {
       id: 'department',
       label: 'Department',
       accessor: (r) => r.department,
+    },
+    {
+      id: 'priority',
+      label: 'Priority',
+      accessor: (r) => normalizePriority(r.priority),
+      sortAccessor: (r) => PRIORITY_RANK[normalizePriority(r.priority)],
+      cell: (r) => <PriorityBadge priority={r.priority} />,
     },
     {
       id: 'required_date',
@@ -430,6 +610,14 @@ function PRContent() {
       hideable: true,
     },
     {
+      id: 'item_description_search',
+      label: 'Item / Description',
+      accessor: buildPrItemSearchText,
+      searchAccessor: buildPrItemSearchText,
+      defaultVisible: false,
+      minWidth: 220,
+    },
+    {
       id: 'actions',
       label: 'Actions',
       sortable: false,
@@ -446,6 +634,18 @@ function PRContent() {
           >
             <Eye className="h-4 w-4" />
           </ErpButton>
+          {canCreatePR && (
+            <ErpButton
+              onClick={() => handleClonePR(req.id)}
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              title="Clone requisition as new draft"
+              aria-label="Clone requisition as new draft"
+            >
+              <Copy className="h-4 w-4" />
+            </ErpButton>
+          )}
           {(req.status === 'DRAFT' || req.status === 'SUBMITTED' || req.status === 'REJECTED') && canEditPR && (
             <ErpButton
               onClick={() => handleEditPR(req.id)}
@@ -470,7 +670,7 @@ function PRContent() {
               <Send className="h-4 w-4" />
             </ErpButton>
           )}
-          {req.status === 'SUBMITTED' && canApprovePR && String(req.requested_by) !== currentUserId && (
+          {req.status === 'SUBMITTED' && canApprovePR && (canBypassPrMakerChecker || String(req.requested_by) !== currentUserId) && (
             <>
               <ErpButton
                 onClick={() => handleApprove(req.id)}
@@ -512,8 +712,21 @@ function PRContent() {
   ];
 
   // Helper to get selected vendor IDs
+  const getActiveRfqVendorIds = () => new Set(rfqVendors.filter((vendor) => vendor?.is_active !== false).map((vendor) => String(vendor.id)));
+
+  const sanitizeRfqItemVendorMap = (source: Record<string, string[]>) => {
+    const activeVendorIds = getActiveRfqVendorIds();
+    return Object.fromEntries(
+      Object.entries(source).map(([itemId, vendorIds]) => [
+        itemId,
+        Array.from(new Set((vendorIds || []).map((vendorId) => String(vendorId || '').trim()).filter((vendorId) => vendorId && activeVendorIds.has(vendorId)))),
+      ]),
+    );
+  };
+
   const getSelectedVendorIds = () => {
-    const allVendorIds = Object.values(rfqItemVendors).flat().filter(Boolean);
+    const sanitized = sanitizeRfqItemVendorMap(rfqItemVendors);
+    const allVendorIds = Object.values(sanitized).flat().filter(Boolean);
     return Array.from(new Set(allVendorIds));
   };
 
@@ -556,6 +769,7 @@ function PRContent() {
   useEffect(() => {
     if (showCreateForm) {
       fetchMasterItems();
+      fetchProjects();
       loadDeliveryAddresses()
         .then(setDeliveryAddresses)
         .catch(() => setDeliveryAddresses([]));
@@ -564,6 +778,12 @@ function PRContent() {
       }
     }
   }, [showCreateForm]);
+
+  useEffect(() => {
+    if (!showCreateForm) return;
+    fetchMasterItems();
+    resetItemEntry();
+  }, [formData.department, showCreateForm]);
 
   const handleSaveDeliveryAddress = async () => {
     const address = formData.deliveryAddress.trim();
@@ -603,7 +823,11 @@ function PRContent() {
   const fetchMasterItems = async () => {
     try {
       setItemsLoadError(null);
-      const response = await apiClient.get('/inventory/items?onlyVerified=true');
+      // R&D requisitions can use the normal parts catalogue as well as items
+      // specifically marked for R&D. Restricting this to `scope=RND` left the
+      // selector empty whenever the tenant had no specially tagged R&D items.
+      const itemScope = formData.department === 'R&D' ? 'includeRnd=true' : '';
+      const response = await apiClient.get(`/inventory/items${itemScope ? `?${itemScope}` : ''}`);
       // apiClient.get already unwraps the data, so response is the array directly.
       // Normalize field names because some APIs return item_id/item_code/etc.
       const list = Array.isArray(response) ? (response as RawItem[]) : [];
@@ -643,6 +867,7 @@ function PRContent() {
       vendorId: '',
       vendorName: '',
       estimatedPrice: item.standard_cost?.toString() || '',
+      requiredDate: prev.requiredDate || formData.requiredDate || todayDate || getTodayDateInputValue(),
     }));
 
     // Fetch preferred vendor
@@ -720,18 +945,128 @@ function PRContent() {
     }
   };
 
-  const addItem = () => {
+  const handleRndTemporaryItemCreated = async (item: RndTemporaryItem) => {
+    const normalizedItem: Item = {
+      id: String(item.id),
+      code: String(item.code),
+      name: String(item.name || item.code),
+      uom: String(item.uom || 'NOS'),
+      standard_cost: item.standard_cost == null ? undefined : Number(item.standard_cost),
+      oem_part_no: item.oem_part_no || item.code,
+      oem_name: item.oem_name || undefined,
+    };
+    const vendorName = String(
+      item.preferred_vendor_name
+      || rfqVendors.find((vendor) => vendor.id === item.preferred_vendor_id)?.name
+      || '',
+    );
+
+    setMasterItems((current) => [normalizedItem, ...current.filter((entry) => entry.id !== normalizedItem.id)]);
+    setSelectedItemId(normalizedItem.id);
+    setLastPurchasePrice(null);
+    setItemEntryError('');
+    setItemForm((current) => ({
+      ...current,
+      itemName: `${normalizedItem.code} - ${normalizedItem.name}`,
+      uom: normalizedItem.uom,
+      vendorId: String(item.preferred_vendor_id || ''),
+      vendorName,
+      estimatedPrice: item.preferred_price == null ? '' : String(item.preferred_price),
+      specifications: String(item.description || current.specifications || ''),
+      requiredDate: current.requiredDate || formData.requiredDate || todayDate || getTodayDateInputValue(),
+    }));
+  };
+
+  const formatAvailabilityQty = (value: unknown) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '0';
+    return numeric.toLocaleString('en-IN', {
+      maximumFractionDigits: 3,
+    });
+  };
+
+  const resolveItemQuantity = async (selectedItem: Item, requestedQty: number): Promise<number> => {
+    const uom = resolveUomFromItem(selectedItem) || selectedItem.uom || '';
+    try {
+      const availability = await apiClient.get(
+        `/purchase/requisitions/item-availability/${selectedItem.id}`,
+      ) as ItemAvailability;
+
+      const coveredQuantity = Math.max(
+        0,
+        Number(availability.currentStockQty || 0) +
+          Number(availability.pendingPoQty || 0) +
+          Number(availability.openPrQty || 0),
+      );
+
+      // Nothing is currently available, so there is no choice to make.
+      if (coveredQuantity === 0 || requestedQty <= coveredQuantity) {
+        return requestedQty;
+      }
+
+      const remainingQuantity = requestedQty - coveredQuantity;
+      const addRemaining = await confirmDialog({
+        title: 'Quantity exceeds available coverage',
+        message: [
+          `Item: ${selectedItem.code} - ${selectedItem.name}`,
+          `Requested: ${formatAvailabilityQty(requestedQty)} ${uom}`,
+          `Covered by stock, open PRs and pending POs: ${formatAvailabilityQty(coveredQuantity)} ${uom}`,
+          `Remaining quantity: ${formatAvailabilityQty(remainingQuantity)} ${uom}`,
+          '',
+          'Which quantity should be added to this requisition?',
+        ].join('\n'),
+        confirmLabel: `Add remaining (${formatAvailabilityQty(remainingQuantity)})`,
+        cancelLabel: `Add full quantity (${formatAvailabilityQty(requestedQty)})`,
+        variant: 'warning',
+        disableDismiss: true,
+      });
+      return addRemaining ? remainingQuantity : requestedQty;
+    } catch {
+      // A temporary availability lookup issue must not block adding a line item.
+      return requestedQty;
+    }
+  };
+
+  const normalizePrItemCode = (value: unknown) => String(value || '').trim().toUpperCase();
+
+  const findDuplicatePrItem = (selectedItem: Item, excludeLineId?: string | null) => {
+    const selectedMasterId = String(selectedItem.id || '').trim();
+    const selectedCode = normalizePrItemCode(selectedItem.code);
+
+    return items.find((item) => {
+      if (excludeLineId && item.id === excludeLineId) return false;
+
+      const existingMasterId = String(item.masterItemId || '').trim();
+      const existingCode = normalizePrItemCode(item.itemCode);
+
+      return (
+        (selectedMasterId && existingMasterId && selectedMasterId === existingMasterId) ||
+        (selectedCode && existingCode && selectedCode === existingCode)
+      );
+    });
+  };
+
+  const addItem = async () => {
     setItemEntryError('');
     const quantity = Number(itemForm.quantity);
     const estimatedPrice = itemForm.estimatedPrice ? Number(itemForm.estimatedPrice) : undefined;
 
     if (!selectedItemId) {
+      if (formData.department === 'R&D') {
+        setShowRndTemporaryItem(true);
+        return;
+      }
       setItemEntryError('Select an item from the search results before adding it.');
       return;
     }
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
       setItemEntryError('Enter a quantity greater than zero.');
+      return;
+    }
+
+    if (!itemForm.requiredDate) {
+      setItemEntryError('Select the delivery date for this item.');
       return;
     }
 
@@ -746,11 +1081,15 @@ function PRContent() {
       return;
     }
 
-    const duplicate = items.find(item => item.itemCode === selectedItem.code);
+    const duplicate = findDuplicatePrItem(selectedItem);
     if (duplicate) {
-      setItemEntryError('This item is already included in the requisition. Edit the existing line instead.');
+      const message = `${selectedItem.code} is already included in this requisition. Edit the existing line instead of adding it again.`;
+      setItemEntryError(message);
+      toast.error(message);
       return;
     }
+
+    const resolvedQuantity = await resolveItemQuantity(selectedItem, quantity);
 
     const nextItem = {
       id: Date.now().toString(),
@@ -760,11 +1099,10 @@ function PRContent() {
       uom: resolveUomFromItem(selectedItem) || undefined,
       vendorId: itemForm.vendorId || undefined,
       vendorName: itemForm.vendorName || undefined,
-      quantity,
+      quantity: resolvedQuantity,
       estimatedPrice,
       specifications: itemForm.specifications,
       paymentTerms: itemForm.paymentTerms || undefined,
-      deliveryTerms: itemForm.deliveryTerms || undefined,
       requiredDate: itemForm.requiredDate || undefined,
     };
 
@@ -779,8 +1117,7 @@ function PRContent() {
       estimatedPrice: '',
       specifications: '',
       paymentTerms: '',
-      deliveryTerms: '',
-      requiredDate: '',
+      requiredDate: formData.requiredDate || todayDate || getTodayDateInputValue(),
     });
     setSelectedItemId(null);
     setLastPurchasePrice(null);
@@ -796,8 +1133,7 @@ function PRContent() {
       estimatedPrice: '',
       specifications: '',
       paymentTerms: '',
-      deliveryTerms: '',
-      requiredDate: '',
+      requiredDate: formData.requiredDate || todayDate || getTodayDateInputValue(),
     });
     setSelectedItemId(null);
     setItemEntryError('');
@@ -809,7 +1145,7 @@ function PRContent() {
     setEditingPRId(null);
     setEditingItemId(null);
     setItems([]);
-    setFormData({ department: '', requiredDate: '', priority: 'MEDIUM', deliveryAddress: '', notes: '' });
+    setFormData({ department: '', projectId: '', projectName: '', requiredDate: todayDate || getTodayDateInputValue(), priority: 'MEDIUM', deliveryAddress: '', notes: '' });
     setDeliveryAddressName('');
     setFormSection('general');
     resetItemEntry();
@@ -846,8 +1182,7 @@ function PRContent() {
       estimatedPrice: item.estimatedPrice?.toString() || '',
       specifications: item.specifications || '',
       paymentTerms: item.paymentTerms || '',
-      deliveryTerms: item.deliveryTerms || '',
-      requiredDate: (item as any).requiredDate || '',
+      requiredDate: item.requiredDate || formData.requiredDate || '',
     });
     if (matchedItem) {
       setSelectedItemId(matchedItem.id);
@@ -857,7 +1192,7 @@ function PRContent() {
     }
   };
 
-  const updateItem = () => {
+  const updateItem = async () => {
     if (!editingItemId) return;
 
     setItemEntryError('');
@@ -874,6 +1209,11 @@ function PRContent() {
       return;
     }
 
+    if (!itemForm.requiredDate) {
+      setItemEntryError('Select the delivery date for this item.');
+      return;
+    }
+
     const selectedItem = masterItems.find(item => item.id === selectedItemId);
     if (!selectedItem) {
       setItemEntryError('The selected item is no longer available. Search and select it again.');
@@ -885,11 +1225,15 @@ function PRContent() {
       return;
     }
 
-    const duplicate = items.find(item => item.id !== editingItemId && item.itemCode === selectedItem.code);
+    const duplicate = findDuplicatePrItem(selectedItem, editingItemId);
     if (duplicate) {
-      setItemEntryError('This item is already included in the requisition.');
+      const message = `${selectedItem.code} is already included in this requisition. Edit the existing line instead.`;
+      setItemEntryError(message);
+      toast.error(message);
       return;
     }
+
+    const resolvedQuantity = await resolveItemQuantity(selectedItem, quantity);
 
     setItems(prev => prev.map(item => 
       item.id === editingItemId ? {
@@ -900,11 +1244,10 @@ function PRContent() {
         uom: resolveUomFromItem(selectedItem) || item.uom,
         vendorId: itemForm.vendorId || undefined,
         vendorName: itemForm.vendorName || undefined,
-        quantity,
+        quantity: resolvedQuantity,
         estimatedPrice,
         specifications: itemForm.specifications,
         paymentTerms: itemForm.paymentTerms || undefined,
-        deliveryTerms: itemForm.deliveryTerms || undefined,
         requiredDate: itemForm.requiredDate || undefined,
       } : item
     ));
@@ -928,6 +1271,39 @@ function PRContent() {
     }
   };
 
+  const fetchProjects = async () => {
+    try {
+      const response = await apiClient.get('/projects?status=ACTIVE');
+      setProjects(Array.isArray(response) ? response : []);
+    } catch {
+      setProjects([]);
+    }
+  };
+
+  const createProjectFromDropdown = async () => {
+    const projectName = window.prompt('Enter new project name');
+    if (!projectName?.trim()) return;
+    const department = formData.department || 'PRODUCTION';
+    setProjectSaving(true);
+    try {
+      const created = await apiClient.post('/projects', {
+        projectName: projectName.trim(),
+        department,
+      });
+      await fetchProjects();
+      setFormData((prev) => ({
+        ...prev,
+        projectId: String(created?.id || ''),
+        projectName: String(created?.project_name || projectName.trim()),
+      }));
+      toast.success('Project created and selected.');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to create project');
+    } finally {
+      setProjectSaving(false);
+    }
+  };
+
   const handleViewDetails = async (prId: string) => {
     setSelectedPR(null);
     setLoadingDetail(true);
@@ -938,6 +1314,7 @@ function PRContent() {
     setApprovalHistory([]);
     setEditingRfqResponse(null);
     setRfqItemVendors({});
+    setPreferredVendorByPrItemId({});
     setRfqResponseDate('');
     setRfqRemarks('');
     if (masterItems.length === 0) {
@@ -956,11 +1333,37 @@ function PRContent() {
     }
   };
 
+  useEffect(() => {
+    const openPrId = String(searchParams.get('open') || searchParams.get('prId') || '').trim();
+    if (!openPrId) return;
+
+    const shouldOpenRfqResponses = ['1', 'true', 'yes'].includes(
+      String(searchParams.get('rfqResponses') || searchParams.get('rfq') || '').trim().toLowerCase(),
+    );
+    const key = `${openPrId}:${shouldOpenRfqResponses ? 'rfq' : 'detail'}`;
+    if (handledDeepLinkRef.current === key) return;
+    handledDeepLinkRef.current = key;
+
+    (async () => {
+      await handleViewDetails(openPrId);
+      if (shouldOpenRfqResponses) {
+        await fetchRfqHistory(openPrId);
+        setShowRfqResponses(true);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const refreshSelectedPRDetail = async (prId: string) => {
     try {
       const data = await apiClient.get(`/purchase/requisitions/${prId}`);
       setSelectedPR(data);
-      setApprovalHistory(await fetchApprovalHistorySafely(prId));
+      const [approvalRows, rfqRows] = await Promise.all([
+        fetchApprovalHistorySafely(prId),
+        apiClient.get<RfqRecord[]>(`/purchase/requisitions/${prId}/rfqs`).catch(() => []),
+      ]);
+      setApprovalHistory(approvalRows);
+      setRfqHistory(Array.isArray(rfqRows) ? rfqRows : []);
     } catch {
     }
   };
@@ -986,20 +1389,12 @@ function PRContent() {
       resetItemEntry();
       setEditingItemId(null);
 
-      const toDateInputValue = (value: any): string => {
-        const raw = String(value || '').trim();
-        if (!raw) return '';
-        // Already in yyyy-mm-dd
-        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-        const parsed = new Date(raw);
-        if (Number.isNaN(parsed.getTime())) return '';
-        return parsed.toISOString().split('T')[0];
-      };
-      
       // Populate form with existing PR data
       setFormData({
         department: data.department || '',
-        requiredDate: toDateInputValue(data.required_date ?? data.requiredDate),
+        projectId: data.project_id || data.projectId || '',
+        projectName: data.project_name || data.projectName || '',
+        requiredDate: normalizeDateInputValue(data.required_date ?? data.requiredDate),
         priority: data.priority || 'MEDIUM',
         deliveryAddress: data.delivery_address || data.deliveryAddress || '',
         notes: data.purpose || data.notes || '',
@@ -1024,7 +1419,7 @@ function PRContent() {
         estimatedPrice: item?.estimated_rate ?? item?.estimated_price ?? item?.estimatedPrice ?? undefined,
         specifications: item?.remarks || item?.specifications || '',
         paymentTerms: item?.payment_terms || item?.paymentTerms || undefined,
-        deliveryTerms: item?.delivery_terms || item?.deliveryTerms || undefined,
+        requiredDate: String(item?.required_date || item?.requiredDate || '').slice(0, 10) || undefined,
       }));
       setItems(prItems);
 
@@ -1034,6 +1429,62 @@ function PRContent() {
     } catch (error) {
       const msg = (error as any)?.message ? String((error as any).message) : '';
       alert(msg ? `Failed to load PR for editing: ${msg}` : 'Failed to load PR for editing');
+    }
+  };
+
+  const handleClonePR = async (prId: string) => {
+    if (!canCreatePR) return;
+    try {
+      const data = await apiClient.get(`/purchase/requisitions/${prId}`);
+      resetItemEntry();
+      setEditingItemId(null);
+      setEditingPRId(null);
+      setRfqPanelOpen(false);
+      setShowRfqResponses(false);
+      setRfqHistory([]);
+      setApprovalHistory([]);
+
+      const sourceRequiredDate = futureOrTodayDate(data.required_date ?? data.requiredDate, todayDate);
+      setFormData({
+        department: data.department || '',
+        projectId: data.project_id || data.projectId || '',
+        projectName: data.project_name || data.projectName || '',
+        requiredDate: sourceRequiredDate,
+        priority: data.priority || 'MEDIUM',
+        deliveryAddress: data.delivery_address || data.deliveryAddress || '',
+        notes: data.purpose || data.notes
+          ? `Cloned from ${data.pr_number || 'source PR'} - ${data.purpose || data.notes}`
+          : `Cloned from ${data.pr_number || 'source PR'}`,
+      });
+
+      const rawItems: any[] = Array.isArray(data?.purchase_requisition_items)
+        ? data.purchase_requisition_items
+        : Array.isArray(data?.items)
+          ? data.items
+          : [];
+
+      const clonedItems: PRItem[] = rawItems.map((item: any, index: number) => ({
+        id: freshCloneLineId(`pr-line-${index + 1}`),
+        masterItemId: item?.item_id || item?.itemId || undefined,
+        itemCode: item?.item_code || item?.itemCode || '',
+        itemName: item?.item_name || item?.itemName || '',
+        uom: resolveUomFromItem(item?.item || item),
+        vendorId: item?.vendor_id || item?.vendorId || undefined,
+        vendorName: item?.vendor_name || item?.vendorName || undefined,
+        quantity: item?.requested_qty ?? item?.quantity ?? 0,
+        estimatedPrice: item?.estimated_rate ?? item?.estimated_price ?? item?.estimatedPrice ?? undefined,
+        specifications: item?.remarks || item?.specifications || '',
+        paymentTerms: item?.payment_terms || item?.paymentTerms || undefined,
+        requiredDate: futureOrTodayDate(item?.required_date || item?.requiredDate || sourceRequiredDate, todayDate),
+      }));
+      setItems(clonedItems);
+
+      setFormSection('general');
+      setShowDetailModal(false);
+      setShowCreateForm(true);
+      toast.success(`Cloned ${data.pr_number || 'PR'} as a new requisition draft.`);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to clone PR');
     }
   };
 
@@ -1065,42 +1516,87 @@ function PRContent() {
     }
   };
 
+  const fetchItemVendorLinksForPRItem = async (
+    prItem: PRDetailItem,
+    itemIdCache: Map<string, string | null>,
+  ): Promise<Array<{ vendorId: string; preferred: boolean }>> => {
+    const cacheKey = prItem.item_id || prItem.item_code || prItem.item_name || prItem.id;
+    let itemId: string | null | undefined = itemIdCache.get(cacheKey);
+    if (itemId === undefined) {
+      itemId = await resolveItemIdForPRItem(prItem);
+      itemIdCache.set(cacheKey, itemId);
+    }
+
+    if (!itemId) return [];
+
+    try {
+      const itemVendors = await apiClient.get(`/items/${itemId}/vendors`);
+      if (!Array.isArray(itemVendors)) return [];
+      return itemVendors
+        .filter((iv: any) =>
+          iv?.is_active !== false &&
+          iv?.vendor?.is_active !== false &&
+          (iv?.vendor_id || iv?.vendor?.id),
+        )
+        .map((iv: any, index: number) => ({
+          vendorId: String(iv.vendor_id || iv.vendor?.id),
+          preferred: iv.is_preferred === true || index === 0,
+        }));
+    } catch {
+      return [];
+    }
+  };
+
   const fetchPreferredVendorsForPR = async (pr: PRDetail) => {
     const items = Array.isArray(pr.purchase_requisition_items) ? pr.purchase_requisition_items : [];
     if (items.length === 0) return;
 
     const itemIdCache = new Map<string, string | null>();
     const itemVendorMap: Record<string, string[]> = {};
+    const preferredVendorMap: Record<string, string> = {};
+    let activeVendorIds = new Set<string>();
+    try {
+      const activeVendors = await apiClient.get<Vendor[]>('/purchase/vendors?isActive=true');
+      activeVendorIds = new Set((Array.isArray(activeVendors) ? activeVendors : []).filter((vendor) => vendor?.is_active !== false).map((vendor) => String(vendor.id)));
+    } catch {
+      activeVendorIds = new Set(rfqVendors.filter((vendor) => vendor?.is_active !== false).map((vendor) => String(vendor.id)));
+    }
 
     for (const prItem of items) {
-      // If a vendor was already selected and saved with the PR item, prefer it.
-      if (prItem.vendor_id) {
-        itemVendorMap[prItem.id] = [prItem.vendor_id];
-        continue;
+      const linkedVendors = await fetchItemVendorLinksForPRItem(prItem, itemIdCache);
+      const linkedVendorIds = linkedVendors.map((entry) => entry.vendorId).filter((vendorId) => activeVendorIds.has(String(vendorId)));
+      const preferredVendorId =
+        String(linkedVendors.find((entry) => entry.preferred && activeVendorIds.has(String(entry.vendorId)))?.vendorId || '').trim() ||
+        (activeVendorIds.has(String(prItem.vendor_id || '').trim()) ? String(prItem.vendor_id || '').trim() : '') ||
+        String(linkedVendorIds[0] || '').trim();
+
+      if (preferredVendorId) {
+        preferredVendorMap[prItem.id] = preferredVendorId;
+        itemVendorMap[prItem.id] = Array.from(new Set([preferredVendorId, ...linkedVendorIds]));
+      } else if (linkedVendorIds.length > 0) {
+        itemVendorMap[prItem.id] = Array.from(new Set(linkedVendorIds));
       }
 
-      const cacheKey = prItem.item_id || prItem.item_code || prItem.item_name || prItem.id;
-      let itemId: string | null | undefined = itemIdCache.get(cacheKey);
-      if (itemId === undefined) {
-        itemId = await resolveItemIdForPRItem(prItem);
-        itemIdCache.set(cacheKey, itemId);
-      }
-
-      if (!itemId) continue;
-
-      try {
-        const pref = await apiClient.get(`/items/${itemId}/vendors/preferred`);
-        const vendorId = pref?.vendor_id;
-        if (vendorId) {
-          itemVendorMap[prItem.id] = [vendorId];
+      if (!itemVendorMap[prItem.id]?.length) {
+        try {
+          const cacheKey = prItem.item_id || prItem.item_code || prItem.item_name || prItem.id;
+          const resolvedItemId = itemIdCache.get(cacheKey) ?? await resolveItemIdForPRItem(prItem);
+          if (resolvedItemId) {
+            const pref = await apiClient.get(`/items/${resolvedItemId}/vendors/preferred`);
+            const vendorId = pref?.vendor_id || pref?.vendorId || pref?.vendor?.id;
+            if (vendorId && activeVendorIds.has(String(vendorId))) {
+              preferredVendorMap[prItem.id] = String(vendorId);
+              itemVendorMap[prItem.id] = [String(vendorId)];
+            }
+          }
+        } catch {
         }
-      } catch (error) {
-        continue;
       }
     }
 
     // Set the per-item vendor selections
     setRfqItemVendors(itemVendorMap);
+    setPreferredVendorByPrItemId(preferredVendorMap);
   };
 
   const fetchRFQVendors = async () => {
@@ -1114,35 +1610,19 @@ function PRContent() {
       // If we have a selected PR with items, get vendors from item_vendors relationships
       if (selectedPR?.purchase_requisition_items && selectedPR.purchase_requisition_items.length > 0) {
         const prItems = selectedPR.purchase_requisition_items;
-        const preferredVendorIds = new Set<string>();
         const allVendorIds = new Set<string>();
+        const itemIdCache = new Map<string, string | null>();
 
-        // Collect preferred vendors; keep a fallback of all vendors for PR items
+        // Collect every active vendor linked to the PR items. Preferred vendors are highlighted in the item table,
+        // but RFQ should not silently exclude alternate approved vendors.
         for (const prItem of prItems) {
-          const itemId = prItem.item_id;
-          if (!itemId) continue;
-
-          try {
-            // Fetch item-vendor relationships for this item
-            const itemVendors = await apiClient.get(`/items/${itemId}/vendors`);
-            if (Array.isArray(itemVendors)) {
-              itemVendors
-                .filter((iv: any) => iv.is_active !== false && iv.vendor_id)
-                .forEach((iv: any) => {
-                  const id = String(iv.vendor_id);
-                  allVendorIds.add(id);
-                  if (iv.is_preferred === true || iv.priority === 1) {
-                    preferredVendorIds.add(id);
-                  }
-                });
-            }
-          } catch (err) {
-          }
+          const linkedVendors = await fetchItemVendorLinksForPRItem(prItem, itemIdCache);
+          linkedVendors.forEach((entry) => allVendorIds.add(entry.vendorId));
+          if (prItem.vendor_id) allVendorIds.add(String(prItem.vendor_id));
         }
 
-        const idsToUse = preferredVendorIds.size > 0 ? preferredVendorIds : allVendorIds;
         const associatedVendors = vendorList.filter(
-          (v) => v?.is_active !== false && idsToUse.has(String(v.id)),
+          (v) => v?.is_active !== false && allVendorIds.has(String(v.id)),
         );
 
         const sortByName = (a: Vendor, b: Vendor) => (a.name || '').localeCompare(b.name || '');
@@ -1182,14 +1662,28 @@ function PRContent() {
   };
 
   const openRfqResponseEditor = (rfq: RfqRecord) => {
+    const sourceItems = Array.isArray(rfq.rfq_items) && rfq.rfq_items.length > 0
+      ? rfq.rfq_items
+      : (selectedPR?.purchase_requisition_items || []).map((item) => ({
+          id: '',
+          pr_item_id: item.id,
+          item_code: item.item_code || '',
+          item_name: item.item_name || '',
+          requested_qty: item.requested_qty || 0,
+          uom: resolveUomForPRDetailItem(item),
+          vendor_quoted_price: null,
+          vendor_quoted_lead_time: null,
+          vendor_notes: '',
+        }));
+
     setEditingRfqResponse(rfq);
     setRfqResponseForm({
       remarks: rfq.response_remarks || '',
       followUpDate: normalizeDateInputValue(rfq.follow_up_date),
       followUpNotes: rfq.follow_up_notes || '',
       attachments: Array.isArray(rfq.response_attachments) ? rfq.response_attachments : [],
-      items: Array.isArray(rfq.rfq_items)
-        ? rfq.rfq_items.map((item) => ({
+      items: sourceItems
+        .map((item) => ({
             id: item.id,
             prItemId: item.pr_item_id,
             itemCode: item.item_code || '',
@@ -1206,7 +1700,6 @@ function PRContent() {
                 : String(item.vendor_quoted_lead_time),
             notes: item.vendor_notes || '',
           }))
-        : [],
     });
   };
 
@@ -1331,25 +1824,31 @@ function PRContent() {
       alert('Please select at least one vendor for the items');
       return;
     }
+    const sanitizedRfqItemVendors = sanitizeRfqItemVendorMap(rfqItemVendors);
 
     // Create item-vendor assignments
     const itemVendorAssignments = selectedPR.purchase_requisition_items?.map((item) => ({
       item: item,
-      vendorIds: rfqItemVendors[item.id] || []
+      vendorIds: sanitizedRfqItemVendors[item.id] || []
     })) || [];
 
     // Create item-vendor assignments for API
     const itemVendorAssignmentsForApi = selectedPR.purchase_requisition_items?.map((item) => ({
       itemId: item.id,
-      vendorIds: rfqItemVendors[item.id] || [],
+      vendorIds: sanitizedRfqItemVendors[item.id] || [],
     })) || [];
+    const normalizedResponseDate = normalizeDateInputValue(rfqResponseDate);
+    if (rfqResponseDate && !normalizedResponseDate) {
+      toast.error('Enter expected response date in dd-mm-yyyy format.');
+      return;
+    }
 
     try {
       setRfqPreviewLoading(true);
       const preview = await apiClient.post(`/purchase/requisitions/${selectedPR.id}/rfq/preview`, {
         vendorIds: selectedVendors,
         itemVendors: itemVendorAssignmentsForApi,
-        responseDate: rfqResponseDate || undefined,
+        responseDate: normalizedResponseDate || undefined,
         remarks: rfqRemarks || undefined,
         recipientOverrides: rfqRecipientOverrides,
         subject: rfqSubjectOverride.trim() ? rfqSubjectOverride.trim() : undefined,
@@ -1368,7 +1867,7 @@ function PRContent() {
         pr: selectedPR,
         vendors: rfqVendors.filter((v) => selectedVendors.includes(v.id)),
         itemVendors: itemVendorAssignments,
-        responseDate: rfqResponseDate,
+        responseDate: normalizedResponseDate,
         remarks: rfqRemarks,
         emailPreviews,
       });
@@ -1382,25 +1881,36 @@ function PRContent() {
   };
 
   const handleSendRFQ = async () => {
+    if (!RFQ_EMAIL_SENDING_ENABLED) {
+      alert('RFQ emails are currently disabled. Please use Preview RFQ to review the email content.');
+      return;
+    }
+
     if (!selectedPR) return;
     const selectedVendors = getSelectedVendorIds();
     if (selectedVendors.length === 0) {
       alert('Please select at least one vendor for the items');
       return;
     }
+    const sanitizedRfqItemVendors = sanitizeRfqItemVendorMap(rfqItemVendors);
 
     // Create item-vendor assignments for API
     const itemVendorAssignments = selectedPR.purchase_requisition_items?.map((item) => ({
       itemId: item.id,
-      vendorIds: rfqItemVendors[item.id] || []
+      vendorIds: sanitizedRfqItemVendors[item.id] || []
     })) || [];
+    const normalizedResponseDate = normalizeDateInputValue(rfqResponseDate);
+    if (rfqResponseDate && !normalizedResponseDate) {
+      toast.error('Enter expected response date in dd-mm-yyyy format.');
+      return;
+    }
 
     try {
       setRfqSending(true);
       const result = await apiClient.post(`/purchase/requisitions/${selectedPR.id}/rfq/send`, {
         vendorIds: selectedVendors,
         itemVendors: itemVendorAssignments,
-        responseDate: rfqResponseDate || undefined,
+        responseDate: normalizedResponseDate || undefined,
         remarks: rfqRemarks || undefined,
         recipientOverrides: rfqRecipientOverrides,
         subject: rfqSubjectOverride.trim() ? rfqSubjectOverride.trim() : undefined,
@@ -1422,6 +1932,7 @@ function PRContent() {
       setShowRfqPreview(false);
       setRfqPanelOpen(false);
       setRfqItemVendors({});
+      setPreferredVendorByPrItemId({});
       setRfqResponseDate('');
       setRfqRemarks('');
       setRfqRecipientOverrides({});
@@ -1444,9 +1955,14 @@ function PRContent() {
     });
     if (!confirmed) return;
     try {
-      await apiClient.post(`/purchase/requisitions/${prId}/approve`, {});
-      toast.success('PR approved successfully!');
-      setShowDetailModal(false);
+      const updated = await apiClient.post(`/purchase/requisitions/${prId}/approve`, {});
+      const nextStatus = String(updated?.status || '').toUpperCase();
+      const nextLevel = Number(updated?.current_approval_level || 0) + 1;
+      toast.success(nextStatus === 'APPROVED' ? 'PR approved successfully!' : `Approval recorded. Awaiting level ${nextLevel}.`);
+      if (showDetailModal) {
+        setSelectedPR(updated);
+        void fetchApprovalHistorySafely(prId).then(setApprovalHistory);
+      }
       fetchRequisitions();
     } catch (error: any) {
       const message = error?.response?.data?.message || error?.message || 'Failed to approve PR';
@@ -1491,7 +2007,7 @@ function PRContent() {
   const handleDelete = async (prId: string) => {
     const confirmed = await confirmDialog({
       title: 'Delete Purchase Requisition',
-      message: 'Are you sure you want to delete this PR? This action cannot be undone.',
+      message: 'This will delete the PR only if no RFQ, PO, GRN, receipt, or AP records are linked. If linked, the system will block deletion and show the reason.',
       confirmLabel: 'Delete',
       variant: 'danger',
     });
@@ -1501,16 +2017,56 @@ function PRContent() {
       toast.success('PR deleted successfully!');
       setShowDetailModal(false);
       fetchRequisitions();
-    } catch (error) {
-      toast.error('Failed to delete PR');
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || 'Failed to delete PR';
+      toast.error(message);
     }
   };
 
   const actuallySubmitPR = async (status: 'DRAFT' | 'SUBMITTED') => {
     try {
+      const seenItemCodes = new Set<string>();
+      const duplicateLine = items.find((item) => {
+        const code = String(item.itemCode || '').trim().toUpperCase();
+        if (!code) return false;
+        if (seenItemCodes.has(code)) return true;
+        seenItemCodes.add(code);
+        return false;
+      });
+      if (duplicateLine) {
+        const message = `${duplicateLine.itemCode} is duplicated in this PR. Please keep one line and edit its quantity/specifications.`;
+        setFormSection('items');
+        setItemEntryError(message);
+        toast.error(message);
+        itemEntryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      const missingDeliveryDate = items.find((item) => !normalizeDateInputValue(item.requiredDate || ''));
+      if (status === 'SUBMITTED' && missingDeliveryDate) {
+        const message = `${missingDeliveryDate.itemCode || missingDeliveryDate.itemName} requires a delivery date.`;
+        setFormSection('items');
+        setItemEntryError(message);
+        toast.error(message);
+        itemEntryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      const normalizedRequiredDate = normalizeDateInputValue(formData.requiredDate);
+      if (!normalizedRequiredDate) {
+        toast.error('Please select a valid required date.');
+        return;
+      }
+      if (todayDate && normalizedRequiredDate < todayDate) {
+        toast.error(`Required date cannot be before today (${formatDateInputDisplay(todayDate)}).`);
+        return;
+      }
+
       const prData = {
         department: formData.department,
-        requiredDate: formData.requiredDate,
+        projectId: formData.projectId || null,
+        projectName: formData.projectName || null,
+        requiredDate: normalizedRequiredDate,
         priority: formData.priority,
         deliveryAddress: formData.deliveryAddress || null,
         purpose: formData.notes || null,
@@ -1527,7 +2083,7 @@ function PRContent() {
           description: item.specifications || null,
           remarks: item.specifications || null,
           paymentTerms: item.paymentTerms || null,
-          deliveryTerms: item.deliveryTerms || null,
+          requiredDate: normalizeDateInputValue(item.requiredDate || '') || null,
         })),
       };
       
@@ -1548,31 +2104,12 @@ function PRContent() {
   };
 
   const handleSubmit = async (status: 'DRAFT' | 'SUBMITTED') => {
-    // Skip duplicate check for updates or drafts
-    if (editingPRId || status === 'DRAFT') {
-      return actuallySubmitPR(status);
-    }
-
-    // Validate items before duplicate check
     if (items.length === 0) {
       toast.error('Please add at least one item');
       return;
     }
 
-    // Prepare payload for duplicate check
-    const checkPayload = {
-      items: items.map(item => ({
-        itemId: item.masterItemId,
-        itemCode: item.itemCode,
-        quantity: item.quantity,
-      })),
-    };
-
-    // Check for duplicates before creating new PR
-    await checkDuplicates(
-      () => apiClient.post('/purchase/requisitions/check-duplicates', checkPayload),
-      () => actuallySubmitPR(status),
-    );
+    return actuallySubmitPR(status);
   };
 
   const totalPRs = requisitions.length;
@@ -1582,11 +2119,27 @@ function PRContent() {
     ),
   ).length;
   const draftPRs = requisitions.filter(pr => pr.status === 'DRAFT').length;
+  const urgentHighPRs = requisitions.filter((pr) =>
+    ['URGENT', 'HIGH'].includes(normalizePriority(pr.priority)) &&
+    !['PO_DONE', 'GOODS_RCVD', 'REJECTED'].includes(getPrWorkflowStatus(pr)),
+  ).length;
   const formSectionIndex = REQUISITION_FORM_SECTIONS.findIndex((section) => section.id === formSection);
   const estimatedTotal = items.reduce(
     (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.estimatedPrice) || 0),
     0,
   );
+  const filteredProjectOptions = [
+    ...projects
+      .filter((project) => !formData.department || project.department === formData.department)
+      .map((project) => ({
+        value: project.id,
+        label: project.project_name,
+        subtitle: `${project.project_code} - ${project.department}`,
+      })),
+    ...(formData.department
+      ? [{ value: ADD_PROJECT_OPTION, label: '+ Add new project', subtitle: formData.department }]
+      : []),
+  ];
   const canSubmitRequisition = Boolean(formData.department && formData.requiredDate && items.length > 0);
 
   return (
@@ -1616,6 +2169,7 @@ function PRContent() {
           metrics={[
             { label: 'Total requisitions', value: totalPRs },
             { label: 'Pending approval', value: pendingApprovals, tone: pendingApprovals > 0 ? 'warning' : 'neutral' },
+            { label: 'High / urgent open', value: urgentHighPRs, tone: urgentHighPRs > 0 ? 'danger' : 'neutral' },
             { label: 'Drafts', value: draftPRs },
           ]}
         />
@@ -1696,21 +2250,42 @@ function PRContent() {
                     <label className="mb-2 block text-sm font-medium text-[#5E4635]">Department *</label>
                     <SearchableSelect
                       value={formData.department}
-                      onChange={(department) => setFormData((prev) => ({ ...prev, department }))}
+                      onChange={(department) => setFormData((prev) => ({ ...prev, department, projectId: '', projectName: '' }))}
                       options={DEPARTMENT_OPTIONS}
                       placeholder="Search department"
                       required
                     />
                   </div>
                   <div>
+                    <label className="mb-2 block text-sm font-medium text-[#5E4635]">Project</label>
+                    <SearchableSelect
+                      value={formData.projectId}
+                      onChange={(projectId, option) => {
+                        if (projectId === ADD_PROJECT_OPTION) {
+                          createProjectFromDropdown();
+                          return;
+                        }
+                        setFormData((prev) => ({ ...prev, projectId, projectName: option?.label || '' }));
+                      }}
+                      options={filteredProjectOptions}
+                      placeholder={formData.department ? 'Search or add project' : 'Select department first'}
+                      disabled={!formData.department || projectSaving}
+                    />
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-[#5E4635] mb-2">
                       Required Date *
                     </label>
-                    <input
-                      type="date"
+                    <DateInput
                       min={todayDate}
                       value={formData.requiredDate}
-                      onChange={(e) => setFormData({ ...formData, requiredDate: e.target.value })}
+                      onChange={(value) => {
+                        setFormData((current) => ({ ...current, requiredDate: value }));
+                        setItemForm((current) => ({
+                          ...current,
+                          requiredDate: current.requiredDate || value,
+                        }));
+                      }}
                       className="w-full px-4 py-2 border border-[#D8C8AA] rounded-lg focus:ring-2 focus:ring-[#8B6F47] focus:border-transparent"
                     />
                   </div>
@@ -1723,6 +2298,9 @@ function PRContent() {
                       placeholder="Select priority"
                       required
                     />
+                    <p className="mt-1 text-xs text-[#7A6555]">
+                      Used for purchase follow-up, filtering, and urgent/high visibility. Automatic notification frequency is not enabled yet.
+                    </p>
                   </div>
                   <div className="lg:col-span-3">
                     <label className="block text-sm font-medium text-[#5E4635] mb-2">
@@ -1780,26 +2358,40 @@ function PRContent() {
                     <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
                       {/* Item Name/Search */}
                       <div className="xl:col-span-4">
-                        <SearchableSelect
-                          value={selectedItemId || ''}
-                          onChange={(itemId) => {
-                            setItemEntryError('');
-                            const item = masterItems.find((candidate) => candidate.id === itemId);
-                            if (item) void selectItem(item);
-                          }}
-                          options={masterItems.map((item) => ({
-                            value: item.id,
-                            label: `${item.code} - ${item.name}`,
-                            subtitle: `UOM: ${item.uom || '-'}${typeof item.standard_cost === 'number' ? ` | Standard cost: ${item.standard_cost.toFixed(2)}` : ''}`,
-                          }))}
-                          placeholder={itemsLoadError || 'Search item code, name, or UOM'}
-                          disabled={Boolean(itemsLoadError)}
-                          truncateInput={false}
-                          minSearchChars={2}
-                          maxResults={75}
-                          showSubtitleInInput={false}
-                          dropdownClassName="max-h-80"
-                        />
+                        <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <SearchableSelect
+                              value={selectedItemId || ''}
+                              onChange={(itemId) => {
+                                setItemEntryError('');
+                                const item = masterItems.find((candidate) => candidate.id === itemId);
+                                if (item) void selectItem(item);
+                              }}
+                              options={masterItems.map((item) => ({
+                                value: item.id,
+                                label: `${item.code} - ${item.name}`,
+                                subtitle: `UOM: ${item.uom || '-'}${typeof item.standard_cost === 'number' ? ` | Standard cost: ${item.standard_cost.toFixed(2)}` : ''}`,
+                              }))}
+                              placeholder={itemsLoadError || 'Search item code, name, or UOM'}
+                              disabled={Boolean(itemsLoadError)}
+                              truncateInput={false}
+                              minSearchChars={2}
+                              maxResults={75}
+                              showSubtitleInInput={false}
+                              dropdownClassName="max-h-80"
+                            />
+                          </div>
+                          {formData.department === 'R&D' ? (
+                            <button
+                              type="button"
+                              onClick={() => setShowRndTemporaryItem(true)}
+                              title="Add temporary R&D item"
+                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 text-lg font-bold text-emerald-700 hover:bg-emerald-100"
+                            >
+                              +
+                            </button>
+                          ) : null}
+                        </div>
                         {itemForm.vendorName ? (
                           <p className="mt-1 text-xs text-[#7A6555]">
                             Preferred vendor: <span className="font-medium text-[#5E4635]">{itemForm.vendorName}</span>
@@ -1844,34 +2436,6 @@ function PRContent() {
                           </div>
                         )}
                       </div>
-                      {editingItemId ? (
-                        <div className="flex gap-2 xl:col-span-2">
-                          <ErpButton
-                            type="button"
-                            onClick={updateItem}
-                            variant="approve"
-                            className="flex-1"
-                          >
-                            Update
-                          </ErpButton>
-                          <ErpButton
-                            type="button"
-                            onClick={cancelEdit}
-                            variant="secondary"
-                          >
-                            Cancel
-                          </ErpButton>
-                        </div>
-                      ) : (
-                        <ErpButton
-                          type="button"
-                          onClick={addItem}
-                          variant="primary"
-                          className="xl:col-span-2"
-                        >
-                          <Plus className="h-4 w-4" /> Add Item
-                        </ErpButton>
-                      )}
                     </div>
                     {itemEntryError ? (
                       <p role="alert" className="mb-3 text-sm font-medium text-red-700">{itemEntryError}</p>
@@ -1884,16 +2448,48 @@ function PRContent() {
                       className="w-full resize-y rounded-md border border-[#D8C8AA] px-3 py-2 focus:ring-2 focus:ring-[#8B6F47]"
                     />
 
-                    <div className="grid grid-cols-2 gap-3 mt-3">
-                      <div>
-                        <label className="block text-xs font-medium text-[#7A6555] mb-1">Delivery Terms (line)</label>
-                        <input
-                          type="text"
-                          value={itemForm.deliveryTerms}
-                          onChange={(e) => setItemForm({ ...itemForm, deliveryTerms: e.target.value })}
-                          placeholder="e.g. FOB, CIF, Ex-Works"
+                    <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-12">
+                      <div className="lg:col-span-6">
+                        <label className="block text-xs font-semibold text-[#5E4635] mb-1">Delivery Date *</label>
+                        <DateInput
+                          min={todayDate}
+                          value={itemForm.requiredDate}
+                          onChange={(requiredDate) => {
+                            setItemEntryError('');
+                            setItemForm((current) => ({ ...current, requiredDate }));
+                          }}
+                          required
                           className="w-full px-3 py-2 border border-[#D8C8AA] rounded-lg focus:ring-2 focus:ring-[#8B6F47] text-sm"
                         />
+                      </div>
+                      <div className="flex items-end justify-end gap-2 lg:col-span-6">
+                        {editingItemId ? (
+                          <>
+                            <ErpButton
+                              type="button"
+                              onClick={cancelEdit}
+                              variant="secondary"
+                            >
+                              Cancel
+                            </ErpButton>
+                            <ErpButton
+                              type="button"
+                              onClick={updateItem}
+                              variant="approve"
+                            >
+                              Update
+                            </ErpButton>
+                          </>
+                        ) : (
+                          <ErpButton
+                            type="button"
+                            onClick={addItem}
+                            variant="primary"
+                            className="min-w-[180px]"
+                          >
+                            <Plus className="h-4 w-4" /> Add Item
+                          </ErpButton>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1913,7 +2509,7 @@ function PRContent() {
                             >
                               Est. Unit Price
                             </th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold">Delivery Terms</th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">Delivery Date</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Specifications</th>
                             <th className="px-4 py-2"></th>
                           </tr>
@@ -1965,8 +2561,8 @@ function PRContent() {
                               <td className="px-4 py-2">
                                 {item.estimatedPrice ? `₹${item.estimatedPrice.toFixed(2)}` : '-'}
                               </td>
-                              <td className="px-4 py-2 text-sm text-[#7A6555]">
-                                {item.deliveryTerms || '-'}
+                              <td className="px-4 py-2 text-sm font-medium text-[#5E4635]">
+                                {item.requiredDate ? formatDateInputDisplay(item.requiredDate) : '-'}
                               </td>
                               <td className="whitespace-pre-wrap px-4 py-2 text-sm text-[#7A6555]">
                                 {item.specifications || '-'}
@@ -2031,8 +2627,9 @@ function PRContent() {
                 </div>
                 <dl className="grid grid-cols-2 gap-x-6 gap-y-4 border-y border-[#E8DCC4] py-4 lg:grid-cols-5">
                   <div><dt className="text-xs font-medium text-[#7A6555]">Department</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formData.department || 'Required'}</dd></div>
+                  <div><dt className="text-xs font-medium text-[#7A6555]">Project</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formData.projectName || 'Not linked'}</dd></div>
                   <div><dt className="text-xs font-medium text-[#7A6555]">Priority</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formData.priority}</dd></div>
-                  <div><dt className="text-xs font-medium text-[#7A6555]">Required date</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formData.requiredDate || 'Required'}</dd></div>
+                  <div><dt className="text-xs font-medium text-[#7A6555]">Required date</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formData.requiredDate ? formatDateInputDisplay(formData.requiredDate) : 'Required'}</dd></div>
                   <div><dt className="text-xs font-medium text-[#7A6555]">Line items</dt><dd className="mt-1 font-semibold text-[#4A3426]">{items.length}</dd></div>
                   <div><dt className="text-xs font-medium text-[#7A6555]">Estimated value</dt><dd className="mt-1 font-semibold text-[#4A3426]">{estimatedTotal.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</dd></div>
                 </dl>
@@ -2089,20 +2686,25 @@ function PRContent() {
             rows={requisitions.filter((r: any) => {
               const statusMatch = !filterStatus ? true : getPrWorkflowStatus(r) === filterStatus;
               const vendorMatch = !filterVendor ? true : (r.purchase_requisition_items || r.items || [])?.some((item: any) => item.vendor_id === filterVendor || item.vendorId === filterVendor);
-              return statusMatch && vendorMatch;
+              const priorityMatch = !filterPriority ? true : normalizePriority(r.priority) === filterPriority;
+              return statusMatch && vendorMatch && priorityMatch;
+            }).sort((a, b) => {
+              return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
             })}
             columns={requisitionsTableColumns}
             getRowId={(r) => r.id}
+            defaultSort={{ id: 'created_at', direction: 'desc' }}
             defaultPageSize={10}
             pageSizeOptions={[10, 25, 50, 100]}
-            searchPlaceholder="Search by PR number, department, status…"
-            variantContext={{ vendor: filterVendor, status: filterStatus }}
+            searchPlaceholder="Search PR, item code, name, description, department, priority, status..."
+            variantContext={{ vendor: filterVendor, status: filterStatus, priority: filterPriority }}
             onApplyVariantContext={(context) => {
               setFilterVendor(context.vendor || '');
               setFilterStatus(context.status || '');
+              setFilterPriority(context.priority || '');
             }}
             toolbarRight={
-              <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
+              <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-3">
                 <SearchableSelect
                   value={filterVendor}
                   onChange={setFilterVendor}
@@ -2118,11 +2720,22 @@ function PRContent() {
                   className="w-full sm:w-56"
                 />
                 <SearchableSelect
+                  value={filterPriority}
+                  onChange={setFilterPriority}
+                  options={[
+                    { value: '', label: 'All priorities' },
+                    ...PRIORITY_OPTIONS,
+                  ]}
+                  placeholder="Filter by priority"
+                  className="w-full sm:w-48"
+                />
+                <SearchableSelect
                   value={filterStatus}
                   onChange={setFilterStatus}
                   options={[
                     { value: '', label: 'All statuses' },
                     { value: 'DRAFT', label: 'Draft' },
+                    { value: 'AWAITING_APPROVAL', label: 'Awaiting approval' },
                     { value: 'SUBMITTED', label: 'Submitted' },
                     { value: 'RFQ_ISSUED', label: 'RFQ issued' },
                     { value: 'RFQ_RCVD', label: 'RFQ received' },
@@ -2179,13 +2792,23 @@ function PRContent() {
                             Edit
                           </ErpButton>
                         )}
+                        {canCreatePR && (
+                          <ErpButton
+                            onClick={() => handleClonePR(selectedPR.id)}
+                            variant="secondary"
+                            size="sm"
+                          >
+                            <Copy className="h-4 w-4" />
+                            Clone PR
+                          </ErpButton>
+                        )}
                         {(selectedPR.status === 'DRAFT' || selectedPR.status === 'REJECTED') && canEditPR && (
                           <ErpButton onClick={() => handleSubmitExisting(selectedPR.id)} variant="primary" size="sm">
                             <Send className="h-4 w-4" />
                             Submit for Approval
                           </ErpButton>
                         )}
-                        {selectedPR.status === 'SUBMITTED' && canApprovePR && String(selectedPR.requested_by) !== currentUserId && (
+                        {selectedPR.status === 'SUBMITTED' && canApprovePR && (canBypassPrMakerChecker || String(selectedPR.requested_by) !== currentUserId) && (
                           <>
                             <ErpButton onClick={() => handleReject(selectedPR.id)} variant="danger" size="sm">
                               <X className="h-4 w-4" />
@@ -2197,7 +2820,7 @@ function PRContent() {
                             </ErpButton>
                           </>
                         )}
-                        {selectedPR.status === 'SUBMITTED' && String(selectedPR.requested_by) === currentUserId && (
+                        {selectedPR.status === 'SUBMITTED' && String(selectedPR.requested_by) === currentUserId && !canBypassPrMakerChecker && (
                           <span className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
                             Awaiting manager approval
                           </span>
@@ -2207,8 +2830,7 @@ function PRContent() {
                             Approval access required
                           </span>
                         )}
-                        {selectedPR.status !== 'DRAFT' &&
-                          selectedPR.status !== 'REJECTED' &&
+                        {canUseApprovedPrActions(selectedPR) &&
                           getPrWorkflowStatus(selectedPR) !== 'PO_DONE' &&
                           getPrWorkflowStatus(selectedPR) !== 'GOODS_RCVD' && (
                           <>
@@ -2269,10 +2891,14 @@ function PRContent() {
                   <div className="flex-1 overflow-auto bg-[#FAF9F6] p-4 sm:p-6">
 
                   {/* PR Info */}
-                  <div className="mb-6 grid grid-cols-1 gap-4 rounded-lg border border-[#E8DCC4] bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="mb-6 grid grid-cols-1 gap-4 rounded-lg border border-[#E8DCC4] bg-white p-4 sm:grid-cols-3 lg:grid-cols-4">
                     <div>
                       <p className="text-sm text-[#7A6555]">Department</p>
                       <p className="font-semibold">{selectedPR.department}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-[#7A6555]">Project Name</p>
+                      <p className="font-semibold">{selectedPR.project_name || 'N/A'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-[#7A6555]">Status</p>
@@ -2288,7 +2914,9 @@ function PRContent() {
                     </div>
                     <div>
                       <p className="text-sm text-[#7A6555]">Priority</p>
-                      <p className="font-semibold">{selectedPR.priority || 'MEDIUM'}</p>
+                      <div className="mt-1">
+                        <PriorityBadge priority={selectedPR.priority} />
+                      </div>
                     </div>
                     <div>
                       <p className="text-sm text-[#7A6555]">Purpose</p>
@@ -2361,6 +2989,174 @@ function PRContent() {
                     )}
                   </div>
 
+                  <section className="mb-6 border-y border-[#E8DCC4] bg-white py-4" aria-labelledby="pr-trail-heading">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 id="pr-trail-heading" className="text-sm font-semibold uppercase tracking-wide text-[#4A3426]">
+                          PR Trail
+                        </h3>
+                        <p className="text-xs text-[#7A6555]">
+                          RFQ, PO, and receipt lifecycle linked to this requisition.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 border border-[#E8DCC4] md:grid-cols-3 xl:grid-cols-6">
+                      <div className="border-b border-r border-[#E8DCC4] p-3 xl:border-b-0">
+                        <p className="text-xs font-semibold uppercase text-[#7A6555]">Vendors Sent RFQ</p>
+                        <p className="mt-1 text-xl font-bold text-[#2F241B]">{Number(selectedPR.rfq_summary?.sentCount || 0)}</p>
+                      </div>
+                      <div className="border-b border-r border-[#E8DCC4] p-3 xl:border-b-0">
+                        <p className="text-xs font-semibold uppercase text-[#7A6555]">RFQ Responses</p>
+                        <p className="mt-1 text-xl font-bold text-[#2F241B]">{Number(selectedPR.rfq_summary?.receivedCount || 0)}</p>
+                        <p className="text-xs text-[#7A6555]">of {Number(selectedPR.rfq_summary?.total || 0)} requests</p>
+                      </div>
+                      <div className="border-b border-r border-[#E8DCC4] p-3 xl:border-b-0">
+                        <p className="text-xs font-semibold uppercase text-[#7A6555]">POs Created</p>
+                        <p className="mt-1 text-xl font-bold text-[#2F241B]">{Number(selectedPR.po_summary?.total || 0)}</p>
+                        <p className="text-xs text-[#7A6555]">{Number(selectedPR.po_summary?.approvedCount || 0)} approved</p>
+                      </div>
+                      <div className="border-b border-r border-[#E8DCC4] p-3 md:border-b-0">
+                        <p className="text-xs font-semibold uppercase text-[#7A6555]">GRNs Created</p>
+                        <p className="mt-1 text-xl font-bold text-[#2F241B]">{Number(selectedPR.po_summary?.grnCount || 0)}</p>
+                        <p className="text-xs text-[#7A6555]">{Number(selectedPR.po_summary?.completedGrnCount || 0)} completed</p>
+                      </div>
+                      <div className="border-r border-[#E8DCC4] p-3">
+                        <p className="text-xs font-semibold uppercase text-[#7A6555]">Ordered Qty</p>
+                        <p className="mt-1 text-xl font-bold text-[#2F241B]">
+                          {Number(selectedPR.po_summary?.totalOrderedQty || 0).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                      <div className="p-3">
+                        <p className="text-xs font-semibold uppercase text-[#7A6555]">Goods Received</p>
+                        <p className="mt-1 text-xl font-bold text-[#2F241B]">
+                          {Number(selectedPR.po_summary?.totalReceivedQty || 0).toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                    </div>
+                    {((selectedPR.po_summary?.poNumbers || []).length > 0 || (selectedPR.po_summary?.grnNumbers || []).length > 0) && (
+                      <div className="mt-3 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+                        {(selectedPR.po_summary?.poNumbers || []).length > 0 && (
+                          <div>
+                            <p className="mb-1 text-xs font-semibold uppercase text-[#7A6555]">PO References</p>
+                            <p className="text-[#2F241B]">{(selectedPR.po_summary?.poNumbers || []).join(', ')}</p>
+                          </div>
+                        )}
+                        {(selectedPR.po_summary?.grnNumbers || []).length > 0 && (
+                          <div>
+                            <p className="mb-1 text-xs font-semibold uppercase text-[#7A6555]">GRN References</p>
+                            <p className="text-[#2F241B]">{(selectedPR.po_summary?.grnNumbers || []).join(', ')}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="mb-6 border-y border-[#E8DCC4] bg-white py-4" aria-labelledby="rfq-trail-heading">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 id="rfq-trail-heading" className="text-sm font-semibold uppercase tracking-wide text-[#4A3426]">
+                          RFQ Vendor Trail
+                        </h3>
+                        <p className="text-xs text-[#7A6555]">
+                          Vendors contacted, RFQ status, response due date, and line items included.
+                        </p>
+                      </div>
+                      <span className="text-xs font-semibold text-[#7A6555]">{rfqHistory.length} vendor record{rfqHistory.length === 1 ? '' : 's'}</span>
+                    </div>
+                    {rfqHistory.length > 0 ? (
+                      <div className="overflow-x-auto border border-[#E8DCC4]">
+                        <table className="min-w-[1280px] w-full text-sm">
+                          <thead className="bg-[#F5EFE3] text-[#4A3426]">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold">RFQ</th>
+                              <th className="px-3 py-2 text-left font-semibold">Vendor</th>
+                              <th className="px-3 py-2 text-left font-semibold">Email</th>
+                              <th className="px-3 py-2 text-left font-semibold">Status</th>
+                              <th className="px-3 py-2 text-left font-semibold">Sent</th>
+                              <th className="px-3 py-2 text-left font-semibold">Due</th>
+                              <th className="px-3 py-2 text-left font-semibold">Received</th>
+                              <th className="px-3 py-2 text-left font-semibold">Items</th>
+                              <th className="px-3 py-2 text-left font-semibold">Quote Summary</th>
+                              <th className="px-3 py-2 text-left font-semibold">Files</th>
+                              <th className="px-3 py-2 text-right font-semibold">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rfqHistory.map((rfq) => {
+                              const isReceived = String(rfq.status || '').toUpperCase() === 'RECEIVED';
+                              const quoteLines = Array.isArray(rfq.rfq_items)
+                                ? rfq.rfq_items
+                                    .map((item) => {
+                                      const price = item.vendor_quoted_price == null ? '' : `Rs. ${Number(item.vendor_quoted_price).toLocaleString('en-IN')}`;
+                                      const leadTime = item.vendor_quoted_lead_time == null ? '' : `${item.vendor_quoted_lead_time} days`;
+                                      return [item.item_code || item.item_name || 'Item', price, leadTime].filter(Boolean).join(' - ');
+                                    })
+                                    .filter(Boolean)
+                                : [];
+                              return (
+                                <tr key={rfq.id} className="border-t border-[#E8DCC4] align-top">
+                                  <td className="px-3 py-2 font-semibold text-[#2F241B]">{rfq.rfq_number || '-'}</td>
+                                  <td className="px-3 py-2">{rfq.vendor?.name || '-'}</td>
+                                  <td className="px-3 py-2">{rfq.vendor?.email || (rfq as any)?.meta?.recipientEmail || '-'}</td>
+                                  <td className="px-3 py-2">
+                                    <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${
+                                      isReceived ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-[#D8C8AA] text-[#4A3426]'
+                                    }`}>
+                                      {String(rfq.status || '-').toUpperCase()}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2">{rfq.sent_at ? formatPrDateTime(rfq.sent_at) : '-'}</td>
+                                  <td className="px-3 py-2">{rfq.response_deadline ? formatPrDate(rfq.response_deadline) : '-'}</td>
+                                  <td className="px-3 py-2">{rfq.vendor_quote_received_at ? formatPrDateTime(rfq.vendor_quote_received_at) : '-'}</td>
+                                  <td className="px-3 py-2">
+                                    {Array.isArray(rfq.rfq_items) && rfq.rfq_items.length > 0
+                                      ? rfq.rfq_items.map((item) => item.item_code || item.item_name || 'Item').join(', ')
+                                      : '-'}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {isReceived ? (
+                                      <div className="space-y-1">
+                                        {quoteLines.length > 0 ? (
+                                          quoteLines.map((line, index) => <div key={`${rfq.id}-quote-${index}`}>{line}</div>)
+                                        ) : (
+                                          <div>Response recorded</div>
+                                        )}
+                                        {rfq.response_remarks ? <div className="text-xs text-[#7A6555]">{rfq.response_remarks}</div> : null}
+                                      </div>
+                                    ) : (
+                                      <span className="text-[#7A6555]">Awaiting vendor quote</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    {Array.isArray(rfq.response_attachments) && rfq.response_attachments.length > 0
+                                      ? `${rfq.response_attachments.length} file${rfq.response_attachments.length === 1 ? '' : 's'}`
+                                      : '-'}
+                                  </td>
+                                  <td className="px-3 py-2 text-right">
+                                    <ErpButton
+                                      type="button"
+                                      size="sm"
+                                      variant={isReceived ? 'secondary' : 'primary'}
+                                      onClick={() => openRfqResponseEditor(rfq)}
+                                      className="whitespace-nowrap"
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                      {isReceived ? 'Edit Response' : 'Record Response'}
+                                    </ErpButton>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="border border-dashed border-[#D8C8AA] bg-[#FAF9F6] px-4 py-3 text-sm text-[#7A6555]">
+                        No RFQ has been sent for this PR yet. Click <span className="font-semibold text-[#4A3426]">Send RFQ</span>, select the vendor(s) against the items, preview the email, and send. Once sent, this section becomes the vendor-wise RFQ sent register and shows <span className="font-semibold text-[#4A3426]">Record Response</span>.
+                      </div>
+                    )}
+                  </section>
+
                   {(approvalHistory.length > 0 || selectedPR.rejection_reason) && (
                     <section className="mb-6 border-y border-[#E8DCC4] bg-white py-4" aria-labelledby="approval-history-heading">
                       <div className="mb-3 flex items-center justify-between gap-3">
@@ -2397,13 +3193,15 @@ function PRContent() {
                             <th className="px-4 py-2 text-center text-sm font-semibold">Status</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Est. Rate</th>
                             <th className="px-4 py-2 text-right text-sm font-semibold">Total</th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold">Delivery Terms</th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold">Delivery Date</th>
                             <th className="px-4 py-2 text-left text-sm font-semibold">Remarks</th>
                           </tr>
                         </thead>
                         <tbody>
                           {selectedPR.purchase_requisition_items && selectedPR.purchase_requisition_items.length > 0 ? (
-                            selectedPR.purchase_requisition_items.map((item, index) => (
+                            selectedPR.purchase_requisition_items.map((item, index) => {
+                              const preferredVendorId = preferredVendorByPrItemId[item.id] || String(item.vendor_id || '');
+                              return (
                               <tr key={item.id} className="border-t">
                                 <td className="px-4 py-2 text-sm text-center">{item.serial_no || index + 1}</td>
                                 <td className="px-4 py-2 text-sm">{item.item_code || '-'}</td>
@@ -2419,7 +3217,7 @@ function PRContent() {
                                           .map((vendor) => ({
                                             value: vendor.id,
                                             label: vendor.name,
-                                            subtitle: item.vendor_id === vendor.id
+                                            subtitle: preferredVendorId === vendor.id
                                               ? `${vendor.email || 'No email'} - Preferred vendor`
                                               : (vendor.email || vendor.code || ''),
                                           }))}
@@ -2431,7 +3229,7 @@ function PRContent() {
                                           {(rfqItemVendors[item.id] || []).map((vendorId) => {
                                             const vendor = rfqVendors.find((entry) => entry.id === vendorId);
                                             if (!vendor) return null;
-                                            const isPreferred = item.vendor_id === vendor.id;
+                                            const isPreferred = preferredVendorId === vendor.id;
                                             return (
                                               <span
                                                 key={vendor.id}
@@ -2474,10 +3272,13 @@ function PRContent() {
                                 </td>
                                 <td className="px-4 py-2 text-sm text-right">₹{(item.estimated_rate || 0).toFixed(2)}</td>
                                 <td className="px-4 py-2 text-sm text-right font-semibold">₹{((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}</td>
-                                <td className="px-4 py-2 text-sm text-[#5E4635]">{item.delivery_terms || '-'}</td>
+                                <td className="px-4 py-2 text-sm font-medium text-[#5E4635]">
+                                  {item.required_date ? formatDateInputDisplay(String(item.required_date).slice(0, 10)) : '-'}
+                                </td>
                                 <td className="px-4 py-2 text-sm text-[#7A6555]">{item.remarks || '-'}</td>
                               </tr>
-                            ))
+                              );
+                            })
                           ) : (
                             <tr>
                               <td colSpan={rfqPanelOpen ? 14 : 13} className="px-4 py-8 text-center text-[#7A6555]">
@@ -2528,8 +3329,8 @@ function PRContent() {
                           <label className="block text-xs font-semibold text-[#5E4635] mb-1">Expected Response Date (optional)</label>
                           <DateInput
                             min={todayDate}
-                            value={rfqResponseDate}
-                            onChange={(value) => setRfqResponseDate(value)}
+                            value={normalizeDateInputValue(rfqResponseDate)}
+                            onChange={(value) => setRfqResponseDate(normalizeDateInputValue(value))}
                             className="w-full px-3 py-2 border rounded-lg text-sm"
                           />
                         </div>
@@ -2580,7 +3381,7 @@ function PRContent() {
         )}
 
         {showRfqResponses && selectedPR && (
-          <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[55] p-4">
+          <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[2000] p-4">
             <div className="bg-white rounded-lg shadow-xl w-full w-full max-w-none max-h-[90vh] overflow-hidden flex flex-col">
               <div className="border-b px-6 py-4 flex items-center justify-between">
                 <div>
@@ -2604,7 +3405,22 @@ function PRContent() {
                 {loadingRfqHistory ? (
                   <p className="text-sm text-[#7A6555]">Loading RFQ responses...</p>
                 ) : rfqHistory.length === 0 ? (
-                  <p className="text-sm text-[#7A6555]">No RFQ responses recorded yet.</p>
+                  <div className="rounded-lg border border-dashed border-[#D8C8AA] bg-[#FAF9F6] p-5 text-sm text-[#7A6555]">
+                    <p className="font-semibold text-[#4A3426]">No RFQ has been sent for this PR yet.</p>
+                    <p className="mt-1">Send the RFQ first. After that, every vendor contacted appears here with sent date, email, status, and a Record Response action.</p>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setShowRfqResponses(false);
+                        setRfqPanelOpen(true);
+                        if (rfqVendors.length === 0) await fetchRFQVendors();
+                        if (selectedPR) await fetchPreferredVendorsForPR(selectedPR);
+                      }}
+                      className="mt-3 rounded-lg bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white hover:bg-[#6F4E37]"
+                    >
+                      Open Send RFQ
+                    </button>
+                  </div>
                 ) : (
                   <div className="overflow-x-auto border rounded-lg">
                     <table className="w-full text-sm">
@@ -2670,7 +3486,7 @@ function PRContent() {
         )}
 
         {editingRfqResponse && (
-          <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[60] p-4">
+          <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[2100] p-4">
             <div className="bg-white rounded-lg shadow-xl w-full w-full max-w-none max-h-[92vh] overflow-hidden flex flex-col">
               <div className="border-b px-6 py-4 flex items-center justify-between">
                 <div>
@@ -2867,7 +3683,7 @@ function PRContent() {
 
         {/* RFQ Email Preview Modal */}
         {showRfqPreview && rfqPreviewData && (
-          <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-[#4A3426]/45 flex items-center justify-center z-[2000] p-4">
             <div className="bg-white rounded-lg shadow-xl w-full w-full max-w-none max-h-[95vh] overflow-auto">
               <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-[#4A3426]">RFQ Email Preview</h2>
@@ -3086,30 +3902,22 @@ function PRContent() {
             </div>
           </div>
         )}
+        <RndTemporaryItemModal
+          open={showRndTemporaryItem}
+          vendors={rfqVendors.map((vendor) => ({ id: vendor.id, name: vendor.name, code: vendor.code }))}
+          onClose={() => setShowRndTemporaryItem(false)}
+          onCreated={handleRndTemporaryItemCreated}
+        />
       </div>
-
-      {/* Duplicate Warning Modal */}
-      <DuplicateWarning
-        isOpen={duplicateState.isOpen}
-        exactMatches={duplicateState.exactMatches}
-        fuzzyMatches={duplicateState.fuzzyMatches}
-        entityType="Purchase Requisition"
-        onProceed={handleProceed}
-        onCancel={handleCancel}
-        formatRecord={(data) => (
-          <div className="text-sm">
-            <p className="font-semibold">PR #{data.pr_number}</p>
-            <p className="text-xs text-[#7A6555]">Department: {data.department}</p>
-            <p className="text-xs text-[#7A6555]">Items: {data.purchase_requisition_items?.length || 0}</p>
-            <p className="text-xs text-[#7A6555]">Status: {data.status}</p>
-          </div>
-        )}
-      />
     </div>
   );
 }
 
 export default function PurchaseRequisitionsPage() {
-  return <PRContent />;
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-[#7A6555]">Loading purchase requisitions...</div>}>
+      <PRContent />
+    </Suspense>
+  );
 }
 

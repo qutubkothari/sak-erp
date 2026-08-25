@@ -66,7 +66,7 @@ export function ErpPageHeader({ title, description, eyebrow, actions }: ErpPageH
         <h1 className="text-xl font-bold text-[#4A3426] sm:text-2xl">{title}</h1>
         {description ? <p className="mt-0.5 max-w-3xl text-xs text-[#7A6555] sm:text-sm">{description}</p> : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      <div className="flex flex-wrap items-center gap-2">{actions}</div>
     </header>
   );
 }

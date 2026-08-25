@@ -22,6 +22,16 @@ interface LoginDto {
   email?: string;
   password: string;
   tenantId?: string;
+  accountId?: string;
+}
+
+interface LoginTenantOption {
+  accountId: string;
+  tenantId: string;
+  companyName: string;
+  displayName?: string;
+  username?: string;
+  email?: string;
 }
 
 @Injectable()
@@ -69,6 +79,44 @@ export class AuthService {
     }
 
     return normalizedCandidate === normalizedStored;
+  }
+
+  private async buildLoginTenantOptions(users: any[]): Promise<LoginTenantOption[]> {
+    const tenantIds = Array.from(
+      new Set(
+        users
+          .map((user) => String(user?.tenant_id || '').trim())
+          .filter(Boolean),
+      ),
+    );
+
+    const tenantNames = new Map<string, string>();
+    if (tenantIds.length > 0) {
+      const { data } = await this.supabase
+        .from('tenants')
+        .select('id, name')
+        .in('id', tenantIds);
+
+      (data || []).forEach((tenant: any) => {
+        tenantNames.set(String(tenant.id), String(tenant.name || '').trim());
+      });
+    }
+
+    return users.map((user) => {
+      const tenantId = String(user.tenant_id);
+      const displayName = [user.first_name, user.last_name]
+        .map((part) => String(part || '').trim())
+        .filter(Boolean)
+        .join(' ');
+      return {
+        accountId: String(user.id),
+        tenantId,
+        companyName: tenantNames.get(tenantId) || `Company ${tenantId.slice(0, 8)}`,
+        displayName,
+        username: user.username,
+        email: user.email,
+      };
+    });
   }
 
   private async hashPassword(password: string): Promise<string> {
@@ -451,7 +499,6 @@ export class AuthService {
   async login(dto: LoginDto) {
     const rawLogin = String(dto?.username ?? dto?.email ?? '').trim();
     const normalizedLogin = rawLogin.toLowerCase();
-    const normalizedEmail = this.normalizeEmail(rawLogin);
 
     if (!normalizedLogin) {
       throw new UnauthorizedException('Invalid credentials');
@@ -474,10 +521,9 @@ export class AuthService {
           permissions
         )
       `);
-    userQuery = rawLogin.includes('@')
-      ? userQuery.ilike('email', normalizedEmail)
-      : userQuery.ilike('username', normalizedLogin);
+    userQuery = userQuery.ilike('username', normalizedLogin);
     if (dto.tenantId) userQuery = userQuery.eq('tenant_id', dto.tenantId);
+    if (dto.accountId) userQuery = userQuery.eq('id', dto.accountId);
 
     const { data: candidates, error: userError } = await userQuery.limit(50);
     if (userError || !candidates?.length) {
@@ -502,7 +548,11 @@ export class AuthService {
       throw new UnauthorizedException('Account is deactivated');
     }
     if (activeMatches.length > 1) {
-      throw new UnauthorizedException('Multiple company accounts use these credentials. Contact your administrator to select the correct tenant.');
+      return {
+        requiresTenantSelection: true,
+        message: 'This login exists in more than one company or user account. Select the correct account to continue.',
+        tenants: await this.buildLoginTenantOptions(activeMatches),
+      };
     }
 
     const user = activeMatches[0];
@@ -668,24 +718,35 @@ export class AuthService {
   }
 
   async resetPasswordRequest(email: string, tenantId?: string, originOrReferer?: string) {
-    const normalizedEmail = this.normalizeEmail(email);
+    const identifier = String(email ?? '').trim();
+    const normalizedEmail = this.normalizeEmail(identifier);
+    const normalizedUsername = this.normalizeUsername(identifier);
     const normalizedTenantId = String(tenantId ?? '').trim();
 
-    if (!normalizedEmail) {
+    if (!identifier) {
       return { message: this.passwordResetMessage };
     }
 
-    let query = this.supabase
-      .from('users')
-      .select('id, email, username, first_name, last_name, tenant_id')
-      .ilike('email', normalizedEmail)
-      .eq('is_active', true);
+    const selectActiveUsers = () =>
+      this.supabase
+        .from('users')
+        .select('id, email, username, first_name, last_name, tenant_id')
+        .eq('is_active', true);
 
-    if (normalizedTenantId) {
-      query = query.eq('tenant_id', normalizedTenantId);
+    const applyTenant = (query: any) => (normalizedTenantId ? query.eq('tenant_id', normalizedTenantId) : query);
+
+    const primaryQuery =
+      identifier.includes('@')
+        ? applyTenant(selectActiveUsers().ilike('email', normalizedEmail))
+        : applyTenant(selectActiveUsers().ilike('username', normalizedUsername || identifier));
+
+    let { data: users, error: userError } = await primaryQuery;
+
+    if ((!users?.length || userError) && !identifier.includes('@') && normalizedEmail) {
+      const fallback = await applyTenant(selectActiveUsers().ilike('email', normalizedEmail));
+      users = fallback.data;
+      userError = fallback.error;
     }
-
-    const { data: users, error: userError } = await query;
 
     if (userError || !users?.length) {
       return { message: this.passwordResetMessage };

@@ -14,10 +14,10 @@ import {
   PackagePlus,
   Pencil,
   Route,
-  Settings,
   Tags,
   Trash2,
   CheckCircle,
+  Copy,
   XCircle,
   Upload,
   X,
@@ -25,7 +25,6 @@ import {
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import DrawingManager from '../../../../components/DrawingManager';
-import NomenclatureManager from '../../../../components/NomenclatureManager';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
 import { hasModulePermission, isAdminLike, readStoredUser } from '@/lib/rbac';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
@@ -62,6 +61,8 @@ interface Item {
   approved_by?: string | null;
   created_at: string;
   total_stock?: number;
+  current_stock?: number;
+  available_quantity?: number;
   uid_tracking?: boolean;
   uid_strategy?: string;
   batch_uom?: string;
@@ -84,6 +85,9 @@ interface Vendor {
 
 interface ItemVendor {
   vendor_id: string;
+  vendor?: Vendor;
+  vendor_name?: string;
+  vendor_code?: string;
   priority: number;
   unit_price?: number;
   lead_time_days?: number;
@@ -121,19 +125,37 @@ const ITEMS_TABLE_COLUMNS_STORAGE_KEY = 'itemsTableColumns:v1';
 const ITEMS_TABLE_PAGE_SIZE_STORAGE_KEY = 'itemsTablePageSize:v1';
 const ITEM_CATEGORY_OPTIONS = [
   { value: 'RAW_MATERIAL', label: 'Raw Material' },
+  { value: 'SUB_ASSEMBLY', label: 'Sub Assembly' },
   { value: 'CAPITAL_GOODS', label: 'Capital Goods' },
   { value: 'CONSUMABLE', label: 'Consumable' },
-  { value: 'PACKING_MATERIAL', label: 'Packing Material' },
+  { value: 'FINISHED_GOODS', label: 'Finished Goods' },
   { value: 'SERVICES', label: 'Services' },
 ];
+
+const ITEM_CODE_PREFIX_BY_CATEGORY: Record<string, string> = {
+  RAW_MATERIAL: '100',
+  SUB_ASSEMBLY: '200',
+  SERVICES: '300',
+  CAPITAL_GOODS: '400',
+  CONSUMABLE: '500',
+  FINISHED_GOODS: '700',
+};
 
 const ITEM_CATEGORY_ALIASES: Record<string, string> = {
   RAW_MATERIALS: 'RAW_MATERIAL',
   SERVICE: 'SERVICES',
+  SERVICES_PURCHASE: 'SERVICES',
+  SUB: 'SUB_ASSEMBLY',
+  SUBASSEMBLY: 'SUB_ASSEMBLY',
+  SUB_ASSEMBLIES: 'SUB_ASSEMBLY',
+  FINISHED: 'FINISHED_GOODS',
+  FINISHED_GOOD: 'FINISHED_GOODS',
+  FG: 'FINISHED_GOODS',
+  PACKING_MATERIAL: 'RAW_MATERIAL',
 };
 
 function normalizeItemCategory(category: unknown): string {
-  const value = String(category ?? '').trim().toUpperCase().replace(/\s+/g, '_');
+  const value = String(category ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
   return ITEM_CATEGORY_ALIASES[value] || value;
 }
 
@@ -142,8 +164,29 @@ function formatItemCategory(category: unknown): string {
   return ITEM_CATEGORY_OPTIONS.find((option) => option.value === normalized)?.label || normalized.replace(/_/g, ' ');
 }
 
-interface NomenclatureSecondary { label: string; acronym: string; hint?: string; }
-interface NomenclaturePrimary { label: string; acronym: string; hint?: string; secondaries: NomenclatureSecondary[]; }
+function formatImportError(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (!error || typeof error !== 'object') return String(error || 'Import failed');
+
+  const row = (error as any).row ?? (error as any).line ?? null;
+  const item = (error as any).item ?? (error as any).code ?? (error as any).name ?? '';
+  const message =
+    (error as any).error ??
+    (error as any).message ??
+    (error as any).details ??
+    'Import failed';
+
+  return [
+    row ? `Row ${row}` : '',
+    item ? String(item) : '',
+    String(message),
+  ].filter(Boolean).join(' - ');
+}
+
+function normalizeImportErrors(errors: unknown): string[] {
+  if (!Array.isArray(errors)) return [];
+  return errors.map(formatImportError);
+}
 
 export default function ItemsPage() {
   const router = useRouter();
@@ -160,23 +203,30 @@ export default function ItemsPage() {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [itemScope, setItemScope] = useState<'REGULAR' | 'RND'>('REGULAR');
   const [showDeleted, setShowDeleted] = useState(false);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
   const [selectedItemForDrawing, setSelectedItemForDrawing] = useState<Item | null>(null);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [showNomenclatureManager, setShowNomenclatureManager] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [newCategory, setNewCategory] = useState('');
   const [editingCategory, setEditingCategory] = useState<{ id: string; name: string } | null>(null);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [itemVendors, setItemVendors] = useState<ItemVendor[]>([]);
   const [showVendorForm, setShowVendorForm] = useState(false);
+  const [savingItem, setSavingItem] = useState(false);
+  const savingItemRef = useRef(false);
   
   // Variant manager state
   const [showVariantManager, setShowVariantManager] = useState(false);
   const [selectedParentItem, setSelectedParentItem] = useState<Item | null>(null);
   const [variants, setVariants] = useState<Item[]>([]);
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
+  const cancelDuplicateCheck = () => {
+    handleCancel();
+    savingItemRef.current = false;
+    setSavingItem(false);
+  };
   const [newVariant, setNewVariant] = useState({ code: '', name: '', variant_name: '', is_default: false });
   
   // Drawing upload state
@@ -189,11 +239,40 @@ export default function ItemsPage() {
 
   // Stock trail drill-down
   const [stockTrail, setStockTrail] = useState<{ open: boolean; item: Item | null; loading: boolean; data: any }>({ open: false, item: null, loading: false, data: null });
+  const stockHydrationKeyRef = useRef<string>('');
+
+  const applyLedgerStockToItem = (itemId: string, ledgerStock: number) => {
+    setItems((current) =>
+      current.map((row) =>
+        row.id === itemId
+          ? {
+              ...row,
+              total_stock: ledgerStock,
+              current_stock: ledgerStock,
+              available_quantity: ledgerStock,
+            } as Item
+          : row,
+      ),
+    );
+  };
 
   const openStockTrail = async (item: Item) => {
     setStockTrail({ open: true, item, loading: true, data: null });
     try {
       const data = await apiClient.get<any>(`/items/${item.id}/stock-trail`);
+      if (data && data.currentBalance !== undefined && data.currentBalance !== null) {
+        const ledgerStock = Number(data.currentBalance) || 0;
+        applyLedgerStockToItem(item.id, ledgerStock);
+        setStockTrail(prev => ({
+          ...prev,
+          item: {
+            ...item,
+            total_stock: ledgerStock,
+            current_stock: ledgerStock,
+            available_quantity: ledgerStock,
+          } as Item,
+        }));
+      }
       setStockTrail(prev => ({ ...prev, loading: false, data }));
     } catch (err: any) {
       setStockTrail(prev => ({ ...prev, loading: false, data: { error: String(err?.message || err) } }));
@@ -293,34 +372,39 @@ export default function ItemsPage() {
     drawing_url: '',
     drawing_file_name: '',
   });
+  const [codeGenerating, setCodeGenerating] = useState(false);
+  const itemCodeRequestRef = useRef(0);
 
-  const [nomenclaturePrimary, setNomenclaturePrimary] = useState('');
-  const [nomenclatureSecondary, setNomenclatureSecondary] = useState('');
-  const [nomenclatureUserDefined, setNomenclatureUserDefined] = useState('');
-  const [nomenclatureData, setNomenclatureData] = useState<NomenclaturePrimary[]>([]);
+  const refreshGeneratedItemCode = async (categoryValue = formData.category) => {
+    const normalizedCategory = normalizeItemCategory(categoryValue);
+    const prefix = ITEM_CODE_PREFIX_BY_CATEGORY[normalizedCategory] || '100';
+    const requestId = itemCodeRequestRef.current + 1;
+    itemCodeRequestRef.current = requestId;
 
-  // Fetch nomenclature data on mount
-  useEffect(() => {
-    const fetchNomenclature = async () => {
-      try {
-        const data = await apiClient.get<NomenclaturePrimary[]>('/nomenclature');
-        setNomenclatureData(data);
-      } catch (err) {
-        // Silent fail - will use empty array
-        console.warn('Failed to load nomenclature data:', err);
-      }
-    };
-    fetchNomenclature();
-  }, []);
-
-  const selectedPrimaryEntry = nomenclatureData.find(p => p.acronym === nomenclaturePrimary) || null;
-  const availableSecondaries = selectedPrimaryEntry?.secondaries ?? [];
-  const selectedSecondaryEntry = availableSecondaries.find(s => s.acronym === nomenclatureSecondary) || null;
-  const activeHint = selectedSecondaryEntry?.hint || selectedPrimaryEntry?.hint || '';
-
-  const buildGeneratedCode = (primary: string, secondary: string, oemPart: string, userDefined: string = '') => {
-    const parts = [primary, secondary, oemPart, userDefined].filter(Boolean);
-    return parts.join('-').toUpperCase();
+    if (editingItem) return;
+    setCodeGenerating(true);
+    try {
+      const result = await apiClient.get<{ code?: string }>(`/items/next-code?category=${encodeURIComponent(normalizedCategory)}`);
+      if (itemCodeRequestRef.current !== requestId) return;
+      const apiCode = String(result?.code || '');
+      const nextCode = apiCode.startsWith(`${prefix}-`)
+        ? apiCode
+        : `${prefix}-0001`;
+      setFormData((prev) => ({
+        ...prev,
+        category: normalizedCategory,
+        code: nextCode,
+      }));
+    } catch {
+      if (itemCodeRequestRef.current !== requestId) return;
+      setFormData((prev) => ({
+        ...prev,
+        category: normalizedCategory,
+        code: prev.code || `${prefix}-0001`,
+      }));
+    } finally {
+      if (itemCodeRequestRef.current === requestId) setCodeGenerating(false);
+    }
   };
 
   const addCategory = async () => {
@@ -407,7 +491,6 @@ export default function ItemsPage() {
   useEscapeKey(!!viewingItem, () => setViewingItem(null));
   useEscapeKey(showDrawingManager, () => { setShowDrawingManager(false); setSelectedItemForDrawing(null); });
   useEscapeKey(showCategoryManager, () => setShowCategoryManager(false));
-  useEscapeKey(showNomenclatureManager, () => setShowNomenclatureManager(false));
   useEscapeKey(showBulkInventory, () => setShowBulkInventory(false));
   useEscapeKey(showImportModal, () => setShowImportModal(false));
   useEscapeKey(stockTrail.open, () => setStockTrail(s => ({ ...s, open: false })));
@@ -415,7 +498,7 @@ export default function ItemsPage() {
   useEffect(() => {
     fetchItems();
     fetchVendors();
-  }, [showDeleted]);
+  }, [showDeleted, itemScope]);
 
   useEffect(() => {
     try {
@@ -464,12 +547,31 @@ export default function ItemsPage() {
 
   const fetchItems = async () => {
     try {
-      const url = showDeleted 
-        ? '/inventory/items?includeInactive=true' 
-        : '/inventory/items';
-      const data = await apiClient.get(url);
+      const params = new URLSearchParams();
+      if (showDeleted) params.set('includeInactive', 'true');
+      if (itemScope === 'RND') params.set('scope', 'RND');
+      params.set('_ts', String(Date.now()));
+      const url = `/inventory/items${params.toString() ? `?${params.toString()}` : ''}`;
+      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      const response = await fetch(`/api/v1${url}`, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: token ? {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+        } : {
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+        },
+      });
+      if (!response.ok) {
+        throw new Error(await response.text().catch(() => response.statusText));
+      }
+      const data = await response.json();
       
-      setItems(data);
+      stockHydrationKeyRef.current = '';
+      setItems(Array.isArray(data) ? data : []);
     } catch (error) {
       alert('Failed to fetch items');
     } finally {
@@ -570,11 +672,17 @@ export default function ItemsPage() {
       fetchItems();
     } catch (error: any) {
       alert(error.message || error.response?.data?.message || 'Failed to save item');
+    } finally {
+      savingItemRef.current = false;
+      setSavingItem(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingItemRef.current) return;
+    savingItemRef.current = true;
+    setSavingItem(true);
     try {
       // Upload drawing if file is selected
       let drawingData = {
@@ -612,6 +720,7 @@ export default function ItemsPage() {
         ...formData,
         ...drawingData,
         category: normalizeItemCategory(formData.category),
+        auto_generate_code: !editingItem,
         product_category: null,
         hsn_code: (formData.hsn_code || '').replace(/[^0-9]/g, ''),
         standard_cost: formData.standard_cost ? parseFloat(formData.standard_cost) : null,
@@ -628,6 +737,8 @@ export default function ItemsPage() {
         is_variant: formData.is_variant || false,
         is_default_variant: formData.is_default_variant || false,
         variant_name: formData.variant_name || null,
+        isRndItem: itemScope === 'RND',
+        department: itemScope === 'RND' ? 'R&D' : undefined,
       };
 
       // For updates, skip duplicate check
@@ -643,6 +754,8 @@ export default function ItemsPage() {
       );
     } catch (error: any) {
       alert(error.message || error.response?.data?.message || 'Failed to save item');
+      savingItemRef.current = false;
+      setSavingItem(false);
     }
   };
 
@@ -708,13 +821,110 @@ export default function ItemsPage() {
     loadExistingDrawingForEdit(item.id);
   };
 
+  const handleCloneItem = async (item: Item) => {
+    if (!canCreate) {
+      alert('You do not have permission to create item masters.');
+      return;
+    }
+
+    try {
+      let detail: Item = item;
+      try {
+        const loadedDetail = await apiClient.get<Item>(`/inventory/items/${item.id}`);
+        detail = { ...item, ...loadedDetail };
+      } catch {
+        detail = item;
+      }
+
+      let linkedVendors: ItemVendor[] = [];
+      try {
+        const vendorRows = await apiClient.get(`/inventory/items/${item.id}/vendors`);
+        linkedVendors = (Array.isArray(vendorRows) ? vendorRows : []).map((row: any) => ({
+          vendor_id: row.vendor_id || row.vendorId || row.vendor?.id || '',
+          vendor: row.vendor,
+          vendor_name: row.vendor_name || row.vendorName || row.vendor?.name || '',
+          vendor_code: row.vendor_code || row.vendorCode || row.vendor?.code || '',
+          priority: Number(row.priority || 1),
+          unit_price: row.unit_price !== undefined && row.unit_price !== null ? Number(row.unit_price) : undefined,
+          lead_time_days: row.lead_time_days !== undefined && row.lead_time_days !== null ? Number(row.lead_time_days) : undefined,
+          vendor_item_code: row.vendor_item_code || row.vendorItemCode || '',
+        })).filter((row: ItemVendor) => Boolean(row.vendor_id));
+      } catch {
+        linkedVendors = [];
+      }
+
+      setViewingItem(null);
+      setEditingItem(null);
+      setItemScope((detail as any).department === 'R&D' || (detail as any).is_rnd_item || (detail as any).isRndItem ? 'RND' : 'REGULAR');
+      setFormData({
+        code: '',
+        name: detail.name,
+        oem_part_no: detail.oem_part_no || '',
+        oem_name: detail.oem_name || '',
+        description: detail.description || '',
+        category: normalizeItemCategory(detail.category),
+        product_category: detail.product_category || '',
+        uom: detail.uom || 'PCS',
+        hsn_code: (detail.hsn_code ? String(detail.hsn_code) : '').replace(/[^0-9]/g, ''),
+        standard_cost: detail.standard_cost?.toString() || '',
+        selling_price: detail.selling_price?.toString() || '',
+        purchase_currency: detail.purchase_currency || 'INR',
+        foreign_unit_price: detail.foreign_unit_price?.toString() || '',
+        reorder_level: detail.reorder_level?.toString() || '',
+        reorder_quantity: detail.reorder_quantity?.toString() || '',
+        lead_time_days: detail.lead_time_days?.toString() || '',
+        is_active: true,
+        uid_tracking: detail.uid_tracking !== false,
+        uid_strategy: detail.uid_strategy || 'SERIALIZED',
+        batch_uom: detail.batch_uom || '',
+        batch_quantity: detail.batch_quantity?.toString() || '',
+        drawing_required: detail.drawing_required || 'OPTIONAL',
+        parent_item_id: detail.parent_item_id || '',
+        is_variant: detail.is_variant || false,
+        is_default_variant: false,
+        variant_name: detail.variant_name ? `${detail.variant_name} Copy` : '',
+        drawing_url: '',
+        drawing_file_name: '',
+      });
+      setItemVendors(linkedVendors);
+      setDrawingFile(null);
+      setDrawingAttachmentMessage(null);
+      if (drawingFileInputRef.current) drawingFileInputRef.current.value = '';
+      setShowVendorForm(false);
+      setShowForm(true);
+    } catch (error: any) {
+      alert(error?.message || 'Failed to clone item master');
+    }
+  };
+
   const fetchItemVendors = async (itemId: string) => {
     try {
       const data = await apiClient.get(`/inventory/items/${itemId}/vendors`);
-      setItemVendors(data || []);
+      setItemVendors(
+        (Array.isArray(data) ? data : []).map((row: any) => ({
+          ...row,
+          vendor_id: row.vendor_id || row.vendorId || row.vendor?.id || '',
+          vendor_name: row.vendor_name || row.vendorName || row.vendor?.name || '',
+          vendor_code: row.vendor_code || row.vendorCode || row.vendor?.code || '',
+        })),
+      );
     } catch (error) {
       setItemVendors([]);
     }
+  };
+
+  const resolveItemVendorDisplay = (itemVendor: ItemVendor) => {
+    const linkedVendor = vendors.find((vendor) => vendor.id === itemVendor.vendor_id);
+    const name =
+      itemVendor.vendor?.name ||
+      linkedVendor?.name ||
+      itemVendor.vendor_name ||
+      itemVendor.vendor?.code ||
+      linkedVendor?.code ||
+      itemVendor.vendor_code ||
+      'Vendor';
+    const code = itemVendor.vendor?.code || linkedVendor?.code || itemVendor.vendor_code || '';
+    return { name, code };
   };
 
   const openVariantManager = async (item: Item) => {
@@ -1077,10 +1287,25 @@ export default function ItemsPage() {
     try {
       const result = await apiClient.post('/items/bulk', { items: importPreview });
       const r = result as any;
-      setImportResult({ success: r.success || 0, failed: r.failed || 0, errors: r.errors || [] });
+      setImportResult({ success: r.success || 0, failed: r.failed || 0, errors: normalizeImportErrors(r.errors) });
       if ((r.success || 0) > 0) fetchItems();
     } catch (e: any) {
-      setImportResult({ success: 0, failed: importPreview.length, errors: [e.message || 'Import failed'] });
+      const responseData = e?.response?.data;
+      const responseErrors =
+        responseData?.errors ||
+        (Array.isArray(responseData?.message) ? responseData.message : null);
+      const fallbackMessage =
+        responseData?.message ||
+        responseData?.error ||
+        e?.message ||
+        'Import failed';
+      setImportResult({
+        success: 0,
+        failed: importPreview.length,
+        errors: normalizeImportErrors(responseErrors).length > 0
+          ? normalizeImportErrors(responseErrors)
+          : [formatImportError(fallbackMessage)],
+      });
     } finally {
       setImportLoading(false);
     }
@@ -1192,15 +1417,19 @@ export default function ItemsPage() {
       drawing_url: '',
       drawing_file_name: '',
     });
-    setNomenclaturePrimary('');
-    setNomenclatureSecondary('');
-    setNomenclatureUserDefined('');
     setDrawingFile(null);
     setDrawingAttachmentMessage(null);
     if (drawingFileInputRef.current) drawingFileInputRef.current.value = '';
     setItemVendors([]);
     setShowVendorForm(false);
   };
+
+  useEffect(() => {
+    if (!showForm || editingItem) return;
+    if (formData.code) return;
+    refreshGeneratedItemCode(formData.category);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showForm, editingItem, formData.code, formData.category]);
 
   const filteredItems = items.filter(item => {
     const matchesType = !typeFilter || normalizeItemCategory(item.category) === typeFilter;
@@ -1238,13 +1467,59 @@ export default function ItemsPage() {
   const endIndex = startIndex + itemsPerPage;
   const paginatedItems = sortedItems.slice(startIndex, endIndex);
 
+  useEffect(() => {
+    if (loading || paginatedItems.length === 0) return;
+
+    const key = [
+      itemScope,
+      showDeleted ? 'inactive' : 'active',
+      currentPage,
+      itemsPerPage,
+      paginatedItems
+        .map((item) => [
+          item.id,
+          item.total_stock ?? '',
+          item.current_stock ?? '',
+          item.available_quantity ?? '',
+        ].join(':'))
+        .join(','),
+    ].join('|');
+
+    if (stockHydrationKeyRef.current === key) return;
+    stockHydrationKeyRef.current = key;
+
+    let cancelled = false;
+    void Promise.all(
+      paginatedItems.map(async (item) => {
+        try {
+          const data = await apiClient.get<any>(`/items/${item.id}/stock-trail`);
+          if (cancelled || data?.currentBalance === undefined || data?.currentBalance === null) return;
+
+          const ledgerStock = Number(data.currentBalance) || 0;
+          const displayedStock = Number(item.total_stock ?? item.current_stock ?? item.available_quantity ?? 0) || 0;
+          if (Math.abs(displayedStock - ledgerStock) > 1e-9) {
+            applyLedgerStockToItem(item.id, ledgerStock);
+          }
+        } catch {
+          // Keep the list usable if a stock-trail lookup fails for one row.
+        }
+      }),
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage, itemScope, itemsPerPage, loading, paginatedItems, showDeleted]);
+
   // Autocomplete suggestions (top 10 matches)
   const autocompleteSuggestions = searchTerm.length >= 2
     ? items
         .filter(item => 
           (item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
            item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           (item.oem_part_no || '').toLowerCase().includes(searchTerm.toLowerCase())) &&
+           (item.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+           (item.oem_part_no || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+           (item.oem_name || '').toLowerCase().includes(searchTerm.toLowerCase())) &&
           (showDeleted ? !item.is_active : item.is_active)
         )
         .slice(0, 10)
@@ -1336,7 +1611,7 @@ export default function ItemsPage() {
       id: 'name',
       label: 'Name',
       accessor: (item) => item.name,
-      searchAccessor: (item) => `${item.name || ''} ${item.description || ''}`.trim(),
+      searchAccessor: (item) => `${item.name || ''} ${item.description || ''} ${item.oem_part_no || ''} ${item.oem_name || ''}`.trim(),
       cell: (item) => <span className="block truncate text-gray-900" title={item.name}>{item.name}</span>,
       minWidth: 220,
     },
@@ -1501,6 +1776,17 @@ export default function ItemsPage() {
           >
             <Route className="h-3.5 w-3.5" />
           </button>
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() => void handleCloneItem(item)}
+              title="Clone item master"
+              aria-label="Clone item master"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          )}
           {item.is_active ? (
             <>
               {canEdit && (
@@ -1648,13 +1934,6 @@ export default function ItemsPage() {
               Categories
             </button>
             <button
-              onClick={() => setShowNomenclatureManager(true)}
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
-            >
-              <Settings className="h-4 w-4" />
-              SAS Numbering
-            </button>
-            <button
               onClick={initBulkInventory}
               className="inline-flex h-9 items-center gap-2 rounded-md border border-[#D8C8AA] bg-white px-3 text-sm font-semibold text-[#5E4635] hover:bg-[#F5EFE3]"
             >
@@ -1754,7 +2033,7 @@ export default function ItemsPage() {
           getRowId={(item) => item.id}
           defaultPageSize={10}
           pageSizeOptions={[10, 25, 50, 100]}
-          searchPlaceholder="Search by code, name, OEM part no., HSN, category…"
+          searchPlaceholder="Search by code, name, description, OEM name/part no., HSN, category…"
           exportFilename={`stock-master-${new Date().toISOString().slice(0, 10)}`}
           toolbarLayout="singleLine"
           variantContext={{ category: typeFilter, status: showDeleted ? 'inactive' : 'active' }}
@@ -1764,6 +2043,17 @@ export default function ItemsPage() {
           }}
           toolbarRight={
             <div className="flex min-w-0 items-center gap-2">
+              <select
+                value={itemScope}
+                onChange={(e) => {
+                  setItemScope(e.target.value === 'RND' ? 'RND' : 'REGULAR');
+                  setCurrentPage(1);
+                }}
+                className="min-h-9 w-44 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30"
+              >
+                <option value="REGULAR">Regular items</option>
+                <option value="RND">R&D items</option>
+              </select>
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
@@ -1816,114 +2106,81 @@ export default function ItemsPage() {
               
               <form onSubmit={handleSubmit} className="space-y-4">
 
-                {/* Nomenclature / Part Number Generator */}
+                {/* Category / Item Number Generator */}
                 {!editingItem && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
-                    <h3 className="text-sm font-semibold text-amber-900">🔖 SAS Part Number Generator</h3>
-                    <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Primary Category *</label>
+                        <h3 className="text-sm font-semibold text-amber-900">New Item Number Generation</h3>
+                        <p className="text-xs text-amber-800">
+                          Category prefix + four digit running number, e.g. 200-0001.
+                        </p>
+                      </div>
+                      <div className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-900">
+                        Prefix {ITEM_CODE_PREFIX_BY_CATEGORY[normalizeItemCategory(formData.category)] || '100'}-
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-700">Category *</label>
                         <select
-                          value={nomenclaturePrimary}
+                          value={formData.category}
                           onChange={(e) => {
-                            const val = e.target.value;
-                            const newPrimaryEntry = nomenclatureData.find(p => p.acronym === val);
-                            const primaryHint = (newPrimaryEntry?.secondaries.length === 0 ? newPrimaryEntry?.hint : '') || '';
-                            setNomenclaturePrimary(val);
-                            setNomenclatureSecondary('');
-                            setNomenclatureUserDefined(primaryHint);
-                            const newCode = buildGeneratedCode(val, '', formData.oem_part_no, primaryHint);
-                            setFormData(prev => ({ ...prev, code: newCode }));
+                            const nextCategory = normalizeItemCategory(e.target.value);
+                            setFormData((prev) => ({ ...prev, category: nextCategory, code: '' }));
+                            refreshGeneratedItemCode(nextCategory);
                           }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
                         >
-                          <option value="">— Select Primary —</option>
-                          {nomenclatureData.map(p => (
-                            <option key={p.acronym} value={p.acronym}>{p.label} ({p.acronym})</option>
+                          {ITEM_CATEGORY_OPTIONS.map((cat) => (
+                            <option key={cat.value} value={cat.value}>{cat.label}</option>
                           ))}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Secondary Category</label>
-                        <select
-                          value={nomenclatureSecondary}
-                          disabled={availableSecondaries.length === 0}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const newSecEntry = availableSecondaries.find(s => s.acronym === val);
-                            const newHint = newSecEntry?.hint || selectedPrimaryEntry?.hint || '';
-                            setNomenclatureSecondary(val);
-                            setNomenclatureUserDefined(newHint);
-                            const newCode = buildGeneratedCode(nomenclaturePrimary, val, formData.oem_part_no, newHint);
-                            setFormData(prev => ({ ...prev, code: newCode }));
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm disabled:bg-gray-100 disabled:text-gray-400"
-                        >
-                          <option value="">— Select Secondary —</option>
-                          {availableSecondaries.map(s => (
-                            <option key={s.acronym} value={s.acronym}>{s.label} ({s.acronym})</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* User Defined Strings — shown after secondary (or primary if no secondaries) is selected */}
-                    {(nomenclatureSecondary || (nomenclaturePrimary && availableSecondaries.length === 0)) && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">User Defined Strings</label>
-                        <textarea
-                          rows={3}
-                          value={nomenclatureUserDefined}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setNomenclatureUserDefined(val);
-                            const newCode = buildGeneratedCode(nomenclaturePrimary, nomenclatureSecondary, formData.oem_part_no, val);
-                            setFormData(prev => ({ ...prev, code: newCode }));
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm"
-                        />
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">OEM Part No.</label>
-                        <input
-                          type="text"
-                          value={formData.oem_part_no}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const newCode = buildGeneratedCode(nomenclaturePrimary, nomenclatureSecondary, val, nomenclatureUserDefined);
-                            setFormData(prev => ({ ...prev, oem_part_no: val, code: newCode }));
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm"
-                          placeholder="e.g., 0003455"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">OEM Name</label>
-                        <input
-                          type="text"
-                          value={(formData as any).oem_name || ''}
-                          onChange={(e) => setFormData({ ...formData, oem_name: e.target.value } as any)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm"
-                          placeholder="e.g., Bosch, Siemens"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Generated SAS Part Number</label>
-                      <div className="flex items-center gap-2">
+                        <label className="mb-1 block text-xs font-medium text-gray-700">Generated Item No.</label>
                         <input
                           type="text"
                           required
                           value={formData.code}
-                          onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                          className="flex-1 px-3 py-2 border-2 border-amber-400 rounded-lg bg-white font-mono font-semibold text-amber-900 focus:ring-2 focus:ring-amber-500 text-sm"
-                          placeholder="Auto-generated or type manually"
+                          readOnly
+                          className="w-full rounded-lg border-2 border-amber-400 bg-white px-3 py-2 font-mono text-sm font-semibold text-amber-900"
+                          placeholder={codeGenerating ? 'Generating...' : 'Auto-generated on save'}
                         />
-                        <span className="text-xs text-gray-500 whitespace-nowrap">Can edit manually</span>
                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-700">OEM Part No.</label>
+                        <input
+                          type="text"
+                          value={formData.oem_part_no}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, oem_part_no: e.target.value }))}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                          placeholder="e.g., 0003455"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-gray-700">OEM Name</label>
+                        <input
+                          type="text"
+                          value={(formData as any).oem_name || ''}
+                          onChange={(e) => setFormData({ ...formData, oem_name: e.target.value } as any)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500"
+                          placeholder="e.g., Bosch, Siemens"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs text-amber-900 md:grid-cols-6">
+                      <span>Raw: 100-</span>
+                      <span>Sub: 200-</span>
+                      <span>Service: 300-</span>
+                      <span>Capital: 400-</span>
+                      <span>Consumable: 500-</span>
+                      <span>FG: 700-</span>
                     </div>
                   </div>
                 )}
@@ -1998,14 +2255,19 @@ export default function ItemsPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
+                  {editingItem && (
+                    <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Category *
                     </label>
                     <select
                       required
                       value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      onChange={(e) => {
+                        const nextCategory = normalizeItemCategory(e.target.value);
+                        setFormData({ ...formData, category: nextCategory, code: editingItem ? formData.code : '' });
+                        if (!editingItem) refreshGeneratedItemCode(nextCategory);
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                     >
                       {ITEM_CATEGORY_OPTIONS.map((cat) => (
@@ -2013,6 +2275,7 @@ export default function ItemsPage() {
                       ))}
                     </select>
                   </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2525,12 +2788,12 @@ export default function ItemsPage() {
                     {itemVendors.length > 0 ? (
                       <div className="space-y-2">
                         {itemVendors.map((iv: any) => {
-                          const vendor = vendors.find(v => v.id === iv.vendor_id);
+                          const vendorDisplay = resolveItemVendorDisplay(iv);
                           return (
                             <div key={iv.vendor_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
-                                  <span className="font-medium text-gray-900">{vendor?.name || iv.vendor_name}</span>
+                                  <span className="font-medium text-gray-900">{vendorDisplay.name}</span>
                                   {iv.is_preferred && (
                                     <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded">
                                       Preferred
@@ -2545,7 +2808,7 @@ export default function ItemsPage() {
                                   {iv.vendor_item_code && (
                                     <>
                                       <span className="mx-2">•</span>
-                                      <span>Code: {iv.vendor_item_code}</span>
+                                      <span>Vendor Item Code: {iv.vendor_item_code}</span>
                                     </>
                                   )}
                                 </div>
@@ -2580,9 +2843,10 @@ export default function ItemsPage() {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                    disabled={savingItem}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {editingItem ? 'Update' : 'Create'} Item
+                    {savingItem ? 'Saving…' : `${editingItem ? 'Update' : 'Create'} Item`}
                   </button>
                 </div>
               </form>
@@ -2602,13 +2866,6 @@ export default function ItemsPage() {
             setSelectedItemForDrawing(null);
           }}
           mandatory={false}
-        />
-      )}
-
-      {/* Nomenclature Manager Modal */}
-      {showNomenclatureManager && (
-        <NomenclatureManager
-          onClose={() => setShowNomenclatureManager(false)}
         />
       )}
 
@@ -3113,6 +3370,16 @@ export default function ItemsPage() {
                     Edit
                   </button>
                 )}
+                {canCreate && (
+                  <button
+                    type="button"
+                    onClick={() => void handleCloneItem(viewingItem)}
+                    className="inline-flex h-9 items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-800 hover:bg-blue-100"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Clone
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setViewingItem(null)}
@@ -3224,6 +3491,7 @@ export default function ItemsPage() {
                     <thead className="bg-[#FAF9F6] text-left text-xs uppercase text-[#7A6555]">
                       <tr>
                         <th className="px-3 py-2">Action</th>
+                        <th className="px-3 py-2">User</th>
                         <th className="px-3 py-2">From</th>
                         <th className="px-3 py-2">To</th>
                         <th className="px-3 py-2">Reason</th>
@@ -3234,6 +3502,9 @@ export default function ItemsPage() {
                       {(viewingItem.approval_history || []).map((entry, index) => (
                         <tr key={`${entry.id || entry.action}-${index}`}>
                           <td className="px-3 py-2 font-semibold">{entry.action || "-"}</td>
+                          <td className="px-3 py-2">
+                            {entry.actor_name || entry.user_name || entry.created_by_name || entry.actor_email || "-"}
+                          </td>
                           <td className="px-3 py-2">{entry.from_status || "-"}</td>
                           <td className="px-3 py-2">{entry.to_status || "-"}</td>
                           <td className="px-3 py-2">{entry.reason || "-"}</td>
@@ -3244,7 +3515,7 @@ export default function ItemsPage() {
                       ))}
                       {!viewingItem.approval_history?.length ? (
                         <tr>
-                          <td className="px-3 py-4 text-[#7A6555]" colSpan={5}>
+                          <td className="px-3 py-4 text-[#7A6555]" colSpan={6}>
                             No approval history recorded yet.
                           </td>
                         </tr>
@@ -3410,7 +3681,7 @@ export default function ItemsPage() {
         fuzzyMatches={duplicateState.fuzzyMatches}
         entityType="Item"
         onProceed={handleProceed}
-        onCancel={handleCancel}
+        onCancel={cancelDuplicateCheck}
         formatRecord={(data) => (
           <div className="text-sm">
             <p className="font-semibold">{data.name || data.item_name}</p>

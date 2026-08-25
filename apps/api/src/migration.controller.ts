@@ -19,6 +19,18 @@ export class MigrationController {
   }
 
   @Public()
+  @Post('subcontracting-tables')
+  async createSubcontractingTables() {
+    return this.migrationService.createSubcontractingTables();
+  }
+
+  @Public()
+  @Post('hr-performance-tables')
+  async createHRPerformanceTables() {
+    return this.migrationService.createHRPerformanceTables();
+  }
+
+  @Public()
   @Get('status')
   async getStatus() {
     return { status: 'Migration service ready', timestamp: new Date().toISOString() };

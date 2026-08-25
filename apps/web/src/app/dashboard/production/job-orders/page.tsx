@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -7,8 +7,10 @@ import { hasModulePermission, hasScreenPermission, readStoredUser } from '@/lib/
 import { getTodayDateInputValue } from '@/lib/date';
 import { buildDocumentBranding, escapeHtml, renderStandardLetterheadHtml } from '@/lib/document-branding';
 import SearchableSelect from '../../../../components/SearchableSelect';
+import DateInput from '../../../../components/ui/DateInput';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
+import { ErpButton, ErpMetricStrip, ErpPageHeader, ErpStatusBadge } from '../../../../components/ui/ErpPrimitives';
 
 const AUTO_REFRESH_MS = 30000;
 
@@ -75,6 +77,30 @@ interface Material {
   variantNotes?: string;
 }
 
+interface LinkedPurchaseFlow {
+  prNumber?: string | null;
+  prId?: string | null;
+  prStatus?: string | null;
+  status?: string | null;
+  rfqSentCount?: number;
+  rfqReceivedCount?: number;
+  poCount?: number;
+  poNumbers?: string[];
+  grnCount?: number;
+  grnNumbers?: string[];
+  orderedQty?: number;
+  receivedQty?: number;
+}
+
+interface StoreFlowSummary {
+  lines?: number;
+  quantity?: number;
+  approvedLines?: number;
+  approvedQuantity?: number;
+  pendingLines?: number;
+  pendingQuantity?: number;
+}
+
 interface JobOrder {
   id: string;
   jobOrderNumber: string;
@@ -94,6 +120,9 @@ interface JobOrder {
   workflowStatus?: string;
   linkedPrNumber?: string;
   linkedPrWorkflowStatus?: string;
+  linkedPurchaseFlow?: LinkedPurchaseFlow | null;
+  sivSummary?: StoreFlowSummary | null;
+  srvSummary?: StoreFlowSummary | null;
   sivReady?: boolean;
   notes?: string;
   assignedTo?: string;
@@ -102,6 +131,29 @@ interface JobOrder {
   operations?: Operation[];
   materials?: Material[];
   createdAt: string;
+}
+
+function isStoppedJobOrder(jobOrder: JobOrder): boolean {
+  const status = String(jobOrder.status || '').trim().toUpperCase();
+  return status === 'STOPPED' || status === 'CANCELLED';
+}
+
+function isCompletedJobOrder(jobOrder: JobOrder): boolean {
+  const status = String(jobOrder.status || '').trim().toUpperCase();
+  const workflowStatus = String(jobOrder.workflowStatus || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  const srv = jobOrder.srvSummary || {};
+  const srvQty = Number(srv.quantity || 0);
+  const srvPendingQty = Number(srv.pendingQuantity || 0);
+
+  // Production completion moves an order to STORE_ISSUED. It becomes a completed
+  // job order only after QC has also completed. Keep partially completed orders
+  // (which remain IN_PROGRESS) in Active even if one partial receipt passed QC.
+  return status === 'QC_COMPLETED' ||
+    ((status === 'STORE_ISSUED' || status === 'COMPLETED') && workflowStatus === 'QC_COMPLETED') ||
+    (status === 'COMPLETED' && srvQty > 0 && srvPendingQty <= 0);
 }
 
 interface SalesOrderOption {
@@ -194,6 +246,7 @@ function JobOrdersPageContent() {
     hasScreenPermission(currentUser as any, '/dashboard/inventory/store-vouchers', 'approve');
   const canSeeAllJobOrders = canCreate || canApprove || canApproveInventoryJobs;
   const restrictToAssignedJobs = !!currentUserId && !canSeeAllJobOrders;
+  const [mounted, setMounted] = useState(false);
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [workstations, setWorkstations] = useState<Workstation[]>([]);
@@ -209,8 +262,12 @@ function JobOrdersPageContent() {
   const [jobOrderToSchedule, setJobOrderToSchedule] = useState<JobOrder | null>(null);
   const [jobOrderToEdit, setJobOrderToEdit] = useState<JobOrder | null>(null);
   const [jobOrderToStop, setJobOrderToStop] = useState<JobOrder | null>(null);
+  const [jobOrderToPartialComplete, setJobOrderToPartialComplete] = useState<JobOrder | null>(null);
   const [stopReason, setStopReason] = useState('');
-  const [activeTab, setActiveTab] = useState<'active' | 'stopped'>('active');
+  const [stopProducedQuantity, setStopProducedQuantity] = useState('');
+  const [partialProducedQuantity, setPartialProducedQuantity] = useState('');
+  type JobOrderTab = 'all_open' | 'purchase' | 'siv' | 'production' | 'srv_qc' | 'completed' | 'stopped';
+  const [activeTab, setActiveTab] = useState<JobOrderTab>('all_open');
   const [selectedJobOrderLoading, setSelectedJobOrderLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [completionPreview, setCompletionPreview] = useState<any>(null);
@@ -223,20 +280,34 @@ function JobOrdersPageContent() {
   const [stockErrorModal, setStockErrorModal] = useState<{show: boolean, shortages: any[]}>({show: false, shortages: []});
   const [itemStockSummaryById, setItemStockSummaryById] = useState<Record<string, ItemStockSummary>>({});
   function mapPurchaseWorkflowStatus(workflowStatus?: string | null): string {
-    const workflow = String(workflowStatus || '').trim().toUpperCase();
+    const workflow = String(workflowStatus || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_');
 
     switch (workflow) {
+      case 'PENDING_APPROVAL':
+      case 'SUBMITTED':
+      case 'PENDING':
+        return 'PR Approval Pending';
+      case 'APPROVED':
+        return 'PR Approved';
       case 'PO_DONE':
-        return 'Order Issued';
+        return 'PO Created';
       case 'GOODS_RCVD':
         return 'Goods Received';
       case 'REJECTED':
-        return 'Requisition Rejected';
+        return 'PR Rejected';
       case 'RFQ_ISSUED':
+        return 'RFQ Sent';
       case 'RFQ_RCVD':
+        return 'RFQ Response Received';
+      case 'PR_NOT_FOUND':
+        return 'Linked PR Missing';
       case 'DRAFT':
+        return 'PR Draft';
       default:
-        return 'Requisition Issued';
+        return workflow ? workflow.replace(/_/g, ' ') : 'Not Linked';
     }
   }
   const [openSalesOrders, setOpenSalesOrders] = useState<SalesOrderOption[]>([]);
@@ -276,6 +347,10 @@ function JobOrdersPageContent() {
     const matchedUser = users.find((user) => String(user.id || '').trim() === assignedUserId);
     return String(matchedUser?.displayName || assignedUserId).trim();
   };
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     fetchJobOrders();
@@ -321,6 +396,9 @@ function JobOrdersPageContent() {
       workflowStatus: jo.workflow_status ?? jo.workflowStatus,
       linkedPrNumber: jo.linked_pr_number ?? jo.linkedPrNumber,
       linkedPrWorkflowStatus: jo.linked_pr_workflow_status ?? jo.linkedPrWorkflowStatus,
+      linkedPurchaseFlow: jo.linked_purchase_flow ?? jo.linkedPurchaseFlow ?? null,
+      sivSummary: jo.siv_summary ?? jo.sivSummary ?? null,
+      srvSummary: jo.srv_summary ?? jo.srvSummary ?? null,
       sivReady: Boolean(jo.siv_ready ?? jo.sivReady),
       assignedTo: jo.assigned_to || jo.assignedTo,
       assignedToName: jo.assigned_to_name || jo.assignedToName,
@@ -465,12 +543,18 @@ function JobOrdersPageContent() {
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Popup blocked. Please allow popups to print the Job Order.');
+      await confirmDialog({
+        title: 'Popup Blocked',
+        message: 'Please allow popups for this site to print the Job Order.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
 
     printWindow.document.open();
-    printWindow.document.write('<!doctype html><html><head><title>Preparing Job Order...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing Job Order…</body></html>');
+    printWindow.document.write('<!doctype html><html><head><title>Preparing Job Order...</title></head><body style="font-family: Arial, sans-serif; padding: 16px;">Preparing Job Order...</body></html>');
     printWindow.document.close();
 
     const company = await apiClient.get<any>('/tenant/current').catch(() => null);
@@ -482,10 +566,23 @@ function JobOrdersPageContent() {
       const parsed = new Date(value);
       return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString('en-IN', joDateOptions);
     };
+    const formatQty = (value?: number | string | null) => {
+      const n = Number(value || 0);
+      return Number.isFinite(n) ? n.toLocaleString('en-IN') : '0';
+    };
+    const linkedFlow = selectedJobOrder.linkedPurchaseFlow || null;
+    const sivSummary = selectedJobOrder.sivSummary || {};
+    const srvSummary = selectedJobOrder.srvSummary || {};
     const workflowRows = [
       ['Status', getJobOrderDisplayStatus(selectedJobOrder, qcSummary)],
       ['Material Requisition', Array.isArray(selectedJobOrder.materials) && selectedJobOrder.materials.some((mat) => Number(mat.requiredQuantity || 0) > Number(mat.issuedQuantity || 0)) ? 'Pending' : 'Completed'],
       ['Purchase', selectedJobOrder.linkedPrNumber ? mapPurchaseWorkflowStatus(selectedJobOrder.linkedPrWorkflowStatus) || 'Requisition Issued' : 'Not Linked'],
+      ['Linked PR', linkedFlow?.prNumber || selectedJobOrder.linkedPrNumber || '-'],
+      ['Linked PO(s)', Array.isArray(linkedFlow?.poNumbers) && linkedFlow.poNumbers.length ? linkedFlow.poNumbers.join(', ') : '-'],
+      ['Linked GRN(s)', Array.isArray(linkedFlow?.grnNumbers) && linkedFlow.grnNumbers.length ? linkedFlow.grnNumbers.join(', ') : '-'],
+      ['Purchase Qty', linkedFlow ? `Ordered ${formatQty(linkedFlow.orderedQty)} / Received ${formatQty(linkedFlow.receivedQty)}` : '-'],
+      ['SIV / Material Issue', `Issued ${formatQty(sivSummary.quantity)} / Approved ${formatQty(sivSummary.approvedQuantity)} / Pending ${formatQty(sivSummary.pendingQuantity)}`],
+      ['SRV / Finished Goods Receipt', `Received ${formatQty(srvSummary.quantity)} / Released ${formatQty(srvSummary.approvedQuantity)} / QC Hold ${formatQty(srvSummary.pendingQuantity)}`],
       ['QC', qcSummary?.isQcApplied ? `Applied (${qcSummary?.passedUidsCount ?? 0} passed / ${qcSummary?.rejectedUidsCount ?? 0} on-hold)` : 'Pending'],
     ];
     const operationsHtml = (selectedJobOrder.operations || [])
@@ -750,7 +847,13 @@ function JobOrdersPageContent() {
       setAllBoms(bomsArray);
       setBoms(bomsArray);
     } catch (error) {
-      alert('Failed to load BOMs. Please check console for details.');
+      void confirmDialog({
+        title: 'Could Not Load BOMs',
+        message: 'Failed to load BOMs. Please refresh and try again.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       setAllBoms([]);
       setBoms([]);
     }
@@ -868,7 +971,13 @@ function JobOrdersPageContent() {
         setOperations(operations);
       }
       
-      alert('BOM data loaded! Materials and operations have been added.');
+      void confirmDialog({
+        title: 'BOM Loaded',
+        message: 'BOM data loaded. Materials and operations have been added.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'info',
+      });
       
       // Scroll to materials section after a short delay to show what was loaded
       setTimeout(() => {
@@ -878,7 +987,13 @@ function JobOrdersPageContent() {
         }
       }, 500);
     } catch (error) {
-      alert('Error loading BOM data. Check console for details.');
+      void confirmDialog({
+        title: 'Could Not Load BOM Data',
+        message: 'Error loading BOM data. Please refresh and try again.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
     }
   };
 
@@ -1005,13 +1120,69 @@ function JobOrdersPageContent() {
   const handleCreateJobOrder = async () => {
     
     if (!formData.itemId || !formData.quantity || !formData.startDate) {
-      alert('Please fill in all required fields');
+      await confirmDialog({
+        title: 'Missing Job Order Details',
+        message: 'Please fill in all required fields.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
 
     setLoading(true);
     try {
       
+      // BOM-driven Job Orders must use the Smart JO engine so FG/sub-assembly/raw-material
+      // planning stays consistent with the SAP-style SIV/SRV/shortage-PR flow.
+      if (formData.bomId) {
+        const response = await apiClient.post('/job-orders/smart/create', {
+          itemId: formData.itemId,
+          quantity: formData.quantity,
+          startDate: new Date(formData.startDate).toISOString(),
+          salesOrderId: formData.salesOrderId || undefined,
+          salesOrderItemId: formData.salesOrderItemId || undefined,
+        });
+
+        const createdPayload = (response as any)?.jobOrder || response;
+        const createdJobOrder = mapJobOrderFromApi(createdPayload);
+        const linkedPrNumber = String(
+          (createdPayload as any)?.linked_pr_number ||
+          (createdPayload as any)?.linkedPrNumber ||
+          '',
+        ).trim();
+
+        setShowCreateModal(false);
+        resetForm();
+        fetchJobOrders();
+
+        if (linkedPrNumber) {
+          const openPr = await confirmDialog({
+            title: 'Smart Job Order Created',
+            message: `Linked shortage PR: ${linkedPrNumber}\n\nUse the normal PR -> PO -> GRN flow to bring in shortage materials.`,
+            confirmLabel: 'Open PR',
+            cancelLabel: 'Stay Here',
+            variant: 'info',
+          });
+
+          if (openPr) {
+            router.push(`/dashboard/purchase/requisitions?search=${encodeURIComponent(linkedPrNumber)}`);
+          }
+        } else {
+          const openSiv = await confirmDialog({
+            title: 'Smart Job Order Created',
+            message: 'BOM planning is complete. Open the SIV screen now to print and issue available materials?',
+            confirmLabel: 'Open SIV Screen',
+            variant: 'warning',
+          });
+
+          if (openSiv) {
+            router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(createdJobOrder.id)}&joNumber=${encodeURIComponent(createdJobOrder.jobOrderNumber)}`);
+          }
+        }
+        return;
+      }
+
       // Clean up the payload - remove empty endDate and extra fields from materials
       const payload: any = {
         itemId: formData.itemId,
@@ -1064,7 +1235,17 @@ function JobOrdersPageContent() {
       fetchJobOrders();
 
       if (linkedPrNumber) {
-        alert(`Job Order created successfully!\n\nPurchase Requisition issued: ${linkedPrNumber}`);
+        const openPr = await confirmDialog({
+          title: 'Job Order Created',
+          message: `Linked shortage PR: ${linkedPrNumber}\n\nUse the normal PR -> PO -> GRN flow to bring in shortage materials.`,
+          confirmLabel: 'Open PR',
+          cancelLabel: 'Stay Here',
+          variant: 'info',
+        });
+
+        if (openPr) {
+          router.push(`/dashboard/purchase/requisitions?search=${encodeURIComponent(linkedPrNumber)}`);
+        }
       } else if (sivReady) {
         const openSiv = await confirmDialog({
           title: 'Job Order Created',
@@ -1077,7 +1258,13 @@ function JobOrdersPageContent() {
           router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(createdJobOrder.id)}&joNumber=${encodeURIComponent(createdJobOrder.jobOrderNumber)}`);
         }
       } else {
-        alert('Job Order created successfully!');
+        await confirmDialog({
+          title: 'Job Order Created',
+          message: 'The job order has been created successfully.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'info',
+        });
       }
     } catch (error: any) {
       
@@ -1104,7 +1291,13 @@ function JobOrdersPageContent() {
         
         setStockErrorModal({show: true, shortages});
       } else {
-        alert('Failed to create job order: ' + errorMessage);
+        await confirmDialog({
+          title: 'Could Not Create Job Order',
+          message: errorMessage || 'Something went wrong while creating the job order.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'warning',
+        });
       }
     } finally {
       setLoading(false);
@@ -1125,26 +1318,42 @@ function JobOrdersPageContent() {
           if (!readiness.ready && readiness.blockers.length > 0) {
             const lines = readiness.blockers.map((b) => {
               const jo = b.pendingSubJoNumber ? ` (JO: ${b.pendingSubJoNumber})` : '';
-              return `• ${b.itemCode} — need ${b.needed}, in stock ${b.available}${jo}`;
+              return `- ${b.itemCode} - need ${b.needed}, in stock ${b.available}${jo}`;
             }).join('\n');
-            alert(
-              `⚠️ Cannot start this Job Order yet.\n\n` +
-              `The following sub-assemblies are not yet manufactured / received into stock:\n\n${lines}\n\n` +
-              `Complete each sub-assembly Job Order (SRV receipt → QC approval) first.`
-            );
+            await confirmDialog({
+              title: 'Cannot Start Job Order',
+              message:
+                `The following sub-assemblies are not yet manufactured / received into stock:\n\n${lines}\n\n` +
+                `Complete each sub-assembly Job Order (SRV receipt -> QC approval) first.`,
+              confirmLabel: 'OK',
+              cancelLabel: 'Close',
+              variant: 'warning',
+            });
             return;
           }
         } catch (readinessErr: any) {
           // Fail-safe: if readiness check throws, block the start rather than allowing through
           const errMsg = String((readinessErr as any)?.response?.data?.message || (readinessErr as any)?.message || 'network error');
-          alert(`⚠️ Sub-assembly readiness check failed (${errMsg}).\n\nStart blocked — please refresh and try again.`);
+          await confirmDialog({
+            title: 'Readiness Check Failed',
+            message: `Sub-assembly readiness check failed (${errMsg}).\n\nStart blocked - please refresh and try again.`,
+            confirmLabel: 'OK',
+            cancelLabel: 'Close',
+            variant: 'warning',
+          });
           return;
         }
       }
 
       await apiClient.put(`/job-orders/${id}/status`, { status });
       fetchJobOrders();
-      alert(`Job Order status updated to ${status}`);
+      await confirmDialog({
+        title: 'Job Order Updated',
+        message: `Job Order status updated to ${status}.`,
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'info',
+      });
     } catch (error: any) {
 
       const errorMsg = String(error?.response?.data?.message || error?.message || 'Failed to update status');
@@ -1167,7 +1376,13 @@ function JobOrdersPageContent() {
         return;
       }
 
-      alert(errorMsg);
+      await confirmDialog({
+        title: 'Could Not Update Job Order',
+        message: errorMsg,
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
     } finally {
       setLoading(false);
     }
@@ -1180,7 +1395,13 @@ function JobOrdersPageContent() {
     const startDate = String(scheduleForm.startDate || '').trim();
 
     if (!assignedTo || !startDate) {
-      alert('Please select an employee and start date/time');
+      await confirmDialog({
+        title: 'Missing Schedule Details',
+        message: 'Please select an employee and start date/time.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -1193,9 +1414,21 @@ function JobOrdersPageContent() {
       });
       await fetchJobOrders();
       closeScheduleModal();
-      alert('Job Order scheduled successfully');
+      await confirmDialog({
+        title: 'Job Order Scheduled',
+        message: 'Job Order scheduled successfully.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'info',
+      });
     } catch (error: any) {
-      alert(error?.response?.data?.message || error?.message || 'Failed to schedule Job Order');
+      await confirmDialog({
+        title: 'Could Not Schedule Job Order',
+        message: error?.response?.data?.message || error?.message || 'Failed to schedule Job Order',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
     } finally {
       setLoading(false);
     }
@@ -1230,7 +1463,13 @@ function JobOrdersPageContent() {
     if (!jobOrderToEdit) return;
 
     if (!formData.quantity || formData.quantity <= 0) {
-      alert('Quantity must be greater than 0');
+      await confirmDialog({
+        title: 'Invalid Quantity',
+        message: 'Quantity must be greater than 0.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -1247,9 +1486,21 @@ function JobOrdersPageContent() {
       });
       await fetchJobOrders();
       closeEditModal();
-      alert('Job Order updated successfully');
+      await confirmDialog({
+        title: 'Job Order Updated',
+        message: 'Job Order updated successfully.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'info',
+      });
     } catch (error: any) {
-      alert(error?.response?.data?.message || error?.message || 'Failed to update Job Order');
+      await confirmDialog({
+        title: 'Could Not Update Job Order',
+        message: error?.response?.data?.message || error?.message || 'Failed to update Job Order',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
     } finally {
       setLoading(false);
     }
@@ -1259,6 +1510,9 @@ function JobOrdersPageContent() {
   const openStopModal = (jo: JobOrder) => {
     setJobOrderToStop(jo);
     setStopReason('');
+    setStopProducedQuantity(
+      Number(jo.completedQuantity || 0) > 0 ? String(jo.completedQuantity) : '',
+    );
     setShowStopModal(true);
   };
 
@@ -1266,6 +1520,7 @@ function JobOrdersPageContent() {
     setShowStopModal(false);
     setJobOrderToStop(null);
     setStopReason('');
+    setStopProducedQuantity('');
   };
 
   const handleStopJobOrder = async () => {
@@ -1273,14 +1528,43 @@ function JobOrdersPageContent() {
 
     setLoading(true);
     try {
-      await apiClient.post(`/job-orders/${jobOrderToStop.id}/stop`, {
+      const producedQty = Number(stopProducedQuantity);
+      const producedQuantity = Number.isFinite(producedQty) && producedQty > 0 ? producedQty : undefined;
+      const result = await apiClient.post(`/job-orders/${jobOrderToStop.id}/stop`, {
         reason: stopReason.trim() || undefined,
+        producedQuantity,
       });
       await fetchJobOrders();
+      const stoppedJob = jobOrderToStop;
       closeStopModal();
-      alert('Job Order stopped successfully');
+      if ((result as any)?.srvPending) {
+        const openSrv = await confirmDialog({
+          title: 'Job Order Stopped',
+          message: `Job Order ${stoppedJob.jobOrderNumber} has produced quantity pending SRV receipt. Open SRV now so Stores can receive it?`,
+          confirmLabel: 'Open SRV',
+          cancelLabel: 'Stay Here',
+          variant: 'warning',
+        });
+        if (openSrv) {
+          router.push(`/dashboard/inventory/srv?jobId=${encodeURIComponent(stoppedJob.id)}&joNumber=${encodeURIComponent(stoppedJob.jobOrderNumber)}`);
+        }
+      } else {
+        await confirmDialog({
+          title: 'Job Order Stopped',
+          message: (result as any)?.message || 'Job Order stopped successfully.',
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+          variant: 'info',
+        });
+      }
     } catch (error: any) {
-      alert(error?.response?.data?.message || error?.message || 'Failed to stop Job Order');
+      await confirmDialog({
+        title: 'Could Not Stop Job Order',
+        message: error?.response?.data?.message || error?.message || 'Failed to stop Job Order',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
     } finally {
       setLoading(false);
     }
@@ -1296,7 +1580,13 @@ function JobOrdersPageContent() {
       setShowCompletionModal(true);
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || error.message || 'Failed to load completion preview';
-      alert(errorMsg);
+      await confirmDialog({
+        title: 'Could Not Load Completion Preview',
+        message: errorMsg,
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       setCompletionJobOrderId(null);
     } finally {
       setLoading(false);
@@ -1306,7 +1596,13 @@ function JobOrdersPageContent() {
   const confirmCompletion = async () => {
     if (!completionPreview) return;
     if (!completionJobOrderId) {
-      alert('Missing Job Order ID. Please close the popup and try again.');
+      await confirmDialog({
+        title: 'Missing Job Order',
+        message: 'Missing Job Order ID. Please close the popup and try again.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
     
@@ -1317,34 +1613,58 @@ function JobOrdersPageContent() {
       setCompletionPreview(null);
       setCompletionJobOrderId(null);
       fetchJobOrders();
-      alert(
-        '✅ Job Order completed successfully!\n\n' +
+      await confirmDialog({
+        title: 'Job Order Completed',
+        message:
           'Status changed to STORE ISSUED.\n' +
-          'Stores can now receive the goods in Inventory → SRV.\n' +
+          'Stores can now receive the goods in Inventory -> SRV.\n' +
           'UIDs will be generated only after QC is completed.',
-      );
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'info',
+      });
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || error.message || 'Failed to complete job order';
-      alert(errorMsg);
+      await confirmDialog({
+        title: 'Could Not Complete Job Order',
+        message: errorMsg,
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePartialCompleteJobOrder = async (jo: JobOrder) => {
+  const openPartialCompleteModal = (jo: JobOrder) => {
     const planned = Number(jo.quantity || 0);
     const already = Number(jo.completedQuantity || 0);
     const remaining = Math.max(0, planned - already);
+    setJobOrderToPartialComplete(jo);
+    setPartialProducedQuantity(remaining > 0 ? String(remaining) : '0');
+  };
 
-    const raw = window.prompt(
-      `Enter produced quantity to add for ${jo.jobOrderNumber} (remaining ${remaining} of ${planned}):`,
-      remaining > 0 ? String(remaining) : '0',
-    );
-    if (raw === null) return;
+  const closePartialCompleteModal = () => {
+    setJobOrderToPartialComplete(null);
+    setPartialProducedQuantity('');
+  };
 
-    const producedQuantity = Number(String(raw).trim());
+  const confirmPartialCompleteJobOrder = async () => {
+    const jo = jobOrderToPartialComplete;
+    if (!jo) return;
+
+    const planned = Number(jo.quantity || 0);
+    const already = Number(jo.completedQuantity || 0);
+    const producedQuantity = Number(String(partialProducedQuantity).trim());
     if (!Number.isFinite(producedQuantity) || producedQuantity <= 0) {
-      alert('Produced quantity must be a number > 0');
+      await confirmDialog({
+        title: 'Invalid Produced Quantity',
+        message: 'Produced quantity must be a number greater than 0.',
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -1354,94 +1674,36 @@ function JobOrdersPageContent() {
         producedQuantity,
       });
       fetchJobOrders();
+      closePartialCompleteModal();
 
       const nextCompleted = Number((result as any)?.completedQuantity ?? already + producedQuantity);
-      alert(
-        `✅ Partial completion recorded\n\n` +
+      const openSrv = await confirmDialog({
+        title: 'Partial Completion Recorded',
+        message:
           `Job Order: ${jo.jobOrderNumber}\n` +
           `Produced now: ${producedQuantity}\n` +
           `Total produced: ${nextCompleted} / ${planned}\n\n` +
-            `You can now receive SRV for the produced quantity in Inventory → SRV.\n` +
-            `UIDs will be generated after QC is completed.`,
-      );
+          `You can now receive SRV for the produced quantity in Inventory -> SRV.\n` +
+          `UIDs will be generated after QC is completed.`,
+        confirmLabel: 'Open SRV',
+        cancelLabel: 'Stay Here',
+        variant: 'info',
+      });
+
+      if (openSrv) {
+        router.push(`/dashboard/inventory/srv?jobId=${encodeURIComponent(jo.id)}&joNumber=${encodeURIComponent(jo.jobOrderNumber)}`);
+      }
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || error.message || 'Failed to record partial completion';
-      alert(errorMsg);
+      await confirmDialog({
+        title: 'Could Not Record Partial Completion',
+        message: errorMsg,
+        confirmLabel: 'OK',
+        cancelLabel: 'Close',
+        variant: 'warning',
+      });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleRetryIssueMaterials = async () => {
-    if (!selectedJobOrder?.id) return;
-    setLoading(true);
-    const joToRefresh = selectedJobOrder;
-    try {
-      const summary = await apiClient.post(`/job-orders/${joToRefresh.id}/issue-materials`, { autoRepair: true });
-
-      // Important: don't keep the whole modal "locked" while we refetch details.
-      // If the details call is slow/hangs, buttons should still be usable.
-      setLoading(false);
-      void openJobOrderDetails(joToRefresh);
-
-      const failuresCount = Array.isArray((summary as any)?.failures) ? (summary as any).failures.length : 0;
-      const autoRepair = (summary as any)?.autoRepair;
-      const autoRepairText = autoRepair?.triggered
-        ? `\n\nAuto-repair:\n` +
-          `Triggered: ${autoRepair?.triggered ? 'YES' : 'NO'}\n` +
-          `Reason: ${autoRepair?.reason ?? '-'}\n` +
-          `Planned sub-assemblies: ${autoRepair?.plannedSubAssembliesToMake ?? '-'}\n` +
-          `Created sub-JOs: ${autoRepair?.createdSubJobOrders ?? '-'}\n` +
-          `QC auto-approved: ${autoRepair?.qcApprovedSubJobOrders ?? '-'}\n`
-        : '';
-      alert(
-        `Issue Materials finished.\n\n` +
-          `Attempted: ${(summary as any)?.attempted ?? '-'}\n` +
-          `Issued lines: ${(summary as any)?.issuedLines ?? '-'}\n` +
-          `Partial lines: ${(summary as any)?.partialLines ?? '-'}\n` +
-          `No stock lines: ${(summary as any)?.noStockLines ?? '-'}\n` +
-          `Invalid item lines: ${(summary as any)?.skippedInvalidItemLines ?? '-'}\n` +
-          `Failures: ${failuresCount}` +
-          autoRepairText,
-      );
-    } catch (error: any) {
-      setLoading(false);
-      const errorMsg = error.response?.data?.message || error.message || 'Failed to issue materials';
-      alert(errorMsg);
-    }
-  };
-
-  const handleRepairSmartAndIssue = async () => {
-    if (!selectedJobOrder?.id) return;
-    setLoading(true);
-    const joToRefresh = selectedJobOrder;
-    try {
-      const result = await apiClient.post(`/job-orders/${joToRefresh.id}/smart/repair-issue`, {});
-
-      // Important: don't keep the whole modal "locked" while we refetch details.
-      // If the details call is slow/hangs, buttons should still be usable.
-      setLoading(false);
-      void openJobOrderDetails(joToRefresh);
-
-      const issueSummary = (result as any)?.issueMaterialsSummary || {};
-      const failuresCount = Array.isArray(issueSummary?.failures) ? issueSummary.failures.length : 0;
-      alert(
-        `Smart Repair finished.\n\n` +
-          `Sub-assemblies planned: ${(result as any)?.plannedSubAssembliesToMake ?? '-'}\n` +
-          `Sub-assemblies created: ${(result as any)?.createdSubJobOrders ?? '-'}\n` +
-          `QC auto-approved: ${(result as any)?.qcApprovedSubJobOrders ?? '-'}\n\n` +
-          `Issue Materials summary:\n` +
-          `Attempted: ${issueSummary?.attempted ?? '-'}\n` +
-          `Issued lines: ${issueSummary?.issuedLines ?? '-'}\n` +
-          `Partial lines: ${issueSummary?.partialLines ?? '-'}\n` +
-          `No stock lines: ${issueSummary?.noStockLines ?? '-'}\n` +
-          `Invalid item lines: ${issueSummary?.skippedInvalidItemLines ?? '-'}\n` +
-          `Failures: ${failuresCount}`,
-      );
-    } catch (error: any) {
-      setLoading(false);
-      const errorMsg = error.response?.data?.message || error.message || 'Failed to repair Smart Job Order issuance';
-      alert(errorMsg);
     }
   };
 
@@ -1465,444 +1727,173 @@ function JobOrdersPageContent() {
     setBoms(allBoms);
   };
 
-  const getStatusColor = (status: string) => {
-    const key = String(status || '')
-      .trim()
-      .toUpperCase()
-      .replace(/\s+/g, '_')
-      .replace(/-+/g, '_');
+  const normalizeStatusKey = (status?: string | null) => String(status || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  const formatStatusLabel = (status?: string | null) => {
+    const key = normalizeStatusKey(status);
+    const labels: Record<string, string> = {
+      DRAFT: 'Draft',
+      SCHEDULED: 'Scheduled',
+      PENDING_APPROVAL: 'PR Approval Pending',
+      APPROVED: 'PR Approved',
+      PR_NOT_FOUND: 'Linked PR Missing',
+      PR_ISSUED: 'PR Issued',
+      RFQ_ISSUED: 'RFQ Sent',
+      RFQ_RCVD: 'RFQ Received',
+      PO_DONE: 'PO Created',
+      GOODS_RCVD: 'Goods Received',
+      IN_PROGRESS: 'In Progress',
+      STORE_ISSUED: 'Sent to Store / SRV Pending',
+      SENT_TO_STORE: 'Sent to Store / SRV Pending',
+      SENT_TO_STORE_SRV_PENDING: 'Sent to Store / SRV Pending',
+      COMPLETED: 'Completed',
+      AWAITING_SRV_QC: 'Awaiting SRV / QC',
+      AWAITING_QC: 'Awaiting QC',
+      QC_IN_PROGRESS: 'QC In Progress',
+      QC_COMPLETED: 'QC Completed',
+      QC_FAILED: 'QC Failed',
+      REJECTED: 'Rejected',
+      CANCELLED: 'Cancelled',
+      STOPPED: 'Stopped',
+      ON_HOLD: 'On Hold',
+    };
+    return labels[key] || String(status || '-').replace(/_/g, ' ');
+  };
+
+  const getStatusColor = (status?: string | null) => {
+    const key = normalizeStatusKey(status);
     const colors: Record<string, string> = {
-      DRAFT: 'bg-gray-100 text-gray-800',
+      DRAFT: 'bg-slate-100 text-slate-800',
       SCHEDULED: 'bg-blue-100 text-blue-800',
+      PR_DRAFT: 'bg-slate-100 text-slate-800',
+      PR_APPROVAL_PENDING: 'bg-amber-100 text-amber-900',
+      PENDING_APPROVAL: 'bg-amber-100 text-amber-900',
+      PENDING: 'bg-amber-100 text-amber-900',
+      PR_APPROVED: 'bg-emerald-50 text-emerald-800',
+      APPROVED: 'bg-emerald-50 text-emerald-800',
+      LINKED_PR_MISSING: 'bg-red-100 text-red-800',
+      PR_NOT_FOUND: 'bg-red-100 text-red-800',
       PR_ISSUED: 'bg-amber-100 text-amber-900',
+      RFQ_SENT: 'bg-purple-100 text-purple-800',
+      RFQ_ISSUED: 'bg-purple-100 text-purple-800',
+      RFQ_RESPONSE_RECEIVED: 'bg-purple-100 text-purple-900',
+      RFQ_RCVD: 'bg-purple-100 text-purple-900',
+      PO_CREATED: 'bg-indigo-100 text-indigo-800',
+      PO_DONE: 'bg-indigo-100 text-indigo-800',
+      GOODS_RECEIVED: 'bg-emerald-100 text-emerald-900',
+      GOODS_RCVD: 'bg-emerald-100 text-emerald-900',
       IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
-      COMPLETED: 'bg-green-100 text-green-800',
-      CANCELLED: 'bg-red-100 text-red-800',
-      ON_HOLD: 'bg-orange-100 text-orange-800',
-      QC_FAILED: 'bg-red-100 text-red-800',
-      AWAITING_QC: 'bg-amber-100 text-amber-900',
-      QC_COMPLETED: 'bg-emerald-100 text-emerald-900',
       STORE_ISSUED: 'bg-cyan-100 text-cyan-800',
       SENT_TO_STORE: 'bg-cyan-100 text-cyan-800',
-    };
-    /*
-      QC_FAILED_QC_FAILED____________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED__________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_____________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
-      QC_FAILED_QC_FAILED_______________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________: 'bg-red-100 text-red-800',
+      SENT_TO_STORE_SRV_PENDING: 'bg-cyan-100 text-cyan-800',
+      COMPLETED: 'bg-green-100 text-green-800',
+      AWAITING_SRV_QC: 'bg-amber-100 text-amber-900',
       AWAITING_QC: 'bg-amber-100 text-amber-900',
+      QC_IN_PROGRESS: 'bg-blue-100 text-blue-800',
       QC_COMPLETED: 'bg-emerald-100 text-emerald-900',
+      QC_FAILED: 'bg-red-100 text-red-800',
+      REJECTED: 'bg-red-100 text-red-800',
+      CANCELLED: 'bg-red-100 text-red-800',
+      STOPPED: 'bg-red-100 text-red-800',
+      ON_HOLD: 'bg-orange-100 text-orange-800',
     };
-    */
     return colors[key] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getStatusTone = (status?: string | null): 'neutral' | 'info' | 'warning' | 'success' | 'danger' => {
+    const key = normalizeStatusKey(status);
+    if (['REJECTED', 'CANCELLED', 'STOPPED', 'QC_FAILED', 'LINKED_PR_MISSING', 'PR_NOT_FOUND'].includes(key)) return 'danger';
+    if (['PENDING_APPROVAL', 'PR_APPROVAL_PENDING', 'AWAITING_QC', 'AWAITING_SRV_QC', 'ON_HOLD', 'PENDING'].includes(key)) return 'warning';
+    if (['APPROVED', 'PR_APPROVED', 'GOODS_RCVD', 'GOODS_RECEIVED', 'QC_COMPLETED', 'COMPLETED'].includes(key)) return 'success';
+    if (['SCHEDULED', 'IN_PROGRESS', 'STORE_ISSUED', 'SENT_TO_STORE', 'SENT_TO_STORE_SRV_PENDING', 'RFQ_ISSUED', 'RFQ_RCVD', 'PO_DONE'].includes(key)) return 'info';
+    return 'neutral';
+  };
+
+  const formatQuantityValue = (value: unknown) => {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n)) return '0';
+    return Number.isInteger(n) ? String(n) : n.toLocaleString('en-IN', { maximumFractionDigits: 3 });
+  };
+
+  const formatDisplayDateTime = (value?: string | null) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '-';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata',
+    });
+  };
+
+  const formatDisplayDate = (value?: string | null) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '-';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata',
+    });
+  };
+
+  const calculateJobOrderDays = (jo: Pick<JobOrder, 'actualStartDate' | 'actualEndDate' | 'status'>) => {
+    if (jo.actualEndDate && jo.actualStartDate) {
+      const start = new Date(jo.actualStartDate);
+      const end = new Date(jo.actualEndDate);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+      return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+    }
+    return null;
+  };
+
+  const getJobOrderWorklistStage = (jo: JobOrder): JobOrderTab => {
+    if (isStoppedJobOrder(jo)) return 'stopped';
+    if (isCompletedJobOrder(jo)) return 'completed';
+
+    const baseKey = normalizeStatusKey(jo.status);
+    const workflowKey = normalizeStatusKey(jo.workflowStatus || jo.status);
+    const linkedPurchaseKey = normalizeStatusKey(jo.linkedPurchaseFlow?.status || jo.linkedPrWorkflowStatus);
+    const hasLinkedPr = Boolean(String(jo.linkedPrNumber || jo.linkedPurchaseFlow?.prNumber || '').trim());
+    const purchaseDone = ['GOODS_RCVD', 'GOODS_RECEIVED'].includes(linkedPurchaseKey);
+    const purchaseTerminal = ['REJECTED', 'PR_NOT_FOUND', 'LINKED_PR_MISSING'].includes(linkedPurchaseKey);
+
+    if (hasLinkedPr && !purchaseDone && !purchaseTerminal) return 'purchase';
+
+    const materialRows = Array.isArray(jo.materials) ? jo.materials : [];
+    const hasMaterialShortIssue = materialRows.some((mat) => {
+      const required = Number(mat.requiredQuantity || 0);
+      const issued = Number(mat.issuedQuantity || 0);
+      return required - issued > 1e-9;
+    });
+    const siv = jo.sivSummary || {};
+    const sivPendingQty = Number(siv.pendingQuantity || 0);
+    if (hasMaterialShortIssue || sivPendingQty > 0) return 'siv';
+
+    const srv = jo.srvSummary || {};
+    const srvQty = Number(srv.quantity || 0);
+    const srvPendingQty = Number(srv.pendingQuantity || 0);
+    if (
+      ['STORE_ISSUED', 'SENT_TO_STORE', 'COMPLETED', 'AWAITING_SRV_QC', 'AWAITING_QC', 'QC_IN_PROGRESS'].includes(baseKey) ||
+      ['STORE_ISSUED', 'SENT_TO_STORE', 'COMPLETED', 'AWAITING_SRV_QC', 'AWAITING_QC', 'QC_IN_PROGRESS'].includes(workflowKey) ||
+      srvQty > 0 ||
+      srvPendingQty > 0
+    ) {
+      return 'srv_qc';
+    }
+
+    return 'production';
   };
 
   const getJobOrderDisplayStatus = (jo: JobOrder | null, summary: JobOrderQcSummary | null) => {
@@ -1921,12 +1912,65 @@ function JobOrdersPageContent() {
     return 'QC In Progress';
   };
 
+  const buildJobOrderSearchText = (jo: JobOrder) => {
+    const flow = jo.linkedPurchaseFlow || {};
+    const siv = jo.sivSummary || {};
+    const srv = jo.srvSummary || {};
+    return [
+      jo.jobOrderNumber,
+      jo.itemCode,
+      jo.itemName,
+      jo.priority,
+      jo.status,
+      jo.workflowStatus,
+      formatStatusLabel(jo.workflowStatus || jo.status),
+      getJobOrderWorklistStage(jo),
+      resolveAssignedUserName(jo),
+      jo.assignedToName,
+      jo.linkedPrNumber,
+      jo.linkedPrWorkflowStatus,
+      flow.prNumber,
+      flow.prStatus,
+      flow.status,
+      ...(flow.poNumbers || []),
+      ...(flow.grnNumbers || []),
+      `SIV ${siv.quantity || 0} ${siv.approvedQuantity || 0} ${siv.pendingQuantity || 0}`,
+      `SRV ${srv.quantity || 0} ${srv.approvedQuantity || 0} ${srv.pendingQuantity || 0}`,
+      ...(jo.materials || []).map((material) =>
+        [
+          material.itemCode,
+          material.itemName,
+          material.status,
+          material.selectedVariantName,
+        ].filter(Boolean).join(' '),
+      ),
+      ...(jo.operations || []).map((operation) =>
+        [
+          operation.operationName,
+          operation.workstationName,
+          operation.assignedUserName,
+          operation.status,
+        ].filter(Boolean).join(' '),
+      ),
+    ].filter(Boolean).join(' ');
+  };
+
   const jobOrdersTableColumns: Array<ListTableColumn<JobOrder>> = [
     {
       id: 'jobOrderNumber',
       label: 'Job Order #',
       accessor: (jo) => jo.jobOrderNumber,
-      cell: (jo) => <span className="font-medium text-gray-900">{jo.jobOrderNumber}</span>,
+      searchAccessor: buildJobOrderSearchText,
+      minWidth: 170,
+      cell: (jo) => (
+        <button
+          type="button"
+          onClick={() => openJobOrderDetails(jo)}
+          className="font-semibold text-[#4A3426] underline-offset-2 hover:text-[#8B6F47] hover:underline"
+        >
+          {jo.jobOrderNumber}
+        </button>
+      ),
     },
     {
       id: 'item',
@@ -1947,13 +1991,22 @@ function JobOrdersPageContent() {
       label: 'Quantity',
       accessor: (jo) => jo.quantity,
       sortAccessor: (jo) => Number(jo.quantity || 0),
+      align: 'right',
+      cell: (jo) => (
+        <div className="text-right">
+          <div className="font-semibold text-[#4A3426]">{formatQuantityValue(jo.quantity)}</div>
+          {Number(jo.completedQuantity || 0) > 0 ? (
+            <div className="text-[11px] text-emerald-700">Done {formatQuantityValue(jo.completedQuantity)}</div>
+          ) : null}
+        </div>
+      ),
     },
     {
       id: 'startDate',
       label: 'Planned Start',
       accessor: (jo) => jo.startDate,
       sortAccessor: (jo) => (jo.startDate ? new Date(jo.startDate).getTime() : 0),
-      cell: (jo) => <span className="text-xs">{jo.startDate ? new Date(jo.startDate).toLocaleString() : '-'}</span>,
+      cell: (jo) => <span className="text-xs">{formatDisplayDateTime(jo.startDate)}</span>,
     },
     {
       id: 'actualStartDate',
@@ -1962,7 +2015,7 @@ function JobOrdersPageContent() {
       sortAccessor: (jo) => (jo.actualStartDate ? new Date(jo.actualStartDate).getTime() : 0),
       cell: (jo) => (
         <span className="text-xs">
-          {jo.actualStartDate ? new Date(jo.actualStartDate).toLocaleDateString() : '-'}
+          {formatDisplayDate(jo.actualStartDate)}
         </span>
       ),
     },
@@ -1970,42 +2023,13 @@ function JobOrdersPageContent() {
       id: 'days',
       label: 'Days',
       accessor: (jo) => {
-        if (jo.actualEndDate && jo.actualStartDate) {
-          const start = new Date(jo.actualStartDate);
-          const end = new Date(jo.actualEndDate);
-          return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        } else if (jo.actualStartDate && !jo.actualEndDate && jo.status === 'IN_PROGRESS') {
-          const start = new Date(jo.actualStartDate);
-          const now = new Date();
-          return Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-        }
-        return null;
+        return calculateJobOrderDays(jo);
       },
       sortAccessor: (jo) => {
-        if (jo.actualEndDate && jo.actualStartDate) {
-          const start = new Date(jo.actualStartDate);
-          const end = new Date(jo.actualEndDate);
-          return (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-        } else if (jo.actualStartDate && !jo.actualEndDate && jo.status === 'IN_PROGRESS') {
-          const start = new Date(jo.actualStartDate);
-          const now = new Date();
-          return (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-        }
-        return 0;
+        return calculateJobOrderDays(jo) || 0;
       },
       cell: (jo) => {
-        const days = (() => {
-          if (jo.actualEndDate && jo.actualStartDate) {
-            const start = new Date(jo.actualStartDate);
-            const end = new Date(jo.actualEndDate);
-            return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-          } else if (jo.actualStartDate && !jo.actualEndDate && jo.status === 'IN_PROGRESS') {
-            const start = new Date(jo.actualStartDate);
-            const now = new Date();
-            return Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-          }
-          return null;
-        })();
+        const days = calculateJobOrderDays(jo);
         
         return days !== null ? (
           <span className={`text-xs font-medium ${jo.status === 'IN_PROGRESS' ? 'text-blue-600' : ''}`}>
@@ -2041,25 +2065,130 @@ function JobOrdersPageContent() {
       label: 'Priority',
       accessor: (jo) => jo.priority,
       cell: (jo) => (
-        <span
-          className={`px-2 py-1 text-xs rounded ${
-            jo.priority === 'HIGH'
-              ? 'bg-red-100 text-red-800'
-              : jo.priority === 'URGENT'
-                ? 'bg-red-200 text-red-900'
-                : 'bg-gray-100 text-gray-800'
-          }`}
-        >
-          {jo.priority}
-        </span>
+        <ErpStatusBadge
+          status={jo.priority || 'NORMAL'}
+          label={jo.priority || 'NORMAL'}
+          tone={jo.priority === 'URGENT' || jo.priority === 'HIGH' ? 'danger' : jo.priority === 'LOW' ? 'neutral' : 'warning'}
+        />
       ),
+    },
+    {
+      id: 'purchaseFlow',
+      label: 'Shortage / Purchase Flow',
+      accessor: (jo) => {
+        const flow = jo.linkedPurchaseFlow || {};
+        return `${jo.linkedPrNumber || ''} ${flow.prNumber || ''} ${flow.poNumbers?.join(' ') || ''} ${flow.grnNumbers?.join(' ') || ''} ${jo.linkedPrWorkflowStatus || ''}`;
+      },
+      searchAccessor: (jo) => {
+        const flow = jo.linkedPurchaseFlow || {};
+        return [
+          jo.linkedPrNumber,
+          jo.linkedPrWorkflowStatus,
+          flow.prNumber,
+          flow.status,
+          ...(flow.poNumbers || []),
+          ...(flow.grnNumbers || []),
+        ].filter(Boolean).join(' ');
+      },
+      cell: (jo) => {
+        const flow = jo.linkedPurchaseFlow;
+        const prNumber = jo.linkedPrNumber || flow?.prNumber;
+        if (!prNumber) {
+          return <span className="text-xs text-[#9B8A78]">No shortage PR</span>;
+        }
+        const status = mapPurchaseWorkflowStatus(jo.linkedPrWorkflowStatus || flow?.status);
+        const isMissingPr = normalizeStatusKey(jo.linkedPrWorkflowStatus || flow?.status) === 'PR_NOT_FOUND';
+        return (
+          <div className="min-w-[190px] space-y-1">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                router.push(`/dashboard/purchase/requisitions?search=${encodeURIComponent(prNumber)}`);
+              }}
+              className="text-left text-xs font-semibold text-[#4A3426] underline-offset-2 hover:text-[#8B6F47] hover:underline"
+              title="Open linked purchase requisition"
+            >
+              {prNumber}
+            </button>
+            <ErpStatusBadge status={status} label={status} tone={getStatusTone(status)} />
+            {isMissingPr ? (
+              <div className="text-[11px] font-medium text-red-700">Historical PR not found</div>
+            ) : null}
+            <div className="text-[11px] text-[#7A6555]">
+              PO {flow?.poCount || 0} - GRN {flow?.grnCount || 0}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: 'storeFlow',
+      label: 'Store Flow',
+      accessor: (jo) => {
+        const siv = jo.sivSummary || {};
+        const srv = jo.srvSummary || {};
+        return `SIV ${siv.quantity || 0} ${siv.approvedQuantity || 0} ${siv.pendingQuantity || 0} SRV ${srv.quantity || 0} ${srv.approvedQuantity || 0} ${srv.pendingQuantity || 0}`;
+      },
+      sortable: false,
+      cell: (jo) => {
+        const siv = jo.sivSummary || {};
+        const srv = jo.srvSummary || {};
+        const sivQty = Number(siv.quantity || 0);
+        const sivApprovedQty = Number(siv.approvedQuantity || 0);
+        const sivPendingQty = Number(siv.pendingQuantity || 0);
+        const srvQty = Number(srv.quantity || 0);
+        const srvApprovedQty = Number(srv.approvedQuantity || 0);
+        const srvPendingQty = Number(srv.pendingQuantity || 0);
+
+        return (
+          <div className="min-w-[180px] space-y-1 text-[11px] text-gray-700">
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(jo.id)}&joNumber=${encodeURIComponent(jo.jobOrderNumber)}`);
+                }}
+                className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-700 underline-offset-2 hover:bg-slate-200 hover:underline"
+                title="Open SIV for this job order"
+              >
+                SIV
+              </button>
+              <span title="Issued quantity">Issued {sivQty}</span>
+              <span className="text-emerald-700" title="Approved issue quantity">OK {sivApprovedQty}</span>
+              {sivPendingQty > 0 ? <span className="text-amber-700" title="Pending approval quantity">Pending {sivPendingQty}</span> : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  router.push(`/dashboard/inventory/srv?jobId=${encodeURIComponent(jo.id)}&joNumber=${encodeURIComponent(jo.jobOrderNumber)}`);
+                }}
+                className="rounded bg-cyan-100 px-1.5 py-0.5 font-semibold text-cyan-800 underline-offset-2 hover:bg-cyan-200 hover:underline"
+                title="Open SRV for this job order"
+              >
+                SRV
+              </button>
+              <span title="Received finished goods quantity">Recv {srvQty}</span>
+              <span className="text-emerald-700" title="Released to stock quantity">OK {srvApprovedQty}</span>
+              {srvPendingQty > 0 ? <span className="text-amber-700" title="QC hold quantity">QC hold {srvPendingQty}</span> : null}
+            </div>
+          </div>
+        );
+      },
     },
     {
       id: 'status',
       label: 'Status',
       accessor: (jo) => jo.workflowStatus || jo.status,
       cell: (jo) => (
-        <span className={`px-2 py-1 text-xs rounded ${getStatusColor(jo.workflowStatus || jo.status)}`}>{jo.workflowStatus || jo.status}</span>
+        <ErpStatusBadge
+          status={jo.workflowStatus || jo.status || '-'}
+          label={formatStatusLabel(jo.workflowStatus || jo.status)}
+          tone={getStatusTone(jo.workflowStatus || jo.status)}
+        />
       ),
     },
     {
@@ -2070,89 +2199,97 @@ function JobOrdersPageContent() {
       cell: (jo) => {
         const isAssignedToCurrentUser = !!currentUserId && String(jo.assignedTo || '').trim() === currentUserId;
         const canOperateAssignedJob = restrictToAssignedJobs && isAssignedToCurrentUser;
-        const isStopped = jo.status === 'STOPPED' || jo.status === 'CANCELLED';
-        const isCompleted = jo.status === 'COMPLETED';
+        const isStopped = isStoppedJobOrder(jo);
+        const isCompleted = isCompletedJobOrder(jo);
 
         return (
-          <div className="whitespace-nowrap text-sm">
-            <button
+          <div className="flex flex-wrap items-center justify-end gap-1.5 text-sm">
+            <ErpButton
               type="button"
               onClick={() => openJobOrderDetails(jo)}
-              className="text-blue-600 hover:text-blue-800 mr-3"
+              variant="secondary"
+              size="sm"
             >
               View
-            </button>
+            </ErpButton>
             {!isStopped && !isCompleted && (
-              <button
+              <ErpButton
                 type="button"
                 onClick={() => router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(jo.id)}&joNumber=${encodeURIComponent(jo.jobOrderNumber)}`)}
-                className="text-slate-600 hover:text-slate-800 mr-3"
+                variant="ghost"
+                size="sm"
               >
                 SIV
-              </button>
+              </ErpButton>
             )}
             {/* Edit button - available for DRAFT, SCHEDULED, IN_PROGRESS */}
             {['DRAFT', 'SCHEDULED', 'IN_PROGRESS'].includes(jo.status) && canEdit && (
-              <button
+              <ErpButton
                 type="button"
                 onClick={() => openEditModal(jo)}
-                className="text-indigo-600 hover:text-indigo-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                variant="ghost"
+                size="sm"
                 disabled={loading}
               >
                 Edit
-              </button>
+              </ErpButton>
             )}
             {/* Stop button - available for DRAFT, SCHEDULED, IN_PROGRESS */}
             {['DRAFT', 'SCHEDULED', 'IN_PROGRESS'].includes(jo.status) && canEdit && (
-              <button
+              <ErpButton
                 type="button"
                 onClick={() => openStopModal(jo)}
-                className="text-red-600 hover:text-red-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                variant="danger"
+                size="sm"
                 disabled={loading}
               >
                 Stop
-              </button>
+              </ErpButton>
             )}
             {jo.status === 'DRAFT' && canEdit && (
-              <button
+              <ErpButton
                 type="button"
                 onClick={() => openScheduleModal(jo)}
-                className="text-green-600 hover:text-green-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                variant="approve"
+                size="sm"
                 disabled={loading}
               >
                 Schedule
-              </button>
+              </ErpButton>
             )}
             {jo.status === 'SCHEDULED' && (canEdit || canOperateAssignedJob) && (
-              <button
+              <ErpButton
                 type="button"
                 onClick={() => handleUpdateStatus(jo.id, 'IN_PROGRESS')}
-                className="text-yellow-600 hover:text-yellow-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                variant="primary"
+                size="sm"
                 disabled={loading}
               >
                 Start
-              </button>
+              </ErpButton>
             )}
             {jo.status === 'IN_PROGRESS' && (canApprove || canOperateAssignedJob) && (
               <>
                 {!canOperateAssignedJob && (
-                  <button
+                  <ErpButton
                     type="button"
-                    onClick={() => handlePartialCompleteJobOrder(jo)}
-                    className="text-yellow-600 hover:text-yellow-800 mr-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                    onClick={() => openPartialCompleteModal(jo)}
+                    variant="secondary"
+                    size="sm"
                     disabled={loading}
                   >
                     Partial
-                  </button>
+                  </ErpButton>
                 )}
-                <button
+                <ErpButton
                   type="button"
                   onClick={() => handleCompleteJobOrder(jo.id)}
-                  className="text-green-600 hover:text-green-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                  variant="approve"
+                  size="sm"
                   disabled={loading}
                 >
                   Complete
-                </button>
+                </ErpButton>
               </>
             )}
           </div>
@@ -2161,48 +2298,126 @@ function JobOrdersPageContent() {
     },
   ];
 
-  // Filter job orders based on active tab
+  // Filter job orders based on operational worklist stage
   const filteredJobOrders = jobOrders.filter((jo) => {
-    const isStopped = jo.status === 'STOPPED' || jo.status === 'CANCELLED';
-    return activeTab === 'active' ? !isStopped : isStopped;
+    const stage = getJobOrderWorklistStage(jo);
+    if (activeTab === 'all_open') return stage !== 'completed' && stage !== 'stopped';
+    return stage === activeTab;
   });
 
-  return (
-    <div className="p-6 min-h-screen bg-gradient-to-br from-[#FAF9F6] to-[#E8DCC4]">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-[#36454F]">Job Orders</h1>
-      </div>
+  const countByStage = (stage: JobOrderTab) => jobOrders.filter((jo) => getJobOrderWorklistStage(jo) === stage).length;
+  const activeJobOrderCount = jobOrders.filter((jo) => {
+    const stage = getJobOrderWorklistStage(jo);
+    return stage !== 'completed' && stage !== 'stopped';
+  }).length;
+  const purchasePendingCount = countByStage('purchase');
+  const awaitingMaterialCount = countByStage('siv');
+  const productionCount = countByStage('production');
+  const awaitingQcCount = countByStage('srv_qc');
+  const completedJobOrderCount = countByStage('completed');
+  const stoppedJobOrderCount = countByStage('stopped');
 
-      {/* Tabs for Active/Stopped Job Orders */}
-      <div className="flex gap-2 mb-4">
-        <button
-          type="button"
-          onClick={() => setActiveTab('active')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'active'
-              ? 'bg-blue-600 text-white'
-              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
-          }`}
-        >
-          Active Job Orders
-          <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-200 text-gray-700">
-            {jobOrders.filter(jo => jo.status !== 'STOPPED' && jo.status !== 'CANCELLED').length}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('stopped')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'stopped'
-              ? 'bg-red-600 text-white'
-              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
-          }`}
-        >
-          Stopped Job Orders
-          <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-200 text-gray-700">
-            {jobOrders.filter(jo => jo.status === 'STOPPED' || jo.status === 'CANCELLED').length}
-          </span>
-        </button>
+  const jobOrderTabs: Array<{ id: JobOrderTab; label: string; count: number; tone: 'brown' | 'amber' | 'blue' | 'cyan' | 'green' | 'red' }> = [
+    { id: 'all_open', label: 'All Open', count: activeJobOrderCount, tone: 'brown' },
+    { id: 'purchase', label: 'Purchase Pending', count: purchasePendingCount, tone: 'amber' },
+    { id: 'siv', label: 'SIV / Material Issue', count: awaitingMaterialCount, tone: 'blue' },
+    { id: 'production', label: 'Production', count: productionCount, tone: 'brown' },
+    { id: 'srv_qc', label: 'SRV / QC', count: awaitingQcCount, tone: 'cyan' },
+    { id: 'completed', label: 'QC Completed', count: completedJobOrderCount, tone: 'green' },
+    { id: 'stopped', label: 'Stopped / Cancelled', count: stoppedJobOrderCount, tone: 'red' },
+  ];
+  const activeTabLabel = jobOrderTabs.find((tab) => tab.id === activeTab)?.label.toLowerCase() || 'job';
+  const tabClassName = (tab: { id: JobOrderTab; tone: 'brown' | 'amber' | 'blue' | 'cyan' | 'green' | 'red' }) => {
+    const active = activeTab === tab.id;
+    if (active) {
+      const activeClasses: Record<'brown' | 'amber' | 'blue' | 'cyan' | 'green' | 'red', string> = {
+        brown: 'border-[#8B6F47] bg-[#8B6F47] text-white',
+        amber: 'border-amber-700 bg-amber-700 text-white',
+        blue: 'border-blue-700 bg-blue-700 text-white',
+        cyan: 'border-cyan-700 bg-cyan-700 text-white',
+        green: 'border-emerald-700 bg-emerald-700 text-white',
+        red: 'border-red-700 bg-red-700 text-white',
+      };
+      return activeClasses[tab.tone];
+    }
+    return 'border-[#D8C8AA] bg-white text-[#5E4635] hover:bg-[#F5EFE3]';
+  };
+
+  if (!mounted) {
+    return <div className="min-h-screen bg-[#FAF9F6]" />;
+  }
+
+  return (
+    <div className="min-h-screen bg-[#FAF9F6] p-6">
+      <div className="space-y-4">
+        <ErpPageHeader
+          eyebrow="Production Control"
+          title="Job Orders"
+          description="Plan FG/sub-assembly production, reserve material, issue through SIV, receive through SRV, and close only after QC."
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <ErpButton variant="secondary" onClick={() => fetchJobOrders()}>
+                Refresh
+              </ErpButton>
+              {canCreate ? (
+                <ErpButton variant="primary" onClick={() => router.push('/dashboard/production/job-orders/smart-items')}>
+                  + Create Job Order
+                </ErpButton>
+              ) : null}
+            </div>
+          }
+        />
+
+        <ErpMetricStrip
+          loading={loading}
+          metrics={[
+            { label: 'Active JOs', value: activeJobOrderCount, tone: 'warning' },
+            { label: 'Purchase Pending', value: purchasePendingCount, tone: purchasePendingCount > 0 ? 'warning' : 'neutral' },
+            { label: 'SIV / Material Issue', value: awaitingMaterialCount, tone: awaitingMaterialCount > 0 ? 'warning' : 'neutral' },
+            { label: 'Production Ready', value: productionCount, tone: 'neutral' },
+            { label: 'Awaiting SRV / QC', value: awaitingQcCount, tone: awaitingQcCount > 0 ? 'warning' : 'neutral' },
+            { label: 'QC Completed', value: completedJobOrderCount, tone: 'success' },
+          ]}
+        />
+
+        <div className="rounded-md border border-[#E8DCC4] bg-white">
+          <div className="grid gap-px bg-[#E8DCC4] text-sm md:grid-cols-5">
+            {[
+              ['1', 'Create JO', 'Create even when raw/sub-assembly stock is short.'],
+              ['2', 'Shortage PR', 'Auto PR follows approval, RFQ, PO, GRN.'],
+              ['3', 'SIV Issue', 'Stores issues available material to production.'],
+              ['4', 'SRV Receipt', 'Finished output returns to stores.'],
+              ['5', 'QC Close', 'QC accepted stock completes the JO.'],
+            ].map(([step, title, helper]) => (
+              <div key={step} className="bg-[#FFFDF8] p-3">
+                <div className="mb-1 flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#8B6F47] text-xs font-bold text-white">{step}</span>
+                  <span className="font-bold text-[#4A3426]">{title}</span>
+                </div>
+                <p className="text-xs text-[#7A6555]">{helper}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+      {/* Operational Job Order worklist tabs */}
+      <div className="rounded-xl border border-[#E8DCC4] bg-white p-3 shadow-sm">
+        <div className="mb-2 text-xs font-bold uppercase tracking-wide text-[#7A6555]">Worklist by next action</div>
+        <div className="flex flex-wrap gap-2">
+          {jobOrderTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${tabClassName(tab)}`}
+            >
+              {tab.label}
+              <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-[#F5EFE3] text-[#6F4E37]'}`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Job Orders List */}
@@ -2213,20 +2428,33 @@ function JobOrdersPageContent() {
         getRowId={(jo) => jo.id}
         defaultPageSize={10}
         pageSizeOptions={[10, 25, 50, 100]}
-        searchPlaceholder={`Search ${activeTab === 'active' ? 'active' : 'stopped'} job orders by #, item, status…`}
+        searchPlaceholder={`Search ${activeTabLabel} job orders by #, item, status...`}
+        exportFilename={`job-orders-${activeTab}.csv`}
+        className="border-[#E8DCC4] bg-white"
         emptyState={
           <div className="py-10">
             <div className="text-lg font-semibold text-gray-700">
-              {activeTab === 'active' ? 'No Active Job Orders' : 'No Stopped Job Orders'}
+              {activeTab === 'all_open'
+                ? 'No Open Job Orders'
+                : activeTab === 'completed'
+                  ? 'No Completed Job Orders'
+                  : activeTab === 'stopped'
+                    ? 'No Stopped Job Orders'
+                    : `No ${jobOrderTabs.find((tab) => tab.id === activeTab)?.label || 'Job Orders'}`}
             </div>
             <div className="text-sm text-gray-500">
-              {activeTab === 'active'
+              {activeTab === 'all_open'
                 ? 'Create your first job order to get started'
-                : 'Stopped job orders will appear here'}
+                : activeTab === 'completed'
+                  ? 'Job orders will appear here after QC is completed'
+                  : activeTab === 'stopped'
+                    ? 'Stopped job orders will appear here'
+                    : 'Nothing is waiting in this stage right now'}
             </div>
           </div>
         }
       />
+      </div>
 
       {showScheduleModal && jobOrderToSchedule && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -2242,7 +2470,7 @@ function JobOrdersPageContent() {
                 className="text-gray-500 hover:text-gray-700"
                 disabled={loading}
               >
-                ✕
+                x
               </button>
             </div>
 
@@ -2291,7 +2519,7 @@ function JobOrdersPageContent() {
                 className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={loading}
               >
-                {loading ? 'Scheduling…' : 'Schedule'}
+                {loading ? 'Scheduling...' : 'Schedule'}
               </button>
             </div>
           </div>
@@ -2305,14 +2533,14 @@ function JobOrdersPageContent() {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold">Create Job Order</h2>
               <button onClick={() => { setShowCreateModal(false); resetForm(); }} className="text-gray-500 hover:text-gray-700">
-                ✕
+                x
               </button>
             </div>
 
             {/* Basic Information */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div>
-                <label className="block text-sm font-medium mb-1">🔍 BOM (Bill of Materials) *</label>
+                <label className="block text-sm font-medium mb-1">BOM (Bill of Materials) *</label>
                 <div className="space-y-2">
                   <input
                     type="text"
@@ -2339,7 +2567,7 @@ function JobOrdersPageContent() {
                       const itemCode = bom.item?.code || 'N/A';
                       const itemName = bom.item?.name || 'Unknown Item';
                       const version = bom.version || '1';
-                      const status = bom.is_active ? '✓ Active' : 'Inactive';
+                      const status = bom.is_active ? 'Active' : 'Inactive';
                       return (
                         <option key={bom.id} value={bom.id}>
                           BOM for: {itemCode} - {itemName} (v{version}) | {status}
@@ -2348,10 +2576,10 @@ function JobOrdersPageContent() {
                     })}
                   </select>
                   {bomSearchTerm && boms.length === 0 && (
-                    <p className="text-xs text-amber-600">⚠ No BOMs match your search</p>
+                    <p className="text-xs text-amber-600">No BOMs match your search</p>
                   )}
                   {!bomSearchTerm && allBoms.length === 0 && (
-                    <p className="text-xs text-red-600">⚠ No BOMs found in system. Create a BOM first.</p>
+                    <p className="text-xs text-red-600">No BOMs found in system. Create a BOM first.</p>
                   )}
                   <div className="flex items-center gap-2 pt-1">
                     <button
@@ -2381,7 +2609,7 @@ function JobOrdersPageContent() {
 
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  📦 Final Product (What you&apos;ll manufacture)
+                  Final Product (What you&apos;ll manufacture)
                 </label>
                 <select
                   value={formData.itemId}
@@ -2397,7 +2625,7 @@ function JobOrdersPageContent() {
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-500 mt-1">ℹ️ Item is automatically set when you select a BOM</p>
+                <p className="text-xs text-gray-500 mt-1">Item is automatically set when you select a BOM</p>
               </div>
 
               <div>
@@ -2476,11 +2704,10 @@ function JobOrdersPageContent() {
 
               <div>
                 <label className="block text-sm font-medium mb-1">End Date</label>
-                <input
-                  type="date"
+                <DateInput
                   max={todayDate}
                   value={formData.endDate}
-                  onChange={(e) => setFormData({...formData, endDate: e.target.value})}
+                  onChange={(value) => setFormData({...formData, endDate: value})}
                   className="w-full border rounded px-3 py-2"
                 />
               </div>
@@ -2768,7 +2995,7 @@ function JobOrdersPageContent() {
                   Print JO
                 </button>
                 <button onClick={() => setSelectedJobOrder(null)} className="text-gray-500 hover:text-gray-700">
-                  ✕
+                  x
                 </button>
               </div>
             </div>
@@ -2776,7 +3003,7 @@ function JobOrdersPageContent() {
             {/* Job Order Details */}
             <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded">
               {selectedJobOrderLoading ? (
-                <div className="col-span-2 text-sm text-gray-600">Loading materials & operations…</div>
+                <div className="col-span-2 text-sm text-gray-600">Loading materials & operations...</div>
               ) : null}
               <div>
                 <strong>Item:</strong> {selectedJobOrder.itemCode} - {selectedJobOrder.itemName}
@@ -2785,13 +3012,13 @@ function JobOrdersPageContent() {
                 <strong>Quantity:</strong> {selectedJobOrder.quantity}
               </div>
               <div>
-                <strong>Planned Start:</strong> {new Date(selectedJobOrder.startDate).toLocaleString()}
+                <strong>Planned Start:</strong> {formatDisplayDateTime(selectedJobOrder.startDate)}
               </div>
               <div>
                 <strong>Actual Start:</strong>{' '}
                 {selectedJobOrder.actualStartDate ? (
                   <span className="text-green-700 font-medium">
-                    {new Date(selectedJobOrder.actualStartDate).toLocaleString()}
+                    {formatDisplayDateTime(selectedJobOrder.actualStartDate)}
                   </span>
                 ) : (
                   <span className="text-gray-400">Not started</span>
@@ -2801,7 +3028,7 @@ function JobOrdersPageContent() {
                 <strong>Actual End:</strong>{' '}
                 {selectedJobOrder.actualEndDate ? (
                   <span className="text-blue-700 font-medium">
-                    {new Date(selectedJobOrder.actualEndDate).toLocaleString()}
+                    {formatDisplayDateTime(selectedJobOrder.actualEndDate)}
                   </span>
                 ) : (
                   <span className="text-gray-400">Not completed</span>
@@ -2810,16 +3037,9 @@ function JobOrdersPageContent() {
               <div>
                 <strong>Days Taken:</strong>{' '}
                 {(() => {
-                  if (selectedJobOrder.actualEndDate && selectedJobOrder.actualStartDate) {
-                    const start = new Date(selectedJobOrder.actualStartDate);
-                    const end = new Date(selectedJobOrder.actualEndDate);
-                    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                  const days = calculateJobOrderDays(selectedJobOrder);
+                  if (days !== null) {
                     return <span className="text-blue-700 font-medium">{days} days</span>;
-                  } else if (selectedJobOrder.actualStartDate && selectedJobOrder.status === 'IN_PROGRESS') {
-                    const start = new Date(selectedJobOrder.actualStartDate);
-                    const now = new Date();
-                    const days = Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-                    return <span className="text-yellow-600 font-medium">{days} days (ongoing)</span>;
                   }
                   return <span className="text-gray-400">-</span>;
                 })()}
@@ -2859,7 +3079,7 @@ function JobOrdersPageContent() {
                   const rawStatus = String(selectedJobOrder.status || '').trim();
                   return (
                     <span className={`px-2 py-1 text-xs rounded ${getStatusColor(displayStatus)}`}>
-                      {displayStatus}
+                      {formatStatusLabel(displayStatus)}
                       {rawStatus && displayStatus !== rawStatus ? ` (${rawStatus})` : ''}
                     </span>
                   );
@@ -2879,7 +3099,7 @@ function JobOrdersPageContent() {
                   const status = pendingCount > 0 ? 'Pending' : 'Completed';
                   return (
                     <span className={`px-2 py-1 text-xs rounded ${getStatusColor(status)}`}>
-                      {status}
+                      {formatStatusLabel(status)}
                       {pendingCount > 0 ? ` (${pendingCount} line${pendingCount === 1 ? '' : 's'})` : ''}
                     </span>
                   );
@@ -2895,7 +3115,7 @@ function JobOrdersPageContent() {
                   <div className="col-span-2 flex justify-end">
                     {canCompleteSelectedJob && !canOperateAssignedJob && (
                       <button
-                        onClick={() => handlePartialCompleteJobOrder(selectedJobOrder)}
+                        onClick={() => openPartialCompleteModal(selectedJobOrder)}
                         disabled={loading}
                         className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 mr-2"
                         title="Record partial production before final completion"
@@ -2920,6 +3140,191 @@ function JobOrdersPageContent() {
               <div className="col-span-2 text-xs text-gray-600">
                 Smart Job Orders create a Material Requisition. Issue materials via <strong>SIV</strong> before completing. Completion consumes any remaining and adds finished goods.
               </div>
+
+              {(selectedJobOrder.linkedPurchaseFlow || selectedJobOrder.linkedPrNumber) ? (
+                <div className="col-span-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="text-xs font-bold uppercase tracking-wide text-amber-900">Linked purchase trail</div>
+                    <span className={`px-2 py-1 text-xs rounded ${getStatusColor(mapPurchaseWorkflowStatus(selectedJobOrder.linkedPurchaseFlow?.status || selectedJobOrder.linkedPrWorkflowStatus))}`}>
+                      {mapPurchaseWorkflowStatus(selectedJobOrder.linkedPurchaseFlow?.status || selectedJobOrder.linkedPrWorkflowStatus) || 'Requisition Issued'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                    <div className="rounded border border-amber-100 bg-white p-2">
+                      <div className="text-gray-500">PR</div>
+                      <div className="font-semibold text-gray-900">{selectedJobOrder.linkedPurchaseFlow?.prNumber || selectedJobOrder.linkedPrNumber || '-'}</div>
+                      <div className="text-gray-500">{formatStatusLabel(selectedJobOrder.linkedPurchaseFlow?.prStatus || selectedJobOrder.linkedPrWorkflowStatus || '')}</div>
+                    </div>
+                    <div className="rounded border border-amber-100 bg-white p-2">
+                      <div className="text-gray-500">RFQ</div>
+                      <div className="font-semibold text-gray-900">
+                        {Number(selectedJobOrder.linkedPurchaseFlow?.rfqSentCount || 0)} sent / {Number(selectedJobOrder.linkedPurchaseFlow?.rfqReceivedCount || 0)} received
+                      </div>
+                    </div>
+                    <div className="rounded border border-amber-100 bg-white p-2">
+                      <div className="text-gray-500">PO</div>
+                      <div className="font-semibold text-gray-900">{Number(selectedJobOrder.linkedPurchaseFlow?.poCount || 0)} created</div>
+                      <div className="truncate text-gray-600" title={(selectedJobOrder.linkedPurchaseFlow?.poNumbers || []).join(', ')}>
+                        {(selectedJobOrder.linkedPurchaseFlow?.poNumbers || []).slice(0, 3).join(', ') || '-'}
+                      </div>
+                    </div>
+                    <div className="rounded border border-amber-100 bg-white p-2">
+                      <div className="text-gray-500">GRN</div>
+                      <div className="font-semibold text-gray-900">{Number(selectedJobOrder.linkedPurchaseFlow?.grnCount || 0)} received</div>
+                      <div className="truncate text-gray-600" title={(selectedJobOrder.linkedPurchaseFlow?.grnNumbers || []).join(', ')}>
+                        {(selectedJobOrder.linkedPurchaseFlow?.grnNumbers || []).slice(0, 3).join(', ') || '-'}
+                      </div>
+                    </div>
+                    <div className="rounded border border-amber-100 bg-white p-2">
+                      <div className="text-gray-500">Qty</div>
+                      <div className="font-semibold text-gray-900">
+                        {Number(selectedJobOrder.linkedPurchaseFlow?.receivedQty || 0)} / {Number(selectedJobOrder.linkedPurchaseFlow?.orderedQty || 0)}
+                      </div>
+                      <div className="text-gray-500">received / ordered</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="col-span-2 rounded-lg border border-slate-200 bg-white p-3">
+                <div className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-700">Store movement trail</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  {(() => {
+                    const siv = selectedJobOrder.sivSummary || {};
+                    const issuedQty = Number(siv.quantity || 0);
+                    const approvedQty = Number(siv.approvedQuantity || 0);
+                    const pendingQty = Number(siv.pendingQuantity || 0);
+                    const status = issuedQty <= 0
+                      ? 'Pending'
+                      : pendingQty > 0
+                        ? 'Pending Approval'
+                        : 'Completed';
+                    return (
+                      <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="font-semibold text-slate-900">SIV / Material Issue</div>
+                            <div className="text-slate-500">Store issues raw material to production</div>
+                          </div>
+                          <span className={`px-2 py-1 rounded ${getStatusColor(status)}`}>{formatStatusLabel(status)}</span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          <div>
+                            <div className="text-slate-500">Issued</div>
+                            <div className="font-semibold text-slate-900">{issuedQty}</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-500">Approved</div>
+                            <div className="font-semibold text-emerald-700">{approvedQty}</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-500">Pending</div>
+                            <div className="font-semibold text-amber-700">{pendingQty}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {(() => {
+                    const srv = selectedJobOrder.srvSummary || {};
+                    const receivedQty = Number(srv.quantity || 0);
+                    const approvedQty = Number(srv.approvedQuantity || 0);
+                    const pendingQty = Number(srv.pendingQuantity || 0);
+                    const status = receivedQty <= 0
+                      ? 'Pending'
+                      : pendingQty > 0
+                        ? 'Awaiting QC'
+                        : 'Completed';
+                    return (
+                      <div className="rounded-lg border border-cyan-100 bg-cyan-50/70 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="font-semibold text-slate-900">SRV / Finished Goods Receipt</div>
+                            <div className="text-slate-500">Stores receives production output for QC/stock</div>
+                          </div>
+                          <span className={`px-2 py-1 rounded ${getStatusColor(status)}`}>{formatStatusLabel(status)}</span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          <div>
+                            <div className="text-slate-500">Received</div>
+                            <div className="font-semibold text-slate-900">{receivedQty}</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-500">Released</div>
+                            <div className="font-semibold text-emerald-700">{approvedQty}</div>
+                          </div>
+                          <div>
+                            <div className="text-slate-500">QC Hold</div>
+                            <div className="font-semibold text-amber-700">{pendingQty}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="col-span-2 rounded-lg border border-[#E8DCC4] bg-[#FFFDF7] p-3">
+                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-[#7A542F]">Document flow shortcuts</div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedJobOrder.linkedPrNumber ? (() => {
+                    const isMissingLinkedPr = normalizeStatusKey(selectedJobOrder.linkedPurchaseFlow?.status || selectedJobOrder.linkedPrWorkflowStatus) === 'PR_NOT_FOUND';
+                    return isMissingLinkedPr ? (
+                      <span className="rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-800">
+                        Linked PR {selectedJobOrder.linkedPrNumber} missing from register
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/dashboard/purchase/requisitions?search=${encodeURIComponent(selectedJobOrder.linkedPrNumber || '')}`)}
+                        className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                      >
+                        Open Linked PR
+                      </button>
+                    );
+                  })() : null}
+                  {(selectedJobOrder.linkedPurchaseFlow?.poNumbers || []).length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/dashboard/purchase/orders?search=${encodeURIComponent(selectedJobOrder.linkedPurchaseFlow?.poNumbers?.[0] || '')}`)}
+                      className="rounded border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-900 hover:bg-orange-100"
+                    >
+                      Open Linked PO
+                    </button>
+                  ) : null}
+                  {(selectedJobOrder.linkedPurchaseFlow?.grnNumbers || []).length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/dashboard/purchase/grn?search=${encodeURIComponent(selectedJobOrder.linkedPurchaseFlow?.grnNumbers?.[0] || '')}`)}
+                      className="rounded border border-lime-200 bg-lime-50 px-3 py-1.5 text-xs font-semibold text-lime-900 hover:bg-lime-100"
+                    >
+                      Open Linked GRN
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/dashboard/inventory/siv?jobId=${encodeURIComponent(selectedJobOrder.id)}&joNumber=${encodeURIComponent(selectedJobOrder.jobOrderNumber)}`)}
+                    className="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Open SIV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/dashboard/inventory/srv?jobId=${encodeURIComponent(selectedJobOrder.id)}&joNumber=${encodeURIComponent(selectedJobOrder.jobOrderNumber)}`)}
+                    className="rounded border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-900 hover:bg-cyan-100"
+                  >
+                    Open SRV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/dashboard/quality?jobId=${encodeURIComponent(selectedJobOrder.id)}&joNumber=${encodeURIComponent(selectedJobOrder.jobOrderNumber)}`)}
+                    className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
+                  >
+                    Open QC
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Workflow status (stage-wise) */}
@@ -2931,46 +3336,92 @@ function JobOrdersPageContent() {
                     <tr>
                       <th className="border px-3 py-2 text-left text-sm">Action</th>
                       <th className="border px-3 py-2 text-left text-sm">Status</th>
+                      <th className="border px-3 py-2 text-left text-sm">Details</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(() => {
                       const baseKey = String(selectedJobOrder.status || '').toUpperCase();
-                      const hasCompleted = baseKey === 'COMPLETED';
+                      const plannedQty = Number(selectedJobOrder.quantity || 0);
+                      const completedQty = Number(selectedJobOrder.completedQuantity || 0);
+                      const hasProductionCompleted = ['STORE_ISSUED', 'COMPLETED', 'QC_COMPLETED'].includes(baseKey);
                       const qcApplied = Boolean(qcSummary?.isQcApplied);
                       const rejected = Number(qcSummary?.rejectedUidsCount || 0);
                       const pending = Number(qcSummary?.pendingUidsCount || 0);
 
                       const mats = Array.isArray(selectedJobOrder.materials) ? selectedJobOrder.materials : [];
                       const mrPending = mats.some((m) => Number(m.requiredQuantity || 0) - Number(m.issuedQuantity || 0) > 1e-9);
-                      const mrStatus = mrPending ? 'Pending' : 'Completed';
+                      const siv = selectedJobOrder.sivSummary || {};
+                      const srv = selectedJobOrder.srvSummary || {};
+                      const sivQty = Number(siv.quantity || 0);
+                      const sivApprovedQty = Number(siv.approvedQuantity || 0);
+                      const sivPendingQty = Number(siv.pendingQuantity || 0);
+                      const srvQty = Number(srv.quantity || 0);
+                      const srvApprovedQty = Number(srv.approvedQuantity || 0);
+                      const srvPendingQty = Number(srv.pendingQuantity || 0);
+                      const mrStatus = mrPending
+                        ? sivQty > 0 ? 'Partially Issued' : 'Pending'
+                        : sivPendingQty > 0 ? 'Pending Approval' : 'Completed';
                       const hasLinkedPurchaseRequisition = Boolean(String(selectedJobOrder.linkedPrNumber || '').trim());
+                      const isLinkedPrMissing = normalizeStatusKey(selectedJobOrder.linkedPurchaseFlow?.status || selectedJobOrder.linkedPrWorkflowStatus) === 'PR_NOT_FOUND';
                       const purchaseStatus = mapPurchaseWorkflowStatus(selectedJobOrder.linkedPrWorkflowStatus) || 'Requisition Issued';
 
-                      const confirmCompleteStatus = hasCompleted ? (qcApplied ? 'Completed' : 'Awaiting QC') : 'In-Progress';
-                      const qcFailStatus = !qcApplied ? 'Pending' : rejected > 0 ? 'QC Failed' : '—';
-                      const qcPassStatus = !qcApplied ? 'Pending' : rejected === 0 && pending === 0 ? 'QC Completed' : 'Pending';
+                      const isQcCompleted = isCompletedJobOrder(selectedJobOrder);
+                      const productionStatus = baseKey === 'STOPPED'
+                        ? 'Stopped'
+                        : isQcCompleted
+                          ? 'QC Completed'
+                          : ['STORE_ISSUED', 'SENT_TO_STORE'].includes(baseKey)
+                            ? 'Sent to Store / SRV Pending'
+                            : baseKey === 'COMPLETED'
+                              ? 'Awaiting SRV / QC'
+                              : completedQty > 0
+                                ? 'Partially Completed'
+                                : baseKey === 'IN_PROGRESS'
+                                  ? 'In-Progress'
+                                  : 'Pending';
+                      const srvStatus = srvQty <= 0 ? 'Pending' : srvPendingQty > 0 ? 'Awaiting QC' : 'Completed';
+                      const qcStatus = !qcApplied ? 'Pending' : rejected > 0 ? 'QC Failed' : pending === 0 ? 'QC Completed' : 'Pending';
 
-                      const rows: Array<{ action: string; status: string }> = [
-                        { action: 'Job Created Successfully', status: 'In-Progress' },
+                      const rows: Array<{ action: string; status: string; detail: string }> = [
+                        { action: 'Job Created', status: 'Completed', detail: selectedJobOrder.jobOrderNumber },
                         ...(hasLinkedPurchaseRequisition
-                          ? [{ action: 'Purchase', status: purchaseStatus }]
+                          ? [{
+                              action: 'Shortage Purchase',
+                              status: purchaseStatus,
+                              detail: isLinkedPrMissing
+                                ? `${selectedJobOrder.linkedPrNumber || '-'} missing from PR register`
+                                : selectedJobOrder.linkedPrNumber || '-',
+                            }]
                           : []),
-                        { action: 'Material Requisition (SIV)', status: mrStatus },
-                        { action: 'Preview- Confirm & Complete', status: confirmCompleteStatus },
-                        { action: 'Complete QC - Fail', status: qcFailStatus },
-                        { action: 'Complete QC - Pass', status: qcPassStatus },
+                        { action: 'SIV / Material Issue', status: mrStatus, detail: `Issued ${sivQty}; approved ${sivApprovedQty}; pending ${sivPendingQty}` },
+                        {
+                          action: 'Production Completion',
+                          status: productionStatus,
+                          detail: plannedQty > 0 ? `Produced ${completedQty || (hasProductionCompleted ? plannedQty : 0)} of ${plannedQty}` : '-',
+                        },
+                        { action: 'SRV / Finished Goods Receipt', status: srvStatus, detail: `Received ${srvQty}; released ${srvApprovedQty}; QC hold ${srvPendingQty}` },
+                        {
+                          action: 'QC Release',
+                          status: qcStatus,
+                          detail: qcSummary?.totalUidsCount != null
+                            ? `Passed ${qcSummary.passedUidsCount ?? 0}; on-hold ${qcSummary.rejectedUidsCount ?? 0}; pending ${qcSummary.pendingUidsCount ?? 0}`
+                            : 'Awaiting QC summary',
+                        },
                       ];
 
                       return rows.map((r) => (
                         <tr
                           key={r.action}
-                          className={r.action === 'Material Requisition (SIV)' && r.status === 'Pending' ? 'bg-amber-50' : ''}
+                          className={['Pending', 'Pending Approval', 'Awaiting QC'].includes(r.status) ? 'bg-amber-50' : ''}
                         >
                           <td className="border px-3 py-2 text-sm">{r.action}</td>
                           <td className="border px-3 py-2 text-sm">
-                            <span className={`px-2 py-1 text-xs rounded ${getStatusColor(r.status)}`}>{r.status}</span>
+                            <span className={`px-2 py-1 text-xs rounded ${getStatusColor(r.status)}`}>
+                              {formatStatusLabel(r.status)}
+                            </span>
                           </td>
+                          <td className="border px-3 py-2 text-sm text-gray-600">{r.detail}</td>
                         </tr>
                       ));
                     })()}
@@ -3028,11 +3479,23 @@ function JobOrdersPageContent() {
                                         status: 'IN_PROGRESS',
                                         actualStartDatetime: new Date().toISOString()
                                       });
-                                      alert('Operation started');
+                                      await confirmDialog({
+                                        title: 'Operation Started',
+                                        message: `${op.operationName || 'Operation'} has been started.`,
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                        variant: 'info',
+                                      });
                                       setSelectedJobOrder(null);
                                       fetchJobOrders();
                                     } catch (error) {
-                                      alert('Failed to start operation');
+                                      await confirmDialog({
+                                        title: 'Could Not Start Operation',
+                                        message: 'Failed to start operation.',
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                        variant: 'warning',
+                                      });
                                     }
                                   }}
                                   className="text-blue-600 hover:text-blue-800 text-xs mr-2"
@@ -3049,11 +3512,23 @@ function JobOrdersPageContent() {
                                         actualEndDatetime: new Date().toISOString(),
                                         completedQuantity: selectedJobOrder.quantity
                                       });
-                                      alert('Operation completed');
+                                      await confirmDialog({
+                                        title: 'Operation Completed',
+                                        message: `${op.operationName || 'Operation'} has been completed.`,
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                        variant: 'info',
+                                      });
                                       setSelectedJobOrder(null);
                                       fetchJobOrders();
                                     } catch (error) {
-                                      alert('Failed to complete operation');
+                                      await confirmDialog({
+                                        title: 'Could Not Complete Operation',
+                                        message: 'Failed to complete operation.',
+                                        confirmLabel: 'OK',
+                                        cancelLabel: 'Close',
+                                        variant: 'warning',
+                                      });
                                     }
                                   }}
                                   className="text-green-600 hover:text-green-800 text-xs"
@@ -3115,14 +3590,14 @@ function JobOrdersPageContent() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b">
-              <h2 className="text-2xl font-bold text-gray-900">Complete Job Order - Stock Impact Preview</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Complete Job Order - SRV Handover Preview</h2>
               <p className="text-gray-600 mt-1">Job Order: {completionPreview.jobOrderNumber}</p>
             </div>
 
             <div className="p-6 space-y-6">
               {/* Finished Product Section */}
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-green-900 mb-3">✅ Finished Product to Add</h3>
+                <h3 className="text-lg font-semibold text-green-900 mb-3">Finished Product to Add</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-gray-600">Product</p>
@@ -3131,7 +3606,7 @@ function JobOrdersPageContent() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Quantity to Add</p>
+                    <p className="text-sm text-gray-600">Quantity to Receive in SRV</p>
                     <p className="text-2xl font-bold text-green-600">+{completionPreview.finishedProduct.quantityToAdd}</p>
                   </div>
                   <div>
@@ -3139,7 +3614,7 @@ function JobOrdersPageContent() {
                     <p className="text-lg font-medium text-gray-700">{completionPreview.finishedProduct.currentStock}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">New Stock</p>
+                    <p className="text-sm text-gray-600">Stock After QC Release</p>
                     <p className="text-lg font-bold text-green-700">{completionPreview.finishedProduct.newStock}</p>
                   </div>
                 </div>
@@ -3147,7 +3622,7 @@ function JobOrdersPageContent() {
 
               {/* Materials to Consume Section */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">📦 Materials to Consume</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">Materials to Consume</h3>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200 border">
                     <thead className="bg-gray-50">
@@ -3200,7 +3675,7 @@ function JobOrdersPageContent() {
               {/* Warning for insufficient materials */}
               {!completionPreview.canComplete && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <h3 className="text-lg font-semibold text-red-900 mb-2">⚠️ Cannot Complete Job Order</h3>
+                  <h3 className="text-lg font-semibold text-red-900 mb-2">Cannot Complete Job Order</h3>
                   <p className="text-sm text-red-700 mb-3">
                     The following materials have insufficient stock:
                   </p>
@@ -3217,8 +3692,8 @@ function JobOrdersPageContent() {
               {/* Summary */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> Completing this job order will automatically update inventory. 
-                  Materials will be consumed and finished goods will be added. This action cannot be undone.
+                  <strong>Note:</strong> Completing this job order posts production consumption and hands over the finished quantity for SRV receipt.
+                  Finished goods stay under SRV / QC control first; they become available stock only after QC release. This action cannot be undone.
                 </p>
               </div>
             </div>
@@ -3361,7 +3836,7 @@ function JobOrdersPageContent() {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold">Edit Job Order</h2>
               <button onClick={closeEditModal} className="text-gray-500 hover:text-gray-700">
-                ✕
+                x
               </button>
             </div>
 
@@ -3470,6 +3945,78 @@ function JobOrdersPageContent() {
         </div>
       )}
 
+      {/* Partial Completion Modal */}
+      {jobOrderToPartialComplete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="mb-5">
+              <div className="mb-2 inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-800">
+                Production Receipt
+              </div>
+              <h2 className="text-xl font-bold text-gray-900">Record Partial Completion</h2>
+              <p className="text-sm text-gray-500">{jobOrderToPartialComplete.jobOrderNumber}</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-lg border border-[#E8DCC4] bg-[#FAF9F6] p-3 text-sm">
+                <div className="font-semibold text-[#4A3426]">{jobOrderToPartialComplete.itemCode}</div>
+                <div className="text-gray-600">{jobOrderToPartialComplete.itemName}</div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded bg-white p-2">
+                    <div className="text-[11px] uppercase text-gray-500">Planned</div>
+                    <div className="font-bold">{formatQuantityValue(jobOrderToPartialComplete.quantity)}</div>
+                  </div>
+                  <div className="rounded bg-white p-2">
+                    <div className="text-[11px] uppercase text-gray-500">Done</div>
+                    <div className="font-bold">{formatQuantityValue(jobOrderToPartialComplete.completedQuantity || 0)}</div>
+                  </div>
+                  <div className="rounded bg-white p-2">
+                    <div className="text-[11px] uppercase text-gray-500">Remaining</div>
+                    <div className="font-bold">
+                      {formatQuantityValue(Math.max(0, Number(jobOrderToPartialComplete.quantity || 0) - Number(jobOrderToPartialComplete.completedQuantity || 0)))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-gray-700">Produced quantity to receive through SRV</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={partialProducedQuantity}
+                  onChange={(e) => setPartialProducedQuantity(e.target.value)}
+                  className="w-full rounded border border-[#D8C8AA] px-3 py-2 focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#8B6F47]/20"
+                  autoFocus
+                />
+              </label>
+
+              <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                This records only the produced quantity. Stores will receive it in SRV and QC will release it to stock.
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={closePartialCompleteModal}
+                className="px-4 py-2 border rounded hover:bg-gray-100"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmPartialCompleteJobOrder}
+                disabled={loading}
+                className="px-4 py-2 bg-[#8B6F47] text-white rounded hover:bg-[#6F5637] disabled:opacity-50"
+              >
+                {loading ? 'Recording...' : 'Record Partial Completion'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stop Job Order Modal */}
       {showStopModal && jobOrderToStop && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -3493,7 +4040,24 @@ function JobOrdersPageContent() {
               <div className="bg-gray-50 p-3 rounded mb-4">
                 <p className="text-sm"><strong>Item:</strong> {jobOrderToStop.itemCode}</p>
                 <p className="text-sm"><strong>Quantity:</strong> {jobOrderToStop.quantity}</p>
+                <p className="text-sm"><strong>Already Produced:</strong> {formatQuantityValue(jobOrderToStop.completedQuantity || 0)}</p>
                 <p className="text-sm"><strong>Status:</strong> {jobOrderToStop.status}</p>
+              </div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Produced quantity before stop (optional)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max={Number(jobOrderToStop.quantity || 0) || undefined}
+                step="any"
+                value={stopProducedQuantity}
+                onChange={(e) => setStopProducedQuantity(e.target.value)}
+                placeholder="Enter quantity to receive through SRV, if any"
+                className="mb-3 w-full rounded border px-3 py-2"
+              />
+              <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                If any quantity was produced before stopping, enter it here. It will appear in SRV for stores receipt and QC; blank/0 means nothing will be received.
               </div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Reason for stopping (optional)

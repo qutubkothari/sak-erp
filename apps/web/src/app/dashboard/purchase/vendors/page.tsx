@@ -6,10 +6,11 @@ import {
   CheckCircle2,
   Download,
   Edit,
+  ExternalLink,
   Eye,
+  FileText,
   Plus,
   Save,
-  Landmark,
   Paperclip,
   ShieldCheck,
   ShieldOff,
@@ -36,7 +37,7 @@ import {
 } from "../../../../components/ui/ListTable";
 import { SlidePanel } from "../../../../components/ui/SlidePanel";
 import { exportToExcel } from "../../../../lib/export-excel";
-import { hasModulePermission, isAdminLike } from "@/lib/rbac";
+import { hasMakerCheckerOverride, hasModulePermission, isAdminLike } from "@/lib/rbac";
 import { useAuthStore } from "@/stores/auth.store";
 
 interface VendorContact {
@@ -130,6 +131,19 @@ interface Vendor {
   metadata?: Record<string, any>;
 }
 
+type VendorImportFile = {
+  id: string;
+  import_number?: string;
+  status?: string;
+  currency?: string;
+  final_landed_cost?: number;
+  po?: { po_number?: string };
+  costs?: any[];
+  documents?: any[];
+  grns?: any[];
+  payments?: any[];
+};
+
 type VendorContactForm = Required<
   Pick<VendorContact, "name" | "phone" | "email" | "isDefault">
 > & {
@@ -174,7 +188,7 @@ type FormSection =
 const FORM_SECTIONS: Array<{ id: FormSection; label: string }> = [
   { id: "business", label: "Business" },
   { id: "tax-address", label: "Tax & Address" },
-  { id: "contacts", label: "Contacts" },
+  { id: "contacts", label: "Contacts / Email" },
   { id: "commercial", label: "Commercial" },
   { id: "bank", label: "Bank" },
   { id: "review", label: "Review" },
@@ -257,6 +271,14 @@ const VENDOR_DOCUMENT_CHECKLIST = [
 const inputClass =
   "min-h-10 w-full rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm text-[#4A3426] outline-none transition focus:border-[#8B6F47] focus:ring-2 focus:ring-[#F5EFE3] disabled:bg-[#F5EFE3]";
 const labelClass = "mb-1.5 block text-sm font-medium text-[#5E4635]";
+const MAX_VENDOR_CREDIT_LIMIT = 9999999999999.99;
+
+function toBoundedNumber(value: string, min: number, max: number) {
+  if (value === "") return 0;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(max, Math.max(min, parsed));
+}
 
 function createEmptyContact(isDefault = false): VendorContactForm {
   return { salutation: "", name: "", phone: "", email: "", isDefault };
@@ -451,6 +473,8 @@ export default function VendorsPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [verificationFilter, setVerificationFilter] = useState("ALL");
   const [viewingVendor, setViewingVendor] = useState<Vendor | null>(null);
+  const [vendorImportFiles, setVendorImportFiles] = useState<VendorImportFile[]>([]);
+  const [vendorImportLoading, setVendorImportLoading] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [saving, setSaving] = useState(false);
@@ -480,6 +504,29 @@ export default function VendorsPage() {
   useEffect(() => {
     fetchVendors();
   }, []);
+
+  useEffect(() => {
+    if (!viewingVendor?.id) {
+      setVendorImportFiles([]);
+      return;
+    }
+    let active = true;
+    setVendorImportLoading(true);
+    apiClient
+      .get<VendorImportFile[]>(`/purchase/import-files/by-vendor/${viewingVendor.id}`)
+      .then((data) => {
+        if (active) setVendorImportFiles(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (active) setVendorImportFiles([]);
+      })
+      .finally(() => {
+        if (active) setVendorImportLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [viewingVendor?.id]);
 
   const filteredVendors = useMemo(
     () =>
@@ -639,7 +686,7 @@ export default function VendorsPage() {
   };
 
   const handleVerification = async (vendor: Vendor, verify: boolean) => {
-    if (verify && isVendorCreator(vendor, user)) {
+    if (verify && isVendorCreator(vendor, user) && !hasMakerCheckerOverride(user)) {
       toast.error("Maker-checker: vendor creator cannot approve their own vendor");
       return;
     }
@@ -666,7 +713,7 @@ export default function VendorsPage() {
   };
 
   const handleRejectVendor = async (vendor: Vendor) => {
-    if (isVendorCreator(vendor, user)) {
+    if (isVendorCreator(vendor, user) && !hasMakerCheckerOverride(user)) {
       toast.error("Maker-checker: vendor creator cannot reject their own vendor");
       return;
     }
@@ -698,24 +745,6 @@ export default function VendorsPage() {
       await fetchVendors();
     } catch (error: any) {
       toast.error(error?.message || "Failed to reject vendor");
-    }
-  };
-
-  const handleVerifyBank = async (vendor: Vendor) => {
-    if (isVendorCreator(vendor, user)) {
-      toast.error("Maker-checker: vendor creator cannot verify bank details");
-      return;
-    }
-    try {
-      const updated = await apiClient.put<Vendor>(
-        `/purchase/vendors/${vendor.id}/bank/verify`,
-        {},
-      );
-      toast.success(updated.bank_verification?.message || "Bank verification updated");
-      if (viewingVendor?.id === vendor.id) setViewingVendor(updated);
-      await fetchVendors();
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to verify bank details");
     }
   };
 
@@ -807,6 +836,30 @@ export default function VendorsPage() {
       if (!contacts.some((contact) => contact.isDefault))
         contacts[0] = { ...contacts[0], isDefault: true };
       return { ...current, contacts };
+    });
+  };
+
+  const updateDefaultContact = (
+    key: keyof Pick<VendorContactForm, "name" | "phone" | "email">,
+    value: string,
+  ) => {
+    setForm((current) => {
+      const contacts = current.contacts.length
+        ? current.contacts
+        : [createEmptyContact(true)];
+      const defaultIndex = Math.max(
+        0,
+        contacts.findIndex((contact) => contact.isDefault),
+      );
+
+      return {
+        ...current,
+        contacts: contacts.map((contact, index) => ({
+          ...contact,
+          isDefault: index === defaultIndex,
+          ...(index === defaultIndex ? { [key]: value } : {}),
+        })),
+      };
     });
   };
 
@@ -1205,6 +1258,14 @@ export default function VendorsPage() {
                   <ErpStatusBadge status="APPROVED" label="GST Verified" />
                 ) : null}
               </div>
+              {getVendorApprovalStatus(viewingVendor) === "REJECTED" ? (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  Vendor is rejected and is blocked from verified purchasing.
+                  {getVendorApprovalReason(viewingVendor)
+                    ? ` Reason: ${getVendorApprovalReason(viewingVendor)}`
+                    : ""}
+                </div>
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 {canEdit ? (
                   <ErpButton
@@ -1225,7 +1286,7 @@ export default function VendorsPage() {
                       variant={
                         viewingVendor.is_verified ? "secondary" : "approve"
                       }
-                      disabled={!viewingVendor.is_verified && isVendorCreator(viewingVendor, user)}
+                      disabled={!viewingVendor.is_verified && isVendorCreator(viewingVendor, user) && !hasMakerCheckerOverride(user)}
                       onClick={() =>
                         handleVerification(
                           viewingVendor,
@@ -1243,7 +1304,7 @@ export default function VendorsPage() {
                     {!viewingVendor.is_verified ? (
                       <ErpButton
                         variant="danger"
-                        disabled={isVendorCreator(viewingVendor, user)}
+                        disabled={isVendorCreator(viewingVendor, user) && !hasMakerCheckerOverride(user)}
                         onClick={() => handleRejectVendor(viewingVendor)}
                       >
                         <XCircle className="h-4 w-4" />
@@ -1424,28 +1485,10 @@ export default function VendorsPage() {
                       viewingVendor.metadata?.bankBranch
                     }
                   />
-                  <DetailField
-                    label="Bank Verification"
-                    value={viewingVendor.bank_verification_status || "PENDING"}
-                  />
                 </div>
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  {viewingVendor.bank_verification?.message ? (
-                    <span className="text-xs text-[#7A6555]">
-                      {viewingVendor.bank_verification.message}
-                    </span>
-                  ) : null}
-                  {canVerify ? (
-                    <ErpButton
-                      variant="secondary"
-                      disabled={isVendorCreator(viewingVendor, user)}
-                      onClick={() => handleVerifyBank(viewingVendor)}
-                    >
-                      <Landmark className="h-4 w-4" />
-                      Verify Bank
-                    </ErpButton>
-                  ) : null}
-                </div>
+                <p className="mt-3 text-xs text-[#7A6555]">
+                  Bank details are maintained for payment records. Live bank account verification is not enabled.
+                </p>
               </section>
             </div>
 
@@ -1512,6 +1555,93 @@ export default function VendorsPage() {
 
             <section>
               <SectionTitle
+                title="Supplier Activity Trail"
+                description="Import files, inward charges, GRN links, documents, and supplier/agency payments tied to this vendor."
+              />
+              <div className="rounded-md border border-[#E8DCC4] bg-white">
+                <div className="grid gap-3 border-b border-[#F5EFE3] bg-[#FAF9F6] p-3 text-sm md:grid-cols-4">
+                  <div>
+                    <div className="text-xs font-semibold uppercase text-[#7A6555]">Import Files</div>
+                    <div className="text-xl font-bold text-[#4A3426]">{vendorImportFiles.length}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase text-[#7A6555]">GRNs Linked</div>
+                    <div className="text-xl font-bold text-[#4A3426]">
+                      {vendorImportFiles.reduce((sum, row) => sum + (row.grns?.length || 0), 0)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase text-[#7A6555]">Documents</div>
+                    <div className="text-xl font-bold text-[#4A3426]">
+                      {vendorImportFiles.reduce((sum, row) => sum + (row.documents?.length || 0), 0)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase text-[#7A6555]">Landed Cost</div>
+                    <div className="text-xl font-bold text-[#4A3426]">
+                      INR {vendorImportFiles.reduce((sum, row) => sum + Number(row.final_landed_cost || 0), 0).toLocaleString("en-IN")}
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-white text-left text-xs uppercase text-[#7A6555]">
+                      <tr>
+                        <th className="px-3 py-2">Import File</th>
+                        <th className="px-3 py-2">PO</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2 text-right">Charges</th>
+                        <th className="px-3 py-2 text-right">Payments</th>
+                        <th className="px-3 py-2 text-right">Landed Cost</th>
+                        <th className="px-3 py-2">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#F5EFE3]">
+                      {vendorImportLoading ? (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-4 text-[#7A6555]">Loading supplier activity...</td>
+                        </tr>
+                      ) : vendorImportFiles.length ? (
+                        vendorImportFiles.map((row) => (
+                          <tr key={row.id}>
+                            <td className="px-3 py-2 font-semibold">
+                              <div className="flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-[#8B6F47]" />
+                                {row.import_number || row.id}
+                              </div>
+                              <div className="text-xs font-normal text-[#7A6555]">{row.currency || "INR"}</div>
+                            </td>
+                            <td className="px-3 py-2">{row.po?.po_number || "-"}</td>
+                            <td className="px-3 py-2"><ErpStatusBadge status={row.status || "DRAFT"} /></td>
+                            <td className="px-3 py-2 text-right">{row.costs?.length || 0}</td>
+                            <td className="px-3 py-2 text-right">{row.payments?.length || 0}</td>
+                            <td className="px-3 py-2 text-right font-semibold">INR {Number(row.final_landed_cost || 0).toLocaleString("en-IN")}</td>
+                            <td className="px-3 py-2">
+                              <a
+                                href={`/dashboard/purchase/import-files/${row.id}`}
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-[#6F4E37] underline"
+                              >
+                                Open trail
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="px-3 py-4 text-[#7A6555]">
+                            No import files or inward-cost trails recorded for this supplier yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <SectionTitle
                 title="Approval History"
                 description="Maker-checker and vendor master change trail."
               />
@@ -1520,6 +1650,7 @@ export default function VendorsPage() {
                   <thead className="bg-[#FAF9F6] text-left text-xs uppercase text-[#7A6555]">
                     <tr>
                       <th className="px-3 py-2">Action</th>
+                      <th className="px-3 py-2">User</th>
                       <th className="px-3 py-2">From</th>
                       <th className="px-3 py-2">To</th>
                       <th className="px-3 py-2">Reason</th>
@@ -1535,6 +1666,9 @@ export default function VendorsPage() {
                         <td className="px-3 py-2 font-semibold">
                           {entry.action || "-"}
                         </td>
+                        <td className="px-3 py-2">
+                          {entry.actor_name || entry.user_name || entry.created_by_name || entry.actor_email || "-"}
+                        </td>
                         <td className="px-3 py-2">{entry.from_status || "-"}</td>
                         <td className="px-3 py-2">{entry.to_status || "-"}</td>
                         <td className="px-3 py-2">{entry.reason || "-"}</td>
@@ -1548,7 +1682,7 @@ export default function VendorsPage() {
                     {!viewingVendor.approval_history?.length &&
                     !viewingVendor.approval_trail?.length ? (
                       <tr>
-                        <td className="px-3 py-4 text-[#7A6555]" colSpan={5}>
+                        <td className="px-3 py-4 text-[#7A6555]" colSpan={6}>
                           No approval history recorded yet.
                         </td>
                       </tr>
@@ -1716,6 +1850,62 @@ export default function VendorsPage() {
                     Active vendor
                   </span>
                 </label>
+                <div className="md:col-span-2 xl:col-span-4 rounded-md border border-[#E8DCC4] bg-[#FFFCF7] p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[#4A3426]">
+                        Primary Contact / Email
+                      </h3>
+                      <p className="text-xs text-[#7A6555]">
+                        This email is used for PO, RFQ, debit note, and supplier communication.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-[#8B6F47] hover:text-[#4A3426]"
+                      onClick={() => setFormSection("contacts")}
+                    >
+                      Manage all contacts
+                    </button>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <label className={labelClass}>Contact Person</label>
+                      <input
+                        className={inputClass}
+                        value={defaultContact?.name || ""}
+                        onChange={(event) =>
+                          updateDefaultContact("name", event.target.value)
+                        }
+                        placeholder="Purchasing contact name"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Email</label>
+                      <input
+                        type="email"
+                        className={inputClass}
+                        value={defaultContact?.email || ""}
+                        onChange={(event) =>
+                          updateDefaultContact("email", event.target.value)
+                        }
+                        placeholder="supplier@example.com"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Phone</label>
+                      <input
+                        type="tel"
+                        className={inputClass}
+                        value={defaultContact?.phone || ""}
+                        onChange={(event) =>
+                          updateDefaultContact("phone", event.target.value)
+                        }
+                        placeholder="Supplier phone"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
           ) : null}
@@ -1974,12 +2164,18 @@ export default function VendorsPage() {
                   <input
                     type="number"
                     min="0"
+                    max={MAX_VENDOR_CREDIT_LIMIT}
+                    step="0.01"
                     className={inputClass}
                     value={form.creditLimit}
                     onChange={(event) =>
                       setForm({
                         ...form,
-                        creditLimit: Number(event.target.value) || 0,
+                        creditLimit: toBoundedNumber(
+                          event.target.value,
+                          0,
+                          MAX_VENDOR_CREDIT_LIMIT,
+                        ),
                       })
                     }
                   />
@@ -1996,7 +2192,7 @@ export default function VendorsPage() {
                     onChange={(event) =>
                       setForm({
                         ...form,
-                        rating: Number(event.target.value) || 0,
+                        rating: toBoundedNumber(event.target.value, 0, 5),
                       })
                     }
                   />

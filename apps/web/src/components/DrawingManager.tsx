@@ -32,10 +32,11 @@ interface DrawingManagerProps {
   itemCode: string;
   itemName: string;
   onClose: () => void;
+  onChanged?: (drawings: Drawing[]) => void;
   mandatory?: boolean;
 }
 
-export default function DrawingManager({ itemId, itemCode, itemName, onClose, mandatory = false }: DrawingManagerProps) {
+export default function DrawingManager({ itemId, itemCode, itemName, onClose, onChanged, mandatory = false }: DrawingManagerProps) {
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -145,13 +146,18 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
 
       if (response.ok) {
         const data = await response.json();
-        setDrawings(data);
+        const normalized = Array.isArray(data) ? data : [];
+        setDrawings(normalized);
+        onChanged?.(normalized);
+        return normalized;
       }
     } catch (error) {
       console.error('Error fetching drawings:', error);
     } finally {
       setLoading(false);
     }
+
+    return [];
   };
 
   const fetchDocuments = async () => {
@@ -288,39 +294,39 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
 
     setUploading(true);
     try {
-      // Convert file to base64
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        
-        const token = localStorage.getItem('accessToken');
-        const response = await fetch(`/api/v1/inventory/items/${itemId}/drawings`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            fileName: selectedFile.name,
-            fileUrl: base64,
-            fileType: selectedFile.type,
-            fileSize: selectedFile.size,
-            revisionNotes: revisionNotes.trim() || 'Initial version',
-          }),
-        });
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('Failed to read drawing file'));
+        reader.readAsDataURL(selectedFile);
+      });
 
-        if (response.ok) {
-          alert('Drawing uploaded successfully!');
-          setSelectedFile(null);
-          setRevisionNotes('');
-          setPreviewUrl(null);
-          fetchDrawings();
-        } else {
-          const error = await response.json();
-          alert(`Failed to upload: ${error.message || 'Unknown error'}`);
-        }
-      };
-      reader.readAsDataURL(selectedFile);
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`/api/v1/inventory/items/${itemId}/drawings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fileName: selectedFile.name,
+          fileUrl: base64,
+          fileType: selectedFile.type,
+          fileSize: selectedFile.size,
+          revisionNotes: revisionNotes.trim() || 'Initial version',
+        }),
+      });
+
+      if (response.ok) {
+        alert('Drawing uploaded successfully!');
+        setSelectedFile(null);
+        setRevisionNotes('');
+        setPreviewUrl(null);
+        await fetchDrawings();
+      } else {
+        const error = await response.json().catch(() => ({}));
+        alert(`Failed to upload: ${error.message || 'Unknown error'}`);
+      }
     } catch (error) {
       console.error('Error uploading drawing:', error);
       alert('Failed to upload drawing');
@@ -383,7 +389,7 @@ export default function DrawingManager({ itemId, itemCode, itemName, onClose, ma
   const activeDrawing = drawings.find(d => d.is_active) || null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1200] p-4">
       <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="p-6 border-b border-gray-200 sticky top-0 bg-white">

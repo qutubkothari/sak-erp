@@ -10,7 +10,7 @@ export class ManagerController {
   @Get('pending-approvals')
   async getPendingApprovals(@Req() req: any) {
     const tenantId = req.user.tenantId;
-    const userId = req.user.id;
+    const userId = req.user.userId || req.user.id || req.user.sub;
     return this.managerService.getPendingApprovals(tenantId, userId);
   }
 }

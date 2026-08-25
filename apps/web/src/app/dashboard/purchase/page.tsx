@@ -1,18 +1,63 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  ClipboardList,
+  FileText,
+  PackageCheck,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  Truck,
+  Users,
+} from 'lucide-react';
 import { apiClient } from '../../../../lib/api-client';
+import { ErpButton, ErpPageHeader, ErpStatusBadge } from '../../../components/ui/ErpPrimitives';
+
+type PurchaseStats = {
+  pendingPRs: number;
+  submittedPRs: number;
+  draftPRs: number;
+  activePOs: number;
+  pendingPOs: number;
+  approvedPOs: number;
+  activeVendors: number;
+  pendingGRNs: number;
+  completedGRNs: number;
+  openActions: number;
+};
+
+const initialStats: PurchaseStats = {
+  pendingPRs: 0,
+  submittedPRs: 0,
+  draftPRs: 0,
+  activePOs: 0,
+  pendingPOs: 0,
+  approvedPOs: 0,
+  activeVendors: 0,
+  pendingGRNs: 0,
+  completedGRNs: 0,
+  openActions: 0,
+};
+
+function normalizedStatus(row: any) {
+  return String(row?.workflow_status || row?.status || '').trim().toUpperCase();
+}
+
+function formatCount(value: number) {
+  return Number(value || 0).toLocaleString('en-IN');
+}
 
 export default function PurchasePage() {
   const router = useRouter();
-  const [stats, setStats] = useState({
-    pendingPRs: 0,
-    activePOs: 0,
-    activeVendors: 0,
-    pendingGRNs: 0,
-  });
+  const [stats, setStats] = useState<PurchaseStats>(initialStats);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState('');
 
   useEffect(() => {
     fetchStats();
@@ -21,8 +66,7 @@ export default function PurchasePage() {
   const fetchStats = async () => {
     try {
       setLoading(true);
-      
-      // Fetch all statistics in parallel
+
       const [prs, pos, vendors, grns] = await Promise.all([
         apiClient.get('/purchase/requisitions').catch(() => []),
         apiClient.get('/purchase/orders').catch(() => []),
@@ -30,104 +74,310 @@ export default function PurchasePage() {
         apiClient.get('/purchase/grn').catch(() => []),
       ]);
 
+      const prList = Array.isArray(prs) ? prs : [];
+      const poList = Array.isArray(pos) ? pos : [];
+      const vendorList = Array.isArray(vendors) ? vendors : [];
+      const grnList = Array.isArray(grns) ? grns : [];
+
+      const draftPRs = prList.filter((pr: any) => normalizedStatus(pr) === 'DRAFT').length;
+      const submittedPRs = prList.filter((pr: any) =>
+        ['SUBMITTED', 'PENDING', 'AWAITING_APPROVAL'].includes(normalizedStatus(pr)),
+      ).length;
+      const pendingPOs = poList.filter((po: any) =>
+        ['DRAFT', 'PENDING', 'SUBMITTED', 'AWAITING_APPROVAL'].includes(normalizedStatus(po)),
+      ).length;
+      const approvedPOs = poList.filter((po: any) =>
+        ['APPROVED', 'PARTIAL', 'ISSUED'].includes(normalizedStatus(po)),
+      ).length;
+      const pendingGRNs = grnList.filter((grn: any) =>
+        ['DRAFT', 'PENDING', 'SUBMITTED', 'IN_PROGRESS'].includes(normalizedStatus(grn)),
+      ).length;
+
       setStats({
-        pendingPRs: Array.isArray(prs)
-          ? prs.filter((pr: any) => {
-              const status = String(pr?.status ?? '').toUpperCase();
-              return status === 'DRAFT' || status === 'SUBMITTED' || status === 'PENDING';
-            }).length
-          : 0,
-        activePOs: Array.isArray(pos) ? pos.filter((po: any) => po.status === 'APPROVED' || po.status === 'PARTIAL').length : 0,
-        activeVendors: Array.isArray(vendors) ? vendors.filter((v: any) => v.is_active).length : 0,
-        pendingGRNs: Array.isArray(grns) ? grns.filter((grn: any) => grn.status === 'DRAFT' || grn.status === 'PENDING').length : 0,
+        draftPRs,
+        submittedPRs,
+        pendingPRs: draftPRs + submittedPRs,
+        pendingPOs,
+        approvedPOs,
+        activePOs: approvedPOs,
+        activeVendors: vendorList.filter((vendor: any) => vendor?.is_active !== false).length,
+        pendingGRNs,
+        completedGRNs: grnList.filter((grn: any) =>
+          ['COMPLETED', 'DONE', 'RECEIVED'].includes(normalizedStatus(grn)),
+        ).length,
+        openActions: submittedPRs + pendingPOs + pendingGRNs,
       });
-    } catch (error) {
+      setLastUpdated(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
     } finally {
       setLoading(false);
     }
   };
 
+  const kpis = useMemo(
+    () => [
+      {
+        label: 'Open Actions',
+        value: stats.openActions,
+        helper: 'PR, PO, and GRN items needing attention',
+        icon: AlertTriangle,
+        tone: stats.openActions > 0 ? 'warning' : 'success',
+      },
+      {
+        label: 'PRs in Process',
+        value: stats.pendingPRs,
+        helper: `${formatCount(stats.submittedPRs)} awaiting approval · ${formatCount(stats.draftPRs)} draft`,
+        icon: ClipboardList,
+        tone: 'info',
+      },
+      {
+        label: 'Active POs',
+        value: stats.activePOs,
+        helper: `${formatCount(stats.pendingPOs)} pending approval / release`,
+        icon: FileText,
+        tone: 'success',
+      },
+      {
+        label: 'Pending GRNs',
+        value: stats.pendingGRNs,
+        helper: `${formatCount(stats.completedGRNs)} receipts completed`,
+        icon: PackageCheck,
+        tone: stats.pendingGRNs > 0 ? 'warning' : 'neutral',
+      },
+      {
+        label: 'Active Suppliers',
+        value: stats.activeVendors,
+        helper: 'Approved vendor master scope',
+        icon: Users,
+        tone: 'neutral',
+      },
+    ],
+    [stats],
+  );
+
   const modules = [
     {
       title: 'Purchase Requisitions',
-      description: 'Create and manage purchase requisition requests',
-      icon: '📝',
+      label: 'Request to source',
+      description: 'Create PRs, validate stock position, route approvals, and initiate RFQs.',
+      icon: ClipboardList,
       path: '/dashboard/purchase/requisitions',
-      color: 'bg-blue-50 hover:bg-blue-100 border-blue-200',
+      status: `${formatCount(stats.pendingPRs)} open`,
+      tone: 'info' as const,
     },
     {
       title: 'Purchase Orders',
-      description: 'Manage purchase orders to vendors',
-      icon: '📋',
+      label: 'Commitment control',
+      description: 'Create POs from approved PRs, manage quotations, documents, tax, and approvals.',
+      icon: FileText,
       path: '/dashboard/purchase/orders',
-      color: 'bg-green-50 hover:bg-green-100 border-green-200',
+      status: `${formatCount(stats.activePOs)} active`,
+      tone: 'success' as const,
     },
     {
       title: 'Vendors',
-      description: 'Manage vendor information and relationships',
-      icon: '🏢',
+      label: 'Supplier master',
+      description: 'Maintain vendor profiles, compliance data, contacts, bank details, and verification.',
+      icon: Users,
       path: '/dashboard/purchase/vendors',
-      color: 'bg-purple-50 hover:bg-purple-100 border-purple-200',
+      status: `${formatCount(stats.activeVendors)} active`,
+      tone: 'neutral' as const,
     },
     {
-      title: 'GRN (Goods Receipt)',
-      description: 'Record goods received from vendors',
-      icon: '📦',
+      title: 'Goods Receipt',
+      label: 'GRN & receiving',
+      description: 'Record receipts against POs, validate discrepancies, QC flow, and invoice readiness.',
+      icon: PackageCheck,
       path: '/dashboard/purchase/grn',
-      color: 'bg-orange-50 hover:bg-orange-100 border-orange-200',
+      status: `${formatCount(stats.pendingGRNs)} pending`,
+      tone: 'warning' as const,
+    },
+    {
+      title: 'Debit Notes',
+      label: 'Supplier settlement',
+      description: 'Track deductions, advances, recoveries, and supplier account adjustments.',
+      icon: ShieldCheck,
+      path: '/dashboard/purchase/debit-notes',
+      status: 'controls',
+      tone: 'neutral' as const,
+    },
+  ];
+
+  const workflow = [
+    { label: 'PR', caption: 'Demand captured', icon: ClipboardList },
+    { label: 'RFQ', caption: 'Supplier quote', icon: Send },
+    { label: 'PO', caption: 'Commercial approval', icon: FileText },
+    { label: 'GRN', caption: 'Goods received', icon: Truck },
+    { label: 'AP', caption: 'Invoice payable', icon: CheckCircle2 },
+  ];
+
+  const actionQueue = [
+    {
+      label: 'PRs awaiting review',
+      count: stats.submittedPRs,
+      path: '/dashboard/purchase/requisitions',
+      tone: stats.submittedPRs > 0 ? 'warning' : 'success',
+    },
+    {
+      label: 'POs pending approval',
+      count: stats.pendingPOs,
+      path: '/dashboard/purchase/orders',
+      tone: stats.pendingPOs > 0 ? 'warning' : 'success',
+    },
+    {
+      label: 'Receipts pending GRN closure',
+      count: stats.pendingGRNs,
+      path: '/dashboard/purchase/grn',
+      tone: stats.pendingGRNs > 0 ? 'warning' : 'success',
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-amber-900 mb-2">Purchase Management</h1>
-          <p className="text-amber-700">Manage procurement, vendors, and purchase workflows</p>
-        </div>
+    <div className="min-h-screen bg-[#FAF9F6] px-4 py-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1680px] space-y-5">
+        <ErpPageHeader
+          eyebrow="SAP-aligned procurement cockpit"
+          title="Purchase Management"
+          description="Control source-to-pay execution across requisitions, RFQs, purchase orders, goods receipt, and supplier governance."
+          actions={
+            <>
+              <ErpButton variant="secondary" onClick={fetchStats} disabled={loading}>
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </ErpButton>
+              <ErpButton variant="primary" onClick={() => router.push('/dashboard/purchase/requisitions')}>
+                <ClipboardList className="h-4 w-4" />
+                New PR
+              </ErpButton>
+            </>
+          }
+        />
 
-        {/* Module Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {modules.map((module) => (
-            <div
-              key={module.path}
-              onClick={() => router.push(module.path)}
-              className={`${module.color} border-2 rounded-lg p-6 cursor-pointer transition-all hover:shadow-lg`}
-            >
-              <div className="text-4xl mb-4">{module.icon}</div>
-              <h3 className="text-xl font-bold text-amber-900 mb-2">{module.title}</h3>
-              <p className="text-sm text-amber-700">{module.description}</p>
-            </div>
-          ))}
-        </div>
+        <section className="rounded-xl border border-[#E8DCC4] bg-white shadow-sm">
+          <div className="grid grid-cols-1 divide-y divide-[#E8DCC4] md:grid-cols-5 md:divide-x md:divide-y-0">
+            {kpis.map((kpi) => {
+              const Icon = kpi.icon;
+              return (
+                <button
+                  key={kpi.label}
+                  type="button"
+                  onClick={() => {
+                    if (kpi.label.includes('PR')) router.push('/dashboard/purchase/requisitions');
+                    else if (kpi.label.includes('PO')) router.push('/dashboard/purchase/orders');
+                    else if (kpi.label.includes('GRN')) router.push('/dashboard/purchase/grn');
+                    else if (kpi.label.includes('Supplier')) router.push('/dashboard/purchase/vendors');
+                  }}
+                  className="group min-h-28 p-4 text-left transition hover:bg-[#FFFCF5]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#7A6555]">{kpi.label}</p>
+                      <p className="mt-2 text-3xl font-bold tabular-nums text-[#2F241B]">
+                        {loading ? '…' : formatCount(kpi.value)}
+                      </p>
+                    </div>
+                    <span className="rounded-lg border border-[#E8DCC4] bg-[#FAF9F6] p-2 text-[#8B6F47] group-hover:bg-white">
+                      <Icon className="h-5 w-5" />
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs text-[#7A6555]">{loading ? 'Loading procurement data…' : kpi.helper}</p>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#E8DCC4] px-4 py-2 text-xs text-[#7A6555]">
+            <span>Operational view · source-to-pay controls</span>
+            <span>{lastUpdated ? `Last refreshed ${lastUpdated}` : 'Live data pending'}</span>
+          </div>
+        </section>
 
-        {/* Quick Stats */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
-            <div className="text-sm text-gray-600">Pending PRs</div>
-            <div className="text-2xl font-bold text-gray-900">
-              {loading ? '...' : stats.pendingPRs}
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_22rem]">
+          <section className="rounded-xl border border-[#E8DCC4] bg-white p-4 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-[#4A3426]">Procurement Workspace</h2>
+                <p className="text-xs text-[#7A6555]">Professional work centers aligned to the PR → RFQ → PO → GRN lifecycle.</p>
+              </div>
+              <ErpStatusBadge status="IN_PROGRESS" label={`${formatCount(stats.openActions)} open actions`} tone={stats.openActions ? 'warning' : 'success'} />
             </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
-            <div className="text-sm text-gray-600">Active POs</div>
-            <div className="text-2xl font-bold text-gray-900">
-              {loading ? '...' : stats.activePOs}
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+              {modules.map((module) => {
+                const Icon = module.icon;
+                return (
+                  <button
+                    key={module.path}
+                    type="button"
+                    onClick={() => router.push(module.path)}
+                    className="group rounded-lg border border-[#E8DCC4] bg-[#FFFCF5] p-4 text-left transition hover:-translate-y-0.5 hover:border-[#B9975B] hover:bg-white hover:shadow-md"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="rounded-xl bg-[#4A3426] p-2.5 text-white shadow-sm">
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <ErpStatusBadge status={module.tone === 'warning' ? 'PENDING' : module.tone === 'success' ? 'APPROVED' : 'OPEN'} label={module.status} tone={module.tone} />
+                    </div>
+                    <p className="mt-4 text-[11px] font-semibold uppercase tracking-wide text-[#8B6F47]">{module.label}</p>
+                    <h3 className="mt-1 text-lg font-bold text-[#2F241B]">{module.title}</h3>
+                    <p className="mt-2 min-h-10 text-sm leading-5 text-[#7A6555]">{module.description}</p>
+                    <div className="mt-4 flex items-center text-sm font-semibold text-[#8B6F47]">
+                      Open work center
+                      <ArrowRight className="ml-2 h-4 w-4 transition group-hover:translate-x-1" />
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
-            <div className="text-sm text-gray-600">Active Vendors</div>
-            <div className="text-2xl font-bold text-gray-900">
-              {loading ? '...' : stats.activeVendors}
-            </div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-orange-500">
-            <div className="text-sm text-gray-600">Pending GRNs</div>
-            <div className="text-2xl font-bold text-gray-900">
-              {loading ? '...' : stats.pendingGRNs}
-            </div>
-          </div>
+          </section>
+
+          <aside className="space-y-5">
+            <section className="rounded-xl border border-[#E8DCC4] bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-[#8B6F47]" />
+                <h2 className="text-sm font-bold uppercase tracking-wide text-[#4A3426]">Action Required</h2>
+              </div>
+              <div className="space-y-2">
+                {actionQueue.map((action) => (
+                  <button
+                    key={action.label}
+                    type="button"
+                    onClick={() => router.push(action.path)}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-[#E8DCC4] bg-[#FAF9F6] px-3 py-3 text-left transition hover:border-[#B9975B] hover:bg-[#FFFCF5]"
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold text-[#2F241B]">{action.label}</span>
+                      <span className="text-xs text-[#7A6555]">Click to review</span>
+                    </span>
+                    <ErpStatusBadge
+                      status={action.count > 0 ? 'PENDING' : 'DONE'}
+                      label={loading ? '…' : formatCount(action.count)}
+                      tone={action.tone as any}
+                    />
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-[#E8DCC4] bg-[#2F241B] p-4 text-white shadow-sm">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-[#F5EFE3]">SAP Standard Flow</h2>
+              <div className="mt-4 space-y-3">
+                {workflow.map((step, index) => {
+                  const Icon = step.icon;
+                  return (
+                    <div key={step.label} className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold">{index + 1}. {step.label}</p>
+                        <p className="text-xs text-[#D8C8AA]">{step.caption}</p>
+                      </div>
+                      {index < workflow.length - 1 ? <ArrowRight className="h-4 w-4 text-[#B9975B]" /> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </aside>
         </div>
       </div>
     </div>

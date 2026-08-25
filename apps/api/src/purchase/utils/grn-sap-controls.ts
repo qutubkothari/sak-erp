@@ -31,6 +31,9 @@ export type SapGrnItemControl = SapGrnItemInput & {
   stockType: SapStockType;
   qtyVariance: number;
   priceVariancePercent: number;
+  poAmendmentRequired: boolean;
+  proposedOrderedQty: number | null;
+  proposedRate: number | null;
   toleranceStatus: SapToleranceStatus;
   toleranceMessages: string[];
 };
@@ -49,6 +52,26 @@ export type SapGrnControl = {
   stockPostingPolicy: 'POST_ACCEPTED_ONLY';
   items: SapGrnItemControl[];
   messages: string[];
+  poAmendmentApproval: {
+    required: boolean;
+    status: 'NOT_REQUIRED' | 'PENDING_APPROVAL';
+    items: Array<{
+      poItemId?: string;
+      itemId?: string;
+      itemCode?: string;
+      orderedQty: number;
+      previousReceivedQty: number;
+      receivedQty: number;
+      poRate: number;
+      grnRate: number;
+      qtyVariance: number;
+      priceVariancePercent: number;
+      proposedOrderedQty: number | null;
+      proposedRate: number | null;
+      reasons: Array<'QUANTITY_OVER_RECEIPT' | 'PRICE_VARIANCE'>;
+      messages: string[];
+    }>;
+  };
 };
 
 function toNumber(value: unknown): number {
@@ -97,16 +120,30 @@ export function buildSapGrnControls(input: SapGrnInput): SapGrnControl {
     const grnRate = toNumber(item.grnRate);
     const priceVariancePercent = poRate > 0 ? ((grnRate - poRate) / poRate) * 100 : 0;
     const toleranceMessages: string[] = [];
+    const reasons: Array<'QUANTITY_OVER_RECEIPT' | 'PRICE_VARIANCE'> = [];
 
     if (orderedQty > 0 && qtyVariance > 0.000001) {
       toleranceMessages.push(`Received quantity exceeds remaining PO quantity by ${qtyVariance}.`);
+      reasons.push('QUANTITY_OVER_RECEIPT');
     }
     if (receivedQty > 0 && acceptedQty + rejectedQty > receivedQty + 0.000001) {
       toleranceMessages.push('Accepted plus rejected quantity exceeds received quantity.');
     }
     if (poRate > 0 && Math.abs(priceVariancePercent) > 5) {
       toleranceMessages.push(`Invoice/GRN rate variance is ${priceVariancePercent.toFixed(2)}%.`);
+      reasons.push('PRICE_VARIANCE');
+      if (previousReceivedQty > 0) {
+        toleranceMessages.push(
+          `Previous GRN quantity ${previousReceivedQty} was received at the PO rate; only this GRN rate needs amendment approval unless the approver changes the PO rate.`,
+        );
+      }
     }
+
+    const poAmendmentRequired = reasons.length > 0;
+    const proposedOrderedQty = reasons.includes('QUANTITY_OVER_RECEIPT')
+      ? previousReceivedQty + receivedQty
+      : null;
+    const proposedRate = reasons.includes('PRICE_VARIANCE') ? grnRate : null;
 
     const toleranceStatus: SapToleranceStatus = toleranceMessages.length > 0 ? 'WARNING' : 'OK';
     const stockType: SapStockType =
@@ -129,6 +166,9 @@ export function buildSapGrnControls(input: SapGrnInput): SapGrnControl {
       stockType,
       qtyVariance,
       priceVariancePercent,
+      poAmendmentRequired,
+      proposedOrderedQty,
+      proposedRate,
       toleranceStatus,
       toleranceMessages,
     };
@@ -141,6 +181,29 @@ export function buildSapGrnControls(input: SapGrnInput): SapGrnControl {
   const messages = items.flatMap((item) =>
     item.toleranceMessages.map((message) => `${item.itemCode || item.itemId || 'Item'}: ${message}`),
   );
+  const poAmendmentItems = items
+    .filter((item) => item.poAmendmentRequired)
+    .map((item) => {
+      const reasons: Array<'QUANTITY_OVER_RECEIPT' | 'PRICE_VARIANCE'> = [];
+      if (item.proposedOrderedQty !== null) reasons.push('QUANTITY_OVER_RECEIPT');
+      if (item.proposedRate !== null) reasons.push('PRICE_VARIANCE');
+      return {
+        poItemId: item.poItemId,
+        itemId: item.itemId,
+        itemCode: item.itemCode,
+        orderedQty: item.orderedQty || 0,
+        previousReceivedQty: item.previousReceivedQty || 0,
+        receivedQty: item.receivedQty || 0,
+        poRate: item.poRate || 0,
+        grnRate: item.grnRate || 0,
+        qtyVariance: item.qtyVariance || 0,
+        priceVariancePercent: item.priceVariancePercent || 0,
+        proposedOrderedQty: item.proposedOrderedQty,
+        proposedRate: item.proposedRate,
+        reasons,
+        messages: item.toleranceMessages,
+      };
+    });
 
   const qcGateStatus: SapQcGateStatus =
     input.qcCompleted || acceptedTotal + rejectedTotal >= receivedTotal
@@ -169,5 +232,10 @@ export function buildSapGrnControls(input: SapGrnInput): SapGrnControl {
     stockPostingPolicy: 'POST_ACCEPTED_ONLY',
     items,
     messages,
+    poAmendmentApproval: {
+      required: poAmendmentItems.length > 0,
+      status: poAmendmentItems.length > 0 ? 'PENDING_APPROVAL' : 'NOT_REQUIRED',
+      items: poAmendmentItems,
+    },
   };
 }

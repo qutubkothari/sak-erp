@@ -53,9 +53,6 @@ export class PoPdfService {
 
   async generatePOPdf(tenantId: string, data: POPdfData): Promise<Buffer> {
     const pdfDoc = await PDFDocument.create();
-    const assets = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc);
-    const page = await this.documentBrandingService.createBrandedPage(pdfDoc, assets, [595, 842]); // A4 size
-    const { width, height } = page.getSize();
 
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -64,6 +61,9 @@ export class PoPdfService {
       address: data.companyAddress,
       taxId: '',
     });
+    const assets = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc, branding);
+    const page = await this.documentBrandingService.createBrandedPage(pdfDoc, assets, [595, 842]); // A4 size
+    const { width, height } = page.getSize();
 
     let yPosition = this.documentBrandingService.drawStandardHeader({
       page,

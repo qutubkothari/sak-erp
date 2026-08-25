@@ -378,7 +378,13 @@ export class EmailController {
    */
   @Put('config')
   async updateEmailConfig(
-    @Body() configs: { email_type: string; email_address: string }[],
+    @Body() configs: Array<{
+      email_type: string;
+      email_address: string;
+      display_name?: string;
+      description?: string;
+      is_active?: boolean;
+    }>,
     @Request() req: any,
   ) {
     const userId = req.user?.userId;
@@ -404,12 +410,19 @@ export class EmailController {
   async updateSingleEmailConfig(
     @Param('type') emailType: string,
     @Body('email_address') emailAddress: string,
+    @Body('display_name') displayName: string | undefined,
+    @Body('description') description: string | undefined,
+    @Body('is_active') isActive: boolean | undefined,
     @Request() req: any,
   ) {
     const userId = req.user?.userId;
 
     try {
-      await this.emailConfigService.updateEmailConfig(emailType, emailAddress, userId);
+      await this.emailConfigService.updateEmailConfig(emailType, emailAddress, userId, {
+        display_name: displayName,
+        description,
+        is_active: isActive,
+      });
       return { 
         success: true, 
         message: `${emailType} email updated successfully` 

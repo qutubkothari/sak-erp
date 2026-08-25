@@ -33,6 +33,8 @@ import { BomModule } from './bom/bom.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HrModule } from './hr/hr.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { SubcontractingModule } from './subcontracting/subcontracting.module';
+import { ProjectsModule } from './projects/projects.module';
 
 // Support Modules
 import { WorkflowModule } from './workflow/workflow.module';
@@ -42,6 +44,20 @@ import { AuditModule } from './audit/audit.module';
 import { EmailModule } from './email/email.module';
 import { UploadModule } from './upload/upload.module';
 import { ManagerModule } from './manager/manager.module';
+import { AutomationModule } from './automation/automation.module';
+import { AccountingModule } from './accounting/accounting.module';
+import { MarginControlModule } from './margin-control/margin-control.module';
+import { MrpModule } from './mrp/mrp.module';
+import { CostingModule } from './costing/costing.module';
+import { CollectionsModule } from './collections/collections.module';
+import { PlantMaintenanceModule } from './plant-maintenance/plant-maintenance.module';
+import { UaeComplianceModule } from './uae-compliance/uae-compliance.module';
+import { EnterpriseEdgeModule } from './enterprise-edge/enterprise-edge.module';
+import { ExpenseControlModule } from './expense-control/expense-control.module';
+import { MasterDataGovernanceModule } from './master-data-governance/master-data-governance.module';
+import { MasterDataGovernanceEnforcementGuard } from './master-data-governance/master-data-governance-enforcement.guard';
+import { IntegrationHubModule } from './integration-hub/integration-hub.module';
+import { IntelligenceModule } from './intelligence/intelligence.module';
 
 const runtimeEnv = process.env.APP_ENV || process.env.NODE_ENV;
 const apiEnvFiles = runtimeEnv === 'test'
@@ -106,6 +122,8 @@ const apiEnvFiles = runtimeEnv === 'test'
     HrModule,
     DocumentsModule,
     DashboardModule,
+    SubcontractingModule,
+    ProjectsModule,
 
     // Support
     WorkflowModule,
@@ -115,6 +133,19 @@ const apiEnvFiles = runtimeEnv === 'test'
     EmailModule,
     UploadModule,
     ManagerModule,
+    AutomationModule,
+    AccountingModule,
+    MarginControlModule,
+    MrpModule,
+    CostingModule,
+    CollectionsModule,
+    PlantMaintenanceModule,
+    UaeComplianceModule,
+    EnterpriseEdgeModule,
+    ExpenseControlModule,
+    MasterDataGovernanceModule,
+    IntegrationHubModule,
+    IntelligenceModule,
   ],
   controllers: [MigrationController],
   providers: [
@@ -126,6 +157,10 @@ const apiEnvFiles = runtimeEnv === 'test'
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: MasterDataGovernanceEnforcementGuard,
     },
   ],
 })

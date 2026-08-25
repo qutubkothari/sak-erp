@@ -5,7 +5,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 export interface PendingApproval {
   id: string;
   number: string;
-  type: 'PR' | 'PO' | 'GRN' | 'JO' | 'QC';
+  type: 'PR' | 'PO' | 'GRN' | 'JO' | 'QC' | 'SES';
   requestedBy: string;
   requestedDate: string;
   amount?: number;
@@ -31,22 +31,48 @@ export class ManagerService {
   async getPendingApprovals(tenantId: string, managerId: string): Promise<PendingApproval[]> {
     const approvals: PendingApproval[] = [];
 
-    try {
-      // Get manager's email to find subordinates
-      const { data: manager } = await this.supabase
-        .from('users')
-        .select('email, first_name, last_name')
-        .eq('id', managerId)
-        .eq('tenant_id', tenantId)
-        .single();
+    const resolveUserNames = async (userIds: string[]) => {
+      const ids = Array.from(new Set(userIds.map((id) => String(id || '').trim()).filter(Boolean)));
+      const names = new Map<string, string>();
+      if (ids.length === 0) return names;
 
-      if (!manager) {
-        return [];
+      const { data, error } = await this.supabase
+        .from('users')
+        .select('id, first_name, last_name, username, email')
+        .eq('tenant_id', tenantId)
+        .in('id', ids);
+
+      if (error) {
+        console.error('[ManagerService] User name lookup failed:', error.message);
+        return names;
       }
 
-      // Get all employees to find potential subordinates
-      // For now, we'll show all pending approvals in the tenant
-      // TODO: Add reporting_manager_id field to employees table for proper hierarchy
+      for (const user of data || []) {
+        const displayName =
+          `${(user as any).first_name || ''} ${(user as any).last_name || ''}`.trim() ||
+          (user as any).username ||
+          (user as any).email ||
+          (user as any).id;
+        names.set(String((user as any).id), displayName);
+      }
+      return names;
+    };
+
+    try {
+      // Best-effort manager existence check only. Do not blank the dashboard if
+      // the JWT stores the id in a different claim or the user row cannot be
+      // hydrated; approvals are tenant-scoped below.
+      if (managerId) {
+        const { error: managerError } = await this.supabase
+          .from('users')
+          .select('id')
+          .eq('id', managerId)
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+        if (managerError) {
+          console.error('[ManagerService] Manager lookup failed:', managerError.message);
+        }
+      }
 
       // 1. Purchase Requisitions (SUBMITTED status)
       const { data: prs } = await this.supabase
@@ -57,21 +83,20 @@ export class ManagerService {
           created_at,
           status,
           priority,
-          requested_by,
-          users!purchase_requisitions_requested_by_fkey(first_name, last_name, email)
+          requested_by
         `)
         .eq('tenant_id', tenantId)
         .eq('status', 'SUBMITTED')
         .order('created_at', { ascending: false });
 
       if (prs) {
+        const userNames = await resolveUserNames(prs.map((pr: any) => pr.requested_by));
         for (const pr of prs) {
-          const user = (pr as any).users;
           approvals.push({
             id: pr.id,
             number: pr.pr_number,
             type: 'PR',
-            requestedBy: user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email : 'Unknown',
+            requestedBy: userNames.get(String(pr.requested_by || '')) || 'Unknown',
             requestedDate: pr.created_at,
             status: pr.status,
             priority: pr.priority,
@@ -79,33 +104,35 @@ export class ManagerService {
         }
       }
 
-      // 2. Purchase Orders (PENDING status)
+      // 2. Purchase Orders awaiting manager approval.
+      // Current PO screens/reminders use `status=PENDING`; older rows may still
+      // carry the approval state in `pr_po_status`, so include both.
       const { data: pos } = await this.supabase
         .from('purchase_orders')
         .select(`
           id,
           po_number,
           created_at,
+          status,
           pr_po_status,
           total_amount,
-          created_by,
-          users!purchase_orders_created_by_fkey(first_name, last_name, email)
+          created_by
         `)
         .eq('tenant_id', tenantId)
-        .eq('pr_po_status', 'PENDING')
+        .or('status.eq.PENDING,pr_po_status.eq.PENDING')
         .order('created_at', { ascending: false });
 
       if (pos) {
+        const userNames = await resolveUserNames(pos.map((po: any) => po.created_by));
         for (const po of pos) {
-          const user = (po as any).users;
           approvals.push({
             id: po.id,
             number: po.po_number,
             type: 'PO',
-            requestedBy: user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email : 'Unknown',
+            requestedBy: userNames.get(String(po.created_by || '')) || 'Unknown',
             requestedDate: po.created_at,
             amount: po.total_amount,
-            status: po.pr_po_status,
+            status: po.status || po.pr_po_status || 'PENDING',
           });
         }
       }
@@ -119,21 +146,20 @@ export class ManagerService {
           created_at,
           status,
           total_amount,
-          created_by,
-          users!grns_created_by_fkey(first_name, last_name, email)
+          created_by
         `)
         .eq('tenant_id', tenantId)
         .eq('status', 'DRAFT')
         .order('created_at', { ascending: false });
 
       if (grns) {
+        const userNames = await resolveUserNames(grns.map((grn: any) => grn.created_by));
         for (const grn of grns) {
-          const user = (grn as any).users;
           approvals.push({
             id: grn.id,
             number: grn.grn_number,
             type: 'GRN',
-            requestedBy: user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email : 'Unknown',
+            requestedBy: userNames.get(String(grn.created_by || '')) || 'Unknown',
             requestedDate: grn.created_at,
             amount: grn.total_amount,
             status: grn.status,
@@ -141,82 +167,167 @@ export class ManagerService {
         }
       }
 
-      // 4. Job Orders (PENDING or DRAFT status)
+      // 4. GRN edits which would amend the originating PO.  A completed GRN is
+      // not normally present in the draft-GRN queue, so without this explicit
+      // worklist entry a requester receives "sent for approval" but an
+      // approver has no actionable task.  The approval payload is kept on the
+      // SAP controls record because it contains the proposed quantity/rate per
+      // PO line; surface it here as a normal GRN approval task.
+      const { data: amendmentControls, error: amendmentControlsError } = await this.supabase
+        .from('grn_sap_controls')
+        .select('grn_id, metadata, updated_at')
+        .eq('tenant_id', tenantId);
+
+      if (amendmentControlsError) {
+        console.error('[ManagerService] GRN PO-amendment queue unavailable:', amendmentControlsError.message);
+      } else {
+        const pendingAmendments = (amendmentControls || [])
+          .map((control: any) => {
+            let metadata = control.metadata;
+            if (typeof metadata === 'string') {
+              try {
+                metadata = JSON.parse(metadata);
+              } catch {
+                metadata = {};
+              }
+            }
+            const approval = metadata?.po_amendment_approval;
+            return approval?.status === 'PENDING_APPROVAL'
+              ? { grnId: control.grn_id, updatedAt: control.updated_at, approval }
+              : null;
+          })
+          .filter(Boolean) as Array<{ grnId: string; updatedAt?: string; approval: any }>;
+
+        if (pendingAmendments.length > 0) {
+          const amendmentGrnIds = pendingAmendments.map((entry) => entry.grnId);
+          const { data: amendmentGrns, error: amendmentGrnsError } = await this.supabase
+            .from('grns')
+            .select('id, grn_number, created_at, total_amount, created_by')
+            .eq('tenant_id', tenantId)
+            .in('id', amendmentGrnIds);
+
+          if (amendmentGrnsError) {
+            console.error('[ManagerService] GRN PO-amendment documents unavailable:', amendmentGrnsError.message);
+          } else {
+            const userNames = await resolveUserNames(
+              (amendmentGrns || []).map((grn: any) => {
+                const amendment = pendingAmendments.find((entry) => entry.grnId === grn.id);
+                return amendment?.approval?.requestedBy || grn.created_by;
+              }),
+            );
+
+            for (const grn of amendmentGrns || []) {
+              const amendment = pendingAmendments.find((entry) => entry.grnId === grn.id);
+              if (!amendment) continue;
+              const requestedBy = amendment.approval?.requestedBy || grn.created_by;
+              const task: PendingApproval = {
+                id: grn.id,
+                number: `${grn.grn_number} - PO amendment`,
+                type: 'GRN',
+                requestedBy: userNames.get(String(requestedBy || '')) || 'Unknown',
+                requestedDate: amendment.approval?.requestedAt || amendment.updatedAt || grn.created_at,
+                amount: grn.total_amount,
+                status: 'PO amendment pending approval',
+                priority: 'PO amendment',
+              };
+
+              // A draft GRN may already have a generic queue item. Replace its
+              // label with the more specific amendment action rather than
+              // creating duplicate entries for the same GRN.
+              const existingIndex = approvals.findIndex((entry) => entry.type === 'GRN' && entry.id === grn.id);
+              if (existingIndex >= 0) approvals[existingIndex] = task;
+              else approvals.push(task);
+            }
+          }
+        }
+      }
+
+      // 5. Job Orders (PENDING or DRAFT status)
       const { data: jos } = await this.supabase
-        .from('job_orders')
+        .from('production_job_orders')
         .select(`
           id,
           job_order_number,
           created_at,
           status,
-          created_by,
-          users!job_orders_created_by_fkey(first_name, last_name, email)
+          created_by
         `)
         .eq('tenant_id', tenantId)
         .in('status', ['PENDING', 'DRAFT'])
         .order('created_at', { ascending: false });
 
       if (jos) {
+        const userNames = await resolveUserNames(jos.map((jo: any) => jo.created_by));
         for (const jo of jos) {
-          const user = (jo as any).users;
           approvals.push({
             id: jo.id,
             number: jo.job_order_number,
             type: 'JO',
-            requestedBy: user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email : 'Unknown',
+            requestedBy: userNames.get(String(jo.created_by || '')) || 'Unknown',
             requestedDate: jo.created_at,
             status: jo.status,
           });
         }
       }
 
-      // 5. QC (UIDs with PENDING quality_status)
-      const { data: qcUids } = await this.supabase
-        .from('uid_registry')
+      // 5. QC pending from GRNs. This matches the global Action Required
+      // widget (`/purchase/grn?pendingQc=true`) so manager counts do not drift.
+      const { data: qcGrns } = await this.supabase
+        .from('grns')
         .select(`
           id,
-          uid,
+          grn_number,
           created_at,
-          quality_status,
-          job_order_id,
-          job_orders!uid_registry_job_order_id_fkey(
-            job_order_number,
-            created_by,
-            users!job_orders_created_by_fkey(first_name, last_name, email)
-          )
+          status,
+          qc_completed,
+          total_amount,
+          created_by,
+          po_id,
+          vendor_id
         `)
         .eq('tenant_id', tenantId)
-        .eq('quality_status', 'PENDING')
+        .eq('qc_completed', false)
         .order('created_at', { ascending: false })
-        .limit(50); // Limit QC items to avoid too many
+        .limit(50);
 
-      if (qcUids) {
-        // Group by job order
-        const qcByJobOrder = new Map<string, any[]>();
-        for (const qc of qcUids) {
-          const jo = (qc as any).job_orders;
-          if (jo) {
-            const key = jo.job_order_number;
-            if (!qcByJobOrder.has(key)) {
-              qcByJobOrder.set(key, []);
-            }
-            qcByJobOrder.get(key)?.push(qc);
-          }
-        }
-
-        // Add one entry per job order with pending QC
-        for (const [joNumber, items] of qcByJobOrder) {
-          const firstItem = items[0];
-          const jo = (firstItem as any).job_orders;
-          const user = jo?.users;
-          
+      if (qcGrns) {
+        const userNames = await resolveUserNames(qcGrns.map((grn: any) => grn.created_by));
+        for (const grn of qcGrns) {
           approvals.push({
-            id: firstItem.id,
-            number: `${joNumber} (${items.length} UIDs)`,
+            id: grn.id,
+            number: grn.grn_number,
             type: 'QC',
-            requestedBy: user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email : 'Unknown',
-            requestedDate: firstItem.created_at,
-            status: firstItem.quality_status,
+            requestedBy: userNames.get(String(grn.created_by || '')) || 'Unknown',
+            requestedDate: grn.created_at,
+            amount: grn.total_amount,
+            status: 'QC pending',
+          });
+        }
+      }
+
+      // 6. Service Entry Sheets (SES) awaiting service-owner acceptance.
+      // The table is created lazily with the service-entry feature; keep the
+      // manager dashboard available on tenants where it has not been opened yet.
+      const { data: serviceEntries, error: serviceEntriesError } = await this.supabase
+        .from('service_entry_sheets')
+        .select('id, ses_number, created_at, status, created_by, po:purchase_orders(po_number), vendor:vendors(name), items:service_entry_sheet_items(amount)')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'PENDING_APPROVAL')
+        .order('created_at', { ascending: false });
+
+      if (serviceEntriesError) {
+        console.warn('[ManagerService] Service Entry Sheet queue unavailable:', serviceEntriesError.message);
+      } else if (serviceEntries) {
+        const userNames = await resolveUserNames(serviceEntries.map((entry: any) => entry.created_by));
+        for (const entry of serviceEntries) {
+          approvals.push({
+            id: entry.id,
+            number: entry.ses_number,
+            type: 'SES',
+            requestedBy: userNames.get(String(entry.created_by || '')) || (entry as any).vendor?.name || 'Unknown',
+            requestedDate: entry.created_at,
+            amount: ((entry as any).items || []).reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0),
+            status: 'Awaiting service acceptance',
           });
         }
       }

@@ -1,16 +1,17 @@
 'use client';
 
-import { useState, useEffect, Suspense, useRef, type ReactNode } from 'react';
+import { useState, useEffect, Suspense, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { apiClient } from '../../../../../lib/api-client';
-import { hasModulePermission, readStoredUser } from '@/lib/rbac';
+import { hasMakerCheckerOverride, hasModulePermission, readStoredUser } from '@/lib/rbac';
 import { getTodayDateInputValue } from '@/lib/date';
 import { loadDeliveryAddresses, saveDeliveryAddress, type DeliveryAddressOption } from '@/lib/delivery-addresses';
 import DateInput from '../../../../components/ui/DateInput';
 import DrawingManager from '../../../../components/DrawingManager';
 import SearchableSelect from '../../../../components/SearchableSelect';
+import RndTemporaryItemModal, { type RndTemporaryItem } from '../../../../components/RndTemporaryItemModal';
 import { useSelection } from '../../../../hooks/useSelection';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
@@ -19,6 +20,7 @@ import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { ErpButton, ErpMetricStrip, ErpPageHeader } from '../../../../components/ui/ErpPrimitives';
 import {
   Check,
+  Copy,
   Download,
   Eye,
   FileText,
@@ -34,18 +36,55 @@ import {
   X,
 } from 'lucide-react';
 
-const ITEM_CATEGORY_OPTIONS = [
-  { value: 'RAW_MATERIAL', label: 'Raw Material' },
-  { value: 'CAPITAL_GOODS', label: 'Capital Goods' },
-  { value: 'CONSUMABLE', label: 'Consumable' },
-  { value: 'PACKING_MATERIAL', label: 'Packing Material' },
-  { value: 'SERVICES', label: 'Services' },
-];
-
 const ITEM_CATEGORY_ALIASES: Record<string, string> = {
   RAW_MATERIALS: 'RAW_MATERIAL',
   SERVICE: 'SERVICES',
 };
+
+const PAYMENT_TERM_OPTIONS = [
+  { value: 'NET_15', label: 'Net 15 Days' },
+  { value: 'NET_30', label: 'Net 30 Days' },
+  { value: 'NET_45', label: 'Net 45 Days' },
+  { value: 'NET_60', label: 'Net 60 Days' },
+  { value: 'ADVANCE', label: 'Advance Payment' },
+  { value: 'COD', label: 'Cash on Delivery' },
+  { value: 'AGAINST_DELIVERY', label: 'Against Delivery' },
+  { value: 'AGAINST_PROFORMA', label: 'Against Proforma Invoice' },
+];
+
+const isStandardPaymentTerm = (value: string) => PAYMENT_TERM_OPTIONS.some((option) => option.value === value);
+const PAYMENT_TERM_LABELS = PAYMENT_TERM_OPTIONS.reduce<Record<string, string>>((acc, option) => {
+  acc[option.value] = option.label;
+  return acc;
+}, {});
+
+function parsePoTermsMetadata(value: unknown): Record<string, any> {
+  try {
+    if (value && typeof value === 'string' && value.trim().startsWith('{')) {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    }
+    if (value && typeof value === 'object') return value as Record<string, any>;
+  } catch {}
+  return {};
+}
+
+function resolvePoPaymentTermsLabel(po: any): string {
+  const metadata = parsePoTermsMetadata(po?.terms_and_conditions);
+  const customText = String(
+    metadata.paymentTermsText ||
+    metadata.payment_terms_text ||
+    metadata.customPaymentTerms ||
+    metadata.custom_payment_terms ||
+    '',
+  ).trim();
+  if (customText) return customText;
+
+  const raw = String(po?.payment_terms || po?.paymentTerms || '').trim();
+  if (!raw) return '-';
+  if (raw === 'CUSTOM') return 'Custom / Other';
+  return PAYMENT_TERM_LABELS[raw] || raw;
+}
 
 function normalizeItemCategory(category: unknown): string {
   const value = String(category ?? '').trim().toUpperCase().replace(/\s+/g, '_');
@@ -57,6 +96,16 @@ const AUTO_REFRESH_MS = 30000;
 const inrFmt = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 function fmtINR(val: number | undefined | null): string {
   return inrFmt.format(val ?? 0);
+}
+
+function fmtRoundedINR(val: number | undefined | null): string {
+  return inrFmt.format(Math.round(Number(val ?? 0)));
+}
+
+function calcRoundingAdjustment(val: number | undefined | null): number {
+  const n = Number(val ?? 0);
+  if (!Number.isFinite(n)) return 0;
+  return Number((Math.round(n) - n).toFixed(2));
 }
 
 function fmtPercent(val: number | undefined | null): string {
@@ -76,6 +125,15 @@ function calcPoLineTotal(quantity: number, unitPrice: number, discountPercent: n
   const discountAmount = grossAmount * (Math.max(0, Number(discountPercent || 0)) / 100);
   const taxableAmount = Math.max(0, grossAmount - discountAmount);
   return taxableAmount + (taxableAmount * Math.max(0, Number(taxRate || 0))) / 100;
+}
+
+function recalcPoItem(item: PurchaseOrderFormItem, forceTaxRate?: number): PurchaseOrderFormItem {
+  const taxRate = forceTaxRate ?? item.taxRate ?? 0;
+  return {
+    ...item,
+    taxRate,
+    totalPrice: calcPoLineTotal(item.quantity, item.unitPrice, item.discount || 0, taxRate),
+  };
 }
 
 function fmtDate(value: unknown): string {
@@ -145,6 +203,8 @@ interface PurchaseOrder {
   id: string;
   po_number: string;
   pr_id?: string;
+  project_id?: string | null;
+  project_name?: string | null;
   pr?: {
     id: string;
     pr_number: string;
@@ -167,6 +227,7 @@ interface PurchaseOrder {
   po_date: string;
   delivery_date: string;
   payment_terms?: string;
+  payment_terms_code?: string;
   delivery_terms?: string;
   status: string;
   total_amount: number;
@@ -212,11 +273,13 @@ interface PurchaseOrder {
 }
 
 type PurchaseOrderFormItem = {
+  poItemId?: string;
   prItemId?: string;
   itemId?: string;
   itemCode?: string;
   itemName?: string;
   vendorId?: string;
+  vendorName?: string;
   quantity: number;
   unitPrice: number;
   discount: number;
@@ -240,6 +303,7 @@ type DrawingOption = {
 
 type PurchaseOrderFormData = {
   vendorId: string;
+  projectId: string;
   orderDate: string;
   expectedDelivery: string;
   paymentTerms: string;
@@ -257,6 +321,10 @@ type PurchaseOrderFormData = {
   freightGstPercent: number;
   customsDuty: number;
   otherCharges: number;
+  isImportPurchase: boolean;
+  supplierCurrency: string;
+  customsExchangeRate: number;
+  importNotes: string;
   trackingNumber: string;
   shippedDate: string;
   estimatedDeliveryDate: string;
@@ -281,6 +349,12 @@ function PurchaseOrdersContent() {
   const canCreatePO = hasModulePermission(currentUser, 'Purchase Management', 'create');
   const canEditPO = hasModulePermission(currentUser, 'Purchase Management', 'edit');
   const canDeletePO = hasModulePermission(currentUser, 'Purchase Management', 'delete');
+  const canDownloadPO = hasModulePermission(currentUser, 'Purchase Management', 'download');
+  const canBypassMakerChecker = hasMakerCheckerOverride(currentUser);
+  const canEditPendingPO = (po: PurchaseOrder) =>
+    canEditPO &&
+    String(po.status || '').toUpperCase() === 'PENDING' &&
+    (String((po as any).created_by || '') === currentUserId || canBypassMakerChecker);
 
   useEffect(() => {
     setCurrentUser(readStoredUser());
@@ -292,7 +366,11 @@ function PurchaseOrdersContent() {
   const [loadingPrList, setLoadingPrList] = useState(false);
   
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [vendors, setVendors] = useState<Array<{ id: string; name: string; contact_person: string }>>([]);
+  type VendorOption = { id: string; name: string; contact_person: string };
+  type POAttachment = { url: string; name: string };
+  type ProjectOption = { id: string; project_name: string; project_code?: string; department?: string };
+  const [vendors, setVendors] = useState<VendorOption[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [users, setUsers] = useState<Array<{ id: string; employee_name: string; employee_code?: string; phone?: string; mobile?: string; phone_number?: string; contact_number?: string; mobile_number?: string }>>([]);
   const [items, setItems] = useState<Array<{
     id: string;
@@ -304,6 +382,7 @@ function PurchaseOrdersContent() {
     selling_price?: number;
     drawing_required?: string;
     oem_part_no?: string;
+    oem_name?: string;
     description?: string;
   }>>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
@@ -332,6 +411,10 @@ function PurchaseOrdersContent() {
   const [submitting, setSubmitting] = useState(false);
   // Synchronous guard to prevent rapid double-clicks before state updates
   const isSubmittingRef = useRef(false);
+  // Reminder links use ?viewId=. Keep track of that opening so the URL can
+  // be cleared on close; otherwise clicking the same reminder again is a
+  // no-op because Next.js sees the same route/query string.
+  const reminderViewOpenedRef = useRef<string | null>(null);
   // Idempotency key to prevent duplicate API calls
   const [lastSubmitKey, setLastSubmitKey] = useState<string | null>(null);
   const [showDrawingManager, setShowDrawingManager] = useState(false);
@@ -341,7 +424,9 @@ function PurchaseOrdersContent() {
   const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [currentPrId, setCurrentPrId] = useState<string | null>(null);
+  const [currentPrDepartment, setCurrentPrDepartment] = useState('');
   const [rfqRespondedVendorIds, setRfqRespondedVendorIds] = useState<string[]>([]);
+  const [rfqHistory, setRfqHistory] = useState<any[]>([]);
   const { duplicateState, checkDuplicates, handleProceed, handleCancel } = useDuplicateDetection();
   type PriceHistoryRecord = { po_number: string; po_date: string; unit_price: number; quantity: number; po_status: string };
   const [priceHistory, setPriceHistory] = useState<Record<string, PriceHistoryRecord[]>>({});
@@ -351,17 +436,13 @@ function PurchaseOrdersContent() {
   const [deliveryAddressName, setDeliveryAddressName] = useState('');
   const [deliveryAddressSaving, setDeliveryAddressSaving] = useState(false);
 
-  // Quick-create item state (from PO form)
-  const [showQuickCreateItem, setShowQuickCreateItem] = useState(false);
+  // Row target used only by the temporary R&D item creator.
   const [quickCreateItemIndex, setQuickCreateItemIndex] = useState<number | null>(null);
-  const [quickCreateItemForm, setQuickCreateItemForm] = useState({
-    code: '', name: '', category: 'RAW_MATERIAL', uom: 'NOS', hsn_code: '',
-    description: '', reorder_level: '', standard_cost: '',
-  });
-  const [quickCreateItemSaving, setQuickCreateItemSaving] = useState(false);
+  const [showRndTemporaryItem, setShowRndTemporaryItem] = useState(false);
 
   // PO attachment upload state
   const [poAttachmentUploading, setPoAttachmentUploading] = useState(false);
+  const [supplierAttachments, setSupplierAttachments] = useState<Record<string, POAttachment[]>>({});
 
   // PO Trail state
   const [showTrailModal, setShowTrailModal] = useState(false);
@@ -374,6 +455,7 @@ function PurchaseOrdersContent() {
   // Form state
   const [formData, setFormData] = useState<PurchaseOrderFormData>({
     vendorId: '',
+    projectId: '',
     orderDate: getTodayDateInputValue(),
     expectedDelivery: '',
     paymentTerms: 'NET_30',
@@ -391,6 +473,10 @@ function PurchaseOrdersContent() {
     freightGstPercent: 0,
     customsDuty: 0,
     otherCharges: 0,
+    isImportPurchase: false,
+    supplierCurrency: 'INR',
+    customsExchangeRate: 0,
+    importNotes: '',
     trackingNumber: '',
     shippedDate: '',
     estimatedDeliveryDate: '',
@@ -405,6 +491,49 @@ function PurchaseOrdersContent() {
     const matchedItem = items.find(i => i.id === item.itemId || i.code === item.itemCode);
     return normalizeItemCategory((matchedItem as any)?.category) === 'SERVICES';
   });
+  const isProjectNameLockedFromPR = Boolean(currentPrId);
+  const projectOptions = projects.map((project) => ({
+    value: project.id,
+    label: project.project_name,
+    subtitle: [project.project_code, project.department].filter(Boolean).join(' - '),
+  }));
+  const prSupplierGroups = useMemo(() => {
+    if (!currentPrId) return [];
+    const groups = new Map<string, { vendorId: string; vendorName: string; itemCount: number; quantity: number }>();
+    formData.items.forEach((item) => {
+      const vendorId = String(item.vendorId || '').trim();
+      if (!vendorId) return;
+      const vendorMasterName = vendors.find((vendor) => String(vendor.id) === vendorId)?.name;
+      const existing = groups.get(vendorId) || {
+        vendorId,
+        vendorName: String(vendorMasterName || item.vendorName || 'Selected supplier'),
+        itemCount: 0,
+        quantity: 0,
+      };
+      existing.itemCount += 1;
+      existing.quantity += Number(item.quantity || 0);
+      groups.set(vendorId, existing);
+    });
+    return Array.from(groups.values()).sort((a, b) => a.vendorName.localeCompare(b.vendorName));
+  }, [currentPrId, formData.items, vendors]);
+
+  const isSupplierWisePRSplit = Boolean(currentPrId && prSupplierGroups.length > 1);
+  const getVendorDisplayName = (vendorId: string) =>
+    prSupplierGroups.find((group) => String(group.vendorId) === String(vendorId))?.vendorName ||
+    vendors.find((vendor) => String(vendor.id) === String(vendorId))?.name ||
+    'Selected supplier';
+
+  useEffect(() => {
+    if (!showModal) return;
+    if (!formData.isImportPurchase && String(formData.supplierCurrency || 'INR').toUpperCase() === 'INR') return;
+    if (!formData.items.some((item) => Number(item.taxRate || 0) !== 0)) return;
+    setFormData((current) => ({
+      ...current,
+      freightGstApplicable: false,
+      freightGstPercent: 0,
+      items: current.items.map((item) => recalcPoItem(item, 0)),
+    }));
+  }, [formData.isImportPurchase, formData.supplierCurrency, showModal]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -424,22 +553,25 @@ function PurchaseOrdersContent() {
   useEscapeKey(showTrailModal, () => setShowTrailModal(false));
   useEscapeKey(showPOEmailPreview, () => setShowPOEmailPreview(false));
   useEscapeKey(showDrawingManager, () => { setShowDrawingManager(false); setSelectedItemForDrawing(null); setPendingItemIndex(null); });
-  useEscapeKey(showQuickCreateItem, () => setShowQuickCreateItem(false));
 
   // Fetch vendors on component mount
   useEffect(() => {
     fetchVendors();
+    apiClient.get<any[]>('/projects?status=ACTIVE')
+      .then((data) => setProjects(Array.isArray(data) ? data : []))
+      .catch(() => setProjects([]));
     apiClient.get<any[]>('/hr/employees').then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => {});
 
-    // Fetch PRs eligible for PO creation (all non-draft/non-rejected)
+    // Fetch PRs eligible for PO creation. Only fully approved PRs may be
+    // selected for PO conversion; submitted/awaiting-approval PRs remain in
+    // the PR approval register but must not appear here.
     setLoadingPrList(true);
     apiClient.get<any[]>('/purchase/requisitions')
       .then((allPrs) => {
         const eligible = (Array.isArray(allPrs) ? allPrs : []).filter((pr: any) => {
           const s = String(pr.status || '').toUpperCase();
           const ws = String(pr.workflow_status || '').toUpperCase();
-          // Exclude draft/rejected base statuses and PRs fully converted to PO or goods received
-          return s !== 'DRAFT' && s !== 'REJECTED' && s !== ''
+          return s === 'APPROVED'
             && ws !== 'PO_DONE' && ws !== 'GOODS_RCVD';
         });
         setPurchaseRequisitions(eligible.map((pr: any) => ({
@@ -481,9 +613,20 @@ function PurchaseOrdersContent() {
   // Auto-open PO details if viewId is in URL (from Action Required links)
   useEffect(() => {
     if (viewId && !showViewModal) {
-      handleViewDetails(viewId);
+      void handleViewDetails(viewId).then(() => {
+        reminderViewOpenedRef.current = viewId;
+      });
     }
   }, [viewId]);
+
+  useEffect(() => {
+    if (showViewModal || !viewId || reminderViewOpenedRef.current !== viewId) return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete('viewId');
+    const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+    window.history.replaceState({}, '', nextUrl);
+    reminderViewOpenedRef.current = null;
+  }, [showViewModal, viewId]);
 
   // Backfill missing itemId (and itemName) from itemCode once items master data loads.
   // Some PO payloads provide only item_code/item_name; SearchableSelect needs itemId.
@@ -516,26 +659,22 @@ function PurchaseOrdersContent() {
 
   // Prefetch last purchase price for any item+vendor pairs shown in the create/edit modal
   useEffect(() => {
-    const pairs = new Set(
-      (formData.items || [])
-        .map((it) => {
-          const rawItemId = String((it as any)?.itemId || '').trim();
-          const code = String((it as any)?.itemCode || '').trim();
-          const resolvedItemId =
-            rawItemId ||
-            String(items.find((i) => String(i.code).trim() === code)?.id || '').trim();
-          const vendorId = String((it as any)?.vendorId || formData.vendorId || '').trim();
-          return resolvedItemId && vendorId ? `${resolvedItemId}-${vendorId}` : '';
-        })
-        .filter(Boolean),
-    );
-
-    pairs.forEach((key) => {
-      if (priceHistory[key] !== undefined) return;
-      const [itemId, vendorId] = key.split('-');
-      if (itemId && vendorId) {
-        fetchPriceHistory(itemId, vendorId);
+    const pairs = new Map<string, { itemId: string; vendorId: string }>();
+    (formData.items || []).forEach((it) => {
+      const rawItemId = String((it as any)?.itemId || '').trim();
+      const code = String((it as any)?.itemCode || '').trim();
+      const resolvedItemId =
+        rawItemId ||
+        String(items.find((i) => String(i.code).trim() === code)?.id || '').trim();
+      const vendorId = String((it as any)?.vendorId || formData.vendorId || '').trim();
+      if (resolvedItemId && vendorId) {
+        pairs.set(`${resolvedItemId}-${vendorId}`, { itemId: resolvedItemId, vendorId });
       }
+    });
+
+    pairs.forEach(({ itemId, vendorId }, key) => {
+      if (priceHistory[key] !== undefined) return;
+      fetchPriceHistory(itemId, vendorId);
     });
   }, [formData.items, formData.vendorId, items, priceHistory]);
 
@@ -560,7 +699,7 @@ function PurchaseOrdersContent() {
     });
   }, [showViewModal, selectedPO, vendors, items, priceHistory]);
 
-  const fetchVendors = async () => {
+  const fetchVendors = async (): Promise<VendorOption[]> => {
     try {
       const token = localStorage.getItem('accessToken');
       
@@ -576,10 +715,101 @@ function PurchaseOrdersContent() {
       
       // VERIFICATION FILTER DISABLED TEMPORARILY - uncomment below to re-enable
       // setVendors(Array.isArray(data) ? data.filter((v: any) => v.is_verified === true).sort((a: any, b: any) => a.name.localeCompare(b.name)) : []);
-      setVendors(Array.isArray(data) ? data.sort((a: any, b: any) => a.name.localeCompare(b.name)) : []);
+      const normalized = Array.isArray(data) ? data.sort((a: any, b: any) => a.name.localeCompare(b.name)) : [];
+      setVendors((prev) => {
+        const byId = new Map<string, VendorOption>();
+        normalized.forEach((vendor: any) => {
+          if (vendor?.id) byId.set(String(vendor.id), vendor);
+        });
+        prev.forEach((vendor) => {
+          if (vendor?.id && !byId.has(String(vendor.id))) byId.set(String(vendor.id), vendor);
+        });
+        return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+      });
+      return normalized;
     } catch (error) {
+      return [];
     }
   };
+
+  const ensureVendorOption = async (vendorId: string, fallbackName?: string): Promise<void> => {
+    const normalizedVendorId = String(vendorId || '').trim();
+    if (!normalizedVendorId) return;
+
+    if (vendors.some((vendor) => String(vendor.id) === normalizedVendorId)) return;
+
+    let option: VendorOption | null = null;
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`/api/v1/purchase/vendors/${normalizedVendorId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const vendor = await response.json();
+        option = {
+          id: normalizedVendorId,
+          name: String(vendor?.name || vendor?.legal_name || fallbackName || normalizedVendorId),
+          contact_person: String(vendor?.contact_person || ''),
+        };
+      }
+    } catch {}
+
+    if (!option && fallbackName) {
+      option = {
+        id: normalizedVendorId,
+        name: fallbackName,
+        contact_person: '',
+      };
+    }
+
+    if (!option) return;
+
+    setVendors((prev) => {
+      if (prev.some((vendor) => String(vendor.id) === normalizedVendorId)) return prev;
+      return [...prev, option as VendorOption].sort((a, b) => a.name.localeCompare(b.name));
+    });
+  };
+
+  const resolveVendorIdFromAny = (source: any, options?: { allowBareId?: boolean }): string => {
+    const vendorId = String(
+      source?.vendor_id ??
+      source?.vendorId ??
+      source?.preferred_vendor_id ??
+      source?.preferredVendorId ??
+      source?.preferred_vendor?.id ??
+      source?.preferredVendor?.id ??
+      source?.vendor?.vendor_id ??
+      source?.vendor?.vendorId ??
+      source?.vendor?.id ??
+      (options?.allowBareId ? source?.id : '') ??
+      '',
+    ).trim();
+    return vendorId;
+  };
+
+  const resolveVendorNameFromAny = (source: any): string => String(
+    source?.vendor_name ??
+    source?.vendorName ??
+    source?.preferred_vendor_name ??
+    source?.preferredVendorName ??
+    source?.preferred_vendor?.name ??
+    source?.preferredVendor?.name ??
+    source?.vendor?.name ??
+    source?.name ??
+    source?.legal_name ??
+    '',
+  ).trim();
+
+  const resolvePreferredVendorNameFromAny = (source: any): string => String(
+    source?.vendor_name ??
+    source?.vendorName ??
+    source?.preferred_vendor_name ??
+    source?.preferredVendorName ??
+    source?.preferred_vendor?.name ??
+    source?.preferredVendor?.name ??
+    source?.vendor?.name ??
+    '',
+  ).trim();
 
   const fetchItems = async () => {
     setItemsLoading(true);
@@ -739,6 +969,7 @@ function PurchaseOrdersContent() {
   const loadPRData = async (prId: string) => {
     try {
       setLoadingPR(true);
+      setSupplierAttachments({});
       
       // Fetch fresh items data to ensure we have prices
       const token = localStorage.getItem('accessToken');
@@ -752,25 +983,33 @@ function PurchaseOrdersContent() {
       
       // Store PR ID for later use
       setCurrentPrId(prId);
+      setCurrentPrDepartment(String(prData.department || prData.project_department || '').trim());
 
-      // Fetch RFQ responses for this PR to filter vendor dropdown
+      // Fetch RFQ responses for this PR so buyers can compare quotes before selecting a PO vendor.
       try {
         const rfqs: any[] = await apiClient.get(`/purchase/requisitions/${prId}/rfqs`);
-        const respondedIds = (rfqs || [])
-          .filter((r: any) => r.status === 'RECEIVED' || r.status === 'RESPONDED')
-          .map((r: any) => String(r.vendor_id));
+        const normalizedRfqs = Array.isArray(rfqs) ? rfqs : [];
+        setRfqHistory(normalizedRfqs);
+        const respondedIds = normalizedRfqs
+          .filter((r: any) => ['RECEIVED', 'RESPONDED'].includes(String(r.status || '').toUpperCase()))
+          .map((r: any) => resolveVendorIdFromAny(r))
+          .filter(Boolean);
         setRfqRespondedVendorIds(respondedIds);
       } catch {
+        setRfqHistory([]);
         setRfqRespondedVendorIds([]);
       }
       
       // Map PR items to PO items and fetch preferred vendors
       const prItemsRaw = Array.isArray(prData.purchase_requisition_items) ? prData.purchase_requisition_items : [];
       const poItemsPromises = prItemsRaw.map(async (item: any) => {
-        
-        // Try to find item in items master to get actual price
-        let unitPrice = item.estimated_rate || 0;
-        let preferredVendorId = '';
+        // Preserve the approved PR estimated rate when converting PR -> PO.
+        // Master/preferred-vendor prices are only fallbacks; they must not silently
+        // alter approved commercial values (e.g. 120.00 becoming 119.99).
+        let unitPrice = Number(item.estimated_rate ?? item.estimatedRate ?? 0) || 0;
+        const hasPrApprovedRate = unitPrice > 0;
+        let preferredVendorId = resolveVendorIdFromAny(item);
+        let preferredVendorName = resolveVendorNameFromAny(item);
         let itemId = item.item_id;
         
         // If no item_id, try to find by item_code
@@ -785,19 +1024,27 @@ function PurchaseOrdersContent() {
         if (itemId && freshItems.length > 0) {
           const masterItem = freshItems.find((i: any) => i.id === item.item_id);
           if (masterItem) {
-            unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
+            if (!preferredVendorId) preferredVendorId = resolveVendorIdFromAny(masterItem);
+            if (!preferredVendorName) preferredVendorName = resolvePreferredVendorNameFromAny(masterItem);
+            if (!hasPrApprovedRate) {
+              unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
+            }
           }
         }
         
         if (itemId && freshItems.length > 0) {
           const masterItem = freshItems.find((i: any) => i.id === itemId);
           if (masterItem) {
-            unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
+            if (!preferredVendorId) preferredVendorId = resolveVendorIdFromAny(masterItem);
+            if (!preferredVendorName) preferredVendorName = resolvePreferredVendorNameFromAny(masterItem);
+            if (!hasPrApprovedRate) {
+              unitPrice = masterItem.standard_cost || masterItem.selling_price || unitPrice;
+            }
           }
         }
         
-        // Fetch preferred vendor for this item (unconditional - try even if item not in master)
-        if (itemId) {
+        // Fetch preferred vendor for this item only if the PR line did not already carry one.
+        if (itemId && !preferredVendorId) {
           try {
             const vendorResponse = await fetch(`/api/v1/items/${itemId}/vendors/preferred`, {
               headers: { Authorization: `Bearer ${token}` },
@@ -806,11 +1053,13 @@ function PurchaseOrdersContent() {
             
             if (vendorResponse.ok) {
               const preferredVendor = await vendorResponse.json();
+              const resolvedVendorId = resolveVendorIdFromAny(preferredVendor, { allowBareId: true });
               
-              if (preferredVendor && preferredVendor.vendor_id) {
-                preferredVendorId = preferredVendor.vendor_id;
-                // Use vendor price if available
-                if (preferredVendor.unit_price) {
+              if (preferredVendor && resolvedVendorId) {
+                preferredVendorId = resolvedVendorId;
+                preferredVendorName = resolveVendorNameFromAny(preferredVendor) || preferredVendorName;
+                // Use vendor price only as fallback when the PR line has no approved rate.
+                if (!hasPrApprovedRate && preferredVendor.unit_price) {
                   unitPrice = preferredVendor.unit_price;
                 }
               } else {
@@ -842,7 +1091,8 @@ function PurchaseOrdersContent() {
           itemCode: item.item_code || '',
           itemName: item.item_name || '',
           uom: uom,
-          vendorId: preferredVendorId, // Auto-selected preferred vendor
+          vendorId: preferredVendorId,
+          vendorName: preferredVendorName,
           quantity: quantity,
           unitPrice: unitPrice,
           taxRate: 18, // Default GST rate
@@ -855,8 +1105,33 @@ function PurchaseOrdersContent() {
 
       const poItems = await Promise.all(poItemsPromises);
 
+      const uniqueVendorIds = Array.from(
+        new Set(poItems.map((item) => String(item.vendorId || '').trim()).filter(Boolean)),
+      );
+      if (uniqueVendorIds.length === 1) {
+        const selectedVendorId = uniqueVendorIds[0];
+        const selectedVendorName = poItems.find((item) => String(item.vendorId || '').trim() === selectedVendorId)?.vendorName;
+        if (selectedVendorName) {
+          setVendors((prev) => {
+            if (prev.some((vendor) => String(vendor.id) === selectedVendorId)) return prev;
+            return [...prev, { id: selectedVendorId, name: selectedVendorName, contact_person: '' }]
+              .sort((a, b) => a.name.localeCompare(b.name));
+          });
+        }
+        await ensureVendorOption(selectedVendorId, selectedVendorName);
+      }
+      const prRequiredDate = String(prData.required_date || prData.requiredDate || '').slice(0, 10);
+      const prDeliveryAddress = String(prData.delivery_address || prData.deliveryAddress || '').trim();
+      const prProjectId = String(prData.project_id || prData.projectId || '').trim();
+      const prProjectName = String(prData.project_name || prData.projectName || '').trim();
+
       setFormData((prev) => ({
         ...prev,
+        vendorId: uniqueVendorIds.length === 1 ? uniqueVendorIds[0] : prev.vendorId,
+        expectedDelivery: prRequiredDate || prev.expectedDelivery,
+        deliveryAddress: prDeliveryAddress || prev.deliveryAddress,
+        projectId: prProjectId || prev.projectId,
+        projectName: prProjectName || prev.projectName,
         notes: '',
         items: poItems,
       }));
@@ -864,12 +1139,28 @@ function PurchaseOrdersContent() {
       // Open modal automatically
       setShowModal(true);
       const autoSelectedCount = poItems.filter(item => item.vendorId).length;
-      setAlertMessage({ 
-        type: 'info', 
-        message: poItems.length === 0
-          ? `PR ${prData.pr_number} has no remaining items available for PO.`
-          : `Loaded ${poItems.length} items from PR ${prData.pr_number}. ${autoSelectedCount} items have preferred vendors auto-selected. Select the PO vendor above to apply it to all items.` 
-      });
+      const supplierCount = uniqueVendorIds.length;
+      const missingVendorCount = Math.max(0, poItems.length - autoSelectedCount);
+      if (poItems.length === 0) {
+        setAlertMessage({
+          type: 'info',
+          message: `PR ${prData.pr_number} has no remaining items available for PO.`,
+        });
+      } else {
+        toast.info(
+          supplierCount > 1
+            ? `Loaded ${poItems.length} PR lines. Submit will create ${supplierCount} supplier-wise POs.`
+            : `Loaded ${poItems.length} PR lines. ${autoSelectedCount} line(s) have a preferred vendor.`,
+        );
+        if (missingVendorCount > 0) {
+          setAlertMessage({
+            type: 'error',
+            message: `${missingVendorCount} PR line(s) still need a supplier before PO creation.`,
+          });
+        } else {
+          setAlertMessage(null);
+        }
+      }
     } catch (error) {
       setAlertMessage({ type: 'error', message: 'Failed to load PR data. Please try again.' });
     } finally {
@@ -916,19 +1207,17 @@ function PurchaseOrdersContent() {
   const actuallyCreatePO = async (poStatus: 'DRAFT' | 'PENDING' = 'DRAFT') => {
     // Layer 1: Synchronous ref check (prevents race conditions)
     if (isSubmittingRef.current) {
-      console.log('[PO Create] Blocked by ref guard');
       return;
     }
     // Layer 2: React state check
     if (submitting) {
-      console.log('[PO Create] Blocked by state guard');
       return;
     }
     
     // Generate idempotency key from form data
     const submitKey = JSON.stringify({
       vendorId: formData.vendorId,
-      items: formData.items.map(i => ({ id: i.itemId, qty: i.quantity })),
+      items: formData.items.map(i => ({ id: i.itemId, vendorId: i.vendorId, qty: i.quantity })),
       total: formData.items.reduce((s, i) => s + i.totalPrice, 0),
       status: poStatus,
       ts: Date.now(), // Still allow if 5+ seconds passed
@@ -936,7 +1225,6 @@ function PurchaseOrdersContent() {
     
     // Layer 3: Idempotency check (prevent exact duplicate within 5 seconds)
     if (lastSubmitKey && Math.abs(Date.now() - parseInt(lastSubmitKey.split('"ts":')[1]?.split(',')[0] || '0')) < 5000) {
-      console.log('[PO Create] Blocked by idempotency (same data within 5s)');
       setAlertMessage({ type: 'error', message: 'Duplicate submission blocked. Please wait a moment.' });
       return;
     }
@@ -960,16 +1248,40 @@ function PurchaseOrdersContent() {
         return;
       }
 
-      if (poStatus !== 'DRAFT' && (!Array.isArray(formData.attachments) || formData.attachments.length === 0)) {
-        setAlertMessage({ type: 'error', message: 'Vendor quotation attachment is mandatory for Purchase Order.' });
+      // A PO has one commercial line per item.  Older PR/RFQ data can contain
+      // repeated rows for the same master item; never silently multiply the
+      // ordered quantity or value when converting that data into a PO.
+      const duplicatePoItems = new Set<string>();
+      const seenPoItems = new Set<string>();
+      for (const line of formData.items) {
+        const key = String(line.itemId || line.itemCode || '').trim().toLowerCase();
+        if (!key) continue;
+        if (seenPoItems.has(key)) duplicatePoItems.add(key);
+        seenPoItems.add(key);
+      }
+      if (duplicatePoItems.size > 0) {
+        const labels = formData.items
+          .filter((line) => duplicatePoItems.has(String(line.itemId || line.itemCode || '').trim().toLowerCase()))
+          .map((line) => line.itemCode || line.itemName || 'item')
+          .filter((label, index, all) => all.indexOf(label) === index);
+        setAlertMessage({
+          type: 'error',
+          message: `Duplicate PO item line detected: ${labels.join(', ')}. Keep one line per item and choose one price before creating the PO.`,
+        });
         setSubmitting(false);
         return;
       }
-      
-      // Check if all items have vendor selected
-      const itemsWithoutVendor = formData.items.filter(item => !String(item.vendorId || formData.vendorId || '').trim());
+
+      // For PR-linked PO creation, each PR line's selected/preferred vendor is the
+      // authority. Do not silently collapse multi-supplier PRs into the header
+      // vendor; SAP-style conversion creates one PO per line vendor.
+      const itemsWithoutVendor = formData.items.filter(item => {
+        const lineVendorId = String(item.vendorId || '').trim();
+        const headerVendorId = String(formData.vendorId || '').trim();
+        return currentPrId ? !lineVendorId : !lineVendorId && !headerVendorId;
+      });
       if (itemsWithoutVendor.length > 0) {
-        setAlertMessage({ type: 'error', message: 'Please select vendor for all items' });
+        setAlertMessage({ type: 'error', message: 'Please select vendor for all PR line items before creating PO.' });
         setSubmitting(false);
         return;
       }
@@ -997,10 +1309,10 @@ function PurchaseOrdersContent() {
         })
         .filter((x) => !Number.isFinite(x.price) || x.price <= 0);
 
-      if (itemsWithInvalidPrice.length > 0) {
+      if (poStatus !== 'DRAFT' && itemsWithInvalidPrice.length > 0) {
         setAlertMessage({
           type: 'error',
-          message: `Unit Price cannot be 0. Please enter a valid price for: ${itemsWithInvalidPrice.map((x) => x.label).join(', ')}`,
+          message: `Unit Price is required before submitting for approval. Please enter a valid price for: ${itemsWithInvalidPrice.map((x) => x.label).join(', ')}`,
         });
         setPendingItemIndex(itemsWithInvalidPrice[0].index);
         setSubmitting(false);
@@ -1083,10 +1395,12 @@ function PurchaseOrdersContent() {
         }
       }
 
-      
+      const poItemsWithResolvedDrawings = await prepareItemsWithResolvedDrawings(formData.items);
+      setFormData((prev) => ({ ...prev, items: poItemsWithResolvedDrawings }));
+
       // Group items by vendor
-      const itemsByVendor = formData.items.reduce((acc, item) => {
-        const vendorKey = String(item.vendorId || formData.vendorId || '').trim();
+      const itemsByVendor = poItemsWithResolvedDrawings.reduce((acc, item) => {
+        const vendorKey = String(currentPrId ? item.vendorId : (item.vendorId || formData.vendorId) || '').trim();
         if (!vendorKey) return acc;
         if (!acc[vendorKey]) {
           acc[vendorKey] = [];
@@ -1096,8 +1410,48 @@ function PurchaseOrdersContent() {
       }, {} as Record<string, PurchaseOrderFormItem[]>);
 
       const vendorIds = Object.keys(itemsByVendor);
+      if (vendorIds.length === 0) {
+        setAlertMessage({ type: 'error', message: 'No supplier grouping found. Please select a vendor for each line item.' });
+        setSubmitting(false);
+        return;
+      }
+
+      const supplierWiseSplit = Boolean(currentPrId && vendorIds.length > 1);
+      if (poStatus !== 'DRAFT') {
+        if (supplierWiseSplit) {
+          const missingQuotationVendors = vendorIds.filter((vendorId) => {
+            const rfq = rfqHistory.find((entry: any) =>
+              String(resolveVendorIdFromAny(entry)) === String(vendorId) &&
+              ['RECEIVED', 'RESPONDED'].includes(String(entry?.status || '').toUpperCase()),
+            );
+            const rfqAttachments = Array.isArray(rfq?.response_attachments) ? rfq.response_attachments : [];
+            return (supplierAttachments[vendorId] || []).length === 0 && rfqAttachments.length === 0;
+          });
+          if (missingQuotationVendors.length > 0) {
+            setAlertMessage({
+              type: 'error',
+              message: `Vendor quotation attachment is mandatory for every supplier-wise PO. Missing: ${missingQuotationVendors.map(getVendorDisplayName).join(', ')}`,
+            });
+            setSubmitting(false);
+            return;
+          }
+        } else {
+          const selectedVendorId = vendorIds[0];
+          const linkedRfq = rfqHistory.find((entry: any) =>
+            String(resolveVendorIdFromAny(entry)) === String(selectedVendorId) &&
+            ['RECEIVED', 'RESPONDED'].includes(String(entry?.status || '').toUpperCase()),
+          );
+          const linkedRfqAttachments = Array.isArray(linkedRfq?.response_attachments) ? linkedRfq.response_attachments : [];
+          if ((!Array.isArray(formData.attachments) || formData.attachments.length === 0) && linkedRfqAttachments.length === 0) {
+          setAlertMessage({ type: 'error', message: 'Vendor quotation attachment is mandatory for Purchase Order.' });
+          setSubmitting(false);
+          return;
+          }
+        }
+      }
 
       const createdPOs = [];
+      const createdPORows: PurchaseOrder[] = [];
       
       // Create a PO for each vendor
       for (const vendorId of vendorIds) {
@@ -1140,6 +1494,19 @@ function PurchaseOrdersContent() {
         const customsDuty = parseFloat(formData.customsDuty?.toString() || '0');
         const otherCharges = parseFloat(formData.otherCharges?.toString() || '0');
         const grandTotal = itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
+        const linkedRfq = rfqHistory.find((entry: any) =>
+          String(resolveVendorIdFromAny(entry)) === String(vendorId) &&
+          ['RECEIVED', 'RESPONDED'].includes(String(entry?.status || '').toUpperCase()),
+        );
+        const linkedRfqAttachments: POAttachment[] = Array.isArray(linkedRfq?.response_attachments)
+          ? linkedRfq.response_attachments
+              .map((attachment: any) => ({ url: String(attachment?.url || '').trim(), name: String(attachment?.name || '').trim() || 'Vendor quotation' }))
+              .filter((attachment: POAttachment) => attachment.url)
+          : [];
+        const manuallyAttached = supplierWiseSplit ? (supplierAttachments[vendorId] || []) : (formData.attachments || []);
+        const poAttachments = [...manuallyAttached, ...linkedRfqAttachments].filter((attachment, index, all) =>
+          all.findIndex((candidate) => candidate.url === attachment.url) === index,
+        );
 
         const payload = {
           prId: currentPrId,
@@ -1154,6 +1521,7 @@ function PurchaseOrdersContent() {
           deliveryContactPhone: formData.deliveryContactPhone || undefined,
           remarks: formData.notes,
           quotationRef: formData.quotationRef || undefined,
+          projectId: formData.projectId || undefined,
           projectName: formData.projectName || undefined,
           freightTerms: formData.freightTerms || undefined,
           freightAmount,
@@ -1162,8 +1530,12 @@ function PurchaseOrdersContent() {
           freightGstAmount,
           customsDuty: customsDuty,
           otherCharges: otherCharges,
+          isImportPurchase: formData.isImportPurchase,
+          supplierCurrency: formData.supplierCurrency || 'INR',
+          customsExchangeRate: formData.customsExchangeRate || 0,
+          importNotes: formData.importNotes || undefined,
           status: poStatus,
-          attachments: formData.attachments || [],
+          attachments: poAttachments,
           totalAmount: grandTotal,
           grandTotal,
           items: transformedItems,
@@ -1183,6 +1555,7 @@ function PurchaseOrdersContent() {
           const data = await response.json();
           const displayNum = data.po_number?.startsWith('DRAFT-') ? 'Draft' : (data.po_number || data.id);
           createdPOs.push(displayNum);
+          createdPORows.push(data);
         } else {
           const errorData = await response.json();
           throw new Error(`Failed to create PO for vendor: ${errorData.message || 'Unknown error'}`);
@@ -1190,11 +1563,18 @@ function PurchaseOrdersContent() {
       }
 
       setShowModal(false);
-      fetchOrders();
+      setCurrentPage(1);
+      if (createdPORows.length > 0) {
+        setOrders((current) => {
+          const newIds = new Set(createdPORows.map((po) => po.id));
+          return [...createdPORows, ...current.filter((po) => !newIds.has(po.id))];
+        });
+      }
+      await fetchOrders({ silent: true });
       resetForm();
       setAlertMessage({ 
         type: 'success', 
-        message: `Successfully created ${createdPOs.length} Purchase Order(s): ${createdPOs.join(', ')}` 
+        message: `Successfully created ${createdPOs.length} supplier-wise Purchase Order(s): ${createdPOs.join(', ')}` 
       });
     } catch (error: any) {
       setAlertMessage({ type: 'error', message: error.message || 'Failed to create PO. Please try again.' });
@@ -1216,10 +1596,20 @@ function PurchaseOrdersContent() {
       return;
     }
 
-    // Check if all items have vendor selected
-    const itemsWithoutVendor = formData.items.filter(item => !String(item.vendorId || formData.vendorId || '').trim());
+    // PR-linked conversion must keep line-level vendors intact so multi-supplier
+    // requisitions generate separate POs automatically.
+    const itemsWithoutVendor = formData.items.filter(item => {
+      const lineVendorId = String(item.vendorId || '').trim();
+      const headerVendorId = String(formData.vendorId || '').trim();
+      return currentPrId ? !lineVendorId : !lineVendorId && !headerVendorId;
+    });
     if (itemsWithoutVendor.length > 0) {
-      setAlertMessage({ type: 'error', message: 'Please select vendor for all items' });
+      setAlertMessage({ type: 'error', message: 'Please select vendor for all PR line items before creating PO.' });
+      return;
+    }
+
+    if (currentPrId) {
+      await actuallyCreatePO(poStatus);
       return;
     }
 
@@ -1322,7 +1712,10 @@ function PurchaseOrdersContent() {
         return;
       }
 
-      const itemsSubtotal = formData.items.reduce((sum, item) => sum + item.totalPrice, 0);
+      const poItemsWithResolvedDrawings = await prepareItemsWithResolvedDrawings(formData.items);
+      setFormData((prev) => ({ ...prev, items: poItemsWithResolvedDrawings }));
+
+      const itemsSubtotal = poItemsWithResolvedDrawings.reduce((sum, item) => sum + item.totalPrice, 0);
       const freightAmount = parseFloat(formData.freightAmount?.toString() || '0');
       const freightGstApplicable = formData.freightGstApplicable === true && freightAmount > 0;
       const freightGstPercent = freightGstApplicable ? parseFloat(formData.freightGstPercent?.toString() || '0') : 0;
@@ -1343,6 +1736,7 @@ function PurchaseOrdersContent() {
         deliveryContactPhone: formData.deliveryContactPhone || undefined,
         remarks: formData.notes,
         quotationRef: formData.quotationRef || undefined,
+        projectId: formData.projectId || undefined,
         projectName: formData.projectName || undefined,
         freightTerms: formData.freightTerms || undefined,
         freightAmount,
@@ -1351,16 +1745,24 @@ function PurchaseOrdersContent() {
         freightGstAmount,
         customsDuty,
         otherCharges,
+        isImportPurchase: formData.isImportPurchase,
+        supplierCurrency: formData.supplierCurrency || 'INR',
+        customsExchangeRate: formData.customsExchangeRate || 0,
+        importNotes: formData.importNotes || undefined,
         ...(Array.isArray(formData.attachments) && formData.attachments.length > 0
           ? { attachments: formData.attachments }
           : {}),
         totalAmount: grandTotal,
         grandTotal,
-        items: formData.items.map((item) => ({
+        items: poItemsWithResolvedDrawings.map((item) => ({
+          poItemId: (item as any).poItemId,
+          id: (item as any).poItemId,
           prItemId: (item as any).prItemId,
           itemId: item.itemId || items.find((i) => i.code === item.itemCode)?.id,
           itemCode: item.itemCode || '',
           itemName: item.itemName || '',
+          description: (item as any).description || item.specifications || '',
+          uom: (item as any).uom || '',
           orderedQty: item.quantity,
           rate: item.unitPrice,
           discountPercent: item.discount || 0,
@@ -1390,7 +1792,8 @@ function PurchaseOrdersContent() {
 
       setAlertMessage({ type: 'success', message: 'Purchase Order updated successfully' });
       setShowModal(false);
-      fetchOrders();
+      setCurrentPage(1);
+      await fetchOrders({ silent: true });
       resetForm();
     } catch (error: any) {
       setAlertMessage({ type: 'error', message: error.message || 'Failed to update PO' });
@@ -1400,6 +1803,12 @@ function PurchaseOrdersContent() {
   };
 
   const handleAddItem = () => {
+    if (String(currentPrDepartment || '').trim().toUpperCase() === 'R&D') {
+      setQuickCreateItemIndex(null);
+      setShowRndTemporaryItem(true);
+      return;
+    }
+
     // Validate last row before adding new one
     if (formData.items.length > 0) {
       const lastItem = formData.items[formData.items.length - 1];
@@ -1435,48 +1844,12 @@ function PurchaseOrdersContent() {
     }));
   };
 
-  const handleQuickCreateItem = async () => {
-    const { code, name, category, uom, hsn_code, description, reorder_level, standard_cost } = quickCreateItemForm;
-    if (!code.trim() || !name.trim() || !category || !uom) {
-      alert('Code, Name, Category and UOM are required');
-      return;
-    }
-    setQuickCreateItemSaving(true);
-    try {
-      const payload: any = {
-        code: code.trim(),
-        name: name.trim(),
-        category: normalizeItemCategory(category),
-        uom,
-        description: description.trim() || null,
-        hsn_code: hsn_code.replace(/[^0-9]/g, '') || null,
-        reorder_level: reorder_level ? parseInt(reorder_level) : null,
-        standard_cost: standard_cost ? parseFloat(standard_cost) : null,
-        is_active: true,
-      };
-      const newItem = await apiClient.post('/inventory/items', payload);
-      // Refresh items list
-      await fetchItems();
-      // Select the new item in the PO row if we know which row
-      if (quickCreateItemIndex !== null && newItem?.id) {
-        handleUpdateItem(quickCreateItemIndex, 'itemId', newItem.id);
-      }
-      setShowQuickCreateItem(false);
-      setQuickCreateItemForm({ code: '', name: '', category: 'RAW_MATERIAL', uom: 'NOS', hsn_code: '', description: '', reorder_level: '', standard_cost: '' });
-      setQuickCreateItemIndex(null);
-    } catch (err: any) {
-      alert(err.message || 'Failed to create item');
-    } finally {
-      setQuickCreateItemSaving(false);
-    }
-  };
-
-  const handleUploadPOAttachment = async (files: FileList | null) => {
+  const handleUploadPOAttachment = async (files: FileList | null, supplierVendorId?: string) => {
     if (!files || files.length === 0) return;
     try {
       setPoAttachmentUploading(true);
       const token = localStorage.getItem('accessToken');
-      const uploaded: Array<{ url: string; name: string }> = [];
+      const uploaded: POAttachment[] = [];
       for (const file of Array.from(files)) {
         const fd = new FormData();
         fd.append('file', file);
@@ -1496,7 +1869,14 @@ function PurchaseOrdersContent() {
         if (!url) throw new Error('Upload failed: no URL returned');
         uploaded.push({ url, name: file.name });
       }
-      setFormData((prev) => ({ ...prev, attachments: [...prev.attachments, ...uploaded] }));
+      if (supplierVendorId) {
+        setSupplierAttachments((prev) => ({
+          ...prev,
+          [supplierVendorId]: [...(prev[supplierVendorId] || []), ...uploaded],
+        }));
+      } else {
+        setFormData((prev) => ({ ...prev, attachments: [...prev.attachments, ...uploaded] }));
+      }
     } catch (err: any) {
       alert(`Failed to upload attachment: ${err?.message || 'Unknown error'}`);
     } finally {
@@ -1504,10 +1884,10 @@ function PurchaseOrdersContent() {
     }
   };
 
-  const fetchDrawingOptionsForItem = async (itemId: string): Promise<DrawingOption[]> => {
+  const fetchDrawingOptionsForItem = async (itemId: string, options?: { force?: boolean }): Promise<DrawingOption[]> => {
     const normalizedItemId = String(itemId || '').trim();
     if (!normalizedItemId) return [];
-    if (drawingOptionsByItemId[normalizedItemId]) return drawingOptionsByItemId[normalizedItemId];
+    if (!options?.force && drawingOptionsByItemId[normalizedItemId]) return drawingOptionsByItemId[normalizedItemId];
     if (drawingOptionsLoading[normalizedItemId]) return [];
 
     setDrawingOptionsLoading((prev) => ({ ...prev, [normalizedItemId]: true }));
@@ -1530,6 +1910,34 @@ function PurchaseOrdersContent() {
   const getLatestDrawingId = (itemId: string, fallbackDrawings?: DrawingOption[]) => {
     const drawings = fallbackDrawings || drawingOptionsByItemId[itemId] || [];
     return drawings.find((drawing) => drawing.is_active)?.id || drawings[0]?.id || '';
+  };
+
+  const prepareItemsWithResolvedDrawings = async (
+    sourceItems: PurchaseOrderFormItem[],
+  ): Promise<PurchaseOrderFormItem[]> => {
+    const prepared: PurchaseOrderFormItem[] = [];
+
+    for (const row of sourceItems || []) {
+      const masterItem = items.find((i) => i.id === row.itemId || i.code === row.itemCode);
+      const resolvedItemId = masterItem?.id || row.itemId || '';
+      const drawingRequired = String(masterItem?.drawing_required || '').toUpperCase();
+      const includeDrawing = drawingRequired === 'COMPULSORY' || row.includeDrawing === true;
+      let selectedDrawingId = row.selectedDrawingId || '';
+
+      if (includeDrawing && resolvedItemId && !selectedDrawingId) {
+        const drawings = await fetchDrawingOptionsForItem(resolvedItemId);
+        selectedDrawingId = getLatestDrawingId(resolvedItemId, drawings);
+      }
+
+      prepared.push({
+        ...row,
+        itemId: resolvedItemId || row.itemId,
+        includeDrawing,
+        selectedDrawingId,
+      });
+    }
+
+    return prepared;
   };
 
   const handleUpdateItem = async (index: number, field: string, value: any) => {
@@ -1650,6 +2058,9 @@ function PurchaseOrdersContent() {
     // Recalculate total price (including discount)
     if (field === 'quantity' || field === 'unitPrice' || field === 'taxRate' || field === 'discount' || field === 'itemId' || field === 'vendorId') {
       const item = updatedItems[index];
+      if (formData.isImportPurchase || String(formData.supplierCurrency || 'INR').toUpperCase() !== 'INR') {
+        item.taxRate = 0;
+      }
       item.totalPrice = calcPoLineTotal(item.quantity, item.unitPrice, item.discount || 0, item.taxRate);
     }
 
@@ -1671,14 +2082,21 @@ function PurchaseOrdersContent() {
   // Helper function to set vendor for all items, and pull RFQ prices if available
   const handleSetAllVendors = async (vendorId: string) => {
     let rfqPriceByPrItemId: Record<string, number> = {};
+    let rfqLeadTimeByPrItemId: Record<string, number> = {};
     if (currentPrId && vendorId) {
       try {
-        const rfqs: any[] = await apiClient.get(`/purchase/requisitions/${currentPrId}/rfqs`);
-        const vendorRfq = (rfqs || []).find((r: any) => r.vendor_id === vendorId && (r.status === 'RECEIVED' || r.status === 'RESPONDED'));
+        const rfqs: any[] = rfqHistory.length > 0 ? rfqHistory : await apiClient.get(`/purchase/requisitions/${currentPrId}/rfqs`);
+        const vendorRfq = (rfqs || []).find((r: any) =>
+          String(resolveVendorIdFromAny(r)) === String(vendorId) &&
+          ['RECEIVED', 'RESPONDED'].includes(String(r.status || '').toUpperCase())
+        );
         if (vendorRfq && Array.isArray(vendorRfq.rfq_items)) {
           vendorRfq.rfq_items.forEach((ri: any) => {
             if (ri.pr_item_id && ri.vendor_quoted_price != null) {
               rfqPriceByPrItemId[String(ri.pr_item_id)] = Number(ri.vendor_quoted_price);
+            }
+            if (ri.pr_item_id && ri.vendor_quoted_lead_time != null) {
+              rfqLeadTimeByPrItemId[String(ri.pr_item_id)] = Number(ri.vendor_quoted_lead_time);
             }
           });
         }
@@ -1689,12 +2107,14 @@ function PurchaseOrdersContent() {
       vendorId,
       items: prev.items.map(item => {
         const rfqPrice = item.prItemId ? rfqPriceByPrItemId[String(item.prItemId)] : undefined;
+        const rfqLeadTime = item.prItemId ? rfqLeadTimeByPrItemId[String(item.prItemId)] : undefined;
         const effectivePrice = rfqPrice != null ? rfqPrice : item.unitPrice;
         const totalPrice = calcPoLineTotal(item.quantity, effectivePrice, item.discount || 0, item.taxRate);
         return {
           ...item,
           vendorId,
           ...(rfqPrice != null ? { unitPrice: rfqPrice } : {}),
+          ...(rfqLeadTime != null ? { deliveryTerms: `${rfqLeadTime} days` } : {}),
           totalPrice,
         };
       }),
@@ -1702,6 +2122,117 @@ function PurchaseOrdersContent() {
     if (Object.keys(rfqPriceByPrItemId).length > 0) {
       setAlertMessage({ type: 'info', message: `RFQ quoted prices loaded for ${Object.keys(rfqPriceByPrItemId).length} item(s) from vendor response.` });
     }
+  };
+
+  const handleRndTemporaryItemCreated = async (item: RndTemporaryItem) => {
+    if (String(currentPrDepartment || '').trim().toUpperCase() !== 'R&D') {
+      setAlertMessage({
+        type: 'error',
+        message: 'Temporary items can only be added to an R&D purchase order.',
+      });
+      setShowRndTemporaryItem(false);
+      setQuickCreateItemIndex(null);
+      return;
+    }
+    const itemId = String(item.id || '');
+    const code = String(item.code || '');
+    const name = String(item.name || code);
+    const uom = String(item.uom || 'NOS');
+    const vendorId = String(item.preferred_vendor_id || '');
+    const vendorName = String(
+      item.preferred_vendor_name
+      || vendors.find((vendor) => String(vendor.id) === vendorId)?.name
+      || '',
+    );
+    const unitPrice = Number(item.preferred_price ?? item.standard_cost ?? 0) || 0;
+    const subtotal = unitPrice;
+    const newLine = {
+      prItemId: undefined,
+      itemId,
+      itemCode: code,
+      itemName: name,
+      uom,
+      vendorId,
+      vendorName,
+      quantity: 1,
+      unitPrice,
+      discount: 0,
+      taxRate: 18,
+      totalPrice: subtotal + (subtotal * 0.18),
+      specifications: String(item.description || 'Temporary R&D procurement item'),
+      paymentTerms: '',
+      deliveryTerms: '',
+      includeDrawing: false,
+      selectedDrawingId: '',
+    };
+
+    setItems((current) => [{
+      id: itemId,
+      code,
+      name,
+      uom,
+      category: 'RAW_MATERIAL',
+      standard_cost: unitPrice,
+      drawing_required: 'NOT_REQUIRED',
+      oem_part_no: code,
+      oem_name: item.oem_name || undefined,
+    }, ...current.filter((entry) => entry.id !== itemId)]);
+    if (vendorId && vendorName) {
+      setVendors((current) => current.some((vendor) => String(vendor.id) === vendorId)
+        ? current
+        : [...current, { id: vendorId, name: vendorName, contact_person: '' }].sort((a, b) => a.name.localeCompare(b.name)));
+    }
+    setFormData((current) => {
+      const targetIndex = quickCreateItemIndex;
+      const nextItems = targetIndex !== null && targetIndex >= 0 && targetIndex < current.items.length
+        ? current.items.map((line, index) => index === targetIndex ? { ...line, ...newLine } : line)
+        : [...current.items, newLine];
+      return {
+        ...current,
+        vendorId: current.vendorId || vendorId,
+        items: nextItems,
+      };
+    });
+    setQuickCreateItemIndex(null);
+  };
+
+  const handleApplyRfqQuote = (rfq: any) => {
+    const vendorId = resolveVendorIdFromAny(rfq);
+    if (!vendorId) {
+      setAlertMessage({ type: 'error', message: 'This RFQ response has no linked vendor.' });
+      return;
+    }
+
+    const rfqItems = Array.isArray(rfq?.rfq_items) ? rfq.rfq_items : [];
+    const quotedByPrItemId = new Map<string, any>(
+      rfqItems
+        .filter((item: any) => item?.pr_item_id)
+        .map((item: any) => [String(item.pr_item_id), item]),
+    );
+
+    setFormData((prev) => ({
+      ...prev,
+      vendorId,
+      quotationRef: rfq?.rfq_number || prev.quotationRef,
+      items: prev.items.map((item) => {
+        const quote = item.prItemId ? quotedByPrItemId.get(String(item.prItemId)) : null;
+        const quotedPrice = quote?.vendor_quoted_price == null ? null : Number(quote.vendor_quoted_price);
+        const quotedLeadTime = quote?.vendor_quoted_lead_time == null ? null : Number(quote.vendor_quoted_lead_time);
+        const unitPrice = Number.isFinite(quotedPrice) && quotedPrice !== null ? quotedPrice : item.unitPrice;
+        return {
+          ...item,
+          vendorId,
+          unitPrice,
+          deliveryTerms: Number.isFinite(quotedLeadTime) && quotedLeadTime !== null ? `${quotedLeadTime} days` : item.deliveryTerms,
+          totalPrice: calcPoLineTotal(item.quantity, unitPrice, item.discount || 0, item.taxRate),
+        };
+      }),
+    }));
+
+    setAlertMessage({
+      type: 'info',
+      message: `Applied RFQ response from ${rfq?.vendor?.name || 'selected vendor'} to the PO lines. You can still edit rates or choose another vendor before saving.`,
+    });
   };
 
   const resetForm = () => {
@@ -1717,6 +2248,7 @@ function PurchaseOrdersContent() {
       deliveryContactPhone: '',
       notes: '',
       quotationRef: '',
+      projectId: '',
       projectName: '',
       freightTerms: '',
       freightAmount: 0,
@@ -1724,6 +2256,10 @@ function PurchaseOrdersContent() {
       freightGstPercent: 0,
       customsDuty: 0,
       otherCharges: 0,
+      isImportPurchase: false,
+      supplierCurrency: 'INR',
+      customsExchangeRate: 0,
+      importNotes: '',
       trackingNumber: '',
       shippedDate: '',
       estimatedDeliveryDate: '',
@@ -1734,6 +2270,10 @@ function PurchaseOrdersContent() {
       items: [],
     });
     setCurrentPrId(null); // Clear PR ID on form reset
+    setCurrentPrDepartment('');
+    setRfqHistory([]);
+    setRfqRespondedVendorIds([]);
+    setSupplierAttachments({});
     setEditingPOId(null); // Clear editing state
     setEditingMode('create');
   };
@@ -1777,13 +2317,15 @@ function PurchaseOrdersContent() {
   const fetchTrailData = async (po: PurchaseOrder) => {
     try {
       setTrailLoading(true);
-      setTrailPO(po);
+      const detailedPO = await apiClient.get<PurchaseOrder>(`/purchase/orders/${po.id}`).catch(() => po);
+      const activePO = detailedPO || po;
+      setTrailPO(activePO);
       
       // Fetch related data in parallel
       const [grnsData, poSettlementData, vendorBalanceData] = await Promise.all([
-        apiClient.get<any[]>(`/purchase/grn?poId=${po.id}`).catch(() => []),
-        apiClient.get<any>(`/purchase/debit-notes/po/${po.id}/settlement`).catch(() => null),
-        po.vendor?.id ? apiClient.get<any>(`/purchase/debit-notes/vendor/${po.vendor.id}/advance-balance`).catch(() => null) : Promise.resolve(null),
+        apiClient.get<any[]>(`/purchase/grn?poId=${activePO.id}`).catch(() => []),
+        apiClient.get<any>(`/purchase/debit-notes/po/${activePO.id}/settlement`).catch(() => null),
+        activePO.vendor?.id ? apiClient.get<any>(`/purchase/debit-notes/vendor/${activePO.vendor.id}/advance-balance`).catch(() => null) : Promise.resolve(null),
       ]);
 
       const poAdvances = poSettlementData?.advances || [];
@@ -1791,8 +2333,8 @@ function PurchaseOrdersContent() {
         (poSettlementData?.invoices || []).map((invoice: any) => [invoice.grn_id, invoice]),
       );
       const grnIds = (grnsData || []).map((grn: any) => grn.id).filter(Boolean);
-      const debitNotesData = po.vendor?.id
-        ? await apiClient.get<any[]>(`/purchase/debit-notes?vendor_id=${po.vendor.id}`).catch(() => [])
+      const debitNotesData = activePO.vendor?.id
+        ? await apiClient.get<any[]>(`/purchase/debit-notes?vendor_id=${activePO.vendor.id}`).catch(() => [])
         : [];
       const poDebitNotes = (debitNotesData || []).filter((note: any) => grnIds.includes(note.grn_id || note.grn?.id));
 
@@ -1875,7 +2417,7 @@ function PurchaseOrdersContent() {
         );
         return summary;
       }, {
-        poValue: Number((po as any).grand_total ?? po.total_amount ?? 0),
+        poValue: Number((activePO as any).grand_total ?? activePO.total_amount ?? 0),
         invoiced: 0,
         paid: 0,
         tds: 0,
@@ -1903,8 +2445,8 @@ function PurchaseOrdersContent() {
       };
 
       setTrailData({
-        po,
-        pr: po.pr,
+        po: activePO,
+        pr: activePO.pr,
         grns: grnsWithPayments,
         advances: poAdvances,
         debitNotes: poDebitNotes,
@@ -1958,11 +2500,17 @@ function PurchaseOrdersContent() {
   const handleEditDetails = async (poId: string, mode: 'edit' | 'tracking' = 'edit') => {
     try {
       setCurrentPrId(null);
+      setCurrentPrDepartment('');
+      setSupplierAttachments({});
       setPendingItemIndex(null);
 
       // Ensure item options are loaded so SearchableSelect can render the selected label
       if (items.length === 0) {
         await fetchItems();
+      }
+      let vendorOptions = vendors;
+      if (vendorOptions.length === 0) {
+        vendorOptions = await fetchVendors();
       }
 
       const token = localStorage.getItem('accessToken');
@@ -1970,11 +2518,29 @@ function PurchaseOrdersContent() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json();
+      const linkedPrId = String(data?.pr_id || data?.prId || data?.pr?.id || '').trim();
+      const linkedPrDepartment = String(data?.pr?.department || data?.pr_department || '').trim();
+      setCurrentPrId(linkedPrId || null);
+      setCurrentPrDepartment(linkedPrDepartment);
 
-      const resolvedVendorId = String(data?.vendor_id || data?.vendorId || data?.vendor?.id || data?.vendor?.vendor_id || '');
+      const directVendorId = String(data?.vendor_id || data?.vendorId || data?.vendor?.id || data?.vendor?.vendor_id || '').trim();
+      const poVendorName = String(data?.vendor?.name || data?.vendor_name || '').trim();
+      const resolvedVendorId = directVendorId || String(
+        vendorOptions.find((vendor) => String(vendor.name || '').trim().toLowerCase() === poVendorName.toLowerCase())?.id || ''
+      ).trim();
+      if (resolvedVendorId && poVendorName && !vendorOptions.some((vendor) => String(vendor.id) === resolvedVendorId)) {
+        const currentPoVendor = {
+          id: resolvedVendorId,
+          name: poVendorName,
+          contact_person: data?.vendor?.contact_person || '',
+        };
+        vendorOptions = [...vendorOptions, currentPoVendor].sort((a, b) => a.name.localeCompare(b.name));
+        setVendors(vendorOptions);
+      }
       
       // Populate form with PO data for editing
       const editItems = data.purchase_order_items?.map((item: any) => ({
+        poItemId: item.id || '',
         itemCode: item.item_code || item.item?.code || '',
         itemId: (() => {
           const direct = item.item_id || item.itemId || item.item?.id;
@@ -1985,6 +2551,8 @@ function PurchaseOrdersContent() {
           return match?.id || '';
         })(),
         itemName: item.item_name || item.item?.name || '',
+        description: item.description || item.item?.description || '',
+        uom: item.uom || item.item?.uom || 'NUMBER',
         vendorId: resolvedVendorId, // Use PO's vendor for all items
         quantity: item.ordered_qty || 0,
         unitPrice: item.rate || 0,
@@ -2010,6 +2578,7 @@ function PurchaseOrdersContent() {
         deliveryContactPhone: data.delivery_contact_phone || '',
         notes: data.remarks || '',
         quotationRef: data.quotation_ref || '',
+        projectId: data.project_id || '',
         projectName: (() => {
           try {
             const tc = data.terms_and_conditions;
@@ -2052,6 +2621,38 @@ function PurchaseOrdersContent() {
         })(),
         customsDuty: data.customs_duty || 0,
         otherCharges: data.other_charges || 0,
+        isImportPurchase: (() => {
+          try {
+            const tc = data.terms_and_conditions;
+            if (tc && typeof tc === 'string' && tc.startsWith('{')) return JSON.parse(tc).isImportPurchase === true;
+            if (tc && typeof tc === 'object') return (tc as any).isImportPurchase === true;
+          } catch {}
+          return false;
+        })(),
+        supplierCurrency: (() => {
+          try {
+            const tc = data.terms_and_conditions;
+            if (tc && typeof tc === 'string' && tc.startsWith('{')) return JSON.parse(tc).supplierCurrency || 'INR';
+            if (tc && typeof tc === 'object') return (tc as any).supplierCurrency || 'INR';
+          } catch {}
+          return 'INR';
+        })(),
+        customsExchangeRate: (() => {
+          try {
+            const tc = data.terms_and_conditions;
+            if (tc && typeof tc === 'string' && tc.startsWith('{')) return Number(JSON.parse(tc).customsExchangeRate || 0);
+            if (tc && typeof tc === 'object') return Number((tc as any).customsExchangeRate || 0);
+          } catch {}
+          return 0;
+        })(),
+        importNotes: (() => {
+          try {
+            const tc = data.terms_and_conditions;
+            if (tc && typeof tc === 'string' && tc.startsWith('{')) return JSON.parse(tc).importNotes || '';
+            if (tc && typeof tc === 'object') return (tc as any).importNotes || '';
+          } catch {}
+          return '';
+        })(),
         trackingNumber: data.tracking_number || '',
         shippedDate: data.shipped_date || '',
         estimatedDeliveryDate: data.estimated_delivery_date || '',
@@ -2071,6 +2672,145 @@ function PurchaseOrdersContent() {
       });
     } catch (error) {
       setAlertMessage({ type: 'error', message: 'Failed to load PO details' });
+    }
+  };
+
+  const removeSupplierAttachment = (supplierVendorId: string, attachmentIndex: number) => {
+    setSupplierAttachments((prev) => ({
+      ...prev,
+      [supplierVendorId]: (prev[supplierVendorId] || []).filter((_, index) => index !== attachmentIndex),
+    }));
+  };
+
+  const readPoTermsValue = (po: any, key: string, fallback: any = '') => {
+    try {
+      const tc = po?.terms_and_conditions;
+      if (tc && typeof tc === 'string' && tc.startsWith('{')) {
+        const parsed = JSON.parse(tc);
+        return parsed?.[key] ?? fallback;
+      }
+      if (tc && typeof tc === 'object') return (tc as any)?.[key] ?? fallback;
+    } catch {}
+    return fallback;
+  };
+
+  const handleClonePO = async (poId: string) => {
+    if (!canCreatePO) return;
+    try {
+      resetForm();
+      setPendingItemIndex(null);
+      setEditingPOId(null);
+      setEditingMode('create');
+      setCurrentPrId(null);
+      setCurrentPrDepartment('');
+      setRfqRespondedVendorIds([]);
+      setRfqHistory([]);
+
+      if (items.length === 0) {
+        await fetchItems();
+      }
+      let vendorOptions = vendors;
+      if (vendorOptions.length === 0) {
+        vendorOptions = await fetchVendors();
+      }
+
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`/api/v1/purchase/orders/${poId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('Failed to load PO for cloning');
+      const data = await response.json();
+
+      const directVendorId = String(data?.vendor_id || data?.vendorId || data?.vendor?.id || data?.vendor?.vendor_id || '').trim();
+      const poVendorName = String(data?.vendor?.name || data?.vendor_name || '').trim();
+      const resolvedVendorId = directVendorId || String(
+        vendorOptions.find((vendor) => String(vendor.name || '').trim().toLowerCase() === poVendorName.toLowerCase())?.id || ''
+      ).trim();
+      if (resolvedVendorId && poVendorName && !vendorOptions.some((vendor) => String(vendor.id) === resolvedVendorId)) {
+        const currentPoVendor = {
+          id: resolvedVendorId,
+          name: poVendorName,
+          contact_person: data?.vendor?.contact_person || '',
+        };
+        vendorOptions = [...vendorOptions, currentPoVendor].sort((a, b) => a.name.localeCompare(b.name));
+        setVendors(vendorOptions);
+      }
+
+      const sourceItems: any[] = Array.isArray(data?.purchase_order_items) ? data.purchase_order_items : [];
+      const clonedItems: PurchaseOrderFormItem[] = sourceItems.map((item: any) => {
+        const quantity = Number(item.ordered_qty || item.quantity || 0) || 0;
+        const unitPrice = Number(item.rate || item.unit_price || 0) || 0;
+        const discount = Number(item.discount_percent ?? item.discountPercent ?? item.discount ?? 0) || 0;
+        const taxRate = Number(item.tax_percent ?? item.taxRate ?? 18) || 0;
+        return {
+          itemCode: item.item_code || item.item?.code || '',
+          itemId: (() => {
+            const direct = item.item_id || item.itemId || item.item?.id;
+            if (direct) return direct;
+            const code = String(item.item_code || item.item?.code || '').trim();
+            if (!code) return '';
+            const match = items.find((i) => String(i.code).trim() === code);
+            return match?.id || '';
+          })(),
+          itemName: item.item_name || item.item?.name || '',
+          vendorId: resolvedVendorId,
+          vendorName: poVendorName,
+          quantity,
+          unitPrice,
+          discount,
+          taxRate,
+          totalPrice: calcPoLineTotal(quantity, unitPrice, discount, taxRate),
+          specifications: item.remarks || '',
+          paymentTerms: item.payment_terms || '',
+          deliveryTerms: item.delivery_terms || '',
+          includeDrawing: item.include_drawing === true || item.includeDrawing === true,
+          selectedDrawingId: item.selected_drawing_id || item.selectedDrawingId || '',
+        };
+      });
+
+      setFormData({
+        vendorId: resolvedVendorId,
+        orderDate: getTodayDateInputValue(),
+        expectedDelivery: data.delivery_date || '',
+        paymentTerms: data.payment_terms || 'NET_30',
+        paymentStatus: 'UNPAID',
+        paymentNotes: '',
+        deliveryAddress: data.delivery_address || '',
+        deliveryContactPerson: data.delivery_contact_person || '',
+        deliveryContactPhone: data.delivery_contact_phone || '',
+        notes: data.remarks ? `Cloned from ${data.po_number || 'source PO'} - ${data.remarks}` : `Cloned from ${data.po_number || 'source PO'}`,
+        quotationRef: data.quotation_ref || '',
+        projectId: data.project_id || '',
+        projectName: readPoTermsValue(data, 'project', data.project_name || ''),
+        freightTerms: readPoTermsValue(data, 'freight', data.freight_terms || ''),
+        freightAmount: Number(readPoTermsValue(data, 'freightAmount', data.freight_amount || 0)) || 0,
+        freightGstApplicable: readPoTermsValue(data, 'freightGstApplicable', data.freight_gst_applicable || false) === true,
+        freightGstPercent: Number(readPoTermsValue(data, 'freightGstPercent', data.freight_gst_percent || 0)) || 0,
+        customsDuty: data.customs_duty || 0,
+        otherCharges: data.other_charges || 0,
+        isImportPurchase: readPoTermsValue(data, 'isImportPurchase', false) === true,
+        supplierCurrency: readPoTermsValue(data, 'supplierCurrency', 'INR') || 'INR',
+        customsExchangeRate: Number(readPoTermsValue(data, 'customsExchangeRate', 0)) || 0,
+        importNotes: readPoTermsValue(data, 'importNotes', ''),
+        trackingNumber: '',
+        shippedDate: '',
+        estimatedDeliveryDate: '',
+        carrierName: '',
+        trackingUrl: '',
+        deliveryStatus: 'PENDING',
+        attachments: Array.isArray(data.attachments) ? data.attachments : [],
+        items: clonedItems,
+      });
+
+      setShowViewModal(false);
+      setSelectedPO(null);
+      setShowModal(true);
+      setAlertMessage({
+        type: 'info',
+        message: `Cloned ${data.po_number || 'PO'} as a new draft. Review quantities, prices, and quotation before saving/submitting.`,
+      });
+    } catch (error: any) {
+      setAlertMessage({ type: 'error', message: error?.message || 'Failed to clone PO' });
     }
   };
 
@@ -2168,6 +2908,11 @@ function PurchaseOrdersContent() {
     return normalized ? `${normalized}.pdf` : 'PO.pdf';
   };
 
+  const resolvePoPdfFilename = (response: Response, poNumber?: string | null) => {
+    const serverFilename = String(response.headers.get('x-document-filename') || '').trim();
+    return serverFilename || buildPoPdfFilename(poNumber);
+  };
+
   const buildPoPdfUrl = (poId: string) => `/api/v1/purchase/orders/${poId}/pdf/world-class?v=${Date.now()}`;
 
   const handleDownloadPDF = async (poId: string, poNumber?: string | null) => {
@@ -2189,7 +2934,7 @@ function PurchaseOrdersContent() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = buildPoPdfFilename(poNumber);
+      a.download = resolvePoPdfFilename(response, poNumber);
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -2224,7 +2969,7 @@ function PurchaseOrdersContent() {
 
       // Create blob from response
       const blob = await response.blob();
-      const filename = buildPoPdfFilename(poNumber);
+      const filename = resolvePoPdfFilename(response, poNumber);
       // Use File (not Blob) so the embedded PDF viewer sees the correct filename
       const pdfFile = new File([blob], filename, { type: 'application/pdf' });
       const pdfUrl = URL.createObjectURL(pdfFile);
@@ -2265,7 +3010,7 @@ function PurchaseOrdersContent() {
       }
 
       const blob = await response.blob();
-      const file = new File([blob], buildPoPdfFilename(poNumber), { type: 'application/pdf' });
+      const file = new File([blob], resolvePoPdfFilename(response, poNumber), { type: 'application/pdf' });
       const url = window.URL.createObjectURL(file);
       const iframe = document.createElement('iframe');
       iframe.style.display = 'none';
@@ -2384,6 +3129,7 @@ function PurchaseOrdersContent() {
       REJECTED: 'bg-red-100 text-red-800',
       PARTIAL: 'bg-yellow-100 text-yellow-800',
       COMPLETED: 'bg-green-100 text-green-800',
+      CLOSED: 'bg-gray-100 text-gray-800',
       CANCELLED: 'bg-red-100 text-red-800',
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
@@ -2404,11 +3150,14 @@ function PurchaseOrdersContent() {
     const paymentStatus = String(order.payment_status || '').toUpperCase();
     const receiptStatus = String((order as any).receipt_status || '').toUpperCase();
 
+    if (receiptStatus === 'FULLY_RECEIVED') return { label: 'Closed', className: 'bg-gray-100 text-gray-800' };
+    if (receiptStatus === 'PARTIALLY_RECEIVED') return { label: 'Partial', className: 'bg-yellow-100 text-yellow-800' };
     if (paymentStatus === 'PAID') return { label: 'Payment Done', className: 'bg-green-100 text-green-800' };
     if (paymentStatus === 'PARTIAL' || paymentStatus === 'PARTIALLY_PAID') return { label: 'Partial Payment', className: 'bg-yellow-100 text-yellow-800' };
-    if (receiptStatus === 'FULLY_RECEIVED' || receiptStatus === 'PARTIALLY_RECEIVED') return { label: 'GRN Done', className: 'bg-[#F5EFE3] text-[#6F4E37]' };
     if (deliveryStatus === 'IN_TRANSIT' || deliveryStatus === 'SHIPPED') return { label: 'Under Transit', className: 'bg-blue-100 text-blue-800' };
     if (status === 'APPROVED') return { label: 'Approved', className: 'bg-green-100 text-green-800' };
+    if (status === 'PARTIAL') return { label: 'Partial', className: 'bg-yellow-100 text-yellow-800' };
+    if (status === 'CLOSED') return { label: 'Closed', className: 'bg-gray-100 text-gray-800' };
     if (status === 'PENDING') return { label: 'Pending for Approval', className: 'bg-orange-100 text-orange-800' };
     if (status === 'DRAFT') return { label: 'Draft', className: 'bg-gray-100 text-gray-800' };
     if (status === 'REJECTED') return { label: 'Rejected', className: 'bg-red-100 text-red-800' };
@@ -2421,6 +3170,53 @@ function PurchaseOrdersContent() {
     if (key === 'PARTIALLY_RECEIVED') return 'bg-yellow-100 text-yellow-800';
     if (key === 'OPEN') return 'bg-gray-100 text-gray-800';
     return 'bg-gray-100 text-gray-800';
+  };
+
+  const buildPoItemSearchText = (order: PurchaseOrder) => {
+    const items = Array.isArray((order as any).purchase_order_items)
+      ? (order as any).purchase_order_items
+      : [];
+
+    return items
+      .map((item: any) => [
+        item?.item_code,
+        item?.itemCode,
+        item?.item_name,
+        item?.itemName,
+        item?.description,
+        item?.line_description,
+        item?.specifications,
+        item?.notes,
+        item?.remarks,
+        item?.oem_part_no,
+        item?.oem_part_number,
+        item?.oem_name,
+        item?.item?.code,
+        item?.item?.name,
+        item?.item?.description,
+        item?.item?.oem_part_no,
+        item?.item?.oem_part_number,
+        item?.item?.oem_name,
+      ].filter(Boolean).join(' '))
+      .join(' ');
+  };
+
+  const handleSendMaterialReminder = async (poId: string) => {
+    const confirmed = await confirmDialog({
+      title: 'Send Material Reminder',
+      message: 'Email the supplier a reminder for the outstanding material and expected delivery date?',
+      confirmLabel: 'Send Reminder',
+    });
+    if (!confirmed) return;
+    try {
+      setPoEmailSending(true);
+      const response = await apiClient.post(`/purchase/orders/${poId}/send-tracking-reminder`, {});
+      setAlertMessage({ type: 'success', message: response?.message || 'Material reminder sent successfully' });
+    } catch (error: any) {
+      setAlertMessage({ type: 'error', message: error?.message || 'Material reminder could not be sent' });
+    } finally {
+      setPoEmailSending(false);
+    }
   };
 
   const ordersTableColumns: Array<ListTableColumn<PurchaseOrder>> = [
@@ -2482,6 +3278,14 @@ function PurchaseOrdersContent() {
       accessor: (o) => o.pr?.pr_number || '-',
       defaultVisible: false,
       minWidth: 140,
+    },
+    {
+      id: 'item_description_search',
+      label: 'Item / Description',
+      accessor: buildPoItemSearchText,
+      searchAccessor: buildPoItemSearchText,
+      defaultVisible: false,
+      minWidth: 220,
     },
     {
       id: 'vendor',
@@ -2594,7 +3398,7 @@ function PurchaseOrdersContent() {
         const otherCharges = o.other_charges || 0;
         const grandTotal = itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
         return (
-          <span className="whitespace-nowrap font-semibold text-gray-900">₹{fmtINR(grandTotal)}</span>
+          <span className="whitespace-nowrap font-semibold text-gray-900">₹{fmtRoundedINR(grandTotal)}</span>
         );
       },
       minWidth: 150,
@@ -2749,15 +3553,28 @@ function PurchaseOrdersContent() {
           >
             <GitBranch className="h-4 w-4" />
           </ErpButton>
-          {canEditPO && ['DRAFT', 'REJECTED', 'APPROVED'].includes(o.status) && (
+          {canCreatePO && (
+            <ErpButton
+              type="button"
+              onClick={() => handleClonePO(o.id)}
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              title="Clone purchase order as new draft"
+              aria-label="Clone purchase order as new draft"
+            >
+              <Copy className="h-4 w-4" />
+            </ErpButton>
+          )}
+          {(canEditPO && ['DRAFT', 'REJECTED', 'APPROVED'].includes(o.status) || canEditPendingPO(o)) && (
           <ErpButton
             type="button"
             onClick={() => handleControlledEdit(o)}
             variant="ghost"
             size="sm"
             className="h-8 w-8 p-0"
-            title={o.status === 'APPROVED' ? 'Create controlled PO change' : 'Edit purchase order'}
-            aria-label={o.status === 'APPROVED' ? 'Create controlled PO change' : 'Edit purchase order'}
+            title={o.status === 'APPROVED' ? 'Create controlled PO change' : o.status === 'PENDING' ? 'Edit and resubmit purchase order' : 'Edit purchase order'}
+            aria-label={o.status === 'APPROVED' ? 'Create controlled PO change' : o.status === 'PENDING' ? 'Edit and resubmit purchase order' : 'Edit purchase order'}
           >
             <Pencil className="h-4 w-4" />
           </ErpButton>
@@ -2848,7 +3665,7 @@ function PurchaseOrdersContent() {
             getRowId={(o) => o.id}
             defaultPageSize={10}
             pageSizeOptions={[10, 25, 50, 100]}
-            searchPlaceholder="Search by PO number, vendor, PR ref, status…"
+            searchPlaceholder="Search PO number, vendor, PR ref, item code, name, description…"
             toolbarRight={
               <div className="flex w-full flex-wrap items-center gap-2 2xl:w-auto 2xl:flex-nowrap">
                 {orders.length > 0 && (
@@ -2989,14 +3806,19 @@ function PurchaseOrdersContent() {
             />
             <div className="flex-1 space-y-5 overflow-y-auto scroll-smooth bg-[#FAF9F6] p-4 md:p-5">
               {/* Order Details */}
-              <section id="po-form-header" className="scroll-mt-4 space-y-4 border-b border-[#E8DCC4] bg-white p-4">
-                <div>
-                  <h3 className="text-base font-semibold text-[#4A3426]">Header Data</h3>
-                  <p className="text-xs text-[#7A6555]">Supplier, reference, dates, delivery location, and commercial context.</p>
+              <section id="po-form-header" className="scroll-mt-4 space-y-2 border border-[#E8DCC4] bg-white p-3 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[#EFE5D2] pb-2">
+                  <div>
+                    <h3 className="text-base font-semibold text-[#4A3426]">Header Data</h3>
+                    <p className="text-xs text-[#7A6555]">Supplier, dates, payment terms, delivery, and commercial references.</p>
+                  </div>
+                  <span className="rounded-full border border-[#D8C8AA] bg-[#FFFCF5] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">
+                    PO Header
+                  </span>
                 </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
                 {editingMode === 'create' && (
-                  <div className="col-span-2">
+                  <div className="md:col-span-2 xl:col-span-5">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">
                       Purchase Requisition (optional)
                     </label>
@@ -3006,8 +3828,11 @@ function PurchaseOrdersContent() {
                         const next = String(value || '').trim();
                         if (!next) {
                           setCurrentPrId(null);
+                          setCurrentPrDepartment('');
                           setRfqRespondedVendorIds([]);
-                          setFormData((prev) => ({ ...prev, items: [] }));
+                          setRfqHistory([]);
+                          setSupplierAttachments({});
+                          setFormData((prev) => ({ ...prev, projectId: '', projectName: '', items: [] }));
                           return;
                         }
                         loadPRData(next);
@@ -3021,27 +3846,182 @@ function PurchaseOrdersContent() {
                     />
                   </div>
                 )}
-                <div>
+                {currentPrId && (
+                  <section className="md:col-span-2 xl:col-span-5 rounded-lg border border-[#D8C8AA] bg-[#FFFCF5]" aria-label="RFQ vendor comparison">
+                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#E8DCC4] px-4 py-3">
+                      <div>
+                        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#4A3426]">RFQ comparison</h3>
+                        <p className="text-xs text-[#7A6555]">
+                          RFQ vendors are shown here. Apply a received quote, or choose a vendor manually below if responses are still pending.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-[#D8C8AA] bg-white px-3 py-1 text-xs font-semibold text-[#4A3426]">
+                          {rfqHistory.length} vendor RFQ{rfqHistory.length === 1 ? '' : 's'}
+                        </span>
+                        <ErpButton
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => router.push(`/dashboard/purchase/requisitions?open=${encodeURIComponent(currentPrId)}&rfqResponses=1`)}
+                          className="whitespace-nowrap"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Record RFQ Response
+                        </ErpButton>
+                      </div>
+                    </div>
+                    {rfqHistory.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-[960px] w-full text-sm">
+                          <thead className="bg-[#F5EFE3] text-left text-xs uppercase tracking-wide text-[#5E4635]">
+                            <tr>
+                              <th className="px-4 py-2 font-semibold">Vendor</th>
+                              <th className="px-4 py-2 font-semibold">RFQ status</th>
+                              <th className="px-4 py-2 font-semibold">Quoted items</th>
+                              <th className="px-4 py-2 font-semibold">Quote value</th>
+                              <th className="px-4 py-2 font-semibold">Lead / delivery terms</th>
+                              <th className="px-4 py-2 font-semibold">Notes</th>
+                              <th className="px-4 py-2 text-right font-semibold">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rfqHistory.map((rfq) => {
+                              const status = String(rfq.status || '').toUpperCase();
+                              const received = ['RECEIVED', 'RESPONDED'].includes(status);
+                              const rfqItems = Array.isArray(rfq.rfq_items) ? rfq.rfq_items : [];
+                              const quoteValue = rfqItems.reduce((sum: number, item: any) => {
+                                const qty = Number(item.requested_qty || 0);
+                                const rate = item.vendor_quoted_price == null ? null : Number(item.vendor_quoted_price);
+                                return Number.isFinite(rate) && rate != null ? sum + qty * rate : sum;
+                              }, 0);
+                              const leadTimes = rfqItems
+                                .map((item: any) => item.vendor_quoted_lead_time)
+                                .filter((value: any) => value !== null && value !== undefined && value !== '')
+                                .map((value: any) => `${value} days`);
+                              const notes = [
+                                rfq.response_remarks,
+                                ...rfqItems.map((item: any) => item.vendor_notes).filter(Boolean),
+                              ].filter(Boolean);
+                              return (
+                                <tr key={rfq.id || rfq.rfq_number} className="border-t border-[#E8DCC4] align-top">
+                                  <td className="px-4 py-3">
+                                    <div className="font-semibold text-[#2F241B]">{rfq.vendor?.name || rfq.vendor_name || '-'}</div>
+                                    <div className="text-xs text-[#7A6555]">{rfq.vendor?.email || rfq.meta?.recipientEmail || rfq.rfq_number || '-'}</div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${
+                                      received
+                                        ? 'border-green-200 bg-green-50 text-green-800'
+                                        : 'border-[#D8C8AA] bg-white text-[#7A6555]'
+                                    }`}>
+                                      {status || 'SENT'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-[#4A3426]">
+                                    {rfqItems.length > 0 ? `${rfqItems.length} item${rfqItems.length === 1 ? '' : 's'}` : '-'}
+                                  </td>
+                                  <td className="px-4 py-3 font-semibold text-[#2F241B]">
+                                    {quoteValue > 0 ? `₹${fmtINR(quoteValue)}` : '-'}
+                                  </td>
+                                  <td className="px-4 py-3 text-[#4A3426]">
+                                    {leadTimes.length > 0 ? Array.from(new Set(leadTimes)).join(', ') : '-'}
+                                  </td>
+                                  <td className="max-w-[260px] px-4 py-3 text-[#7A6555]">
+                                    {notes.length > 0 ? Array.from(new Set(notes)).join(' | ') : '-'}
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <ErpButton
+                                      type="button"
+                                      size="sm"
+                                      variant={received ? 'primary' : 'secondary'}
+                                      disabled={!received}
+                                      onClick={() => handleApplyRfqQuote(rfq)}
+                                      className="whitespace-nowrap"
+                                    >
+                                      <Check className="h-4 w-4" />
+                                      Use Quote
+                                    </ErpButton>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="px-4 py-3 text-sm text-[#7A6555]">
+                        No vendor RFQs are recorded for this PR yet. You can still create the PO by selecting a vendor manually.
+                      </div>
+                    )}
+                  </section>
+                )}
+                <div className="xl:col-span-2">
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">
                     Vendor <span className="text-red-500">*</span>
-                    {currentPrId && <span className="ml-2 text-xs font-normal text-[#8B6F47]">RFQ prices will auto-load</span>}
+                    {currentPrId && <span className="ml-2 text-xs font-normal text-[#8B6F47]">optional bulk override; PO creation groups by each line supplier</span>}
                   </label>
                   <SearchableSelect
                     value={formData.vendorId}
                     onChange={(value) => handleSetAllVendors(String(value || ''))}
                     options={(() => {
-                      const filtered = rfqRespondedVendorIds.length > 0
-                        ? vendors.filter((v) => rfqRespondedVendorIds.includes(v.id))
-                        : vendors;
-                      return filtered.map((v) => ({
+                      const responded = new Set(rfqRespondedVendorIds);
+                      const rfqVendors = new Set(rfqHistory.map((rfq) => resolveVendorIdFromAny(rfq)).filter(Boolean));
+                      const preferredName = formData.items.find(
+                        (item) => String(item.vendorId || '').trim() === String(formData.vendorId || '').trim(),
+                      )?.vendorName;
+                      const selectableVendors = [...vendors];
+                      if (
+                        formData.vendorId &&
+                        !selectableVendors.some((vendor) => String(vendor.id) === String(formData.vendorId))
+                      ) {
+                        selectableVendors.push({
+                          id: String(formData.vendorId),
+                          name: String(preferredName || 'Preferred Vendor'),
+                          contact_person: '',
+                        });
+                      }
+                      return selectableVendors
+                        .sort((a, b) =>
+                          Number(responded.has(String(b.id))) - Number(responded.has(String(a.id))) ||
+                          Number(rfqVendors.has(String(b.id))) - Number(rfqVendors.has(String(a.id))) ||
+                          a.name.localeCompare(b.name)
+                        )
+                        .map((v) => ({
                         value: v.id,
                         label: v.name,
-                        subtitle: v.contact_person,
+                        subtitle: responded.has(String(v.id))
+                          ? `RFQ response received${v.contact_person ? ` - ${v.contact_person}` : ''}`
+                          : rfqVendors.has(String(v.id))
+                            ? `RFQ sent - awaiting response${v.contact_person ? ` - ${v.contact_person}` : ''}`
+                            : String(v.id) === String(formData.vendorId) && preferredName
+                              ? 'Preferred vendor from Item Master'
+                              : (v.contact_person || 'Manual vendor'),
                       }));
                     })()}
-                    placeholder="Search vendor to apply to all items..."
+                    placeholder={currentPrId ? 'Optional: apply one vendor to all PR lines...' : 'Search vendor to apply to all items...'}
                   />
-                                  </div>
+                  {currentPrId && prSupplierGroups.length > 1 && (
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-sm text-emerald-900">
+                      <div className="font-semibold">Supplier-wise PO split ready: {prSupplierGroups.length} POs will be created</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {prSupplierGroups.map((group) => (
+                          <span
+                            key={group.vendorId}
+                            className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-medium text-emerald-800"
+                          >
+                            {group.vendorName}: {group.itemCount} line{group.itemCount === 1 ? '' : 's'}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {currentPrId && prSupplierGroups.length === 0 && formData.items.length > 0 && (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                      No line supplier is selected yet. Select a supplier on each PR line, or use the vendor field above only if all lines should go to one supplier.
+                    </div>
+                  )}
+                </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Order Date <span className="text-red-500">*</span></label>
                   <DateInput
@@ -3060,17 +4040,47 @@ function PurchaseOrdersContent() {
                     className="w-full border border-gray-300 rounded-lg px-4 py-2"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Payment Terms</label>
+                  <select
+                    value={isStandardPaymentTerm(formData.paymentTerms) ? formData.paymentTerms : 'CUSTOM'}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData({ ...formData, paymentTerms: value === 'CUSTOM' ? '' : value });
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
+                  >
+                    {PAYMENT_TERM_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                    <option value="CUSTOM">Custom / Other</option>
+                  </select>
+                  {!isStandardPaymentTerm(formData.paymentTerms) ? (
+                    <input
+                      type="text"
+                      value={formData.paymentTerms}
+                      onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
+                      className="mt-2 w-full border border-gray-300 rounded-lg px-4 py-2"
+                      placeholder="Enter custom payment terms"
+                    />
+                  ) : null}
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Delivery Address</label>
+              <div className="rounded-lg border border-[#E8DCC4] bg-[#FFFCF5] p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900">Delivery Address</label>
+                  {deliveryAddresses.length > 0 && (
+                    <span className="text-[11px] font-medium text-[#8B6F47]">Saved addresses scroll horizontally</span>
+                  )}
+                </div>
                 <div className="space-y-2">
                   {/* Saved addresses quick-select */}
                   {deliveryAddresses.length > 0 && (
                     <div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex gap-2 overflow-x-auto pb-1">
                         {deliveryAddresses.map((entry) => (
-                          <div key={entry.id} className="flex items-center gap-1 bg-gray-50 rounded-full border border-gray-200 pr-1">
+                          <div key={entry.id} className="flex shrink-0 items-center gap-1 bg-gray-50 rounded-full border border-gray-200 pr-1">
                             <button
                               type="button"
                               onClick={() => setFormData({ ...formData, deliveryAddress: entry.address })}
@@ -3103,7 +4113,7 @@ function PurchaseOrdersContent() {
                     placeholder="Enter delivery address..."
                   />
                   {/* Save current address for future reuse */}
-                  <div className="flex gap-2 items-center">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center">
                     <input
                       value={deliveryAddressName}
                       onChange={(e) => setDeliveryAddressName(e.target.value)}
@@ -3122,7 +4132,7 @@ function PurchaseOrdersContent() {
                                   </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Consignee POC Name</label>
                   {users.length > 0 ? (
@@ -3174,14 +4184,47 @@ function PurchaseOrdersContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Project Name</label>
-                  <input
-                    type="text"
-                    value={formData.projectName}
-                    onChange={(e) => setFormData({ ...formData, projectName: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2"
-                    placeholder="Project name (optional)"
-                  />
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900">Project Name</label>
+                    {isProjectNameLockedFromPR && (
+                      <span className="rounded-full border border-[#D8C8AA] bg-[#FFFCF5] px-2 py-0.5 text-[11px] font-semibold text-[#8B6F47]">
+                        From PR
+                      </span>
+                    )}
+                  </div>
+                  {isProjectNameLockedFromPR ? (
+                    <input
+                      type="text"
+                      value={formData.projectName}
+                      readOnly
+                      aria-readonly
+                      className="w-full cursor-not-allowed rounded-lg border border-[#E8DCC4] bg-[#F5EFE3] px-4 py-2 text-[#4A3426]"
+                      placeholder="Project name from selected PR"
+                    />
+                  ) : (
+                    <SearchableSelect
+                      value={formData.projectId}
+                      onChange={(value, option) => setFormData({
+                        ...formData,
+                        projectId: value,
+                        projectName: option?.label || '',
+                      })}
+                      options={projectOptions}
+                      placeholder="Select project"
+                      className="w-full"
+                      minSearchChars={0}
+                      showSubtitleInInput={false}
+                    />
+                  )}
+                  {isProjectNameLockedFromPR ? (
+                    <p className="mt-1 text-xs text-[#7A6555]">
+                      Read-only because this PO is linked to the selected purchase requisition.
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-[#7A6555]">
+                      Standalone POs must use the project master dropdown; free-text project entry is disabled.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Freight Terms</label>
@@ -3423,12 +4466,17 @@ function PurchaseOrdersContent() {
                                   required
                                   className="flex-1"
                                 />
-                                <button
-                                  type="button"
-                                  title="Create new item"
-                                  onClick={() => { setQuickCreateItemIndex(index); setShowQuickCreateItem(true); }}
-                                  className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded bg-amber-100 hover:bg-amber-200 text-amber-700 font-bold text-sm"
-                                >+</button>
+                                {String(currentPrDepartment || '').trim().toUpperCase() === 'R&D' ? (
+                                  <button
+                                    type="button"
+                                    title="Add temporary R&D item"
+                                    onClick={() => {
+                                      setQuickCreateItemIndex(index);
+                                      setShowRndTemporaryItem(true);
+                                    }}
+                                    className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-700 font-bold text-sm"
+                                  >+</button>
+                                ) : null}
                                 </div>
                               )}
                             </div>
@@ -3577,9 +4625,10 @@ function PurchaseOrdersContent() {
                               <input
                                 type="number"
                                 value={item.taxRate}
+                                disabled={formData.isImportPurchase || String(formData.supplierCurrency || 'INR').toUpperCase() !== 'INR'}
                                 onChange={(e) => { const v = parseFloat(e.target.value); handleUpdateItem(index, 'taxRate', Number.isNaN(v) ? 0 : v); }}
-                                placeholder="Tax %"
-                                className="w-full border border-gray-300 rounded px-3 py-2"
+                                placeholder={(formData.isImportPurchase || String(formData.supplierCurrency || 'INR').toUpperCase() !== 'INR') ? 'Import GST via BOE' : 'Tax %'}
+                                className={`w-full rounded border px-3 py-2 ${(formData.isImportPurchase || String(formData.supplierCurrency || 'INR').toUpperCase() !== 'INR') ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-300'}`}
                               />
                             </div>
                             <div className="flex min-w-0 items-center justify-start lg:justify-end pt-2 lg:pt-0">
@@ -3598,7 +4647,7 @@ function PurchaseOrdersContent() {
 
                           <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">Line Description</label>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Line Payment Terms</label>
                               <input
                                 type="text"
                                 value={(item as any).paymentTerms || ''}
@@ -3648,32 +4697,92 @@ function PurchaseOrdersContent() {
               {/* Documents / Quotation Attachments */}
               {(editingMode === 'create' || editingMode === 'edit') && (
                 <section id="po-form-documents" className="scroll-mt-4 border-b border-[#E8DCC4] bg-white p-4">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Documents / Quotation</label>
-                  <p className="text-xs text-gray-500 mb-2">Attach vendor quotations, drawings, or any supporting documents for this PO.</p>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 border border-dashed border-gray-400 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
-                      {poAttachmentUploading ? 'Uploading...' : '+ Attach Document'}
-                      <input
-                        type="file"
-                        multiple
-                        className="hidden"
-                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
-                        disabled={poAttachmentUploading}
-                        onChange={(e) => handleUploadPOAttachment(e.target.files)}
-                      />
-                    </label>
-                    {formData.attachments.map((att, i) => (
-                      <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 max-w-xs">
-                        <a href={att.url} target="_blank" rel="noopener noreferrer" className="truncate hover:underline" title={att.name}>{att.name}</a>
-                        <button
-                          type="button"
-                          onClick={() => setFormData((prev) => ({ ...prev, attachments: prev.attachments.filter((_, idx) => idx !== i) }))}
-                          className="text-blue-400 hover:text-red-600 flex-shrink-0 font-bold"
-                          title="Remove"
-                        >&times;</button>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-gray-900 mb-2">Documents / Quotation <span className="text-red-500">*</span></label>
+                  {isSupplierWisePRSplit ? (
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-500">
+                        This PR will create supplier-wise POs. Upload the quotation for each supplier; each generated PO receives only its own supplier document.
+                      </p>
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        {prSupplierGroups.map((group) => {
+                          const attachments = supplierAttachments[group.vendorId] || [];
+                          return (
+                            <div key={group.vendorId} className="rounded-xl border border-[#E8DCC4] bg-[#FFFCF5] p-3">
+                              <div className="mb-3 flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-sm font-semibold text-[#4A3426]">{group.vendorName}</div>
+                                  <div className="text-xs text-[#7A6555]">
+                                    {group.itemCount} line{group.itemCount === 1 ? '' : 's'} · Qty {group.quantity}
+                                  </div>
+                                </div>
+                                <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${attachments.length > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                                  {attachments.length > 0 ? `${attachments.length} attached` : 'Required'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 border border-dashed border-[#BFA77A] rounded-lg text-xs font-semibold text-[#6B4F2A] hover:bg-white">
+                                  {poAttachmentUploading ? 'Uploading...' : '+ Attach supplier quotation'}
+                                  <input
+                                    type="file"
+                                    multiple
+                                    className="hidden"
+                                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
+                                    disabled={poAttachmentUploading}
+                                    onChange={(e) => {
+                                      handleUploadPOAttachment(e.target.files, group.vendorId);
+                                      e.currentTarget.value = '';
+                                    }}
+                                  />
+                                </label>
+                                {attachments.map((att, i) => (
+                                  <div key={`${group.vendorId}-${att.url}-${i}`} className="flex max-w-xs items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm text-blue-800">
+                                    <a href={att.url} target="_blank" rel="noopener noreferrer" className="truncate hover:underline" title={att.name}>{att.name}</a>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeSupplierAttachment(group.vendorId, i)}
+                                      className="flex-shrink-0 font-bold text-blue-400 hover:text-red-600"
+                                      title="Remove"
+                                    >&times;</button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-gray-500 mb-2">Attach vendor quotations, drawings, or any supporting documents for this PO.</p>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 border border-dashed border-gray-400 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
+                          {poAttachmentUploading ? 'Uploading...' : '+ Attach Document'}
+                          <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
+                            disabled={poAttachmentUploading}
+                            onChange={(e) => {
+                              handleUploadPOAttachment(e.target.files);
+                              e.currentTarget.value = '';
+                            }}
+                          />
+                        </label>
+                        {formData.attachments.map((att, i) => (
+                          <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 max-w-xs">
+                            <a href={att.url} target="_blank" rel="noopener noreferrer" className="truncate hover:underline" title={att.name}>{att.name}</a>
+                            <button
+                              type="button"
+                              onClick={() => setFormData((prev) => ({ ...prev, attachments: prev.attachments.filter((_, idx) => idx !== i) }))}
+                              className="text-blue-400 hover:text-red-600 flex-shrink-0 font-bold"
+                              title="Remove"
+                            >&times;</button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </section>
               )}
 
@@ -3706,7 +4815,7 @@ function PurchaseOrdersContent() {
                       onChange={(e) => setFormData({
                         ...formData,
                         freightGstApplicable: e.target.checked,
-                        freightGstPercent: e.target.checked ? formData.freightGstPercent : 0,
+                        freightGstPercent: e.target.checked ? (formData.freightGstPercent || 18) : 0,
                       })}
                       className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
@@ -3752,6 +4861,89 @@ function PurchaseOrdersContent() {
                   />
                 </div>
                 </div>
+                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                  <label className="flex items-start gap-3 text-sm font-semibold text-[#4A3426]">
+                    <input
+                      type="checkbox"
+                      checked={formData.isImportPurchase}
+                      onChange={(e) => {
+                        const isImport = e.target.checked;
+                        setFormData({
+                          ...formData,
+                          isImportPurchase: isImport,
+                          supplierCurrency: isImport ? (formData.supplierCurrency === 'INR' ? 'USD' : formData.supplierCurrency || 'USD') : 'INR',
+                          customsExchangeRate: isImport ? formData.customsExchangeRate : 0,
+                          freightGstApplicable: isImport ? false : formData.freightGstApplicable,
+                          freightGstPercent: isImport ? 0 : formData.freightGstPercent,
+                          items: isImport ? formData.items.map((item) => recalcPoItem(item, 0)) : formData.items,
+                        });
+                      }}
+                      className="mt-1 h-4 w-4 rounded border-amber-300 text-[#8B6F47] focus:ring-[#8B6F47]"
+                    />
+                    <span>
+                      Import / foreign purchase
+                      <span className="mt-1 block text-xs font-normal text-[#7A6555]">
+                        Use this when supplier billing is in foreign currency or inward costs/duty need to be linked through Import Files.
+                      </span>
+                    </span>
+                  </label>
+                  {formData.isImportPurchase && (
+                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">Supplier Currency</label>
+                        <select
+                          value={formData.supplierCurrency}
+                          onChange={(e) => {
+                            const nextCurrency = e.target.value;
+                            const isForeign = nextCurrency !== 'INR';
+                            setFormData({
+                              ...formData,
+                              supplierCurrency: nextCurrency,
+                              isImportPurchase: isForeign || formData.isImportPurchase,
+                              freightGstApplicable: isForeign ? false : formData.freightGstApplicable,
+                              freightGstPercent: isForeign ? 0 : formData.freightGstPercent,
+                              items: isForeign ? formData.items.map((item) => recalcPoItem(item, 0)) : formData.items,
+                            });
+                          }}
+                          className="w-full rounded-lg border border-amber-200 bg-white px-4 py-2"
+                        >
+                          <option value="USD">USD</option>
+                          <option value="EUR">EUR</option>
+                          <option value="GBP">GBP</option>
+                          <option value="AED">AED</option>
+                          <option value="CNY">CNY</option>
+                          <option value="JPY">JPY</option>
+                          <option value="INR">INR</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">Customs Exchange Rate</label>
+                        <input
+                          type="number"
+                          step="0.0001"
+                          min="0"
+                          value={formData.customsExchangeRate}
+                          onChange={(e) => setFormData({ ...formData, customsExchangeRate: parseFloat(e.target.value) || 0 })}
+                          className="w-full rounded-lg border border-amber-200 bg-white px-4 py-2"
+                          placeholder="e.g. 83.2500"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">Import Notes / BOE Ref</label>
+                        <input
+                          type="text"
+                          value={formData.importNotes}
+                          onChange={(e) => setFormData({ ...formData, importNotes: e.target.value })}
+                          className="w-full rounded-lg border border-amber-200 bg-white px-4 py-2"
+                          placeholder="BOE, CHA, duty or inward-cost note"
+                        />
+                      </div>
+                      <div className="md:col-span-3 rounded-lg border border-amber-100 bg-white px-4 py-3 text-xs text-[#7A6555]">
+                        SAP-standard control: supplier price remains the PO commercial price; customs duty, freight, insurance, CHA and other non-recoverable inward costs are accumulated in the Import File and allocated to landed cost when GRN is linked.
+                      </div>
+                    </div>
+                  )}
+                </div>
                 </section>
               )}
 
@@ -3790,9 +4982,27 @@ function PurchaseOrdersContent() {
                       )}
                     </>
                   )}
+                  {Math.abs(calcRoundingAdjustment(
+                    formData.items.reduce((sum, item) => sum + item.totalPrice, 0) +
+                    (formData.freightAmount || 0) +
+                    calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) +
+                    (formData.customsDuty || 0) +
+                    (formData.otherCharges || 0)
+                  )) >= 0.01 && (
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>Rounding:</span>
+                      <span>₹{fmtINR(calcRoundingAdjustment(
+                        formData.items.reduce((sum, item) => sum + item.totalPrice, 0) +
+                        (formData.freightAmount || 0) +
+                        calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) +
+                        (formData.customsDuty || 0) +
+                        (formData.otherCharges || 0)
+                      ))}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-xl font-bold text-gray-900 border-t pt-2">
                     <span>Grand Total:</span>
-                    <span>₹{fmtINR(
+                    <span>₹{fmtRoundedINR(
                       formData.items.reduce((sum, item) => sum + item.totalPrice, 0) +
                       (formData.freightAmount || 0) +
                       calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) +
@@ -3808,69 +5018,15 @@ function PurchaseOrdersContent() {
         )}
       </div>
 
-      {/* Quick Create Item Modal */}
-      {showQuickCreateItem && (
-        <FullScreenPortal>
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-[#4A3426]/45 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl">
-            <div className="p-5 border-b flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Create New Item</h3>
-              <button onClick={() => setShowQuickCreateItem(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
-            </div>
-            <div className="p-5 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">SAS Part Number *</label>
-                  <input className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.code}
-                    onChange={e => setQuickCreateItemForm(f => ({ ...f, code: e.target.value }))} placeholder="e.g. RM-001" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Item Name *</label>
-                  <input className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.name}
-                    onChange={e => setQuickCreateItemForm(f => ({ ...f, name: e.target.value }))} placeholder="Item description" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Category *</label>
-                  <SearchableSelect
-                    value={quickCreateItemForm.category}
-                    onChange={(value) => setQuickCreateItemForm((form) => ({ ...form, category: value }))}
-                    options={ITEM_CATEGORY_OPTIONS}
-                    placeholder="Search category..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">UOM *</label>
-                  <input className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.uom}
-                    onChange={e => setQuickCreateItemForm(f => ({ ...f, uom: e.target.value }))} placeholder="e.g. NOS, KG, MTR" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">HSN Code</label>
-                  <input className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.hsn_code}
-                    onChange={e => setQuickCreateItemForm(f => ({ ...f, hsn_code: e.target.value }))} placeholder="4, 6 or 8 digits" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Reorder Level</label>
-                  <input type="number" className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.reorder_level}
-                    onChange={e => setQuickCreateItemForm(f => ({ ...f, reorder_level: e.target.value }))} placeholder="Min stock level" />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Description</label>
-                  <input className="w-full border border-gray-300 rounded px-3 py-2 text-sm" value={quickCreateItemForm.description}
-                    onChange={e => setQuickCreateItemForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional description" />
-                </div>
-              </div>
-            </div>
-            <div className="p-5 border-t flex justify-end gap-3">
-              <button onClick={() => setShowQuickCreateItem(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
-              <button onClick={handleQuickCreateItem} disabled={quickCreateItemSaving}
-                className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50">
-                {quickCreateItemSaving ? 'Saving...' : 'Create Item'}
-              </button>
-            </div>
-          </div>
-        </div>
-        </FullScreenPortal>
-      )}
+      <RndTemporaryItemModal
+        open={showRndTemporaryItem}
+        vendors={vendors.map((vendor) => ({ id: vendor.id, name: vendor.name }))}
+        onClose={() => {
+          setShowRndTemporaryItem(false);
+          setQuickCreateItemIndex(null);
+        }}
+        onCreated={handleRndTemporaryItemCreated}
+      />
 
       {/* Drawing Manager Modal - Mandatory for PO items */}
       {showDrawingManager && selectedItemForDrawing && (
@@ -3878,6 +5034,25 @@ function PurchaseOrdersContent() {
           itemId={selectedItemForDrawing.id}
           itemCode={selectedItemForDrawing.code}
           itemName={selectedItemForDrawing.name}
+          onChanged={(drawings) => {
+            const itemId = selectedItemForDrawing.id;
+            const normalizedDrawings = Array.isArray(drawings) ? drawings : [];
+            setDrawingOptionsByItemId((prev) => ({
+              ...prev,
+              [itemId]: normalizedDrawings,
+            }));
+            const activeDrawingId = normalizedDrawings.find((drawing) => drawing.is_active)?.id || normalizedDrawings[0]?.id || '';
+            if (activeDrawingId && pendingItemIndex !== null) {
+              setFormData((current) => ({
+                ...current,
+                items: current.items.map((item, index) => (
+                  index === pendingItemIndex
+                    ? { ...item, includeDrawing: true, selectedDrawingId: activeDrawingId }
+                    : item
+                )),
+              }));
+            }
+          }}
           onClose={() => {
             setShowDrawingManager(false);
             setSelectedItemForDrawing(null);
@@ -3976,7 +5151,7 @@ function PurchaseOrdersContent() {
                   </div>
                 )}
               </section>
-              <section className="grid grid-cols-1 gap-4 border-b border-[#E8DCC4] bg-white p-4 sm:grid-cols-2 xl:grid-cols-4">
+              <section className="grid grid-cols-1 gap-4 border-b border-[#E8DCC4] bg-white p-4 sm:grid-cols-2 xl:grid-cols-5">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Vendor</p>
                   <p className="font-semibold">{(selectedPO as any)?.vendor?.name || (selectedPO as any)?.vendor_name || '-'}</p>
@@ -4005,8 +5180,12 @@ function PurchaseOrdersContent() {
                   <p className="font-semibold">{selectedPO.delivery_date ? new Date(selectedPO.delivery_date).toLocaleDateString() : '-'}</p>
                 </div>
                 <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Payment Terms</p>
+                  <p className="font-semibold break-words">{resolvePoPaymentTermsLabel(selectedPO)}</p>
+                </div>
+                <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Total Amount</p>
-                  <p className="font-semibold text-lg">₹{fmtINR(selectedPO.total_amount)}</p>
+                  <p className="font-semibold text-lg">₹{fmtRoundedINR(selectedPO.total_amount)}</p>
                 </div>
               </section>
 
@@ -4033,6 +5212,7 @@ function PurchaseOrdersContent() {
                     const customsDuty = (selectedPO as any).customs_duty || freightData.additionalExpenses || 0;
                     const otherCharges = (selectedPO as any).other_charges || 0;
                     const grandTotal = itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
+                    const roundingAdjustment = calcRoundingAdjustment(grandTotal);
                     return (
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
@@ -4063,15 +5243,56 @@ function PurchaseOrdersContent() {
                             <span className="font-medium">₹{fmtINR(otherCharges)}</span>
                           </div>
                         )}
+                        {Math.abs(roundingAdjustment) >= 0.01 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Rounding:</span>
+                            <span className="font-medium">₹{fmtINR(roundingAdjustment)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between border-t border-blue-200 pt-2 mt-2">
                           <span className="font-semibold text-blue-900">Grand Total:</span>
-                          <span className="font-bold text-blue-900">₹{fmtINR(grandTotal)}</span>
+                          <span className="font-bold text-blue-900">₹{fmtRoundedINR(grandTotal)}</span>
                         </div>
                       </div>
                     );
                   })()}
                 </section>
               )}
+              {(() => {
+                const tc = (selectedPO as any).terms_and_conditions;
+                let commercial: any = {};
+                try {
+                  if (tc && typeof tc === 'string' && tc.startsWith('{')) commercial = JSON.parse(tc);
+                  else if (tc && typeof tc === 'object') commercial = tc;
+                } catch {}
+                if (commercial.isImportPurchase !== true) return null;
+                return (
+                  <section className="border-b border-amber-200 bg-amber-50 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Import Purchase Control</p>
+                        <h4 className="mt-1 text-base font-semibold text-[#4A3426]">
+                          {commercial.supplierCurrency || 'Foreign currency'} PO / Customs rate {commercial.customsExchangeRate || '-'}
+                        </h4>
+                        <p className="mt-1 text-sm text-[#7A6555]">
+                          Create an Import File to store BOE/documents, inward costs, GRN links, landed-cost allocation and payment trail for this PO.
+                        </p>
+                        {commercial.importNotes && <p className="mt-1 text-xs text-[#7A6555]">Reference: {commercial.importNotes}</p>}
+                      </div>
+                      <ErpButton
+                        variant="primary"
+                        onClick={() => {
+                          setShowViewModal(false);
+                          router.push(`/dashboard/purchase/import-files?create=1&poId=${encodeURIComponent(selectedPO.id)}`);
+                        }}
+                      >
+                        <FileText className="h-4 w-4" />
+                        Create Import File
+                      </ErpButton>
+                    </div>
+                  </section>
+                );
+              })()}
               {(selectedPO as any).delivery_address && (
                 <div className="border-b border-[#E8DCC4] bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Delivery Address</p>
@@ -4193,6 +5414,21 @@ function PurchaseOrdersContent() {
                         </tr>
                       )}
                     </tbody>
+                    {selectedPO.purchase_order_items && selectedPO.purchase_order_items.length > 0 && (
+                      <tfoot className="border-t-2 border-gray-200 bg-amber-50/60">
+                        <tr>
+                          <td colSpan={9} className="px-4 py-3 text-right text-sm font-semibold uppercase tracking-wide text-gray-700">
+                            Total Amount
+                          </td>
+                          <td className="px-4 py-3 text-right text-base font-bold text-gray-900">
+                            ₹{fmtINR(selectedPO.purchase_order_items.reduce(
+                              (total: number, item: any) => total + (Number(item.amount) || 0),
+                              0,
+                            ))}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </section>
@@ -4381,13 +5617,38 @@ function PurchaseOrdersContent() {
                   </>
                 )}
 
-                {selectedPO.status === 'PENDING' && String((selectedPO as any).created_by || '') === currentUserId && (
-                  <span className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
-                    Awaiting manager approval
-                  </span>
+                {selectedPO.status === 'PENDING' && String((selectedPO as any).created_by || '') === currentUserId && !canBypassMakerChecker && (
+                  <>
+                    {canEditPendingPO(selectedPO) && (
+                      <ErpButton
+                        onClick={() => {
+                          setShowViewModal(false);
+                          handleEditDetails(selectedPO.id, 'edit');
+                        }}
+                        variant="secondary"
+                      >
+                        <Pencil className="h-4 w-4" /> Edit & Resubmit
+                      </ErpButton>
+                    )}
+                    <span className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+                      Awaiting manager approval
+                    </span>
+                  </>
                 )}
 
-                {selectedPO.status === 'PENDING' && canApprovePO && String((selectedPO as any).created_by || '') !== currentUserId && (
+                {selectedPO.status === 'PENDING' && canBypassMakerChecker && String((selectedPO as any).created_by || '') !== currentUserId && (
+                  <ErpButton
+                    onClick={() => {
+                      setShowViewModal(false);
+                      handleEditDetails(selectedPO.id, 'edit');
+                    }}
+                    variant="secondary"
+                  >
+                      <Pencil className="h-4 w-4" /> Admin Override
+                  </ErpButton>
+                )}
+
+                {selectedPO.status === 'PENDING' && canApprovePO && (canBypassMakerChecker || String((selectedPO as any).created_by || '') !== currentUserId) && (
                   <>
                     <ErpButton
                       onClick={async () => {
@@ -4456,24 +5717,36 @@ function PurchaseOrdersContent() {
                         <Pencil className="h-4 w-4" /> Change PO
                       </ErpButton>
                     )}
-                    <ErpButton
-                      onClick={() => handleDownloadPDF(selectedPO.id, selectedPO.po_number)}
-                      variant="secondary"
-                    >
-                      <Download className="h-4 w-4" /> Download PDF
-                    </ErpButton>
-                    <ErpButton
-                      onClick={() => handleViewPDF(selectedPO.id, selectedPO.po_number)}
-                      variant="secondary"
-                    >
-                      <FileText className="h-4 w-4" /> View PDF
-                    </ErpButton>
-                    <ErpButton
-                      onClick={() => handlePrintPDF(selectedPO.id, selectedPO.po_number)}
-                      variant="secondary"
-                    >
-                      <Printer className="h-4 w-4" /> Print PDF
-                    </ErpButton>
+                    {canCreatePO && (
+                      <ErpButton
+                        onClick={() => handleClonePO(selectedPO.id)}
+                        variant="secondary"
+                      >
+                        <Copy className="h-4 w-4" /> Clone PO
+                      </ErpButton>
+                    )}
+                    {canDownloadPO && (
+                      <>
+                        <ErpButton
+                          onClick={() => handleDownloadPDF(selectedPO.id, selectedPO.po_number)}
+                          variant="secondary"
+                        >
+                          <Download className="h-4 w-4" /> Download PDF
+                        </ErpButton>
+                        <ErpButton
+                          onClick={() => handleViewPDF(selectedPO.id, selectedPO.po_number)}
+                          variant="secondary"
+                        >
+                          <FileText className="h-4 w-4" /> View PDF
+                        </ErpButton>
+                        <ErpButton
+                          onClick={() => handlePrintPDF(selectedPO.id, selectedPO.po_number)}
+                          variant="secondary"
+                        >
+                          <Printer className="h-4 w-4" /> Print PDF
+                        </ErpButton>
+                      </>
+                    )}
                     <ErpButton
                       onClick={() => handlePreviewPOEmail(selectedPO.id)}
                       disabled={poEmailPreviewLoading}
@@ -4481,6 +5754,13 @@ function PurchaseOrdersContent() {
                     >
                       <Mail className="h-4 w-4" />
                       {poEmailPreviewLoading ? 'Generating...' : 'Preview Email'}
+                    </ErpButton>
+                    <ErpButton
+                      onClick={() => handleSendMaterialReminder(selectedPO.id)}
+                      disabled={poEmailSending || ['COMPLETED', 'CANCELLED', 'CLOSED'].includes(String(selectedPO.status || '').toUpperCase())}
+                      variant="secondary"
+                    >
+                      <Mail className="h-4 w-4" /> Material Reminder
                     </ErpButton>
                     <ErpButton
                       onClick={() => {
@@ -4801,7 +6081,7 @@ function PurchaseOrdersContent() {
                         </div>
                         <div>
                           <span className="text-gray-500">Amount:</span>
-                          <p className="font-semibold text-[#4A3426]">₹{fmtINR(Number((trailPO as any).grand_total ?? trailPO.total_amount ?? 0))}</p>
+                          <p className="font-semibold text-[#4A3426]">₹{fmtRoundedINR(Number((trailPO as any).grand_total ?? trailPO.total_amount ?? 0))}</p>
                         </div>
                         <div>
                           <span className="text-gray-500">Status:</span>
@@ -4852,7 +6132,7 @@ function PurchaseOrdersContent() {
                       ].map(([label, value]) => (
                         <div key={String(label)} className="bg-white p-3">
                           <div className="text-xs font-medium text-[#7A6555]">{label}</div>
-                          <div className="mt-1 text-base font-bold tabular-nums text-[#4A3426]">₹{fmtINR(Number(value || 0))}</div>
+                          <div className="mt-1 text-base font-bold tabular-nums text-[#4A3426]">₹{fmtRoundedINR(Number(value || 0))}</div>
                         </div>
                       ))}
                     </div>
@@ -5069,7 +6349,7 @@ function PurchaseOrdersContent() {
                                             <td className="px-3 py-2 whitespace-nowrap">{reversal.original_payment_method || '-'}</td>
                                             <td className="px-3 py-2 whitespace-nowrap">{reversal.original_payment_reference || '-'}</td>
                                             <td className="px-3 py-2 text-right font-semibold text-red-700 whitespace-nowrap">
-                                              -â‚¹{fmtINR(
+                                              -Rs. {fmtINR(
                                                 Number(reversal.original_amount || 0) +
                                                 Number(reversal.original_tds_amount || 0) +
                                                 Number(reversal.original_short_payment_amount || 0)
@@ -5266,7 +6546,7 @@ function PurchaseOrdersContent() {
             <p className="font-semibold">PO #{data.po_number}</p>
             <p className="text-xs text-gray-600">Vendor: {data.vendor?.name}</p>
             <p className="text-xs text-gray-600">Items: {data.purchase_order_items?.length || 0}</p>
-            <p className="text-xs text-gray-600">Total: ₹{fmtINR(data.total_amount)}</p>
+            <p className="text-xs text-gray-600">Total: ₹{fmtRoundedINR(data.total_amount)}</p>
             <p className="text-xs text-gray-600">Date: {new Date(data.po_date).toLocaleDateString()}</p>
           </div>
         )}
