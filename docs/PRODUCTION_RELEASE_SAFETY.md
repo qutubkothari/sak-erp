@@ -28,6 +28,14 @@ The workflow captures the exact compiled web and API artifacts that production i
 
 Database backups must remain an independent encrypted process with retention and restore testing. A deployment artifact is not a database backup.
 
+If GitHub Actions runners are unavailable, run the repository's runner-independent backup gate from the workspace root:
+
+```powershell
+.\scripts\deploy\backup-production-to-github.ps1 -Reason "Approved production change reference"
+```
+
+The command packages the current live artifacts over SSH, checks the archive for secret-bearing filenames and unsafe paths, calculates its SHA-256, and publishes both files to a new GitHub Release. A deployment must not continue if the command fails.
+
 ## Rollback record created on 2026-08-25
 
 The restored live artifact is stored in GitHub Release `production-live-restored-20260825` with SHA-256:
