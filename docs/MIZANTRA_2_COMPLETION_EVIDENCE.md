@@ -43,7 +43,7 @@ This completion means the product code, database controls, interfaces and automa
 ## Verification record
 
 - API build: passed, 282 files compiled.
-- API suite: 21 suites and 171 tests passed before release; final focused security suite: 6 suites and 26 tests passed after the last authorization changes.
+- API suite: final post-deployment rerun passed all 21 suites and all 171 tests; the focused security suite also passed all 6 suites and all 26 tests after the last authorization changes.
 - Web type-check: passed.
 - Web production build: passed, including 113 routes.
 - Public test pages: Command Center, Actions, Onboarding, Agents and Readiness returned HTTP 200.
