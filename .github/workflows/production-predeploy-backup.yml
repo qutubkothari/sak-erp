@@ -1,0 +1,109 @@
+name: Production pre-deploy backup
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Why production is about to change
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Capture live before deployment
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - name: Check out release reference
+        uses: actions/checkout@v4
+
+      - name: Configure production SSH key
+        shell: bash
+        env:
+          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$PROD_SSH_PRIVATE_KEY"
+          test -n "$PROD_SSH_HOST"
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" > "$HOME/.ssh/production_key"
+          chmod 600 "$HOME/.ssh/production_key"
+          ssh-keyscan -H "$PROD_SSH_HOST" >> "$HOME/.ssh/known_hosts"
+
+      - name: Capture exact secret-free live artifacts
+        id: backup
+        shell: bash
+        env:
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$PROD_SSH_USER"
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          tag="production-predeploy-${stamp}"
+          asset="sak-erp-live-${stamp}.tgz"
+          remote_asset="/tmp/${asset}"
+
+          ssh -i "$HOME/.ssh/production_key" "$PROD_SSH_USER@$PROD_SSH_HOST" \
+            "cd /var/www/sak-erp && tar -czf '$remote_asset' \
+              apps/web/.next apps/web/public apps/web/package.json apps/web/next.config.js \
+              apps/api/dist apps/api/package.json package.json pnpm-lock.yaml"
+          scp -i "$HOME/.ssh/production_key" \
+            "$PROD_SSH_USER@$PROD_SSH_HOST:$remote_asset" "$asset"
+          ssh -i "$HOME/.ssh/production_key" "$PROD_SSH_USER@$PROD_SSH_HOST" \
+            "rm -f '$remote_asset'"
+
+          tar -tzf "$asset" > archive-files.txt
+          if grep -E '(^|/)(\.env($|\.)|.*\.(pem|key|p12|pfx)$|credentials?($|[./_-]))' archive-files.txt; then
+            echo 'Refusing to publish an archive containing a possible secret.' >&2
+            exit 1
+          fi
+          sha256sum "$asset" | tee "${asset}.sha256"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Publish immutable GitHub rollback release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BACKUP_TAG: ${{ steps.backup.outputs.tag }}
+          BACKUP_ASSET: ${{ steps.backup.outputs.asset }}
+          BACKUP_REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          checksum="$(cut -d' ' -f1 "${BACKUP_ASSET}.sha256")"
+          notes="$(printf 'Mandatory production pre-deploy backup.\n\nReason: %s\nWorkflow commit: %s\nSHA-256: %s\nNo environment files, credentials, uploads, logs, caches, or databases are included.\n' \
+            "$BACKUP_REASON" "$GITHUB_SHA" "$checksum")"
+          gh release create "$BACKUP_TAG" \
+            "$BACKUP_ASSET" \
+            "${BACKUP_ASSET}.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Production pre-deploy backup ${BACKUP_TAG#production-predeploy-}" \
+            --notes "$notes" \
+            --latest=false
+
+          gh release view "$BACKUP_TAG" --repo "$GITHUB_REPOSITORY" --json assets,url
+
+      - name: Record auditable workflow summary
+        shell: bash
+        env:
+          BACKUP_TAG: ${{ steps.backup.outputs.tag }}
+          BACKUP_ASSET: ${{ steps.backup.outputs.asset }}
+        run: |
+          {
+            echo '## Production backup completed'
+            echo
+            echo "- Release: ${BACKUP_TAG}"
+            echo "- Artifact: ${BACKUP_ASSET}"
+            echo '- Deployment may proceed only after this job succeeds.'
+          } >> "$GITHUB_STEP_SUMMARY"
