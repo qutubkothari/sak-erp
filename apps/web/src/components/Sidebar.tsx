@@ -322,6 +322,7 @@ const navigation: NavigationItem[] = [
       { name: "Segregation of Duties", href: "/dashboard/settings/segregation-of-duties" },
       { name: "Integration Hub", href: "/dashboard/settings/integration-hub" },
       { name: "WhatsApp Business", href: "/dashboard/settings/whatsapp" },
+      { name: "WhatsApp Automation", href: "/dashboard/settings/whatsapp/automation" },
       { name: "Audit Trails", href: "/dashboard/audit-trails" },
       {
         name: "Continuous Controls",
