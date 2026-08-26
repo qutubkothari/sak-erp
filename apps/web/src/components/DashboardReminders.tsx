@@ -12,6 +12,7 @@ export type PendingPO = {
   vendor?: { name?: string } | null;
   created_at?: string;
   order_date?: string;
+  po_date?: string;
   total_amount?: number;
   status?: string;
 };

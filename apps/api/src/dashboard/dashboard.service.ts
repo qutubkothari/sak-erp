@@ -127,7 +127,7 @@ export class DashboardService {
     const [poResult, qcResult] = await Promise.all([
       this.supabase
         .from('purchase_orders')
-        .select('id, po_number, created_at, order_date, total_amount, status, pr_po_status, vendor:vendors(id, name)')
+        .select('id, po_number, created_at, po_date, total_amount, status, pr_po_status, vendor:vendors(id, name)')
         .eq('tenant_id', tenantId)
         .or('status.eq.PENDING,pr_po_status.eq.PENDING')
         .order('created_at', { ascending: false }),
