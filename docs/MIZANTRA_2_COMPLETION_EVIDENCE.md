@@ -8,7 +8,9 @@ Production status: frozen and unchanged
 
 - Factory Health now has an administrator-only, tenant-scoped configuration surface for transparent factor caps, management thresholds and the minimum daily-history requirement. Forecasting remains withheld until that tenant-approved evidence threshold is met.
 - Integration Hub configuration and test-event access is now administrator-only, tenant-scoped, audit-logged and test-only. Vault references are never returned to the browser and pasted credential values are rejected.
-- Latest local regression suite: 24 suites / 183 tests passed. Mizantra test runtime checks passed for Factory Health and Integration Hub; no production service was changed.
+- Physical gateway activation now has a maker-checker boundary: mappings begin in test mode, direct live activation is refused, any mapping revision resets approval, and an independently authorised Production/Admin user must approve or revoke live telemetry. Transaction-producing scan events remain in review.
+- Daily Factory Health and Management Brief schedulers now isolate tenant failures, so one unavailable tenant source does not suppress evidence capture for other tenants.
+- Latest local regression suite: 25 suites / 189 tests passed. Mizantra test runtime checks passed for Factory Health, Integration Hub and gateway maker-checker activation; no production service was changed.
 
 ## Outcome
 
@@ -24,7 +26,7 @@ This completion means the product code, database controls, interfaces and automa
 | Native governed action tools | Seven allowlisted tools plus maker-checker request, approval, rejection, execution, audit and idempotency in `governed-tool-registry.service.ts` and `governed-action.service.ts`. High-risk actions call existing native PR, maintenance and NCR services. |
 | Expanded Copilot and natural-language reporting | Tenant-bounded Copilot, deterministic fallback, evidence, confidence, financial impact and natural-language report handling in `intelligence.service.ts` and the Command Center UI. |
 | Historical change/root-cause briefs | Stored snapshot comparison and evidence-linked event analysis at `GET /intelligence/root-cause-brief`; unsupported causation is explicitly labelled insufficient. |
-| IoT/event-to-transaction connectors | Hashed one-time gateway credentials, replay/idempotency controls, payload limits, field mapping and telemetry routing in `production-device-gateway.service.ts`; transaction-like events remain review-required. |
+| IoT/event-to-transaction connectors | Hashed one-time gateway credentials, replay/idempotency controls, payload limits, field mapping, independent live-mapping approval/revocation and telemetry routing in `production-device-gateway.service.ts`; transaction-like events remain review-required. |
 | Full operational knowledge graph | Tenant-scoped persisted nodes/edges for suppliers, customers, items, POs, GRNs, work orders, NCRs, invoices, events, exceptions and verified value links in `knowledge-graph.service.ts`. |
 | Self-configuring onboarding | Mapping inference, validation, duplicate detection, exception-only review and independent approval for nine datasets in `onboarding-intelligence.service.ts` and the onboarding workspace. Approved staging never silently writes native masters. |
 | Provider migration, caching and observability | Configurable AI provider/base URL/model/timeout, bounded tenant cache, circuit breaker, durable call metrics and graceful fallback in `ai-provider.service.ts`; consolidated operational telemetry at `GET /intelligence/observability`. |
@@ -48,13 +50,15 @@ This completion means the product code, database controls, interfaces and automa
 
 ## Verification record
 
-- API build: passed, 282 files compiled.
-- API suite: final post-deployment rerun passed all 21 suites and all 171 tests; the focused security suite also passed all 6 suites and all 26 tests after the last authorization changes.
+- API build: passed, 288 files compiled.
+- API suite: final post-deployment rerun passed all 25 suites and all 189 tests.
 - Web type-check: passed.
 - Web production build: passed, including 113 routes.
 - Public test pages: Command Center, Actions, Onboarding, Agents and Readiness returned HTTP 200.
 - Unauthenticated governed-tool and connector calls returned HTTP 401.
 - Authenticated acceptance: PASS; 7 tools, onboarding batch creation, knowledge graph refresh/read, NL reporting, historical brief, observability and agent safety verified.
+- Gateway activation acceptance: PASS; direct live bypass returned `400`, and a test gateway moved from `DRAFT` to `SUBMITTED` while same-user approval was rejected with `403`.
+- Scheduler resilience acceptance: PASS; Factory Health forecast endpoint returned `200` and correctly withheld a forecast with only one stored observation.
 - Test-data onboarding batch: `9fa514be-16ac-4936-bd92-78cbec2fc767`.
 - Pre-deployment test backup: `/var/backups/sak-erp-test/pre-mizantra2-runtime-20260826T0000Z.tgz`.
 - Backup SHA-256: `edfeeedb995bc6bac6174fb394a4a6558783c7cf9aed87e936bcad70434a23cf`.
@@ -63,7 +67,7 @@ This completion means the product code, database controls, interfaces and automa
 ## Activation boundaries
 
 - Configure `AI_PROVIDER`, provider URL/model and credentials to activate non-deterministic narrative generation; fallback remains available without them.
-- Register each physical gateway and approve its field mapping before connecting shop-floor devices.
+- Register each physical gateway, validate it in test mode, submit its field mapping and obtain an independent approval before connecting shop-floor devices.
 - Approved onboarding batches must still be handed to the existing native module importer.
 - External agent delivery remains disabled until a future, separately approved connector/consent release.
 - Production deployment requires the documented production backup and explicit release approval; this test release did not change production.
