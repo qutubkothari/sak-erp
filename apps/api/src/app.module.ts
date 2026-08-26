@@ -58,6 +58,7 @@ import { MasterDataGovernanceModule } from './master-data-governance/master-data
 import { MasterDataGovernanceEnforcementGuard } from './master-data-governance/master-data-governance-enforcement.guard';
 import { IntegrationHubModule } from './integration-hub/integration-hub.module';
 import { IntelligenceModule } from './intelligence/intelligence.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 const runtimeEnv = process.env.APP_ENV || process.env.NODE_ENV;
 const apiEnvFiles = runtimeEnv === 'test'
@@ -146,6 +147,7 @@ const apiEnvFiles = runtimeEnv === 'test'
     MasterDataGovernanceModule,
     IntegrationHubModule,
     IntelligenceModule,
+    WhatsAppModule,
   ],
   controllers: [MigrationController],
   providers: [

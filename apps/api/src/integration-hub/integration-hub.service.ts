@@ -4,7 +4,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AuditService } from '../audit/audit.service';
 
 const CATALOG: Record<string, Array<[string, string]>> = {
-  SHARED: [['CRM', 'CRM / customer sync'], ['ECOMMERCE', 'E-commerce orders'], ['EMAIL', 'Email & document capture'], ['WEBHOOK', 'Webhook/API gateway']],
+  SHARED: [['CRM', 'CRM / customer sync'], ['ECOMMERCE', 'E-commerce orders'], ['EMAIL', 'Email & document capture'], ['WEBHOOK', 'Webhook/API gateway'], ['WHATSAPP', 'WhatsApp business bot & governed alerts']],
   INDIA: [['INDIA_GST', 'GST returns & reconciliation'], ['INDIA_EINVOICE', 'GST e-invoice / IRN'], ['INDIA_EWAY', 'E-way bill'], ['INDIA_TDS', 'TDS compliance'], ['INDIA_BANK', 'Indian bank statement/payment files'], ['INDIA_PAYROLL', 'Indian payroll statutory exports']],
   UAE: [['UAE_FTA', 'FTA VAT evidence'], ['UAE_EINVOICE', 'UAE e-invoicing readiness'], ['UAE_BANK', 'UAE bank statement/payment files'], ['UAE_WPS', 'WPS payroll file'], ['UAE_GRATUITY', 'End-of-service benefit evidence']],
 };

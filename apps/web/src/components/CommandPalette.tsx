@@ -76,6 +76,7 @@ const staticItems: CmdItem[] = [
   { id: 'settings-company-header', label: 'Company Header', subtitle: 'Letterhead header and footer templates', icon: <FileText className="h-4 w-4" />, href: '/dashboard/settings/company-header', group: 'Settings' },
   { id: 'settings-email-configuration', label: 'Email Configuration', subtitle: 'Module-wise sender addresses and reply-to routing', icon: <FileText className="h-4 w-4" />, href: '/dashboard/settings/email-configuration', group: 'Settings' },
   { id: 'master-data-governance', label: 'Master Data Governance', subtitle: 'Controlled customer, supplier, item, bank, tax and GL changes', icon: <Settings className="h-4 w-4" />, href: '/dashboard/settings/master-data-governance', group: 'Settings' },
+  { id: 'settings-whatsapp', label: 'WhatsApp Business', subtitle: 'Governed WhatsApp connection, QR pairing and message ledger', icon: <Settings className="h-4 w-4" />, href: '/dashboard/settings/whatsapp', group: 'Settings' },
   { id: 'automation-controls', label: 'Automation & Communication', subtitle: 'Rules, escalations, branches and communication evidence', icon: <Settings className="h-4 w-4" />, href: '/dashboard/automation', group: 'Settings' },
 ];
 

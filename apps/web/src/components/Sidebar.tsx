@@ -321,6 +321,7 @@ const navigation: NavigationItem[] = [
       { name: "Master Data Governance", href: "/dashboard/settings/master-data-governance" },
       { name: "Segregation of Duties", href: "/dashboard/settings/segregation-of-duties" },
       { name: "Integration Hub", href: "/dashboard/settings/integration-hub" },
+      { name: "WhatsApp Business", href: "/dashboard/settings/whatsapp" },
       { name: "Audit Trails", href: "/dashboard/audit-trails" },
       {
         name: "Continuous Controls",
