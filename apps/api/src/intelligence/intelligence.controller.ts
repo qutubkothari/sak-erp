@@ -182,6 +182,9 @@ export class IntelligenceController {
   @Get('exceptions')
   exceptions(@Req() request: any, @Query('status') status?: string) { return this.intelligence.exceptionRegister(request.user.tenantId, status); }
 
+  @Get('exception-assignees')
+  exceptionAssignees(@Req() request: any) { return this.intelligence.exceptionAssignees(request.user.tenantId); }
+
   @Patch('exceptions/:id')
   updateException(@Req() request: any, @Param('id') id: string, @Body() body: any) { return this.intelligence.updateException(request.user.tenantId, request.user, id, body || {}); }
 }

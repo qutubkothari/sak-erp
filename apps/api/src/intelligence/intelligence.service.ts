@@ -221,6 +221,19 @@ export class IntelligenceService {
     return data || [];
   }
 
+  async exceptionAssignees(tenantId: string) {
+    const { data, error } = await this.db.from('users')
+      .select('id, username, email, first_name, last_name')
+      .eq('tenant_id', tenantId)
+      .order('first_name', { ascending: true })
+      .limit(250);
+    if (error) throw new BadRequestException('Unable to load eligible exception owners.');
+    return (data || []).map((user: any) => ({
+      id: user.id,
+      label: [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || user.username || user.email || user.id,
+    }));
+  }
+
   async updateException(tenantId: string, user: any, id: string, body: any) {
     const userId = user.userId || user.id;
     const status = String(body.status || '').toUpperCase();
@@ -239,7 +252,7 @@ export class IntelligenceService {
     if (status === 'RESOLVED') { update.resolved_at = now; update.resolution_evidence = String(body.resolution_evidence).trim(); }
     const { data, error } = await this.db.from('mizantra_exception_register').update(update).eq('tenant_id', tenantId).eq('id', id).select().maybeSingle();
     if (error || !data) throw new BadRequestException(error?.message || 'Exception not found.');
-    await this.audit.logActivity({ tenantId, userId, action: 'MIZANTRA_EXCEPTION_UPDATED', resourceType: 'mizantra_exception', resourceId: id, resourceName: data.title, newValue: { status, resolution_evidence: update.resolution_evidence || null }, metadata: { governed_exception_register: true } });
+    await this.audit.logActivity({ tenantId, userId, action: 'MIZANTRA_EXCEPTION_UPDATED', resourceType: 'mizantra_exception', resourceId: id, resourceName: data.title, newValue: { status, owner_user_id: requestedOwner, resolution_evidence: update.resolution_evidence || null }, metadata: { governed_exception_register: true } });
     return data;
   }
 

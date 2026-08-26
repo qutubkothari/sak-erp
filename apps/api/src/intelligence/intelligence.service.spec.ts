@@ -73,4 +73,14 @@ describe('IntelligenceService critical behaviour', () => {
     const result = await service.healthForecast('tenant-a', 7);
     expect(result.sufficient_data).toBe(false); expect(result.observations_available).toBe(13); expect(result.observations_required).toBe(14);
   });
+
+  it('returns only tenant-scoped eligible exception owners', async () => {
+    const limit = jest.fn().mockResolvedValue({ data: [{ id: 'user-1', first_name: 'Mina', last_name: 'Owner', username: 'mina' }], error: null });
+    const order = jest.fn(() => ({ limit }));
+    const eq = jest.fn(() => ({ order }));
+    (service as any).db = { from: jest.fn(() => ({ select: jest.fn(() => ({ eq })) })) };
+    const result = await service.exceptionAssignees('tenant-a');
+    expect((service as any).db.from).toHaveBeenCalledWith('users'); expect(eq).toHaveBeenCalledWith('tenant_id', 'tenant-a');
+    expect(result).toEqual([{ id: 'user-1', label: 'Mina Owner' }]);
+  });
 });
