@@ -1209,11 +1209,34 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_receipt_lines_issue ON public.subcont
     const { tenantId } = req.user;
     const { data, error } = await this.supabase
       .from('subcontract_orders')
-      .select('*, route:subcontract_routes(id, route_number, name), steps:subcontract_order_steps(*), movements:subcontract_movements(*, receipt_lines:subcontract_receipt_lines(*))')
+      // Receipt lines are loaded separately below.  The production schema has
+      // existed with and without the PostgREST relationship metadata between a
+      // movement and its receipt lines; nesting that relation makes the whole
+      // order lookup fail even when the order itself exists.
+      .select('*, route:subcontract_routes(id, route_number, name), steps:subcontract_order_steps(*), movements:subcontract_movements(*)')
       .eq('tenant_id', tenantId)
       .eq('id', orderId)
       .single();
     if (error) throw new NotFoundException('Subcontracting order not found');
+    const movementIds = (data?.movements || []).map((movement: any) => movement.id).filter(Boolean);
+    if (movementIds.length) {
+      const { data: receiptLines, error: receiptLinesError } = await this.supabase
+        .from('subcontract_receipt_lines')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .in('receipt_movement_id', movementIds);
+      if (receiptLinesError) throw new BadRequestException(receiptLinesError.message);
+      const byMovement = new Map<string, any[]>();
+      for (const line of receiptLines || []) {
+        const movementId = String((line as any).receipt_movement_id || '');
+        if (!movementId) continue;
+        byMovement.set(movementId, [...(byMovement.get(movementId) || []), line]);
+      }
+      data.movements = (data.movements || []).map((movement: any) => ({
+        ...movement,
+        receipt_lines: byMovement.get(String(movement.id)) || [],
+      }));
+    }
     const [hydrated] = await this.hydrateReceiptProgress(tenantId, [data]);
     return hydrated;
   }
