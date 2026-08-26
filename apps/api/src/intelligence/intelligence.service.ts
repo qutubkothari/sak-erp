@@ -10,6 +10,12 @@ import { CrossModuleExceptionService } from './cross-module-exception.service';
 
 type Severity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
+const FACTORY_HEALTH_DEFAULT_CAPS: Record<string, number> = {
+  approvals: 18, stock_risk: 24, receipt_qc: 16, master_data: 12,
+  critical_exceptions: 30, production_risk: 12, quality_risk: 12,
+  maintenance_risk: 10, cash_risk: 10,
+};
+
 @Injectable()
 export class IntelligenceService {
   private readonly db: SupabaseClient = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
@@ -73,10 +79,60 @@ export class IntelligenceService {
     return { horizon: 'Current operating cycle', confidence: 'LOW', basis: 'Rule-based prioritisation from the current ERP exception; no statistical forecast is asserted.' };
   }
 
+  private isAdmin(user: any): boolean {
+    return this.roles(user).some((role) => ['SUPER_ADMIN', 'ADMIN', 'ADMINISTRATOR'].includes(role.toUpperCase().replace(/[\s-]+/g, '_')));
+  }
+
+  async healthConfiguration(tenantId: string) {
+    const { data, error } = await this.db.from('mizantra_factory_health_configurations')
+      .select('factor_caps, management_attention_threshold, critical_threshold, historical_observations_required, updated_at')
+      .eq('tenant_id', tenantId).maybeSingle();
+    const suppliedCaps = data && typeof data.factor_caps === 'object' ? data.factor_caps : {};
+    const factor_caps = Object.fromEntries(Object.entries(FACTORY_HEALTH_DEFAULT_CAPS).map(([key, fallback]) => {
+      const proposed = Number((suppliedCaps as any)[key]);
+      return [key, Number.isFinite(proposed) && proposed >= 0 && proposed <= 50 ? proposed : fallback];
+    }));
+    return {
+      configured: !!data && !error,
+      factor_caps,
+      management_attention_threshold: Number(data?.management_attention_threshold ?? 65),
+      critical_threshold: Number(data?.critical_threshold ?? 40),
+      historical_observations_required: Number(data?.historical_observations_required ?? 14),
+      updated_at: data?.updated_at || null,
+      note: error ? 'Using safe defaults until the Factory Health configuration migration is available.' : 'Configuration changes adjust score weighting only; they never alter source ERP records.',
+    };
+  }
+
+  async saveHealthConfiguration(tenantId: string, user: any, body: any, request?: any) {
+    if (!this.isAdmin(user)) throw new ForbiddenException('Only an administrator may update Factory Health configuration.');
+    const suppliedCaps = body?.factor_caps && typeof body.factor_caps === 'object' ? body.factor_caps : {};
+    const factor_caps = Object.fromEntries(Object.entries(FACTORY_HEALTH_DEFAULT_CAPS).map(([key, fallback]) => {
+      const proposed = suppliedCaps[key] == null ? fallback : Number(suppliedCaps[key]);
+      if (!Number.isFinite(proposed) || proposed < 0 || proposed > 50) throw new BadRequestException(`Factory Health cap for ${key} must be between 0 and 50.`);
+      return [key, proposed];
+    }));
+    const attention = Number(body?.management_attention_threshold ?? 65);
+    const critical = Number(body?.critical_threshold ?? 40);
+    const observations = Number(body?.historical_observations_required ?? 14);
+    if (![attention, critical].every((value) => Number.isFinite(value) && value >= 0 && value <= 100) || critical > attention) {
+      throw new BadRequestException('Thresholds must be between 0 and 100, with critical at or below management attention.');
+    }
+    if (!Number.isInteger(observations) || observations < 3 || observations > 90) throw new BadRequestException('Historical observations required must be an integer from 3 to 90.');
+    const userId = user?.userId || user?.id;
+    const { error } = await this.db.from('mizantra_factory_health_configurations').upsert({
+      tenant_id: tenantId, factor_caps, management_attention_threshold: attention, critical_threshold: critical,
+      historical_observations_required: observations, updated_by: userId, updated_at: new Date().toISOString(),
+    }, { onConflict: 'tenant_id' });
+    if (error) throw new BadRequestException(error.message);
+    await this.audit.logActivity({ tenantId, userId, action: 'MIZANTRA_FACTORY_HEALTH_CONFIGURATION_UPDATED', resourceType: 'factory_health_configuration', resourceName: 'Factory Health', newValue: { factor_caps, management_attention_threshold: attention, critical_threshold: critical, historical_observations_required: observations }, ipAddress: request?.ip, userAgent: request?.headers?.['user-agent'], metadata: { tenant_scoped: true, no_source_transaction_changed: true } });
+    return this.healthConfiguration(tenantId);
+  }
+
   async commandCenter(tenantId: string, user: any) {
     const cockpit = await this.dashboard.getCockpit(tenantId);
     let roi: any = null;
     try { roi = await this.value.dashboard(tenantId); } catch { /* ROI tables may still be migrating on an older tenant. */ }
+    const healthConfiguration = await this.healthConfiguration(tenantId);
     const cockpitDecisions = (cockpit.exceptions || []).map((item: any, index: number) => ({
       id: `cockpit-${index}-${item.type}`,
       title: item.title,
@@ -112,16 +168,17 @@ export class IntelligenceService {
       : roleView === 'MAINTENANCE' ? decisions.filter((item: any) => /maintenance|machine|downtime|production/i.test(`${item.domain} ${item.title}`))
       : roleView === 'COMMERCIAL' ? decisions.filter((item: any) => /sales|customer|collection|delivery|invoice/i.test(String(item.domain)))
       : decisions;
+    const healthCap = (key: string) => Number(healthConfiguration.factor_caps[key] ?? FACTORY_HEALTH_DEFAULT_CAPS[key]);
     const healthFactors = [
-      { key: 'approvals', label: 'Approval flow', value: metricByKey.get('approvals') || 0, max_penalty: 18, penalty: Math.min(18, (metricByKey.get('approvals') || 0) * 3), route: '/dashboard/manager' },
-      { key: 'stock_risk', label: 'Material availability', value: metricByKey.get('stockRisk') || 0, max_penalty: 24, penalty: Math.min(24, (metricByKey.get('stockRisk') || 0) * 4), route: '/dashboard/inventory/items' },
-      { key: 'receipt_qc', label: 'Receipt and quality closure', value: decisions.filter((item: any) => String(item.domain).includes('GRN')).length, max_penalty: 16, penalty: Math.min(16, decisions.filter((item: any) => String(item.domain).includes('GRN')).length * 5), route: '/dashboard/purchase/grn' },
-      { key: 'master_data', label: 'Master-data hygiene', value: decisions.filter((item: any) => String(item.domain).includes('Master')).length, max_penalty: 12, penalty: Math.min(12, decisions.filter((item: any) => String(item.domain).includes('Master')).length * 4), route: '/dashboard/inventory/items' },
-      { key: 'critical_exceptions', label: 'Critical operational exceptions', value: decisions.filter((item: any) => item.priority_score >= 80).length, max_penalty: 30, penalty: Math.min(30, decisions.filter((item: any) => item.priority_score >= 80).length * 10), route: '/dashboard/command-center' },
-      { key: 'production_risk', label: 'Production schedule', value: decisions.filter((item: any) => /PRODUCTION/i.test(String(item.domain))).length, max_penalty: 12, penalty: Math.min(12, decisions.filter((item: any) => /PRODUCTION/i.test(String(item.domain))).length * 3), route: '/dashboard/production/job-orders' },
-      { key: 'quality_risk', label: 'Quality and CAPA', value: decisions.filter((item: any) => /QUALITY/i.test(String(item.domain))).length, max_penalty: 12, penalty: Math.min(12, decisions.filter((item: any) => /QUALITY/i.test(String(item.domain))).length * 3), route: '/dashboard/quality' },
-      { key: 'maintenance_risk', label: 'Machine and maintenance', value: decisions.filter((item: any) => /MAINTENANCE/i.test(String(item.domain))).length, max_penalty: 10, penalty: Math.min(10, decisions.filter((item: any) => /MAINTENANCE/i.test(String(item.domain))).length * 2), route: '/dashboard/production/plant-maintenance' },
-      { key: 'cash_risk', label: 'Cash and reconciliation', value: decisions.filter((item: any) => /FINANCE|SALES/i.test(String(item.domain))).length, max_penalty: 10, penalty: Math.min(10, decisions.filter((item: any) => /FINANCE|SALES/i.test(String(item.domain))).length * 2), route: '/dashboard/accounts/working-capital' },
+      { key: 'approvals', label: 'Approval flow', value: metricByKey.get('approvals') || 0, max_penalty: healthCap('approvals'), penalty: Math.min(healthCap('approvals'), (metricByKey.get('approvals') || 0) * 3), route: '/dashboard/manager' },
+      { key: 'stock_risk', label: 'Material availability', value: metricByKey.get('stockRisk') || 0, max_penalty: healthCap('stock_risk'), penalty: Math.min(healthCap('stock_risk'), (metricByKey.get('stockRisk') || 0) * 4), route: '/dashboard/inventory/items' },
+      { key: 'receipt_qc', label: 'Receipt and quality closure', value: decisions.filter((item: any) => String(item.domain).includes('GRN')).length, max_penalty: healthCap('receipt_qc'), penalty: Math.min(healthCap('receipt_qc'), decisions.filter((item: any) => String(item.domain).includes('GRN')).length * 5), route: '/dashboard/purchase/grn' },
+      { key: 'master_data', label: 'Master-data hygiene', value: decisions.filter((item: any) => String(item.domain).includes('Master')).length, max_penalty: healthCap('master_data'), penalty: Math.min(healthCap('master_data'), decisions.filter((item: any) => String(item.domain).includes('Master')).length * 4), route: '/dashboard/inventory/items' },
+      { key: 'critical_exceptions', label: 'Critical operational exceptions', value: decisions.filter((item: any) => item.priority_score >= 80).length, max_penalty: healthCap('critical_exceptions'), penalty: Math.min(healthCap('critical_exceptions'), decisions.filter((item: any) => item.priority_score >= 80).length * 10), route: '/dashboard/command-center' },
+      { key: 'production_risk', label: 'Production schedule', value: decisions.filter((item: any) => /PRODUCTION/i.test(String(item.domain))).length, max_penalty: healthCap('production_risk'), penalty: Math.min(healthCap('production_risk'), decisions.filter((item: any) => /PRODUCTION/i.test(String(item.domain))).length * 3), route: '/dashboard/production/job-orders' },
+      { key: 'quality_risk', label: 'Quality and CAPA', value: decisions.filter((item: any) => /QUALITY/i.test(String(item.domain))).length, max_penalty: healthCap('quality_risk'), penalty: Math.min(healthCap('quality_risk'), decisions.filter((item: any) => /QUALITY/i.test(String(item.domain))).length * 3), route: '/dashboard/quality' },
+      { key: 'maintenance_risk', label: 'Machine and maintenance', value: decisions.filter((item: any) => /MAINTENANCE/i.test(String(item.domain))).length, max_penalty: healthCap('maintenance_risk'), penalty: Math.min(healthCap('maintenance_risk'), decisions.filter((item: any) => /MAINTENANCE/i.test(String(item.domain))).length * 2), route: '/dashboard/production/plant-maintenance' },
+      { key: 'cash_risk', label: 'Cash and reconciliation', value: decisions.filter((item: any) => /FINANCE|SALES/i.test(String(item.domain))).length, max_penalty: healthCap('cash_risk'), penalty: Math.min(healthCap('cash_risk'), decisions.filter((item: any) => /FINANCE|SALES/i.test(String(item.domain))).length * 2), route: '/dashboard/accounts/working-capital' },
     ];
     const totalPenalty = healthFactors.reduce((sum, factor) => sum + factor.penalty, 0);
     return {
@@ -133,6 +190,7 @@ export class IntelligenceService {
         open_exceptions: decisions.length,
         high_priority: decisions.filter((item: any) => item.priority_score >= 80).length,
         methodology: 'A transparent current-state control score. It deducts configured penalties for approvals, material availability, receipt/QC closure, master-data hygiene and critical operational exceptions. Trend requires daily score history and is not yet inferred.',
+        configuration: healthConfiguration,
         factors: healthFactors,
       },
       metrics: metrics.filter((item: any) => relevant.includes(item.key)),
@@ -473,13 +531,15 @@ export class IntelligenceService {
   }
 
   async healthForecast(tenantId: string, horizonDays = 7) {
-    const result = await this.healthHistory(tenantId, 30);
+    const [result, configuration] = await Promise.all([this.healthHistory(tenantId, 90), this.healthConfiguration(tenantId)]);
     const history = result.history || [];
     const horizon = Math.min(Math.max(Number(horizonDays) || 7, 1), 14);
-    if (history.length < 3) return {
+    const requiredObservations = Math.max(3, Number(configuration.historical_observations_required) || 14);
+    if (history.length < requiredObservations) return {
       generated_at: new Date().toISOString(), sufficient_data: false, confidence: 'LOW', forecast: [],
-      note: 'Insufficient historical snapshots to forecast reliably. At least three daily observations are required.',
-      methodology: 'No forecast is produced from a single current-state score.',
+      observations_available: history.length, observations_required: requiredObservations,
+      note: `Insufficient historical snapshots to forecast reliably. This tenant requires ${requiredObservations} daily observations; ${history.length} are available.`,
+      methodology: 'No forecast is produced until the tenant-approved historical calibration threshold is met.',
     };
     const values = history.map((row: any) => Number(row.score)); const n = values.length;
     const meanX = (n - 1) / 2; const meanY = values.reduce((sum: number, value: number) => sum + value, 0) / n;
@@ -487,16 +547,16 @@ export class IntelligenceService {
     const slope = denominator ? values.reduce((sum: number, value: number, index: number) => sum + (index - meanX) * (value - meanY), 0) / denominator : 0;
     const intercept = meanY - slope * meanX;
     const residual = values.reduce((sum: number, value: number, index: number) => sum + Math.abs(value - (intercept + slope * index)), 0) / n;
-    const confidence = n >= 14 && residual <= 4 ? 'HIGH' : n >= 7 && residual <= 8 ? 'MEDIUM' : 'LOW';
+    const confidence = n >= Math.max(14, requiredObservations) && residual <= 4 ? 'HIGH' : n >= requiredObservations && residual <= 8 ? 'MEDIUM' : 'LOW';
     const lastDate = new Date(`${history[n - 1].snapshot_date}T00:00:00.000Z`);
     const forecast = Array.from({ length: horizon }, (_unused, index) => {
       const date = new Date(lastDate); date.setUTCDate(date.getUTCDate() + index + 1);
       return { date: date.toISOString().slice(0, 10), score: Number(Math.min(100, Math.max(0, intercept + slope * (n + index))).toFixed(1)) };
     });
     return {
-      generated_at: new Date().toISOString(), sufficient_data: true, confidence, forecast,
+      generated_at: new Date().toISOString(), sufficient_data: true, confidence, forecast, observations_available: n, observations_required: requiredObservations,
       direction: slope < -0.25 ? 'DEGRADING' : slope > 0.25 ? 'IMPROVING' : 'STABLE', daily_change: Number(slope.toFixed(2)), historical_fit_error: Number(residual.toFixed(2)),
-      warning: forecast.some((item) => item.score < 60) ? 'Projected health crosses the management-attention threshold within the forecast horizon.' : null,
+      warning: forecast.some((item) => item.score < Number(configuration.management_attention_threshold)) ? 'Projected health crosses the configured management-attention threshold within the forecast horizon.' : null,
       methodology: 'Least-squares trend over stored daily Factory Health snapshots. Values are bounded to 0–100; confidence reduces when history is short or volatile. This is a trend projection, not a causal claim.',
     };
   }

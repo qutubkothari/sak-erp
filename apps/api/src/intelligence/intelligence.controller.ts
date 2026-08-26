@@ -104,6 +104,16 @@ export class IntelligenceController {
     return this.intelligence.healthHistory(request.user.tenantId, Number(days) || 14);
   }
 
+  @Get('health-configuration')
+  healthConfiguration(@Req() request: any) {
+    return this.intelligence.healthConfiguration(request.user.tenantId);
+  }
+
+  @Patch('health-configuration')
+  saveHealthConfiguration(@Req() request: any, @Body() body: any) {
+    return this.intelligence.saveHealthConfiguration(request.user.tenantId, request.user, body || {}, request);
+  }
+
   @Get('health-forecast')
   healthForecast(@Req() request: any, @Query('days') days?: string) {
     return this.intelligence.healthForecast(request.user.tenantId, Number(days) || 7);
