@@ -1,2 +1,19 @@
-import {Body,Controller,Get,Param,Post,Req,UseGuards} from '@nestjs/common'; import {JwtAuthGuard} from '../auth/guards/jwt-auth.guard'; import {PermissionsGuard} from '../auth/guards/permissions.guard'; import {IntegrationHubService} from './integration-hub.service';
-@Controller('integration-hub') @UseGuards(JwtAuthGuard,PermissionsGuard) export class IntegrationHubController {constructor(private s:IntegrationHubService){} private u(r:any){return r.user.userId||r.user.id;} @Get('dashboard') dashboard(@Req()r:any){return this.s.dashboard(r.user.tenantId)} @Post('connections') save(@Req()r:any,@Body()b:any){return this.s.save(r.user.tenantId,this.u(r),b)} @Post('connections/:id/test') test(@Req()r:any,@Param('id')id:string,@Body()b:any){return this.s.recordTest(r.user.tenantId,this.u(r),id,b)}}
+import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { IntegrationHubService } from './integration-hub.service';
+
+@Controller('integration-hub')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class IntegrationHubController {
+  constructor(private readonly service: IntegrationHubService) {}
+
+  @Get('dashboard')
+  dashboard(@Req() request: any) { return this.service.dashboard(request.user.tenantId, request.user); }
+
+  @Post('connections')
+  save(@Req() request: any, @Body() body: any) { return this.service.save(request.user.tenantId, request.user, body || {}, request); }
+
+  @Post('connections/:id/test')
+  test(@Req() request: any, @Param('id') id: string, @Body() body: any) { return this.service.recordTest(request.user.tenantId, request.user, id, body || {}, request); }
+}

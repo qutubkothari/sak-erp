@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { IntelligenceService } from './intelligence.service';
 import { GovernedToolRegistryService } from './governed-tool-registry.service';
 
@@ -10,11 +10,12 @@ describe('IntelligenceService critical behaviour', () => {
   const value = { dashboard: jest.fn() };
   const audit = { logActivity: jest.fn().mockResolvedValue(undefined) };
   const events = { recent: jest.fn(), record: jest.fn() };
+  const crossModuleExceptions = { collect: jest.fn().mockResolvedValue([]) };
   const tools = new GovernedToolRegistryService();
   const ai = { structuredJson: jest.fn(async (request: any) => ({ value: request.fallback, provider: 'DETERMINISTIC_FALLBACK', model: null, fallback_used: true, latency_ms: 0 })), status: jest.fn(() => ({ configured: false })) };
   let service: IntelligenceService;
 
-  beforeEach(() => { jest.clearAllMocks(); service = new IntelligenceService(dashboard as any, value as any, audit as any, events as any, tools, ai as any); });
+  beforeEach(() => { jest.clearAllMocks(); service = new IntelligenceService(dashboard as any, value as any, audit as any, events as any, tools, ai as any, crossModuleExceptions as any); });
 
   it('rejects empty and oversized Copilot questions', async () => {
     await expect(service.ask('tenant-a', { id: 'u' }, '', {})).rejects.toBeInstanceOf(BadRequestException);
@@ -46,7 +47,30 @@ describe('IntelligenceService critical behaviour', () => {
 
   it('requires historical observations before forecasting', async () => {
     jest.spyOn(service, 'healthHistory').mockResolvedValue({ history: [] } as any);
+    jest.spyOn(service, 'healthConfiguration').mockResolvedValue({ historical_observations_required: 14, management_attention_threshold: 65 } as any);
     const result = await service.healthForecast('tenant-a', 7);
     expect(result.sufficient_data).toBe(false); expect(result.confidence).toBe('LOW'); expect(result.forecast).toEqual([]);
+    expect(result.observations_required).toBe(14);
+  });
+
+  it('keeps Factory Health configuration tenant-scoped and uses safe defaults when its migration is unavailable', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: { message: 'relation does not exist' } });
+    const eq = jest.fn(() => ({ maybeSingle }));
+    (service as any).db = { from: jest.fn(() => ({ select: jest.fn(() => ({ eq })) })) };
+    const result = await service.healthConfiguration('tenant-a');
+    expect((service as any).db.from).toHaveBeenCalledWith('mizantra_factory_health_configurations');
+    expect(eq).toHaveBeenCalledWith('tenant_id', 'tenant-a');
+    expect(result.configured).toBe(false); expect(result.factor_caps.approvals).toBe(18); expect(result.historical_observations_required).toBe(14);
+  });
+
+  it('does not allow a non-administrator to alter Factory Health weighting', async () => {
+    await expect(service.saveHealthConfiguration('tenant-a', { id: 'ordinary-user', roles: ['PRODUCTION'] }, { factor_caps: { approvals: 0 } }, {})).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('does not forecast before the tenant-approved historical calibration threshold', async () => {
+    jest.spyOn(service, 'healthHistory').mockResolvedValue({ history: Array.from({ length: 13 }, (_x, index) => ({ snapshot_date: `2026-08-${String(index + 1).padStart(2, '0')}`, score: 80 })) } as any);
+    jest.spyOn(service, 'healthConfiguration').mockResolvedValue({ historical_observations_required: 14, management_attention_threshold: 65 } as any);
+    const result = await service.healthForecast('tenant-a', 7);
+    expect(result.sufficient_data).toBe(false); expect(result.observations_available).toBe(13); expect(result.observations_required).toBe(14);
   });
 });
