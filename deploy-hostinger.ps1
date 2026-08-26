@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('live', 'test')]
+  [ValidateSet('live', 'test', 'mizantra', 'pmstest-live')]
   [string]$Environment = 'live',
   [string]$ApiEnvFile,
   [switch]$SkipLocalEnvValidation
@@ -29,7 +29,33 @@ function Get-EnvironmentConfig([string]$targetEnvironment) {
   switch ($targetEnvironment) {
     'test' {
       return @{
-        Name = 'test'
+        Name = 'mizantra'
+        RemotePath = if ($env:HOSTINGER_REMOTE_PATH) { $env:HOSTINGER_REMOTE_PATH } else { '/var/www/sak-erp-test' }
+        Pm2ApiName = 'sak-api-test'
+        Pm2WebName = 'sak-web-test'
+        ApiPort = 4001
+        WebPort = 3001
+        Domain = 'mizantra.saksolution.com'
+        ApiBaseUrl = 'https://mizantra.saksolution.com/api/v1'
+        LocalApiEnvFile = if ($ApiEnvFile) { $ApiEnvFile } else { 'apps/api/.env.test' }
+      }
+    }
+    'mizantra' {
+      return @{
+        Name = 'mizantra'
+        RemotePath = if ($env:HOSTINGER_REMOTE_PATH) { $env:HOSTINGER_REMOTE_PATH } else { '/var/www/sak-erp-test' }
+        Pm2ApiName = 'sak-api-test'
+        Pm2WebName = 'sak-web-test'
+        ApiPort = 4001
+        WebPort = 3001
+        Domain = 'mizantra.saksolution.com'
+        ApiBaseUrl = 'https://mizantra.saksolution.com/api/v1'
+        LocalApiEnvFile = if ($ApiEnvFile) { $ApiEnvFile } else { 'apps/api/.env.test' }
+      }
+    }
+    'pmstest-live' {
+      return @{
+        Name = 'pmstest-live'
         RemotePath = if ($env:HOSTINGER_REMOTE_PATH) { $env:HOSTINGER_REMOTE_PATH } else { '/var/www/sak-erp-test' }
         Pm2ApiName = 'sak-api-test'
         Pm2WebName = 'sak-web-test'
@@ -245,6 +271,23 @@ Run "Create artifact archive ($archive)" {
     throw "Artifact creation failed with exit code $LASTEXITCODE"
   }
 
+  # A BUILD_ID alone is not sufficient: an interrupted Next build can leave a
+  # partial .next directory that starts but fails when a page is requested.
+  # Verify the management landing route before any remote release is touched.
+  $requiredWebArtifacts = @(
+    'apps/web/.next/BUILD_ID',
+    'apps/web/.next/server/app/dashboard/command-center/page.js'
+  )
+  foreach ($artifact in $requiredWebArtifacts) {
+    if (-not (Test-Path $artifact)) {
+      throw "Web build is incomplete: missing $artifact"
+    }
+    $contained = (& tar -tzf $archive | Select-String -SimpleMatch $artifact -Quiet)
+    if (-not $contained) {
+      throw "Deployment archive is incomplete: missing $artifact"
+    }
+  }
+
   $size = [math]::Round((Get-Item $archive).Length / 1MB, 2)
   Write-Host "Archive size: $size MB" -ForegroundColor Gray
 }
@@ -267,6 +310,9 @@ Run "Deploy on Hostinger (extract, install prod deps, restart PM2)" {
      'ARCHIVE=/tmp/' + $archive + '; ' +
      'DEPLOY_DIR=' + $REMOTE_PATH + '; ' +
      'mkdir -p "' + $REMOTE_PATH + '"; cd "' + $REMOTE_PATH + '"; ' +
+     'test -s "$ARCHIVE"; ' +
+     'tar -tzf "$ARCHIVE" | grep -qx "apps/web/.next/BUILD_ID"; ' +
+     'tar -tzf "$ARCHIVE" | grep -qx "apps/web/.next/server/app/dashboard/command-center/page.js"; ' +
      'pm2 stop ' + $PM2_WEB_NAME + ' 2>/dev/null || true; ' +
      'if [ -d apps ]; then tar -czf backup-' + $stamp + '.tar.gz apps packages package.json pnpm-workspace.yaml pnpm-lock.yaml 2>/dev/null || true; fi; ' +
      'ls -1t backup-*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -f 2>/dev/null || true; ' +
@@ -290,7 +336,7 @@ Run "Deploy on Hostinger (extract, install prod deps, restart PM2)" {
     'fi; ' +
     'cd "$DEPLOY_DIR"; ' +
     'pm2 save; ' +
-    'WEB_OK=0; for i in 1 2 3 4 5 6 7 8 9 10; do if curl -fs http://127.0.0.1:' + $WEB_PORT + '/ >/dev/null 2>&1; then WEB_OK=1; break; fi; sleep 1; done; if [ "$WEB_OK" -eq 1 ]; then echo WEB_OK; else echo WEB_FAIL >&2; exit 1; fi; ' +
+    'WEB_OK=0; for i in 1 2 3 4 5 6 7 8 9 10; do if curl -fs http://127.0.0.1:' + $WEB_PORT + '/ >/dev/null 2>&1 && curl -fs http://127.0.0.1:' + $WEB_PORT + '/dashboard/command-center >/dev/null 2>&1; then WEB_OK=1; break; fi; sleep 1; done; if [ "$WEB_OK" -eq 1 ]; then echo WEB_OK; else echo WEB_FAIL >&2; exit 1; fi; ' +
     'API_CODE=000; for i in 1 2 3 4 5 6 7 8 9 10; do API_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:' + $API_PORT + '/api/v1 2>/dev/null || true); if [ "$API_CODE" != "000" ]; then break; fi; sleep 1; done; if [ "$API_CODE" != "000" ]; then echo API_OK_$API_CODE; else echo API_FAIL; fi; ' +
      'pm2 list')
 
