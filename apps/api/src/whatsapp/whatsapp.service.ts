@@ -10,7 +10,12 @@ const session = (tenantId: string) => `tenant_${String(tenantId).replace(/[^a-zA
 export class WhatsAppService {
   private readonly db: SupabaseClient = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
   constructor(private readonly audit: AuditService) {}
-  private roles(user: any) { return [user?.role, ...(user?.roles || [])].map((x: any) => String(x?.name || x || '').toUpperCase()); }
+  private roles(user: any) {
+    return Array.from(new Set([
+      typeof user?.role === 'string' ? user.role : user?.role?.name,
+      ...(Array.isArray(user?.roles) ? user.roles.map((entry: any) => typeof entry === 'string' ? entry : entry?.role?.name || entry?.name) : []),
+    ].filter(Boolean).map((value) => String(value).trim().toUpperCase().replace(/[\s-]+/g, '_'))));
+  }
   private admin(user: any) { if (!this.roles(user).some((r) => ['SUPER_ADMIN', 'ADMIN', 'ADMINISTRATOR'].includes(r))) throw new ForbiddenException('Only an administrator may configure WhatsApp.'); return String(user?.userId || user?.id || ''); }
   private key() { return String(process.env.WAHA_API_KEY || ''); }
   private url() { return String(process.env.WAHA_API_URL || '').replace(/\/$/, ''); }
