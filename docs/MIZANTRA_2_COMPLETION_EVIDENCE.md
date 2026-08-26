@@ -1,8 +1,8 @@
 # Mizantra 2 completion evidence
 
 Date: 26 August 2026  
-Environment: Mizantra test only (`mizantra.saksolution.com`)  
-Production status: frozen and unchanged
+Primary environment: Mizantra test (`mizantra.saksolution.com`)  
+Production status: the Mizantra 2.0 feature release remains test-only. On 26 August 2026, the user-authorised subcontracting compatibility fix (current compiled API routes, including orders and reminders) was back-ported to live (`erp.saifseas.com`) with a pre-swap backup and read-only endpoint verification. No new Mizantra 2.0 feature surface was enabled in live.
 
 ## Continuing hardening record
 
@@ -21,6 +21,13 @@ Production status: frozen and unchanged
 The 44-point Mizantra 2 product brief and the nine-item remaining sequence have been implemented in the test release. The design intentionally keeps financial, purchasing, maintenance, quality, onboarding and external-agent changes behind native permissions, tenant isolation, idempotency and maker-checker controls.
 
 This completion means the product code, database controls, interfaces and automated tests exist and operate in test. Physical IoT devices, an external AI-provider account and client master data still require customer-specific credentials/configuration; the system degrades safely when these are absent.
+
+## Post-release compatibility verification
+
+- 26 August 2026: the test API was found to be behind the deployed web client and did not expose `GET /api/v1/dashboard/reminders`; it was updated from the validated current build.
+- The same validated API build was back-ported to live for the user-authorised subcontracting repair only. On both test and live, authenticated `GET /production/subcontracting/orders`, `GET /production/subcontracting/routes`, and `GET /dashboard/reminders` returned `200`.
+- On both environments, an intentionally invalid authenticated `POST /production/subcontracting/orders` returned `400` validation rather than `404`, proving the create-order route is registered without creating a record.
+- The Mizantra test browser click smoke passed for the subcontracting tabs, route/order dialogs, document flow and available QC dialog.
 
 ## Remaining-sequence evidence
 
