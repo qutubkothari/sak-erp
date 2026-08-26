@@ -3,7 +3,7 @@ import {
   type PermissionEntry,
   type PermissionAction,
   SCREEN_DEFINITIONS,
-} from './permission-config';
+} from "./permission-config";
 
 export type StoredUser = {
   roles?: string[] | Array<{ role: { name: string; permissions?: unknown } }>;
@@ -18,11 +18,13 @@ export type StoredUser = {
 
 export type Permission = PermissionEntry;
 
-const PRODUCTION_MANAGEMENT_DENYLIST = new Set(['production@saifautomations.com']);
+const PRODUCTION_MANAGEMENT_DENYLIST = new Set([
+  "production@saifautomations.com",
+]);
 
 function getNormalizedEmail(user: StoredUser | null): string {
   const raw = user?.email;
-  return typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  return typeof raw === "string" ? raw.trim().toLowerCase() : "";
 }
 
 function isProductionManagementDenied(user: StoredUser | null): boolean {
@@ -44,13 +46,13 @@ function mergePermission(a: Permission, b: Permission): Permission {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === "object" && value !== null;
 }
 
 export function readStoredUser(): StoredUser | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem('user');
+    const raw = localStorage.getItem("user");
     return raw ? (JSON.parse(raw) as StoredUser) : null;
   } catch {
     return null;
@@ -64,28 +66,70 @@ export function getUserRoleNames(user: StoredUser | null): string[] {
   const rawRoles = (user as { roles?: unknown }).roles;
   if (Array.isArray(rawRoles)) {
     rawRoles.forEach((entry) => {
-      if (typeof entry === 'string') {
+      if (typeof entry === "string") {
         names.push(entry);
         return;
       }
-      if (isRecord(entry) && isRecord(entry.role) && typeof entry.role.name === 'string') {
+      if (
+        isRecord(entry) &&
+        isRecord(entry.role) &&
+        typeof entry.role.name === "string"
+      ) {
         names.push(entry.role.name);
       }
     });
   }
 
   const single = (user as { role?: { name?: unknown } }).role;
-  if (single && typeof single.name === 'string') names.push(single.name);
+  if (single && typeof single.name === "string") names.push(single.name);
   return names;
 }
 
 export function isAdminLike(user: StoredUser | null): boolean {
   const roleNames = getUserRoleNames(user)
-    .map((n) => String(n).toUpperCase().replace(/[_\-]+/g, ' '))
+    .map((n) =>
+      String(n)
+        .toUpperCase()
+        .replace(/[_\-]+/g, " "),
+    )
     .map((n) => n.trim())
     .filter(Boolean);
 
-  return roleNames.some((n) => n.includes('ADMIN') || n.includes('SUPER') || n.includes('OWNER'));
+  return roleNames.some(
+    (n) => n.includes("ADMIN") || n.includes("SUPER") || n.includes("OWNER"),
+  );
+}
+
+/**
+ * Command Center is the management landing surface, not a back-door to every
+ * ERP module.  Keep frontline/mobile users on their task-specific landing
+ * pages, while recognised functional leaders get their role-filtered decision
+ * view at sign-in.
+ */
+export function isManagementLeader(user: StoredUser | null): boolean {
+  const roleNames = getUserRoleNames(user).map((name) =>
+    String(name)
+      .toUpperCase()
+      .replace(/[\s-]+/g, "_"),
+  );
+  return roleNames.some((role) =>
+    [
+      "CEO",
+      "MD",
+      "MANAGING_DIRECTOR",
+      "DIRECTOR",
+      "CFO",
+      "FINANCE_MANAGER",
+      "OPERATIONS_MANAGER",
+      "PRODUCTION_MANAGER",
+      "PURCHASE_MANAGER",
+      "PROCUREMENT_MANAGER",
+      "QUALITY_MANAGER",
+      "MAINTENANCE_MANAGER",
+      "SALES_MANAGER",
+      "COMMERCIAL_MANAGER",
+    ].includes(role),
+  );
 }
 
 /** Strict maker-checker override: only Admin and Super Admin roles qualify. */
@@ -93,21 +137,27 @@ export function hasMakerCheckerOverride(user: StoredUser | null): boolean {
   const directRole = (user as any)?.role;
   const rawNames = [
     ...getUserRoleNames(user),
-    typeof directRole === 'string' ? directRole : '',
-    typeof (user as any)?.roleName === 'string' ? (user as any).roleName : '',
-    typeof (user as any)?.role_name === 'string' ? (user as any).role_name : '',
+    typeof directRole === "string" ? directRole : "",
+    typeof (user as any)?.roleName === "string" ? (user as any).roleName : "",
+    typeof (user as any)?.role_name === "string" ? (user as any).role_name : "",
   ];
   const roleNames = rawNames.map((name) =>
-    String(name || '').trim().toUpperCase().replace(/[\s-]+/g, '_').replace(/[^A-Z0-9_]/g, ''),
+    String(name || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, "_")
+      .replace(/[^A-Z0-9_]/g, ""),
   );
-  return roleNames.some((name) => ['ADMIN', 'ADMINISTRATOR', 'SUPER_ADMIN'].includes(name));
+  return roleNames.some((name) =>
+    ["ADMIN", "ADMINISTRATOR", "SUPER_ADMIN"].includes(name),
+  );
 }
 
 function toPermission(value: unknown): Permission {
   if (!isRecord(value)) return {};
   return {
-    module: typeof value.module === 'string' ? value.module : undefined,
-    screen: typeof value.screen === 'string' ? value.screen : undefined,
+    module: typeof value.module === "string" ? value.module : undefined,
+    screen: typeof value.screen === "string" ? value.screen : undefined,
     view: !!value.view,
     create: !!value.create,
     edit: !!value.edit,
@@ -120,7 +170,8 @@ function toPermission(value: unknown): Permission {
 function normalizePermissions(value: unknown): Permission[] {
   if (Array.isArray(value)) return value.map(toPermission);
   if (isRecord(value)) {
-    if (typeof value.module === 'string' || typeof value.screen === 'string') return [toPermission(value)];
+    if (typeof value.module === "string" || typeof value.screen === "string")
+      return [toPermission(value)];
     return Object.keys(value).map((module) => {
       const entry = value[module];
       const perm = toPermission(entry);
@@ -158,17 +209,26 @@ function getUserPermissionsRaw(user: StoredUser | null): unknown {
     const firstWithPerms = raw.find((entry) => {
       if (!isRecord(entry)) return false;
       const role = entry.role;
-      return isRecord(role) && Array.isArray(role.permissions) && role.permissions.length > 0;
+      return (
+        isRecord(role) &&
+        Array.isArray(role.permissions) &&
+        role.permissions.length > 0
+      );
     });
 
-    if (firstWithPerms && isRecord(firstWithPerms) && isRecord(firstWithPerms.role)) {
+    if (
+      firstWithPerms &&
+      isRecord(firstWithPerms) &&
+      isRecord(firstWithPerms.role)
+    ) {
       return firstWithPerms.role.permissions ?? [];
     }
 
     return [];
   }
 
-  const singleRolePerms = (user as { role?: { permissions?: unknown } }).role?.permissions;
+  const singleRolePerms = (user as { role?: { permissions?: unknown } }).role
+    ?.permissions;
   if (singleRolePerms) return singleRolePerms;
   return [];
 }
@@ -186,9 +246,13 @@ export function getEnabledModules(user: StoredUser | null): Set<string> {
   if (!Array.isArray(raw)) return enabled;
 
   normalizePermissions(raw)
-    .filter((p) => isPermissionEnabled(p) && typeof p.module === 'string' && !p.screen)
+    .filter(
+      (p) =>
+        isPermissionEnabled(p) && typeof p.module === "string" && !p.screen,
+    )
     .forEach((p) => {
-      if (typeof p.module === 'string' && p.module.trim().length > 0) enabled.add(p.module);
+      if (typeof p.module === "string" && p.module.trim().length > 0)
+        enabled.add(p.module);
     });
 
   return enabled;
@@ -200,21 +264,24 @@ export function getEnabledScreens(user: StoredUser | null): Set<string> {
   if (!Array.isArray(raw)) return enabled;
 
   normalizePermissions(raw)
-    .filter((p) => isPermissionEnabled(p) && typeof p.screen === 'string')
+    .filter((p) => isPermissionEnabled(p) && typeof p.screen === "string")
     .forEach((p) => {
-      if (typeof p.screen === 'string' && p.screen.trim().length > 0) enabled.add(p.screen);
+      if (typeof p.screen === "string" && p.screen.trim().length > 0)
+        enabled.add(p.screen);
     });
 
   return enabled;
 }
 
-export function getMergedPermissionsByModule(user: StoredUser | null): Map<string, Permission> {
+export function getMergedPermissionsByModule(
+  user: StoredUser | null,
+): Map<string, Permission> {
   const map = new Map<string, Permission>();
   const raw = getUserPermissionsRaw(user);
   if (!Array.isArray(raw)) return map;
 
   normalizePermissions(raw).forEach((p) => {
-    const key = typeof p.module === 'string' && !p.screen ? p.module : '';
+    const key = typeof p.module === "string" && !p.screen ? p.module : "";
     if (!key) return;
     const existing = map.get(key) ?? { module: key };
     map.set(key, mergePermission(existing, { ...p, module: key }));
@@ -223,13 +290,15 @@ export function getMergedPermissionsByModule(user: StoredUser | null): Map<strin
   return map;
 }
 
-export function getMergedPermissionsByScreen(user: StoredUser | null): Map<string, Permission> {
+export function getMergedPermissionsByScreen(
+  user: StoredUser | null,
+): Map<string, Permission> {
   const map = new Map<string, Permission>();
   const raw = getUserPermissionsRaw(user);
   if (!Array.isArray(raw)) return map;
 
   normalizePermissions(raw).forEach((p) => {
-    const key = typeof p.screen === 'string' ? p.screen : '';
+    const key = typeof p.screen === "string" ? p.screen : "";
     if (!key) return;
     const existing = map.get(key) ?? { screen: key };
     map.set(key, mergePermission(existing, { ...p, screen: key }));
@@ -239,11 +308,14 @@ export function getMergedPermissionsByScreen(user: StoredUser | null): Map<strin
 }
 
 function getCurrentPathname(): string | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null;
   return window.location.pathname || null;
 }
 
-function getScreenOverrideForPath(user: StoredUser | null, pathname: string | null): Permission | null {
+function getScreenOverrideForPath(
+  user: StoredUser | null,
+  pathname: string | null,
+): Permission | null {
   if (!pathname) return null;
   const screenDefinition = findScreenDefinition(pathname);
   if (!screenDefinition) return null;
@@ -252,10 +324,16 @@ function getScreenOverrideForPath(user: StoredUser | null, pathname: string | nu
   const moduleScreenDefinitions = SCREEN_DEFINITIONS.filter(
     (screen) => screen.module === screenDefinition.module,
   );
-  const hasScreenOverridesForModule = moduleScreenDefinitions.some((screen) => screenPermissions.has(screen.key));
+  const hasScreenOverridesForModule = moduleScreenDefinitions.some((screen) =>
+    screenPermissions.has(screen.key),
+  );
   if (!hasScreenOverridesForModule) return null;
 
-  return screenPermissions.get(screenDefinition.key) ?? { screen: screenDefinition.key };
+  return (
+    screenPermissions.get(screenDefinition.key) ?? {
+      screen: screenDefinition.key,
+    }
+  );
 }
 
 export function hasScreenPermission(
@@ -275,7 +353,11 @@ export function hasModulePermission(
 ): boolean {
   // Special-case: this account should not have access to Production Management
   // even if the role permissions are misconfigured.
-  if (moduleName === 'Production' && action === 'approve' && isProductionManagementDenied(user)) {
+  if (
+    moduleName === "Production" &&
+    action === "approve" &&
+    isProductionManagementDenied(user)
+  ) {
     return false;
   }
 
@@ -283,7 +365,10 @@ export function hasModulePermission(
   if (isAdminLike(user)) return true;
 
   const screenOverride = getScreenOverrideForPath(user, getCurrentPathname());
-  if (screenOverride && (screenOverride.screen || screenOverride.module === moduleName)) {
+  if (
+    screenOverride &&
+    (screenOverride.screen || screenOverride.module === moduleName)
+  ) {
     return !!screenOverride[action];
   }
 
@@ -293,18 +378,36 @@ export function hasModulePermission(
 }
 
 const MODULE_TO_ROUTE_PREFIXES: Record<string, string[]> = {
-  'Purchase Management': ['/dashboard/purchase', '/dashboard/accounts'],
-  'Sales Management': ['/dashboard/sales'],
-  Inventory: ['/dashboard/inventory', '/dashboard/uid', '/dashboard/purchase/grn'],
-  Production: ['/dashboard/production', '/dashboard/bom', '/dashboard/work-stations', '/dashboard/shop-floor'],
-  'Quality Control': ['/dashboard/quality', '/dashboard/quality/capa', '/dashboard/quality/ehs-sustainability', '/dashboard/quality/cost-of-quality'],
-  'HR Management': ['/dashboard/hr'],
-  'Service Management': ['/dashboard/service'],
+  "Purchase Management": ["/dashboard/purchase", "/dashboard/accounts"],
+  "Sales Management": ["/dashboard/sales"],
+  Inventory: [
+    "/dashboard/inventory",
+    "/dashboard/uid",
+    "/dashboard/purchase/grn",
+  ],
+  Production: [
+    "/dashboard/production",
+    "/dashboard/bom",
+    "/dashboard/work-stations",
+    "/dashboard/shop-floor",
+  ],
+  "Quality Control": [
+    "/dashboard/quality",
+    "/dashboard/quality/capa",
+    "/dashboard/quality/ehs-sustainability",
+    "/dashboard/quality/cost-of-quality",
+  ],
+  "HR Management": ["/dashboard/hr"],
+  "Service Management": ["/dashboard/service"],
   // Engineering should not implicitly grant access to Production Management.
-  'BOM & Engineering': ['/dashboard/bom'],
-  Documents: ['/dashboard/documents'],
-  Reports: ['/dashboard/reports', '/dashboard/manager'],
-  Settings: ['/dashboard/settings', '/dashboard/audit-trails', '/dashboard/debug'],
+  "BOM & Engineering": ["/dashboard/bom"],
+  Documents: ["/dashboard/documents"],
+  Reports: ["/dashboard/reports", "/dashboard/manager"],
+  Settings: [
+    "/dashboard/settings",
+    "/dashboard/audit-trails",
+    "/dashboard/debug",
+  ],
 };
 
 export function getAllowedRoutePrefixes(user: StoredUser | null): string[] {
@@ -333,30 +436,30 @@ export function getAllowedRoutePrefixes(user: StoredUser | null): string[] {
 // Override the default landing page for specific route prefixes.
 // e.g. Inventory users should land on Stock Master, not the movements/overview page.
 const LANDING_PAGE_OVERRIDES: Record<string, string> = {
-  '/dashboard/inventory': '/dashboard/inventory/items',
+  "/dashboard/inventory": "/dashboard/inventory/items",
 };
 
-const HR_EMPLOYEE_LANDING_PATH = '/dashboard/hr/employees?section=employees&tab=attendance';
-const EMPLOYEE_ATTENDANCE_FIRST_IDENTITIES = new Set([
-  'padma_n',
-  'padma',
-]);
+const HR_EMPLOYEE_LANDING_PATH =
+  "/dashboard/hr/employees?section=employees&tab=attendance";
+const EMPLOYEE_ATTENDANCE_FIRST_IDENTITIES = new Set(["padma_n", "padma"]);
 
 function normalizeIdentity(value: unknown): string {
-  return String(value ?? '')
+  return String(value ?? "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, '_');
+    .replace(/\s+/g, "_");
 }
 
 function userIdentityCandidates(user: StoredUser | null): string[] {
   if (!user) return [];
-  const first = (user as any).first_name ?? (user as any).firstName ?? '';
-  const last = (user as any).last_name ?? (user as any).lastName ?? '';
+  const first = (user as any).first_name ?? (user as any).firstName ?? "";
+  const last = (user as any).last_name ?? (user as any).lastName ?? "";
   const raw = [
     (user as any).username,
     (user as any).email,
-    typeof (user as any).email === 'string' ? String((user as any).email).split('@')[0] : '',
+    typeof (user as any).email === "string"
+      ? String((user as any).email).split("@")[0]
+      : "",
     first,
     `${first} ${last}`,
   ];
@@ -364,28 +467,35 @@ function userIdentityCandidates(user: StoredUser | null): string[] {
   return raw.map(normalizeIdentity).filter(Boolean);
 }
 
-export function shouldStartAtEmployeeAttendance(user: StoredUser | null): boolean {
+export function shouldStartAtEmployeeAttendance(
+  user: StoredUser | null,
+): boolean {
   if (!user || isAdminLike(user)) return false;
 
   const identities = userIdentityCandidates(user);
-  if (identities.some((identity) => EMPLOYEE_ATTENDANCE_FIRST_IDENTITIES.has(identity))) {
+  if (
+    identities.some((identity) =>
+      EMPLOYEE_ATTENDANCE_FIRST_IDENTITIES.has(identity),
+    )
+  ) {
     return true;
   }
 
   const roleNames = getUserRoleNames(user)
-    .map((name) => normalizeIdentity(name).replace(/[_-]+/g, ' '))
+    .map((name) => normalizeIdentity(name).replace(/[_-]+/g, " "))
     .filter(Boolean);
 
-  return roleNames.some((roleName) =>
-    roleName.includes('employee self service') ||
-    roleName === 'employee' ||
-    roleName.includes('hr employee') ||
-    roleName.includes('staff'),
+  return roleNames.some(
+    (roleName) =>
+      roleName.includes("employee self service") ||
+      roleName === "employee" ||
+      roleName.includes("hr employee") ||
+      roleName.includes("staff"),
   );
 }
 
 function getHrLandingPath(user: StoredUser | null): string {
-  if (isAdminLike(user)) return '/dashboard';
+  if (isAdminLike(user)) return "/dashboard";
 
   // HR users should always start at the punch-first employee workspace.
   // HR managers can still navigate to management/payroll tabs after landing.
@@ -396,20 +506,27 @@ function hasHrAccess(user: StoredUser | null): boolean {
   if (!user) return false;
 
   const enabledModules = getEnabledModules(user);
-  if (enabledModules.has('HR Management')) return true;
+  if (enabledModules.has("HR Management")) return true;
 
   const allowedPrefixes = getAllowedRoutePrefixes(user);
-  if (allowedPrefixes.some((prefix) => prefix === '/dashboard/hr' || prefix.startsWith('/dashboard/hr/'))) {
+  if (
+    allowedPrefixes.some(
+      (prefix) =>
+        prefix === "/dashboard/hr" || prefix.startsWith("/dashboard/hr/"),
+    )
+  ) {
     return true;
   }
 
-  return hasScreenPermission(user, '/dashboard/hr', 'view')
-    || hasScreenPermission(user, '/dashboard/hr/employees', 'view')
-    || hasScreenPermission(user, HR_EMPLOYEE_LANDING_PATH, 'view');
+  return (
+    hasScreenPermission(user, "/dashboard/hr", "view") ||
+    hasScreenPermission(user, "/dashboard/hr/employees", "view") ||
+    hasScreenPermission(user, HR_EMPLOYEE_LANDING_PATH, "view")
+  );
 }
 
 export function getDefaultLandingPath(user: StoredUser | null): string {
-  if (isAdminLike(user)) return '/dashboard/command-center';
+  if (isAdminLike(user)) return "/dashboard/command-center";
 
   // Employee/mobile users must start with Check In / Attendance even when
   // their role also has purchase, inventory, or other back-office screens.
@@ -417,19 +534,31 @@ export function getDefaultLandingPath(user: StoredUser | null): string {
     return getHrLandingPath(user);
   }
 
-  const enabledScreen = SCREEN_DEFINITIONS.find((screen) => hasScreenPermission(user, screen.route, 'view'));
+  if (isManagementLeader(user)) return "/dashboard/command-center";
+
+  const enabledScreen = SCREEN_DEFINITIONS.find((screen) =>
+    hasScreenPermission(user, screen.route, "view"),
+  );
   if (enabledScreen) {
-    if (enabledScreen.route === '/dashboard/hr' || enabledScreen.route.startsWith('/dashboard/hr/')) {
+    if (
+      enabledScreen.route === "/dashboard/hr" ||
+      enabledScreen.route.startsWith("/dashboard/hr/")
+    ) {
       return getHrLandingPath(user);
     }
-    return enabledScreen.match === 'prefix' ? enabledScreen.route.replace(/\/$/, '') : enabledScreen.route;
+    return enabledScreen.match === "prefix"
+      ? enabledScreen.route.replace(/\/$/, "")
+      : enabledScreen.route;
   }
 
   const prefixes = getAllowedRoutePrefixes(user);
   // Prefer something other than the global dashboard.
-  const firstNonDashboard = prefixes.find((p) => p !== '/dashboard');
+  const firstNonDashboard = prefixes.find((p) => p !== "/dashboard");
   if (firstNonDashboard) {
-    if (firstNonDashboard === '/dashboard/hr' || firstNonDashboard.startsWith('/dashboard/hr/')) {
+    if (
+      firstNonDashboard === "/dashboard/hr" ||
+      firstNonDashboard.startsWith("/dashboard/hr/")
+    ) {
       return getHrLandingPath(user);
     }
     return LANDING_PAGE_OVERRIDES[firstNonDashboard] ?? firstNonDashboard;
@@ -437,26 +566,36 @@ export function getDefaultLandingPath(user: StoredUser | null): string {
 
   // If the user has no other module access (or no permissions configured yet),
   // send them to a safe page instead of looping on /dashboard.
-  return '/dashboard/unauthorized';
+  return "/dashboard/unauthorized";
 }
 
-export function isPathAllowedForUser(user: StoredUser | null, pathname: string): boolean {
+export function isPathAllowedForUser(
+  user: StoredUser | null,
+  pathname: string,
+): boolean {
   if (!shouldEnforcePermissions(user)) return true;
   if (isAdminLike(user)) return true;
 
+  // Management leaders receive the role-filtered Command Center.  Detailed
+  // modules and sensitive sub-workspaces continue to use their normal module
+  // permission checks; this is deliberately not a broad navigation override.
+  if (isManagementLeader(user) && pathname === "/dashboard/command-center")
+    return true;
+
   // Always allow the unauthorized landing page.
-  if (pathname === '/dashboard/unauthorized') return true;
+  if (pathname === "/dashboard/unauthorized") return true;
 
   // Block the global dashboard for non-admin users.
-  if (pathname === '/dashboard') return false;
+  if (pathname === "/dashboard") return false;
 
   // Production Management screen is restricted to Production approvers.
   // This allows production operators to access job orders without seeing the management page.
-  if (pathname === '/dashboard/production') {
+  if (pathname === "/dashboard/production") {
     if (isProductionManagementDenied(user)) return false;
     const screenOverride = getScreenOverrideForPath(user, pathname);
-    if (screenOverride) return !!screenOverride.approve || !!screenOverride.view;
-    return hasModulePermission(user, 'Production', 'approve');
+    if (screenOverride)
+      return !!screenOverride.approve || !!screenOverride.view;
+    return hasModulePermission(user, "Production", "approve");
   }
 
   const matchedScreen = findScreenDefinition(pathname);
@@ -468,5 +607,7 @@ export function isPathAllowedForUser(user: StoredUser | null, pathname: string):
   }
 
   const prefixes = getAllowedRoutePrefixes(user);
-  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));
+  return prefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix + "/"),
+  );
 }
