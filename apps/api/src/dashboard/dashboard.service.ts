@@ -124,12 +124,19 @@ export class DashboardService {
   }
 
   async getReminderQueue(tenantId: string) {
-    const [poResult, qcResult] = await Promise.all([
+    const poSelection = 'id, po_number, created_at, po_date, total_amount, status, vendor:vendors(id, name)';
+    const [statusPoResult, workflowPoResult, qcResult] = await Promise.all([
       this.supabase
         .from('purchase_orders')
-        .select('id, po_number, created_at, po_date, total_amount, status, pr_po_status, vendor:vendors(id, name)')
+        .select(poSelection)
         .eq('tenant_id', tenantId)
-        .or('status.eq.PENDING,pr_po_status.eq.PENDING')
+        .eq('status', 'PENDING')
+        .order('created_at', { ascending: false }),
+      this.supabase
+        .from('purchase_orders')
+        .select(poSelection)
+        .eq('tenant_id', tenantId)
+        .eq('pr_po_status', 'PENDING')
         .order('created_at', { ascending: false }),
       this.supabase
         .from('grns')
@@ -140,8 +147,11 @@ export class DashboardService {
         .order('created_at', { ascending: false }),
     ]);
 
+    const pendingPOs = [...(statusPoResult.data || []), ...(workflowPoResult.error ? [] : (workflowPoResult.data || []))]
+      .filter((row, index, rows) => rows.findIndex((candidate) => candidate.id === row.id) === index);
+
     return {
-      pendingPOs: poResult.error ? [] : (poResult.data || []),
+      pendingPOs: statusPoResult.error ? [] : pendingPOs,
       pendingQC: qcResult.error ? [] : (qcResult.data || []),
     };
   }

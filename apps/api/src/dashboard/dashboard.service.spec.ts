@@ -32,7 +32,8 @@ describe('DashboardService reminder queue', () => {
       pendingQC: [{ id: 'grn-1' }],
     });
     expect(poQuery.calls).toContainEqual(['eq', 'tenant_id', 'tenant-1']);
-    expect(poQuery.calls).toContainEqual(['or', 'status.eq.PENDING,pr_po_status.eq.PENDING']);
+    expect(poQuery.calls).toContainEqual(['eq', 'status', 'PENDING']);
+    expect(poQuery.calls).toContainEqual(['eq', 'pr_po_status', 'PENDING']);
     expect(qcQuery.calls).toContainEqual(['eq', 'tenant_id', 'tenant-1']);
     expect(qcQuery.calls).toContainEqual(['eq', 'is_active', true]);
     expect(qcQuery.calls).toContainEqual(['eq', 'qc_completed', false]);
