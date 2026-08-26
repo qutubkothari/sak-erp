@@ -1031,6 +1031,37 @@ export class IntelligenceService {
       recommendedAction =
         evidence[0]?.recommended_action ||
         "No quality containment is currently indicated.";
+    } else if (/forecast|prediction|calibration|accuracy/.test(lower)) {
+      intent = "FORECAST_QUALITY";
+      const [forecast, quality] = await Promise.all([
+        this.healthForecast(tenantId, 14),
+        this.healthForecastQuality(tenantId),
+      ]);
+      evidence = [
+        {
+          title: "Factory Health forecast accountability",
+          observations_available: forecast.observations_available,
+          observations_required: forecast.observations_required,
+          evaluated_forecasts: quality.evaluated_forecasts,
+          pending_evaluation: quality.pending_evaluation,
+          accuracy_score: quality.accuracy_score,
+          data_classification: forecast.data_classification,
+          route: "/dashboard/command-center/factory-health",
+        },
+      ];
+      confidence = forecast.sufficient_data
+        ? quality.evaluated_forecasts
+          ? "HIGH"
+          : "MEDIUM"
+        : "LOW";
+      answer = !forecast.sufficient_data
+        ? `Forecasting is withheld until ${forecast.observations_required} daily observations are available; ${forecast.observations_available} are currently stored.`
+        : quality.evaluated_forecasts
+          ? `Factory Health has ${quality.evaluated_forecasts} evaluated forecast(s) with an accuracy score of ${quality.accuracy_score ?? "unavailable"}%. ${quality.note}`
+          : `A ${forecast.forecast?.length || 0}-day Factory Health forecast is available, but no target-day forecasts have been evaluated yet. ${quality.note}`;
+      recommendedAction = quality.evaluated_forecasts
+        ? "Review forecast error before changing tenant thresholds or relying on the prediction for management commitments."
+        : "Allow target-day snapshots to arrive before assessing forecast accuracy.";
     } else if (/production|wip|factory/.test(lower)) {
       intent = "OPERATIONS";
       evidence = center.decision_inbox.filter((item: any) =>
@@ -1122,7 +1153,50 @@ export class IntelligenceService {
     const center = await this.commandCenter(tenantId, user);
     const lower = question.toLowerCase();
     let report: any;
-    if (/history|trend|what changed|since yesterday|root cause/.test(lower)) {
+    if (/forecast|prediction|calibration|accuracy/.test(lower)) {
+      const [forecast, quality] = await Promise.all([
+        this.healthForecast(tenantId, 14),
+        this.healthForecastQuality(tenantId),
+      ]);
+      const rows = [
+        {
+          observations_available: forecast.observations_available || 0,
+          observations_required: forecast.observations_required || 0,
+          evaluated_forecasts: quality.evaluated_forecasts,
+          pending_evaluation: quality.pending_evaluation,
+          mean_absolute_error: quality.mean_absolute_error,
+          accuracy_score: quality.accuracy_score,
+          data_classification:
+            forecast.data_classification || "OPERATING_HISTORY",
+        },
+      ];
+      report = {
+        title: "Factory Health forecast accountability",
+        columns: [
+          "observations_available",
+          "observations_required",
+          "evaluated_forecasts",
+          "pending_evaluation",
+          "mean_absolute_error",
+          "accuracy_score",
+          "data_classification",
+        ],
+        rows,
+        chart: null,
+        confidence: forecast.sufficient_data
+          ? quality.evaluated_forecasts
+            ? "HIGH"
+            : "MEDIUM"
+          : "LOW",
+        sufficient_data: Boolean(forecast.sufficient_data),
+        note: forecast.sufficient_data
+          ? quality.note
+          : forecast.note ||
+            "No forecast is produced until the calibration threshold is met.",
+      };
+    } else if (
+      /history|trend|what changed|since yesterday|root cause/.test(lower)
+    ) {
       const brief = await this.historicalRootCauseBrief(
         tenantId,
         /month/.test(lower) ? "MONTH" : "WEEK",
