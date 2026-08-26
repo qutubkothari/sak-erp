@@ -35,6 +35,13 @@ type Forecast = {
   data_classification?: "TEST_SIMULATION" | "OPERATING_HISTORY";
   data_classification_note?: string;
 };
+type ForecastQuality = {
+  evaluated_forecasts: number;
+  pending_evaluation: number;
+  mean_absolute_error: number | null;
+  accuracy_score: number | null;
+  note: string;
+};
 
 const factorLabels: Record<string, string> = {
   approvals: "Approval flow",
@@ -52,20 +59,24 @@ export default function FactoryHealthPage() {
   const [config, setConfig] = useState<Configuration | null>(null);
   const [history, setHistory] = useState<History | null>(null);
   const [forecast, setForecast] = useState<Forecast | null>(null);
+  const [forecastQuality, setForecastQuality] =
+    useState<ForecastQuality | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     setError("");
     try {
-      const [configuration, trend, projection] = await Promise.all([
+      const [configuration, trend, projection, quality] = await Promise.all([
         apiClient.get<Configuration>("/intelligence/health-configuration"),
         apiClient.get<History>("/intelligence/health-history?days=90"),
         apiClient.get<Forecast>("/intelligence/health-forecast?days=14"),
+        apiClient.get<ForecastQuality>("/intelligence/health-forecast-quality"),
       ]);
       setConfig(configuration);
       setHistory(trend);
       setForecast(projection);
+      setForecastQuality(quality);
     } catch (e: any) {
       setError(e?.message || "Unable to load Factory Health controls.");
     }
@@ -320,6 +331,33 @@ export default function FactoryHealthPage() {
               <b>Test-data projection.</b> {forecast.data_classification_note}
             </div>
           )}
+          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+            <div className="border border-[#F0E7D7] p-3 text-sm">
+              <p className="text-[#6F5A45]">Evaluated forecasts</p>
+              <b>{forecastQuality?.evaluated_forecasts ?? 0}</b>
+            </div>
+            <div className="border border-[#F0E7D7] p-3 text-sm">
+              <p className="text-[#6F5A45]">Pending evaluation</p>
+              <b>{forecastQuality?.pending_evaluation ?? 0}</b>
+            </div>
+            <div className="border border-[#F0E7D7] p-3 text-sm">
+              <p className="text-[#6F5A45]">Mean absolute error</p>
+              <b>
+                {forecastQuality?.mean_absolute_error == null
+                  ? "—"
+                  : `${forecastQuality.mean_absolute_error} pts`}
+              </b>
+            </div>
+            <div className="border border-[#F0E7D7] p-3 text-sm">
+              <p className="text-[#6F5A45]">Accuracy score</p>
+              <b>
+                {forecastQuality?.accuracy_score == null
+                  ? "—"
+                  : `${forecastQuality.accuracy_score}%`}
+              </b>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-[#6F5A45]">{forecastQuality?.note}</p>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <div>
               <h3 className="font-semibold">Recent daily evidence</h3>

@@ -62,6 +62,28 @@ export class FactoryHealthScheduler {
       this.logger.warn(`Factory health snapshot not stored: ${error.message}`);
       return { stored: false, reason: error.message };
     }
-    return { stored: true, snapshot_date: date, score: health.score };
+    let forecastRecording: any = { recorded: 0, reason: "UNAVAILABLE" };
+    let forecastEvaluation: any = { evaluated: 0, reason: "UNAVAILABLE" };
+    try {
+      forecastRecording = await this.intelligence.recordHealthForecast(
+        tenantId,
+        date,
+      );
+      forecastEvaluation = await this.intelligence.evaluateHealthForecasts(
+        tenantId,
+        date,
+      );
+    } catch (forecastError: any) {
+      this.logger.warn(
+        `Factory health forecast accountability skipped for tenant ${tenantId}: ${String(forecastError?.message || forecastError).slice(0, 300)}`,
+      );
+    }
+    return {
+      stored: true,
+      snapshot_date: date,
+      score: health.score,
+      forecast_recording: forecastRecording,
+      forecast_evaluation: forecastEvaluation,
+    };
   }
 }

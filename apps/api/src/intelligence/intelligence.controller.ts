@@ -240,6 +240,15 @@ export class IntelligenceController {
     );
   }
 
+  @Get("health-forecast-quality")
+  healthForecastQuality(@Req() request: any, @Query("limit") limit?: string) {
+    this.requireManagement(request);
+    return this.intelligence.healthForecastQuality(
+      request.user.tenantId,
+      Number(limit) || 90,
+    );
+  }
+
   @Get("memory")
   memory(@Req() request: any, @Query("limit") limit?: string) {
     this.requireManagement(request);

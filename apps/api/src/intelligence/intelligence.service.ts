@@ -1970,6 +1970,144 @@ export class IntelligenceService {
     };
   }
 
+  async recordHealthForecast(tenantId: string, forecastDate?: string) {
+    const forecast = await this.healthForecast(tenantId, 14);
+    if (!forecast.sufficient_data || !forecast.forecast?.length)
+      return { recorded: 0, reason: "INSUFFICIENT_HISTORY" };
+    const date = forecastDate || new Date().toISOString().slice(0, 10);
+    const rows = forecast.forecast.map((item: any) => ({
+      tenant_id: tenantId,
+      forecast_date: date,
+      target_date: item.date,
+      predicted_score: Number(item.score),
+      data_classification: forecast.data_classification || "OPERATING_HISTORY",
+      methodology: forecast.methodology,
+    }));
+    const { error } = await this.db
+      .from("mizantra_factory_health_forecasts")
+      .upsert(rows, { onConflict: "tenant_id,forecast_date,target_date" });
+    if (error) {
+      this.logger.warn(
+        `Factory Health forecast was not recorded: ${error.message}`,
+      );
+      return { recorded: 0, reason: error.message };
+    }
+    return { recorded: rows.length, forecast_date: date };
+  }
+
+  async evaluateHealthForecasts(tenantId: string, throughDate?: string) {
+    const cutoff = throughDate || new Date().toISOString().slice(0, 10);
+    const { data: pending, error } = await this.db
+      .from("mizantra_factory_health_forecasts")
+      .select("id,target_date,predicted_score")
+      .eq("tenant_id", tenantId)
+      .lte("target_date", cutoff)
+      .is("actual_score", null);
+    if (error) {
+      this.logger.warn(
+        `Factory Health forecast evaluation skipped: ${error.message}`,
+      );
+      return { evaluated: 0, reason: error.message };
+    }
+    const targetDates = (pending || []).map((row: any) => row.target_date);
+    if (!targetDates.length) return { evaluated: 0 };
+    const { data: actuals, error: actualError } = await this.db
+      .from("mizantra_factory_health_snapshots")
+      .select("snapshot_date,score")
+      .eq("tenant_id", tenantId)
+      .in("snapshot_date", targetDates);
+    if (actualError) {
+      this.logger.warn(
+        `Factory Health forecast evaluation could not load actuals: ${actualError.message}`,
+      );
+      return { evaluated: 0, reason: actualError.message };
+    }
+    const actualByDate = new Map(
+      (actuals || []).map((row: any) => [
+        String(row.snapshot_date),
+        Number(row.score),
+      ]),
+    );
+    let evaluated = 0;
+    for (const row of pending || []) {
+      const actual = actualByDate.get(String(row.target_date));
+      if (actual == null) continue;
+      const absoluteError = Number(
+        Math.abs(Number(row.predicted_score) - actual).toFixed(2),
+      );
+      const { error: updateError } = await this.db
+        .from("mizantra_factory_health_forecasts")
+        .update({
+          actual_score: actual,
+          absolute_error: absoluteError,
+          evaluated_at: new Date().toISOString(),
+        })
+        .eq("tenant_id", tenantId)
+        .eq("id", row.id)
+        .is("actual_score", null);
+      if (!updateError) evaluated++;
+    }
+    return { evaluated };
+  }
+
+  async healthForecastQuality(tenantId: string, limit = 90) {
+    const { data, error } = await this.db
+      .from("mizantra_factory_health_forecasts")
+      .select(
+        "forecast_date,target_date,predicted_score,actual_score,absolute_error,data_classification,evaluated_at",
+      )
+      .eq("tenant_id", tenantId)
+      .order("target_date", { ascending: false })
+      .limit(Math.min(Math.max(Number(limit) || 90, 1), 365));
+    if (error)
+      return {
+        evaluated_forecasts: 0,
+        pending_evaluation: 0,
+        mean_absolute_error: null,
+        mean_absolute_percentage_error: null,
+        accuracy_score: null,
+        history: [],
+        note: "Forecast evaluation history will begin after the next scheduled snapshot.",
+      };
+    const history = data || [];
+    const evaluated = history.filter((row: any) => row.actual_score != null);
+    const pending = history.length - evaluated.length;
+    const meanAbsoluteError = evaluated.length
+      ? evaluated.reduce(
+          (sum: number, row: any) => sum + Number(row.absolute_error || 0),
+          0,
+        ) / evaluated.length
+      : null;
+    const meanAbsolutePercentageError = evaluated.length
+      ? evaluated.reduce(
+          (sum: number, row: any) =>
+            sum +
+            (Math.abs(Number(row.predicted_score) - Number(row.actual_score)) /
+              Math.max(Math.abs(Number(row.actual_score)), 1)) *
+              100,
+          0,
+        ) / evaluated.length
+      : null;
+    return {
+      evaluated_forecasts: evaluated.length,
+      pending_evaluation: pending,
+      mean_absolute_error:
+        meanAbsoluteError == null ? null : Number(meanAbsoluteError.toFixed(2)),
+      mean_absolute_percentage_error:
+        meanAbsolutePercentageError == null
+          ? null
+          : Number(meanAbsolutePercentageError.toFixed(2)),
+      accuracy_score:
+        meanAbsolutePercentageError == null
+          ? null
+          : Number(Math.max(0, 100 - meanAbsolutePercentageError).toFixed(2)),
+      history,
+      note: evaluated.length
+        ? "Accuracy compares each stored forecast with the actual Factory Health snapshot for its target day."
+        : "Forecasts are recorded daily and evaluated only after their target-day snapshot exists.",
+    };
+  }
+
   async businessMemory(tenantId: string, limit = 100) {
     const [exceptions, events] = await Promise.all([
       this.exceptionRegister(tenantId),
