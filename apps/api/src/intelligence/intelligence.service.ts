@@ -1867,6 +1867,17 @@ export class IntelligenceService {
       this.healthConfiguration(tenantId),
     ]);
     const history = result.history || [];
+    const dataClassification = history.some(
+      (row: any) =>
+        Array.isArray(row?.factors) &&
+        row.factors.some(
+          (factor: any) =>
+            factor?.key === "test_calibration_fixture" &&
+            factor?.source === "mizantra-test-fixture",
+        ),
+    )
+      ? "TEST_SIMULATION"
+      : "OPERATING_HISTORY";
     const horizon = Math.min(Math.max(Number(horizonDays) || 7, 1), 14);
     const requiredObservations = Math.max(
       3,
@@ -1880,6 +1891,11 @@ export class IntelligenceService {
         forecast: [],
         observations_available: history.length,
         observations_required: requiredObservations,
+        data_classification: dataClassification,
+        data_classification_note:
+          dataClassification === "TEST_SIMULATION"
+            ? "This projection includes labelled test simulation data and must not be used as a client operating forecast."
+            : "This projection is based on stored operational history.",
         note: `Insufficient historical snapshots to forecast reliably. This tenant requires ${requiredObservations} daily observations; ${history.length} are available.`,
         methodology:
           "No forecast is produced until the tenant-approved historical calibration threshold is met.",
@@ -1934,6 +1950,11 @@ export class IntelligenceService {
       forecast,
       observations_available: n,
       observations_required: requiredObservations,
+      data_classification: dataClassification,
+      data_classification_note:
+        dataClassification === "TEST_SIMULATION"
+          ? "This projection includes labelled test simulation data and must not be used as a client operating forecast."
+          : "This projection is based on stored operational history.",
       direction:
         slope < -0.25 ? "DEGRADING" : slope > 0.25 ? "IMPROVING" : "STABLE",
       daily_change: Number(slope.toFixed(2)),

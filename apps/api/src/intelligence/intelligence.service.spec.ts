@@ -47,14 +47,12 @@ describe("IntelligenceService critical behaviour", () => {
   });
 
   it("returns missing-data behaviour instead of inventing a report", async () => {
-    jest
-      .spyOn(service, "commandCenter")
-      .mockResolvedValue({
-        decision_inbox: [],
-        metrics: [],
-        operating_health: {},
-        role_view: "EXECUTIVE",
-      } as any);
+    jest.spyOn(service, "commandCenter").mockResolvedValue({
+      decision_inbox: [],
+      metrics: [],
+      operating_health: {},
+      role_view: "EXECUTIVE",
+    } as any);
     const result = await service.naturalLanguageReport(
       "tenant-a",
       { id: "u" },
@@ -78,14 +76,12 @@ describe("IntelligenceService critical behaviour", () => {
   });
 
   it("passes tenant scope to the AI provider and audits the question", async () => {
-    jest
-      .spyOn(service, "commandCenter")
-      .mockResolvedValue({
-        decision_inbox: [],
-        daily_focus: [],
-        operating_health: { open_exceptions: 0 },
-        roi_impact: null,
-      } as any);
+    jest.spyOn(service, "commandCenter").mockResolvedValue({
+      decision_inbox: [],
+      daily_focus: [],
+      operating_health: { open_exceptions: 0 },
+      roi_impact: null,
+    } as any);
     const result = await service.ask(
       "tenant-a",
       { id: "u" },
@@ -102,19 +98,17 @@ describe("IntelligenceService critical behaviour", () => {
   });
 
   it("keeps business-memory queries tenant scoped", async () => {
-    jest
-      .spyOn(service, "exceptionRegister")
-      .mockResolvedValue([
-        {
-          id: "e1",
-          source_type: "INVENTORY",
-          source_key: "risk-1",
-          title: "Shortage",
-          status: "OPEN",
-          evidence: {},
-          last_seen_at: "2026-01-01",
-        },
-      ] as any);
+    jest.spyOn(service, "exceptionRegister").mockResolvedValue([
+      {
+        id: "e1",
+        source_type: "INVENTORY",
+        source_key: "risk-1",
+        title: "Shortage",
+        status: "OPEN",
+        evidence: {},
+        last_seen_at: "2026-01-01",
+      },
+    ] as any);
     events.recent.mockResolvedValue([
       {
         id: "v1",
@@ -138,12 +132,10 @@ describe("IntelligenceService critical behaviour", () => {
     jest
       .spyOn(service, "healthHistory")
       .mockResolvedValue({ history: [] } as any);
-    jest
-      .spyOn(service, "healthConfiguration")
-      .mockResolvedValue({
-        historical_observations_required: 14,
-        management_attention_threshold: 65,
-      } as any);
+    jest.spyOn(service, "healthConfiguration").mockResolvedValue({
+      historical_observations_required: 14,
+      management_attention_threshold: 65,
+    } as any);
     const result = await service.healthForecast("tenant-a", 7);
     expect(result.sufficient_data).toBe(false);
     expect(result.confidence).toBe("LOW");
@@ -152,12 +144,10 @@ describe("IntelligenceService critical behaviour", () => {
   });
 
   it("keeps Factory Health configuration tenant-scoped and uses safe defaults when its migration is unavailable", async () => {
-    const maybeSingle = jest
-      .fn()
-      .mockResolvedValue({
-        data: null,
-        error: { message: "relation does not exist" },
-      });
+    const maybeSingle = jest.fn().mockResolvedValue({
+      data: null,
+      error: { message: "relation does not exist" },
+    });
     const eq = jest.fn(() => ({ maybeSingle }));
     (service as any).db = {
       from: jest.fn(() => ({ select: jest.fn(() => ({ eq })) })),
@@ -194,40 +184,57 @@ describe("IntelligenceService critical behaviour", () => {
   });
 
   it("does not forecast before the tenant-approved historical calibration threshold", async () => {
-    jest
-      .spyOn(service, "healthHistory")
-      .mockResolvedValue({
-        history: Array.from({ length: 13 }, (_x, index) => ({
-          snapshot_date: `2026-08-${String(index + 1).padStart(2, "0")}`,
-          score: 80,
-        })),
-      } as any);
-    jest
-      .spyOn(service, "healthConfiguration")
-      .mockResolvedValue({
-        historical_observations_required: 14,
-        management_attention_threshold: 65,
-      } as any);
+    jest.spyOn(service, "healthHistory").mockResolvedValue({
+      history: Array.from({ length: 13 }, (_x, index) => ({
+        snapshot_date: `2026-08-${String(index + 1).padStart(2, "0")}`,
+        score: 80,
+      })),
+    } as any);
+    jest.spyOn(service, "healthConfiguration").mockResolvedValue({
+      historical_observations_required: 14,
+      management_attention_threshold: 65,
+    } as any);
     const result = await service.healthForecast("tenant-a", 7);
     expect(result.sufficient_data).toBe(false);
     expect(result.observations_available).toBe(13);
     expect(result.observations_required).toBe(14);
   });
 
-  it("returns only tenant-scoped eligible exception owners", async () => {
-    const limit = jest
-      .fn()
-      .mockResolvedValue({
-        data: [
+  it("labels projections based on test calibration fixtures", async () => {
+    jest.spyOn(service, "healthHistory").mockResolvedValue({
+      history: Array.from({ length: 14 }, (_x, index) => ({
+        snapshot_date: `2026-08-${String(index + 1).padStart(2, "0")}`,
+        score: 80 + index / 10,
+        factors: [
           {
-            id: "user-1",
-            first_name: "Mina",
-            last_name: "Owner",
-            username: "mina",
+            key: "test_calibration_fixture",
+            source: "mizantra-test-fixture",
           },
         ],
-        error: null,
-      });
+      })),
+    } as any);
+    jest.spyOn(service, "healthConfiguration").mockResolvedValue({
+      historical_observations_required: 14,
+      management_attention_threshold: 65,
+    } as any);
+    const result = await service.healthForecast("tenant-a", 7);
+    expect(result.sufficient_data).toBe(true);
+    expect(result.data_classification).toBe("TEST_SIMULATION");
+    expect(result.data_classification_note).toContain("must not be used");
+  });
+
+  it("returns only tenant-scoped eligible exception owners", async () => {
+    const limit = jest.fn().mockResolvedValue({
+      data: [
+        {
+          id: "user-1",
+          first_name: "Mina",
+          last_name: "Owner",
+          username: "mina",
+        },
+      ],
+      error: null,
+    });
     const order = jest.fn(() => ({ limit }));
     const eq = jest.fn(() => ({ order }));
     (service as any).db = {
