@@ -49,9 +49,8 @@ export class AutomationService {
     if (ruleError) throw new BadRequestException(ruleError.message);
     if (!rule) throw new NotFoundException('Automation rule not found');
     if (rule.is_active) throw new BadRequestException('Disable the automation rule before removing it.');
-    const { count, error: runError } = await this.supabase.from('automation_runs').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('automation_rule_id', id);
-    if (runError) throw new BadRequestException(runError.message);
-    if ((count || 0) > 0) throw new BadRequestException('This rule has audit history and cannot be deleted. Disable it to preserve the evidence.');
+    // Preserve preview/execution history while allowing the configuration to be
+    // removed. The FK on automation_runs intentionally SET NULLs the rule id.
     const { error } = await this.supabase.from('automation_rules').delete().eq('tenant_id', tenantId).eq('id', id);
     if (error) throw new BadRequestException(error.message);
     return { deleted: true };
