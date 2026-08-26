@@ -12,6 +12,8 @@ Production status: frozen and unchanged
 - Daily Factory Health and Management Brief schedulers now isolate tenant failures, so one unavailable tenant source does not suppress evidence capture for other tenants.
 - Latest local regression suite: 25 suites / 191 tests passed. Mizantra test runtime checks passed for Factory Health, Integration Hub and gateway maker-checker activation; no production service was changed.
 - Mizantra test has a labelled 14-day Factory Health simulation fixture for demonstration. The API and UI label its projection `TEST_SIMULATION`; it cannot be treated as a client operating forecast.
+- Forecast accountability is persisted tenant-by-tenant: daily projections are evaluated only against an actual target-day health snapshot, with MAE and accuracy shown only after evaluation. The test register contains 14 labelled pending fixtures and deliberately reports no fabricated accuracy.
+- Copilot and governed reports now answer forecast/calibration questions from the same Factory Health evidence. Command Center Readiness also displays the country-specific external activation register without enabling delivery or gateway activation.
 - The current test-tenant readiness check is 100% for its configured master-data/control thresholds. This confirms test configuration only; it is not a substitute for approved client masters, opening balances or statutory sign-off.
 
 ## Outcome
@@ -61,7 +63,7 @@ This completion means the product code, database controls, interfaces and automa
 - Authenticated acceptance: PASS; 7 tools, onboarding batch creation, knowledge graph refresh/read, NL reporting, historical brief, observability and agent safety verified.
 - Gateway activation acceptance: PASS; direct live bypass returned `400`, and a test gateway moved from `DRAFT` to `SUBMITTED` while same-user approval was rejected with `403`.
 - Scheduler resilience acceptance: PASS; Factory Health forecast endpoint returned `200` and correctly withheld a forecast with only one stored observation.
-- Current test observability: 13 governed tools registered, no pending/failed governed actions, operational graph available (1,754 nodes / 810 edges), and Factory Health has 1 of 14 required observations. It is therefore correctly not forecasting yet.
+- Current test observability: 13 governed tools registered, no pending/failed governed actions, operational graph available (1,754 nodes / 810 edges), and Factory Health has 14 labelled test observations. The resulting forecast is explicitly classified `TEST_SIMULATION`.
 - End-to-end test acceptance: `mizantra2-governance-acceptance`, `production-autonomy-acceptance`, and `roi-moat-v2-acceptance` passed using controlled test records.
 - Factory Health test calibration acceptance: 14 labelled simulation snapshots produced a 14-day projection; the endpoint returned `data_classification: TEST_SIMULATION` and the Factory Health page returned HTTP 200.
 - Test-data onboarding batch: `9fa514be-16ac-4936-bd92-78cbec2fc767`.
