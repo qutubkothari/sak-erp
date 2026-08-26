@@ -10,6 +10,10 @@ function num(value: any, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function roundQty(value: number) {
+  return Math.round(value * 10_000) / 10_000;
+}
+
 function text(value: any, fallback = '') {
   return String(value ?? fallback).trim();
 }
@@ -1507,7 +1511,6 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_receipt_lines_issue ON public.subcont
         }));
       }
     }
-    const roundQty = (value: number) => Math.round(value * 10_000) / 10_000;
     const consumedQty = roundQty(finishedGoods.reduce((total: number, line: any) => total + line.raw_material_qty, 0));
     let settledQty = roundQty(consumedQty + scrapQty + unusedReturnQty + lossQty);
     // Quantity plans can produce repeating decimals (for example, six output
