@@ -234,6 +234,30 @@ export class IntelligenceService {
     }));
   }
 
+  async exceptionNotifications(tenantId: string, user: any, limit = 50) {
+    const userId = String(user?.userId || user?.id || '');
+    const roles = this.roles(user).map((role) => role.toUpperCase().replace(/[\s-]+/g, '_'));
+    const isAdmin = this.isAdmin(user);
+    const { data, error } = await this.db.from('communication_log').select('id,recipient,subject,message_preview,delivery_status,metadata,created_at,document_id')
+      .eq('tenant_id', tenantId).eq('document_type', 'MIZANTRA_EXCEPTION').eq('channel', 'IN_APP').order('created_at', { ascending: false }).limit(Math.min(Math.max(Number(limit) || 50, 1), 100));
+    if (error) return [];
+    return (data || []).filter((notification: any) => isAdmin || notification.recipient === `USER:${userId}` || roles.includes(String(notification.recipient || '').toUpperCase())).map((notification: any) => ({
+      ...notification,
+      read: notification.delivery_status === 'READ',
+      route: notification.metadata?.route || '/dashboard/command-center/exceptions',
+      stage: notification.metadata?.stage || 'REMINDER',
+    }));
+  }
+
+  async markExceptionNotificationRead(tenantId: string, user: any, id: string) {
+    const visible = await this.exceptionNotifications(tenantId, user, 100);
+    if (!visible.some((notification: any) => notification.id === id)) throw new ForbiddenException('Notification is not available to this user.');
+    const { data, error } = await this.db.from('communication_log').update({ delivery_status: 'READ' }).eq('tenant_id', tenantId).eq('id', id).select('id,delivery_status').maybeSingle();
+    if (error || !data) throw new BadRequestException(error?.message || 'Notification not found.');
+    await this.audit.logActivity({ tenantId, userId: user.userId || user.id, action: 'MIZANTRA_EXCEPTION_NOTIFICATION_READ', resourceType: 'communication_log', resourceId: id, resourceName: 'Mizantra exception notification', newValue: { delivery_status: 'READ' }, metadata: { in_app_only: true } });
+    return data;
+  }
+
   async updateException(tenantId: string, user: any, id: string, body: any) {
     const userId = user.userId || user.id;
     const status = String(body.status || '').toUpperCase();

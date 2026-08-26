@@ -83,4 +83,17 @@ describe('IntelligenceService critical behaviour', () => {
     expect((service as any).db.from).toHaveBeenCalledWith('users'); expect(eq).toHaveBeenCalledWith('tenant_id', 'tenant-a');
     expect(result).toEqual([{ id: 'user-1', label: 'Mina Owner' }]);
   });
+
+  it('returns only owner- or role-visible in-app exception notifications', async () => {
+    const limit = jest.fn().mockResolvedValue({ data: [
+      { id: 'mine', recipient: 'USER:user-1', delivery_status: 'DELIVERED', metadata: {} },
+      { id: 'finance', recipient: 'FINANCE_REVIEWER', delivery_status: 'DELIVERED', metadata: {} },
+      { id: 'other', recipient: 'OPERATIONS_MANAGER', delivery_status: 'DELIVERED', metadata: {} },
+    ], error: null });
+    const order = jest.fn(() => ({ limit })); const eq3 = jest.fn(() => ({ order })); const eq2 = jest.fn(() => ({ eq: eq3 })); const eq1 = jest.fn(() => ({ eq: eq2 }));
+    (service as any).db = { from: jest.fn(() => ({ select: jest.fn(() => ({ eq: eq1 })) })) };
+    const result = await service.exceptionNotifications('tenant-a', { id: 'user-1', role: 'Finance Reviewer' });
+    expect(result.map((row: any) => row.id)).toEqual(['mine', 'finance']);
+    expect(result.every((row: any) => row.route === '/dashboard/command-center/exceptions')).toBe(true);
+  });
 });

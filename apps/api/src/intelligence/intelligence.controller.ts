@@ -185,6 +185,12 @@ export class IntelligenceController {
   @Get('exception-assignees')
   exceptionAssignees(@Req() request: any) { return this.intelligence.exceptionAssignees(request.user.tenantId); }
 
+  @Get('notifications')
+  exceptionNotifications(@Req() request: any, @Query('limit') limit?: string) { return this.intelligence.exceptionNotifications(request.user.tenantId, request.user, Number(limit) || 50); }
+
+  @Patch('notifications/:id/read')
+  markExceptionNotificationRead(@Req() request: any, @Param('id') id: string) { return this.intelligence.markExceptionNotificationRead(request.user.tenantId, request.user, id); }
+
   @Patch('exceptions/:id')
   updateException(@Req() request: any, @Param('id') id: string, @Body() body: any) { return this.intelligence.updateException(request.user.tenantId, request.user, id, body || {}); }
 }
