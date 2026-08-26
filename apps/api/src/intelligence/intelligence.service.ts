@@ -2534,4 +2534,73 @@ export class IntelligenceService {
       provider_runtime: this.ai.status(),
     };
   }
+
+  async externalActivationReadiness(tenantId: string) {
+    const [{ data: tenant }, { data: connections }, { data: gateways }] =
+      await Promise.all([
+        this.db
+          .from("tenants")
+          .select("market_profile")
+          .eq("id", tenantId)
+          .maybeSingle(),
+        this.db
+          .from("integration_connections")
+          .select("connector_code,status,secret_reference")
+          .eq("tenant_id", tenantId),
+        this.db
+          .from("production_device_gateways")
+          .select("gateway_code,status,is_test_mode,activation_status")
+          .eq("tenant_id", tenantId),
+      ]);
+    const market = tenant?.market_profile === "UAE" ? "UAE" : "INDIA";
+    const requiredConnectors =
+      market === "UAE"
+        ? ["UAE_FTA", "UAE_BANK", "UAE_WPS"]
+        : ["INDIA_GST", "INDIA_EINVOICE", "INDIA_BANK"];
+    const configured = (connections || []).filter(
+      (item: any) =>
+        item.status === "TESTING" && Boolean(item.secret_reference),
+    );
+    const activeGateways = (gateways || []).filter(
+      (item: any) => item.status === "ACTIVE" && item.is_test_mode === false,
+    );
+    const connectorBlockers = requiredConnectors
+      .filter(
+        (code) => !configured.some((item: any) => item.connector_code === code),
+      )
+      .map((connector_code) => ({
+        type: "CONNECTOR",
+        connector_code,
+        action:
+          "Configure a vault reference, validate a test event and obtain the separately approved production release.",
+      }));
+    return {
+      generated_at: new Date().toISOString(),
+      market_profile: market,
+      external_delivery_enabled: false,
+      connectors: {
+        required: requiredConnectors,
+        testing_with_vault_reference: configured.map(
+          (item: any) => item.connector_code,
+        ),
+        blockers: connectorBlockers,
+      },
+      physical_gateways: {
+        registered: (gateways || []).length,
+        independently_activated: activeGateways.length,
+        blocker:
+          activeGateways.length > 0
+            ? null
+            : "No independently approved live device mapping exists. Device events remain governed and review-required.",
+      },
+      provider: {
+        configured: Boolean(process.env.AI_PROVIDER),
+        note: process.env.AI_PROVIDER
+          ? "Provider configuration is present; tenant-specific approved usage still remains governed."
+          : "Deterministic intelligence remains available; configure an approved provider to enable optional narrative generation.",
+      },
+      ready_for_external_activation: false,
+      note: "This is a readiness register only. It never enables external delivery, changes gateway mode or posts an ERP transaction.",
+    };
+  }
 }

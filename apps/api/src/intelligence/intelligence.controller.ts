@@ -293,6 +293,12 @@ export class IntelligenceController {
     return this.intelligence.onboardingReadiness(request.user.tenantId);
   }
 
+  @Get("external-activation-readiness")
+  externalActivationReadiness(@Req() request: any) {
+    this.requireManagement(request);
+    return this.intelligence.externalActivationReadiness(request.user.tenantId);
+  }
+
   @Get("onboarding/batches")
   onboardingBatches(@Req() request: any) {
     this.requireManagement(request);
