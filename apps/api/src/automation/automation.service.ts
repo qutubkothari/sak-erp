@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { OperatingEventsService } from '../intelligence/operating-events.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 const SUPPORTED_TRIGGERS = new Set(['QUOTATION_EXPIRING', 'RECEIVABLE_OVERDUE', 'SERVICE_SLA_RISK', 'SERVICE_CONTRACT_EXPIRING', 'WARRANTY_EXPIRING', 'PREVENTIVE_MAINTENANCE_DUE', 'SERVICE_ESTIMATE_EXPIRING', 'LOW_STOCK', 'PO_OVERDUE', 'QUALITY_REJECTION_RATE', 'CUSTOMER_CREDIT_EXPOSURE', 'MANUAL']);
 const SUPPORTED_MODULES = new Set(['SALES', 'SERVICE', 'PURCHASE', 'INVENTORY', 'FINANCE', 'OPERATIONS']);
@@ -10,7 +11,7 @@ const SUPPORTED_MODULES = new Set(['SALES', 'SERVICE', 'PURCHASE', 'INVENTORY', 
 export class AutomationService {
   private supabase: SupabaseClient;
 
-  constructor(config: ConfigService, private readonly events: OperatingEventsService) {
+  constructor(config: ConfigService, private readonly events: OperatingEventsService, private readonly whatsapp: WhatsAppService) {
     this.supabase = createClient(config.get<string>('SUPABASE_URL') || process.env.SUPABASE_URL!, config.get<string>('SUPABASE_KEY') || process.env.SUPABASE_KEY!);
   }
 
@@ -339,6 +340,12 @@ export class AutomationService {
       const recipient = this.resolveRecipient(target, rule.recipients);
       const subject = this.renderTemplate(rule.template_subject || `${rule.rule_name}: ${reference.documentNumber}`, target, reference.documentNumber);
       const message = this.renderTemplate(rule.template_body || `${reference.documentNumber} requires attention (${rule.trigger_type.replace(/_/g, ' ').toLowerCase()}).`, target, reference.documentNumber);
+      if (channel === 'WHATSAPP' && !/^\d{10,15}$/.test(String(recipient || '').replace(/\D/g, ''))) { skipped += 1; continue; }
+      let deliveryStatus = channel === 'IN_APP' ? 'DELIVERED' : 'QUEUED';
+      if (channel === 'WHATSAPP') {
+        try { await this.whatsapp.sendAutomated(tenantId, recipient, message, { automation_rule_id: rule.id, document_id: reference.documentId }); deliveryStatus = 'SENT'; }
+        catch { deliveryStatus = 'FAILED'; }
+      }
       rows.push({
         tenant_id: tenantId,
         module: rule.module,
@@ -350,7 +357,7 @@ export class AutomationService {
         recipient,
         subject,
         message_preview: message.slice(0, 1000),
-        delivery_status: channel === 'IN_APP' ? 'DELIVERED' : 'QUEUED',
+        delivery_status: deliveryStatus,
         dedupe_key: dedupeKey,
         metadata: { automation_rule_id: rule.id, automation_rule_code: rule.rule_code, trigger: rule.trigger_type, action: rule.action_type, target },
         created_by: userId || null,
@@ -389,14 +396,17 @@ export class AutomationService {
       tasksCreated,
       skipped,
       channel,
-      note: channel === 'EMAIL'
+      note: channel === 'WHATSAPP'
+        ? 'WhatsApp delivery was attempted only for valid configured recipients while tenant automation is enabled. Each attempt remains in both the communication register and WhatsApp ledger.'
+        : channel === 'EMAIL'
         ? 'Email actions are queued in the communication register for the configured delivery service; no unconfigured outbound email was sent.'
         : 'In-app actions were recorded in the communication register.',
     };
   }
 
   private resolveChannel(actionType: string) {
-    return String(actionType || '').toUpperCase() === 'EMAIL' ? 'EMAIL' : 'IN_APP';
+    const action = String(actionType || '').toUpperCase();
+    return action === 'EMAIL' ? 'EMAIL' : action === 'WHATSAPP' ? 'WHATSAPP' : 'IN_APP';
   }
 
   private describeTarget(target: any, trigger: string) {

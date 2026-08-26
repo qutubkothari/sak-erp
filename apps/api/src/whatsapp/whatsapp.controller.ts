@@ -23,6 +23,9 @@ export class WhatsAppController {
   @Post('disconnect') @UseGuards(JwtAuthGuard, PermissionsGuard)
   disconnect(@Req() req: any) { return this.service.disconnect(req.user.tenantId, req.user, req); }
 
+  @Post('automation') @UseGuards(JwtAuthGuard, PermissionsGuard)
+  automation(@Req() req: any, @Body() body: any) { return this.service.setAutomation(req.user.tenantId, req.user, body || {}, req); }
+
   @Post('send') @UseGuards(JwtAuthGuard, PermissionsGuard)
   send(@Req() req: any, @Body() body: any) { return this.service.send(req.user.tenantId, req.user, body || {}, req); }
 
