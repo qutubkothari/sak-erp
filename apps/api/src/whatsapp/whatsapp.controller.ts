@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { Public } from '../auth/decorators/public.decorator';
@@ -13,6 +13,9 @@ export class WhatsAppController {
 
   @Get('messages') @UseGuards(JwtAuthGuard, PermissionsGuard)
   messages(@Req() req: any, @Query() query: any) { return this.service.messages(req.user.tenantId, req.user, query); }
+
+  @Delete('messages/:id') @UseGuards(JwtAuthGuard, PermissionsGuard)
+  deleteMessage(@Req() req: any, @Param('id') id: string) { return this.service.deleteMessage(req.user.tenantId, req.user, id, req); }
 
   @Post('connect') @UseGuards(JwtAuthGuard, PermissionsGuard)
   connect(@Req() req: any, @Body() body: any) { return this.service.connect(req.user.tenantId, req.user, body || {}, req); }
