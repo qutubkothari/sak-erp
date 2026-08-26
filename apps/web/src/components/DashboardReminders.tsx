@@ -64,16 +64,13 @@ export default function DashboardReminders() {
 
     const fetchReminders = async () => {
       try {
-        const [poResult, qcResult] = await Promise.allSettled([
-          canApprovePO ? apiClient.get<PendingPO[]>('/purchase/orders?status=PENDING') : Promise.resolve([]),
-          canUpdateQC ? apiClient.get<PendingGRN[]>('/purchase/grn?pendingQc=true') : Promise.resolve([]),
-        ]);
+        const result = await apiClient.get<DashboardReminderQueue>('/dashboard/reminders');
 
         if (cancelled) return;
 
         const queue: DashboardReminderQueue = {
-          pendingPOs: poResult.status === 'fulfilled' && Array.isArray(poResult.value) ? poResult.value : [],
-          pendingQC: qcResult.status === 'fulfilled' && Array.isArray(qcResult.value) ? qcResult.value : [],
+          pendingPOs: canApprovePO && Array.isArray(result?.pendingPOs) ? result.pendingPOs : [],
+          pendingQC: canUpdateQC && Array.isArray(result?.pendingQC) ? result.pendingQC : [],
         };
         setPendingPOs(queue.pendingPOs);
         setPendingQC(queue.pendingQC);

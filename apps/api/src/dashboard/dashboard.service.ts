@@ -123,6 +123,29 @@ export class DashboardService {
     }
   }
 
+  async getReminderQueue(tenantId: string) {
+    const [poResult, qcResult] = await Promise.all([
+      this.supabase
+        .from('purchase_orders')
+        .select('id, po_number, created_at, order_date, total_amount, status, pr_po_status, vendor:vendors(id, name)')
+        .eq('tenant_id', tenantId)
+        .or('status.eq.PENDING,pr_po_status.eq.PENDING')
+        .order('created_at', { ascending: false }),
+      this.supabase
+        .from('grns')
+        .select('id, grn_number, created_at, receipt_date, status, qc_completed, purchase_order:purchase_orders(id, po_number), vendor:vendors(id, name)')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .eq('qc_completed', false)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    return {
+      pendingPOs: poResult.error ? [] : (poResult.data || []),
+      pendingQC: qcResult.error ? [] : (qcResult.data || []),
+    };
+  }
+
   async getStats(tenantId: string) {
     const cockpit = await this.getCockpit(tenantId);
     return {
@@ -136,11 +159,10 @@ export class DashboardService {
 
   async getCockpit(tenantId: string) {
     const [
+      reminderQueue,
       pendingPRs,
       draftPRs,
-      pendingPOs,
       approvedPOs,
-      draftGRNs,
       completedGRNs,
       vendorPendingApproval,
       activeVendors,
@@ -167,11 +189,10 @@ export class DashboardService {
       serviceTickets,
       serviceVisits,
     ] = await Promise.all([
+      this.getReminderQueue(tenantId),
       this.safeCount('purchase_requisitions', tenantId, { status: ['SUBMITTED', 'PENDING'] }),
       this.safeCount('purchase_requisitions', tenantId, { status: 'DRAFT' }),
-      this.safeCount('purchase_orders', tenantId, { pr_po_status: 'PENDING' }),
       this.safeCount('purchase_orders', tenantId, { status: 'APPROVED' }),
-      this.safeCount('grns', tenantId, { status: ['DRAFT', 'PENDING'] }),
       this.safeCount('grns', tenantId, { status: 'COMPLETED' }),
       this.safeCount('vendors', tenantId, { approval_status: ['PENDING', 'PENDING_APPROVAL'] }),
       this.safeCount('vendors', tenantId, { is_active: true }),
@@ -198,6 +219,9 @@ export class DashboardService {
       this.safeRows('service_tickets', tenantId, {}, 250),
       this.safeRows('service_site_visits', tenantId, {}, 250),
     ]);
+
+    const pendingPOs = reminderQueue.pendingPOs.length;
+    const draftGRNs = reminderQueue.pendingQC.length;
 
     const poValue = this.sum(purchaseOrders, ['rounded_total_amount', 'total_amount', 'grand_total']);
     const openPOValue = this.sum(

@@ -22,6 +22,11 @@ export class DashboardController {
     }
   }
 
+  @Get('reminders')
+  async getReminders(@Request() req: any) {
+    return this.dashboardService.getReminderQueue(req.user.tenantId);
+  }
+
   @Get('reports')
   async getReports(@Request() req: any) {
     return this.dashboardService.getReportCatalog(req.user.tenantId);
