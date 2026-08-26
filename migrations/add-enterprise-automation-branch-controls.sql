@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS public.automation_rules (
   rule_name VARCHAR(180) NOT NULL,
   module VARCHAR(40) NOT NULL CHECK (module IN ('SALES', 'SERVICE', 'PURCHASE', 'INVENTORY', 'FINANCE', 'OPERATIONS')),
   trigger_type VARCHAR(60) NOT NULL CHECK (trigger_type IN ('QUOTATION_EXPIRING', 'RECEIVABLE_OVERDUE', 'SERVICE_SLA_RISK', 'LOW_STOCK', 'PO_OVERDUE', 'MANUAL')),
-  action_type VARCHAR(40) NOT NULL DEFAULT 'NOTIFY' CHECK (action_type IN ('NOTIFY', 'EMAIL', 'CREATE_TASK', 'ESCALATE')),
+  action_type VARCHAR(40) NOT NULL DEFAULT 'NOTIFY' CHECK (action_type IN ('NOTIFY', 'EMAIL', 'WHATSAPP', 'CREATE_TASK', 'ESCALATE')),
   recipients JSONB NOT NULL DEFAULT '[]'::jsonb,
   conditions JSONB NOT NULL DEFAULT '{}'::jsonb,
   template_subject TEXT,
