@@ -251,6 +251,7 @@ export class IntelligenceController {
 
   @Post("knowledge-graph/refresh")
   refreshKnowledgeGraph(@Req() request: any) {
+    this.requireManagement(request);
     return this.knowledgeGraph.refresh(request.user.tenantId);
   }
 
@@ -285,11 +286,13 @@ export class IntelligenceController {
 
   @Get("onboarding/batches")
   onboardingBatches(@Req() request: any) {
+    this.requireManagement(request);
     return this.onboardingIntelligence.list(request.user.tenantId);
   }
 
   @Get("document-intakes")
   documentIntakes(@Req() request: any) {
+    this.requireManagement(request);
     return this.documentIntelligence.list(request.user.tenantId);
   }
 
@@ -299,6 +302,7 @@ export class IntelligenceController {
     @Param("documentId") documentId: string,
     @Body() body: any,
   ) {
+    this.requireManagement(request);
     return this.documentIntelligence.analyse(
       request.user.tenantId,
       request.user,
@@ -310,6 +314,7 @@ export class IntelligenceController {
 
   @Patch("document-intakes/:id/approve")
   approveDocument(@Req() request: any, @Param("id") id: string) {
+    this.requireManagement(request);
     return this.documentIntelligence.approve(
       request.user.tenantId,
       request.user,
@@ -319,11 +324,13 @@ export class IntelligenceController {
 
   @Get("onboarding/batches/:id")
   onboardingBatch(@Req() request: any, @Param("id") id: string) {
+    this.requireManagement(request);
     return this.onboardingIntelligence.detail(request.user.tenantId, id);
   }
 
   @Post("onboarding/analyse")
   analyseOnboarding(@Req() request: any, @Body() body: any) {
+    this.requireManagement(request);
     return this.onboardingIntelligence.analyse(
       request.user.tenantId,
       request.user.userId || request.user.id,
@@ -333,6 +340,7 @@ export class IntelligenceController {
 
   @Patch("onboarding/batches/:id/approve")
   approveOnboarding(@Req() request: any, @Param("id") id: string) {
+    this.requireManagement(request);
     return this.onboardingIntelligence.approve(
       request.user.tenantId,
       request.user,
@@ -342,6 +350,7 @@ export class IntelligenceController {
 
   @Post("onboarding/batches/:id/apply")
   applyOnboarding(@Req() request: any, @Param("id") id: string) {
+    this.requireManagement(request);
     return this.onboardingIntelligence.apply(
       request.user.tenantId,
       request.user,
@@ -363,6 +372,7 @@ export class IntelligenceController {
 
   @Post("agents/policies")
   createAgentPolicy(@Req() request: any, @Body() body: any) {
+    this.requireManagement(request);
     return this.agents.createPolicy(
       request.user.tenantId,
       request.user,
@@ -372,11 +382,13 @@ export class IntelligenceController {
 
   @Patch("agents/policies/:id/approve")
   approveAgentPolicy(@Req() request: any, @Param("id") id: string) {
+    this.requireManagement(request);
     return this.agents.approvePolicy(request.user.tenantId, request.user, id);
   }
 
   @Post("agents/policies/:id/run")
   runAgentPolicy(@Req() request: any, @Param("id") id: string) {
+    this.requireManagement(request);
     return this.agents.run(request.user.tenantId, request.user, id);
   }
 
