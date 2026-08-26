@@ -4,6 +4,12 @@ Date: 26 August 2026
 Environment: Mizantra test only (`mizantra.saksolution.com`)  
 Production status: frozen and unchanged
 
+## Continuing hardening record
+
+- Factory Health now has an administrator-only, tenant-scoped configuration surface for transparent factor caps, management thresholds and the minimum daily-history requirement. Forecasting remains withheld until that tenant-approved evidence threshold is met.
+- Integration Hub configuration and test-event access is now administrator-only, tenant-scoped, audit-logged and test-only. Vault references are never returned to the browser and pasted credential values are rejected.
+- Latest local regression suite: 24 suites / 183 tests passed. Mizantra test runtime checks passed for Factory Health and Integration Hub; no production service was changed.
+
 ## Outcome
 
 The 44-point Mizantra 2 product brief and the nine-item remaining sequence have been implemented in the test release. The design intentionally keeps financial, purchasing, maintenance, quality, onboarding and external-agent changes behind native permissions, tenant isolation, idempotency and maker-checker controls.
