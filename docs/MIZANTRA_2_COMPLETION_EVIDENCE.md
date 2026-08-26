@@ -10,7 +10,8 @@ Production status: frozen and unchanged
 - Integration Hub configuration and test-event access is now administrator-only, tenant-scoped, audit-logged and test-only. Vault references are never returned to the browser and pasted credential values are rejected.
 - Physical gateway activation now has a maker-checker boundary: mappings begin in test mode, direct live activation is refused, any mapping revision resets approval, and an independently authorised Production/Admin user must approve or revoke live telemetry. Transaction-producing scan events remain in review.
 - Daily Factory Health and Management Brief schedulers now isolate tenant failures, so one unavailable tenant source does not suppress evidence capture for other tenants.
-- Latest local regression suite: 25 suites / 189 tests passed. Mizantra test runtime checks passed for Factory Health, Integration Hub and gateway maker-checker activation; no production service was changed.
+- Latest local regression suite: 25 suites / 190 tests passed. Mizantra test runtime checks passed for Factory Health, Integration Hub and gateway maker-checker activation; no production service was changed.
+- The current test-tenant readiness check is 100% for its configured master-data/control thresholds. This confirms test configuration only; it is not a substitute for approved client masters, opening balances or statutory sign-off.
 
 ## Outcome
 
@@ -51,7 +52,7 @@ This completion means the product code, database controls, interfaces and automa
 ## Verification record
 
 - API build: passed, 288 files compiled.
-- API suite: final post-deployment rerun passed all 25 suites and all 189 tests.
+- API suite: final post-deployment rerun passed all 25 suites and all 190 tests.
 - Web type-check: passed.
 - Web production build: passed, including 113 routes.
 - Public test pages: Command Center, Actions, Onboarding, Agents and Readiness returned HTTP 200.
@@ -59,6 +60,8 @@ This completion means the product code, database controls, interfaces and automa
 - Authenticated acceptance: PASS; 7 tools, onboarding batch creation, knowledge graph refresh/read, NL reporting, historical brief, observability and agent safety verified.
 - Gateway activation acceptance: PASS; direct live bypass returned `400`, and a test gateway moved from `DRAFT` to `SUBMITTED` while same-user approval was rejected with `403`.
 - Scheduler resilience acceptance: PASS; Factory Health forecast endpoint returned `200` and correctly withheld a forecast with only one stored observation.
+- Current test observability: 13 governed tools registered, no pending/failed governed actions, operational graph available (1,754 nodes / 810 edges), and Factory Health has 1 of 14 required observations. It is therefore correctly not forecasting yet.
+- End-to-end test acceptance: `mizantra2-governance-acceptance`, `production-autonomy-acceptance`, and `roi-moat-v2-acceptance` passed using controlled test records.
 - Test-data onboarding batch: `9fa514be-16ac-4936-bd92-78cbec2fc767`.
 - Pre-deployment test backup: `/var/backups/sak-erp-test/pre-mizantra2-runtime-20260826T0000Z.tgz`.
 - Backup SHA-256: `edfeeedb995bc6bac6174fb394a4a6558783c7cf9aed87e936bcad70434a23cf`.
