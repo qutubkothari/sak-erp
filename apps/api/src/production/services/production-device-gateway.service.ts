@@ -311,6 +311,64 @@ export class ProductionDeviceGatewayService {
     return { ...payload, ...output };
   }
 
+  async preflightPayload(tenantId: string, gatewayCode: string, body: any) {
+    const { data: gateway, error } = await this.db
+      .from("production_device_gateways")
+      .select("gateway_code,status,is_test_mode,field_mapping,mapping_version")
+      .eq("tenant_id", tenantId)
+      .eq("gateway_code", this.text(gatewayCode).toUpperCase())
+      .in("status", ["DRAFT", "TESTING", "PAUSED"])
+      .maybeSingle();
+    if (error || !gateway)
+      throw new BadRequestException(
+        error?.message || "Test-mode gateway not found.",
+      );
+    if (gateway.is_test_mode === false)
+      throw new BadRequestException(
+        "Payload preflight is limited to test-mode gateways.",
+      );
+    const payload =
+      body?.payload &&
+      typeof body.payload === "object" &&
+      !Array.isArray(body.payload)
+        ? body.payload
+        : {};
+    if (JSON.stringify(payload).length > 65536)
+      throw new BadRequestException("Gateway payload exceeds 64 KB.");
+    const eventType = this.text(body?.event_type).toUpperCase();
+    const normalized = this.mapped(payload, gateway.field_mapping || {});
+    const telemetry = [
+      "RUN",
+      "IDLE",
+      "STOP",
+      "COUNT",
+      "QUALITY",
+      "ENERGY",
+      "CONDITION",
+    ].includes(eventType);
+    const required = telemetry ? ["work_station_id"] : [];
+    const missing = required.filter(
+      (field) =>
+        normalized[field] == null || String(normalized[field]).trim() === "",
+    );
+    return {
+      test_only: true,
+      no_event_persisted: true,
+      no_native_transaction_created: true,
+      gateway_code: gateway.gateway_code,
+      mapping_version: gateway.mapping_version,
+      event_type: eventType || null,
+      transaction_intent: telemetry ? "MACHINE_TELEMETRY" : "REVIEW_REQUIRED",
+      valid: Boolean(eventType) && missing.length === 0,
+      missing_required_fields: missing,
+      mapped_fields: Object.keys(gateway.field_mapping || {}),
+      normalized_preview: normalized,
+      note: telemetry
+        ? "A valid preflight proves only field compatibility. It does not authorise a live device or post a transaction."
+        : "Non-telemetry events remain review-required even after a valid preflight.",
+    };
+  }
+
   async ingestExternal(publicKeyId: string, apiKey: string, body: any) {
     if (!publicKeyId || !apiKey)
       throw new UnauthorizedException(

@@ -62,6 +62,19 @@ export class ProductionDeviceGatewayController {
   ) {
     return this.service.heartbeat(req.user.tenantId, gatewayCode, body);
   }
+  @Post(":gatewayCode/preflight")
+  @RequirePermissions("job_orders:update")
+  preflight(
+    @Req() req: any,
+    @Param("gatewayCode") gatewayCode: string,
+    @Body() body: any,
+  ) {
+    return this.service.preflightPayload(
+      req.user.tenantId,
+      gatewayCode,
+      body || {},
+    );
+  }
   @Post(":id/rotate-credential")
   @RequirePermissions("job_orders:update")
   rotate(@Req() req: any, @Param("id") id: string) {
