@@ -30,22 +30,29 @@ export class IntelligenceController {
     private readonly documentIntelligence: DocumentIntelligenceService,
   ) {}
 
+  private requireManagement(request: any) {
+    if (!this.intelligence.canAccessCommandCenter(request.user)) {
+      throw new ForbiddenException(
+        "Management role access is required for Mizantra intelligence.",
+      );
+    }
+  }
+
   @Get("command-center")
   commandCenter(@Req() request: any) {
-    if (!this.intelligence.canAccessCommandCenter(request.user))
-      throw new ForbiddenException(
-        "Management role access is required for Command Center.",
-      );
+    this.requireManagement(request);
     return this.intelligence.commandCenter(request.user.tenantId, request.user);
   }
 
   @Get("daily-brief")
   dailyBrief(@Req() request: any) {
+    this.requireManagement(request);
     return this.intelligence.dailyBrief(request.user.tenantId, request.user);
   }
 
   @Get("brief-history")
   briefHistory(@Req() request: any, @Query("period") period?: string) {
+    this.requireManagement(request);
     return this.intelligence.briefHistory(
       request.user.tenantId,
       period || "WEEK",
@@ -54,6 +61,7 @@ export class IntelligenceController {
 
   @Get("root-cause-brief")
   rootCauseBrief(@Req() request: any, @Query("period") period?: string) {
+    this.requireManagement(request);
     return this.intelligence.historicalRootCauseBrief(
       request.user.tenantId,
       period || "WEEK",
@@ -62,6 +70,7 @@ export class IntelligenceController {
 
   @Post("ask")
   ask(@Req() request: any, @Body() body: { question?: string }) {
+    this.requireManagement(request);
     return this.intelligence.ask(
       request.user.tenantId,
       request.user,
@@ -72,6 +81,7 @@ export class IntelligenceController {
 
   @Post("reports/query")
   report(@Req() request: any, @Body() body: { question?: string }) {
+    this.requireManagement(request);
     return this.intelligence.naturalLanguageReport(
       request.user.tenantId,
       request.user,
@@ -188,6 +198,7 @@ export class IntelligenceController {
     @Query("limit") limit?: string,
     @Query("correlation_id") correlationId?: string,
   ) {
+    this.requireManagement(request);
     return this.intelligence.recentEvents(
       request.user.tenantId,
       Number(limit) || 25,
@@ -197,6 +208,7 @@ export class IntelligenceController {
 
   @Get("health-history")
   healthHistory(@Req() request: any, @Query("days") days?: string) {
+    this.requireManagement(request);
     return this.intelligence.healthHistory(
       request.user.tenantId,
       Number(days) || 14,
@@ -205,6 +217,7 @@ export class IntelligenceController {
 
   @Get("health-configuration")
   healthConfiguration(@Req() request: any) {
+    this.requireManagement(request);
     return this.intelligence.healthConfiguration(request.user.tenantId);
   }
 
@@ -220,6 +233,7 @@ export class IntelligenceController {
 
   @Get("health-forecast")
   healthForecast(@Req() request: any, @Query("days") days?: string) {
+    this.requireManagement(request);
     return this.intelligence.healthForecast(
       request.user.tenantId,
       Number(days) || 7,
@@ -228,6 +242,7 @@ export class IntelligenceController {
 
   @Get("memory")
   memory(@Req() request: any, @Query("limit") limit?: string) {
+    this.requireManagement(request);
     return this.intelligence.businessMemory(
       request.user.tenantId,
       Number(limit) || 100,
@@ -241,6 +256,7 @@ export class IntelligenceController {
 
   @Get("knowledge-graph")
   knowledgeGraphView(@Req() request: any, @Query("limit") limit?: string) {
+    this.requireManagement(request);
     return this.knowledgeGraph.graph(
       request.user.tenantId,
       Number(limit) || 500,
@@ -253,6 +269,7 @@ export class IntelligenceController {
     @Query("from") from?: string,
     @Query("to") to?: string,
   ) {
+    this.requireManagement(request);
     return this.knowledgeGraph.path(
       request.user.tenantId,
       from || "",
@@ -262,6 +279,7 @@ export class IntelligenceController {
 
   @Get("onboarding-readiness")
   onboarding(@Req() request: any) {
+    this.requireManagement(request);
     return this.intelligence.onboardingReadiness(request.user.tenantId);
   }
 
@@ -333,11 +351,13 @@ export class IntelligenceController {
 
   @Get("observability")
   observability(@Req() request: any) {
+    this.requireManagement(request);
     return this.intelligence.observability(request.user.tenantId);
   }
 
   @Get("agents")
   agentDashboard(@Req() request: any) {
+    this.requireManagement(request);
     return this.agents.dashboard(request.user.tenantId);
   }
 
@@ -362,16 +382,19 @@ export class IntelligenceController {
 
   @Get("exceptions")
   exceptions(@Req() request: any, @Query("status") status?: string) {
+    this.requireManagement(request);
     return this.intelligence.exceptionRegister(request.user.tenantId, status);
   }
 
   @Get("exception-assignees")
   exceptionAssignees(@Req() request: any) {
+    this.requireManagement(request);
     return this.intelligence.exceptionAssignees(request.user.tenantId);
   }
 
   @Get("notifications")
   exceptionNotifications(@Req() request: any, @Query("limit") limit?: string) {
+    this.requireManagement(request);
     return this.intelligence.exceptionNotifications(
       request.user.tenantId,
       request.user,
