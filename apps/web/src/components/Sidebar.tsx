@@ -56,7 +56,7 @@ type NavigationItem = {
 const navigation: NavigationItem[] = [
   {
     name: "Dashboard",
-    href: "/dashboard/command-center",
+    href: "/dashboard",
     icon: Home,
   },
   {
