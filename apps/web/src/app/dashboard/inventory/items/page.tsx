@@ -1572,6 +1572,8 @@ export default function ItemsPage() {
     const headers = [
       "code",
       "name",
+      "OEM Part No",
+      "OEM Name",
       "category",
       "uom",
       "hsn_code",
@@ -1585,6 +1587,8 @@ export default function ItemsPage() {
     const example = [
       "ITM-001",
       "Sample Item",
+      "OEM-12345",
+      "Sample OEM",
       "Raw Material",
       "NOS",
       "12345678",

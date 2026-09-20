@@ -1470,6 +1470,11 @@ export class ItemsService {
           item.oem_part_no ||
           item.oemPartNo ||
           item.OEM;
+        const rawOemName =
+          item["OEM Name"] ||
+          item["OEM Manufacturer"] ||
+          item.oem_name ||
+          item.oemName;
 
         const rawStandardCost =
           item.standard_cost ||
@@ -1506,6 +1511,7 @@ export class ItemsService {
           code: resolvedCode,
           name: rawName,
           oem_part_no: this.normalizeOptionalText(rawOemPartNo),
+          oem_name: this.normalizeOptionalText(rawOemName),
           description:
             item.description || item.Description || item.DESCRIPTION || "",
           category: mappedCategory,
@@ -1548,6 +1554,7 @@ export class ItemsService {
           code: toUpperCode(itemData.code),
           name: itemData.name,
           oem_part_no: itemData.oem_part_no,
+          oem_name: itemData.oem_name,
           description: toTitleCase(itemData.description),
           category: itemData.category,
           uom: toUpperCode(itemData.uom),

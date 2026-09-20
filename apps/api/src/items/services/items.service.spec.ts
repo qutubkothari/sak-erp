@@ -180,3 +180,61 @@ describe('ItemsService temporary R&D procurement items', () => {
     );
   });
 });
+
+describe('ItemsService bulk item import', () => {
+  it('imports OEM Part No and OEM Name into the item master', async () => {
+    const service = new ItemsService({} as any);
+
+    const lookupQuery: any = {
+      select: jest.fn(() => lookupQuery),
+      eq: jest.fn(() => lookupQuery),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: null,
+        error: null,
+      }),
+    };
+
+    const insertQuery: any = {
+      insert: jest.fn().mockResolvedValue({
+        data: null,
+        error: null,
+      }),
+    };
+
+    let itemCalls = 0;
+    (service as any).supabase = {
+      from: jest.fn((table: string) => {
+        if (table !== 'items') {
+          throw new Error(`Unexpected table ${table}`);
+        }
+
+        itemCalls += 1;
+        return itemCalls === 1 ? lookupQuery : insertQuery;
+      }),
+    };
+
+    const result = await service.bulkCreate('tenant-1', [
+      {
+        code: '100-TEST',
+        name: 'Waterproof Connector',
+        category: 'Raw Material',
+        uom: 'NOS',
+        'OEM Part No': 'R266690',
+        'OEM Name': 'Macfos',
+      },
+    ]);
+
+    expect(insertQuery.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: 'tenant-1',
+        code: '100-TEST',
+        name: 'Waterproof Connector',
+        oem_part_no: 'R266690',
+        oem_name: 'Macfos',
+      }),
+    );
+
+    expect(result.success).toBe(1);
+    expect(result.failed).toBe(0);
+  });
+});
