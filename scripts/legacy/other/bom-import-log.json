@@ -1,0 +1,572 @@
+{
+  "finishedGoods": [
+    {
+      "name": "Saif Seas Life - DSR",
+      "id": "3a4deb9e-0c80-43aa-b6bc-c2ab40664d7c"
+    }
+  ],
+  "subAssemblies": [],
+  "boms": [
+    {
+      "parent": "Saif Seas Life - DSR",
+      "id": "04079abd-4997-422d-8024-85243d6b4cfa"
+    }
+  ],
+  "bomItems": [],
+  "errors": [
+    {
+      "type": "sub_assembly",
+      "name": "Jet Motor Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "STBD_ESC Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "PORT_ESC Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "STBD Signal PM Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "PORT Signal PM Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "STBD Signal CM Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "PORT Signal CM Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Charging PM Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Charger Box Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Charging CM Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "RPM Sensor Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Current Sensor Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "A21 MotherBoard Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Electronic Box Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "FL_STBD Elec",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "FL_PORT Elec",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "FL_STBD Mech",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "FL_PORT Mech",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Battery Block Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "STBD Battery Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "PORT Battery Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "STBD Unit Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "PORT Unit Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Self Rightening Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "IP Remote Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "IP Remote Charging Cable Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "AMCA Elec Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "AMCA Mech Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Final Craft Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Bottom Block Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "STBD Aft Plate Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "PORT Aft Plate Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "R9MX Adapter",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Final Packing",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_assembly",
+      "name": "Power Switch Assy",
+      "error": "HTTP 400: {\"code\":\"22P02\",\"details\":null,\"hint\":null,\"message\":\"invalid input value for enum item_type: \\\"SUBASSEMBLY\\\"\"}"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Jet Motor Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "STBD_ESC Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "PORT_ESC Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "STBD Signal PM Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "PORT Signal PM Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "STBD Signal CM Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "PORT Signal CM Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Charging PM Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Charger Box Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Charging CM Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "RPM Sensor Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Current Sensor Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "A21 MotherBoard Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Electronic Box Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "FL_STBD Elec",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "FL_PORT Elec",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "FL_STBD Mech",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "FL_PORT Mech",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Battery Block Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "STBD Battery Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "PORT Battery Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "STBD Unit Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "PORT Unit Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Self Rightening Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "IP Remote Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "IP Remote Charging Cable Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "AMCA Elec Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "AMCA Mech Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Final Craft Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Bottom Block Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "STBD Aft Plate Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "PORT Aft Plate Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "R9MX Adapter",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Final Packing",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "sub_bom",
+      "name": "Power Switch Assy",
+      "error": "Parent sub-assembly not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Jet Motor Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Power Switch Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Charging PM Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Charging CM Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "STBD Signal PM Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "PORT Signal PM Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "PORT Signal CM Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "A21 MotherBoard Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Battery Block Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "STBD_ESC Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "PORT_ESC Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "STBD Battery Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "PORT Battery Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Charger Box Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Electronic Box Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "FL_STBD Elec",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "FL_PORT Elec",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "FL_STBD Mech",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "FL_PORT Mech",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "STBD Unit Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "PORT Unit Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Self Rightening Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "IP Remote Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "IP Remote Charging Cable Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "AMCA Elec Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "AMCA Mech Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Final Craft Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "STBD Aft Plate Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "PORT Aft Plate Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Current Sensor Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "RPM Sensor Assy",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "R9MX Adapter",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Final Packing",
+      "error": "Child item not found"
+    },
+    {
+      "type": "bom_item",
+      "parent": "Saif Seas Life - DSR",
+      "child": "Bottom Block Assy",
+      "error": "Child item not found"
+    }
+  ]
+}

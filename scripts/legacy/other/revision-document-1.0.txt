@@ -1,0 +1,90 @@
+MEETING NOTES 
+Date: 5th December
+Attendees:
+•	Taher Calcuttawala
+•	Ali-asgher Calcuttawala
+•	Qutbuddin Kothari
+•	Hussain Noman
+________________________________________
+1. USER & ACCESS MANAGEMENT
+•	Add users against each unit, Introduce 3 levels for client tagging.
+________________________________________
+2. PRODUCT, UID & WARRANTY MANAGEMENT
+•	Tag product ID against the UID of final product.
+•	UID tree should be available with all branches.
+•	Customer can self-register product for warranty through a link.
+•	Issue Certificate for Final Product to be generated and emailed during dispatch.
+________________________________________
+3. SERVICE TICKET MANAGEMENT
+Fields required:
+•	Ship Name
+•	Location
+•	Product UID
+•	Attachment upload: Photos & Videos
+•	Entire flow to be accessible via Mobile/Tablet interface.
+________________________________________
+4. DOCUMENT MANAGEMENT
+•	Drawings upload in Purchase Order (PO).
+•	In BOM: function to attach drawings.
+•	Items to show “Drawing Required: Optional / Compulsory”.
+o	If compulsory → PO must have drawings attached.
+•	GRN: upload Purchase Invoice.
+________________________________________
+5. PURCHASE MANAGEMENT
+Purchase Order (PO)
+•	Display:
+o	Last 3 purchase prices
+o	Stock in hand
+o	Available stock
+•	Dropdown for Payment Status: Paid / Unpaid / Cheque Issued / Other.
+•	Add Customs duty and other charges.
+•	Add tracking details after PO is sent.
+o	Automatic reminder email to supplier requesting tracking info.
+•	Email integration for:
+o	RFQ
+o	Purchase Order
+o	Sales Order
+o	Dispatch notes
+o	PO tracking reminders
+Vendor Management
+•	Items can be tagged with multiple vendors.
+•	In Purchase Requisition: choose vendor from tagged list OR add new vendor.
+GRN (Goods Receipt Note)
+•	Split function: Received vs Accepted (QC).
+•	QC Acceptance should happen by GRN number.
+•	If QC rejects → system auto-creates a Debit Note.
+•	Update HSN Code in GRN from Supplier Invoice if mismatch.
+________________________________________
+6. RFQ (Request for Quotation)
+•	RFQ to suppliers with email integration.
+•	In Purchases, RFQ should integrate with email workflow.
+________________________________________
+7. SALES & DISPATCH
+•	Sales Order must have email integration.
+•	During dispatch:
+o	Generate Issue Certificate for final product
+o	Send certificate to customer
+•	UID tagging must reflect customer, ship, location mappings.
+________________________________________
+8. INVENTORY MANAGEMENT
+•	Inventory items must have HSN Code.
+•	Items must show if drawing is optional or compulsory.
+•	Drawings should be tagged to individual items.
+•	Items must have an indicator: UID required? (Yes/No)
+o	Example: washers, nuts, bolts → No UID.
+•	Display PO references inside Purchase Order screen.
+________________________________________
+9. MANUFACTURING / BOM
+•	In BOM:
+o	Option to attach drawings.
+________________________________________
+10. HR & PAYROLL
+•	Attendance data will be provided from biometric device.
+•	Payroll components to be integrated.
+•	HR employee record to include all personal documents (Aadhar, Photo, Police Verification, etc.).
+•	Record employee Merits and Demerits.
+
+________________________________________
+11. Petty Expenses
+•	Petty Expense Voucher for project/event-based expenses.
+

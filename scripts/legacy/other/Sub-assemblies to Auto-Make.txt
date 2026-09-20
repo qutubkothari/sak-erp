@@ -1,0 +1,1166 @@
+Sub-assemblies to Auto-Make
+Item	Required	In Stock	To Make
+SA-BATTERYB - Battery Block Assy	2	0	2
+SA-JETMOTOR - Jet Motor Assy	2	0	2
+ITEM-0657 - Charging PM Assy	1	0	1
+ITEM-0668 - PORT Battery Assy	1	0	1
+ITEM-0662 - PORT Signal CM Assy	1	0	1
+ITEM-0671 - STBD Unit Assy	1	0	1
+ITEM-0667 - STBD Battery Assy	1	0	1
+ITEM-0661 - STBD Signal CM Assy	1	0	1
+SA-STBDESCA - STBD_ESC Assy	1	0	1
+ITEM-0672 - PORT Unit Assy	1	0	1
+SA-PORTESCA - PORT_ESC Assy	1	0	1
+ITEM-0673 - Self Rightening Assy	1	0	1
+ITEM-0675 - IP Remote Charging Cable Assy	1	0	1
+ITEM-0676 - AMCA Elec Assy	1	0	1
+ITEM-0677 - AMCA Mech Assy	1	0	1
+ITEM-0678 - Final Craft Assy	1	0	1
+ITEM-0663 - Current Sensor Assy	1	0	1
+ITEM-0664 - RPM Sensor Assy	1	0	1
+ITEM-0679 - Bottom Block Assy	1	0	1
+SA-A21MOTHE - A21 MotherBoard Assy	1	0	1
+SA-FLSTBDEL - FL_STBD Elec	1	0	1
+SA-FLPORTEL - FL_PORT Elec	1	0	1
+SA-FLSTBDME - FL_STBD Mech	1	0	1
+SA-FLPORTME - FL_PORT Mech	1	0	1
+SA-STBDAFTP - STBD Aft Plate Assy	1	0	1
+SA-PORTAFTP - PORT Aft Plate Assy	1	0	1
+SA-R9MXADAP - R9MX Adapter	1	0	1
+SA-FINALPAC - Final Packing	1	0	1
+ITEM-0659 - STBD Signal PM Assy	1	0	1
+ITEM-0660 - PORT Signal PM Assy	1	0	1
+ITEM-0670 - Electronic Box Assy	1	0	1
+ITEM-0656 - Power Switch Assy	1	0	1
+ITEM-0658 - Charging CM Assy	1	0	1
+ITEM-0674 - IP Remote Assy	1	0	1
+ITEM-0669 - Charger Box Assy	1	0	1
+BOM Explosion
+Expand All
+Collapse All
+ITEM-0657 - Charging PM Assy
+9 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SIL-BLACK18AWG - Cable - Ultra Flexible - Black 18 AWG
+0.35	47.1	✓
+CAB-SIL-BLACK20AWG - Cable - Ultra Flexible - Black 20 AWG
+0.3	51.2	✓
+CAB-SIL-RED20AWG - Cable - Ultra Flexible Red 20 AWG
+0.3	51.2	✓
+CON-JXH-HOS-F3 - 3 pin JST-XH housing
+1	45	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+10	0	10
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+2	0	2
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.2	48.5	✓
+SLN-STB-4M-3X-BK-ADH - Heatshrink Tube 4:1 Adhesive Lined Black
+0.06	52.04	✓
+SLN-STB-6.4M-4X-BK-ADH - Heatshrink Tube 6.4:1.6 Adhesive Lined Black
+0.05	51.7	✓
+ITEM-0658 - Charging CM Assy
+1 item
+Shortage
+Item	Required	In Stock	Short
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+10	0	10
+ITEM-0659 - STBD Signal PM Assy
+6 items
+Shortage
+Item	Required	In Stock	Short
+CON-CRC-SY21BY-PM-F15PL67 - Connector SY21-15 pin panel mount(Female)
+2	43	✓
+ITEM-0169 - 5 pin JST-XH housing
+2	43	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+10	0	10
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+4	0	4
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.3	48.5	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+10	0	10
+ITEM-0660 - PORT Signal PM Assy
+6 items
+Shortage
+Item	Required	In Stock	Short
+CON-CRC-SY21BY-PM-F15PL67 - Connector SY21-15 pin panel mount(Female)
+2	43	✓
+ITEM-0169 - 5 pin JST-XH housing
+2	43	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+10	0	10
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+4	0	4
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.3	48.5	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+10	0	10
+ITEM-0663 - Current Sensor Assy
+3 items
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+8	25	✓
+ITEM-0168 - 4 pin JST-XH male side entry
+4	45	✓
+SEN-CUR-WCS1700-CTi35 - WCS1700 current Sensor
+8	37	✓
+ITEM-0664 - RPM Sensor Assy
+6 items
+Shortage
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D01uF - Capacitor 0.01uF 0805
+6	41	✓
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+6	25	✓
+IND-SMD-2D2v-RED - LED 0805 SMD
+3	42	✓
+ITEM-0164 - 2 pin JST-XH male side entry
+6	41	✓
+RES-SMD-0805-125mW5P-47k - 47k 0805 PANASONIC
+24	5	19
+SIC-DIO-1N4148-100V1A - 1N4148 SMD
+12	29	✓
+ITEM-0668 - PORT Battery Assy
+7 items • 4 sub
+Shortage
+Item	Required	In Stock	Short
+CAB-SIL-BLACK12AWG - Cable - Ultra Flexible - Black 12AWG
+1.6	45.45	✓
+CAB-SIL-BLACK18AWG - Cable - Ultra Flexible - Black 18 AWG
+1.1	47.1	✓
+CAB-SIL-RED8AWG - Cable - Ultra Flexible - Red 8AWG
+1.3	44.6	✓
+FAB-MCN-60x70-18mmFRP - 2mm FRP 60x70mm with 18 mm hole
+4	31	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+40	0	40
+SLN-STB-100M-2X-BK - HeatShrink Tube 100mm Black
+0.34	51.13	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.06	51.32	✓
+ITEM-0662 - PORT Signal CM Assy
+Level 1 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Black - Black 14/38 Wire
+0.45	40.85	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+3	0	3
+CON-CRC-SY21BY-CM-M15PL67 - Connector SY21-15 pin Cable Mount(Male)
+3	41	✓
+SEN-TEM-LM61 - LM61 Temperature Sensor
+3	41	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+30	0	30
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.45	48.5	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.3	51.32	✓
+SLN-STB-3M-3X-BK-ADH - HeatShrink Tube 3:1 Adhesive Lined Black
+0.3	51.32	✓
+SLN-STB-4M-3X-BK-ADH - Heatshrink Tube 4:1 Adhesive Lined Black
+0.15	52.04	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+15	0	15
+ITEM-0662 - PORT Signal CM Assy
+Level 1 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Black - Black 14/38 Wire
+0.45	40.85	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+3	0	3
+CON-CRC-SY21BY-CM-M15PL67 - Connector SY21-15 pin Cable Mount(Male)
+3	41	✓
+SEN-TEM-LM61 - LM61 Temperature Sensor
+3	41	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+30	0	30
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.45	48.5	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.3	51.32	✓
+SLN-STB-3M-3X-BK-ADH - HeatShrink Tube 3:1 Adhesive Lined Black
+0.3	51.32	✓
+SLN-STB-4M-3X-BK-ADH - Heatshrink Tube 4:1 Adhesive Lined Black
+0.15	52.04	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+15	0	15
+SA-BATTERYB - Battery Block Assy
+Level 1 Sub-BOM
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-3S2P-CU-2170 - Copper Strips 3x2 Cells
+30	0	30
+ITEM-0428 - 1" Masking Tape
+3	42	✓
+SA-BATTERYB - Battery Block Assy
+Level 1 Sub-BOM
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-3S2P-CU-2170 - Copper Strips 3x2 Cells
+30	0	30
+ITEM-0428 - 1" Masking Tape
+3	42	✓
+ITEM-0669 - Charger Box Assy
+7 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SIL-BLACK18AWG - Cable - Ultra Flexible - Black 18 AWG
+0.25	47.1	✓
+CAB-SIL-RED18AWG - Cable - Ultra Flexible - Red 18 AWG
+0.25	51	✓
+ITEM-0157 - 3 pin 3 yrd power cord
+1	51	✓
+ITEM-0388 - 130x80x60 enclosure box
+1	47	✓
+ITEM-0392 - PG-11 Cable Gland Metal
+2	49	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+10	0	10
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+10	0	10
+ITEM-0670 - Electronic Box Assy
+4 items • 5 sub
+Shortage
+Item	Required	In Stock	Short
+FAB-IJM-ElecBox-TopLid - Electronic Box Top Lid
+1	50	✓
+FAB-IJM-FLID-LIFE - Electronic Box - Front Lid
+1	50	✓
+FAS-BLT-CSK-4M20M-PH-304SS - M4x20 CSK Phillips
+4	0	4
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+10	0	10
+ITEM-0659 - STBD Signal PM Assy
+6 items
+Shortage
+Item	Required	In Stock	Short
+CON-CRC-SY21BY-PM-F15PL67 - Connector SY21-15 pin panel mount(Female)
+2	43	✓
+ITEM-0169 - 5 pin JST-XH housing
+2	43	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+10	0	10
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+4	0	4
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.3	48.5	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+10	0	10
+ITEM-0660 - PORT Signal PM Assy
+6 items
+Shortage
+Item	Required	In Stock	Short
+CON-CRC-SY21BY-PM-F15PL67 - Connector SY21-15 pin panel mount(Female)
+2	43	✓
+ITEM-0169 - 5 pin JST-XH housing
+2	43	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+10	0	10
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+4	0	4
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.3	48.5	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+10	0	10
+ITEM-0663 - Current Sensor Assy
+3 items
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+8	25	✓
+ITEM-0168 - 4 pin JST-XH male side entry
+4	45	✓
+SEN-CUR-WCS1700-CTi35 - WCS1700 current Sensor
+8	37	✓
+SA-A21MOTHE - A21 MotherBoard Assy
+28 items • 4 sub
+Shortage
+Item	Required	In Stock	Short
+CAB-SIL-RED18AWG - Cable - Ultra Flexible - Red 18 AWG
+0.6	51	✓
+CAB-SIL-RED8AWG - Cable - Ultra Flexible - Red 8AWG
+0.5	44.6	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+24	0	24
+CAP-SMD-0805-50V5P-18pF - 18pF 0805 capacitor
+8	33	✓
+CAP-SMD-TANTA-10V10P-10UF - 10uF 10v Tantalum Capacitor Case A
+6	35	✓
+CON-BRG-40X1-F2.54MM - Female Bergstrip 40x1 2.54mm
+2	44	✓
+CON-BRG-40X1-M2.54MM - Male Bergstrip 40x1 2.54mm
+2	44	✓
+CON-JXH-TOP-M3 - 3 pin JST-XH male top entry
+2	44	✓
+EAC-CONFORMAL - Conformal Coating
+40	0	40
+IND-SMD-2D2v-RED - LED 0805 SMD
+2	42	✓
+ITEM-0114 - Fuse 500mA
+2	48	✓
+ITEM-0133 - Power Relay 120A 12v Y7
+2	48	✓
+ITEM-0163 - 2 pin JST-XH male top entry RED
+8	21	✓
+ITEM-0170 - 5 pin JST-XH male top entry
+4	43	✓
+ITEM-0176 - JST-XH Crimping pins
+20	3	17
+MOD-BLE-HC05 - BlueTooth Module
+2	48	✓
+OSC-SMD-ABM3-16MHZ-18pF - 16MHz Crystal oscillator
+4	43	✓
+RES-SMD-0805-125mW1P-330E - 330E 0805 Resistor
+24	0	24
+RES-SMD-0805-125mW5P-10k - 10k 0805 resistor
+2	48	✓
+RES-SMD-0805-125mW5P-1k - 1k 0805 Resistor
+6	38	✓
+RES-SMD-0805-500mW5P-470k - 470k 0805 PANASONIC
+24	0	24
+SIC-ADC-MCP3208-5V8CH - MCP3208 Analog to Digital Conv.
+4	43	✓
+SIC-DIO-M7-v100i1 - Free Wheel Diode SMD M7
+14	18	✓
+SIC-SSR-AQW282SX-63vD35A-2CH - SSR AQW282SX
+12	23	✓
+SLN-STB-6.4M-4X-BK-ADH - Heatshrink Tube 6.4:1.6 Adhesive Lined Black
+0.4	51.7	✓
+SOL-PAS-6040-ROHS - Lead Paste
+20	3	17
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+20	0	20
+SWI-PUS-THT-4LEG - Tactile Switch for IFU four leg
+2	46	✓
+ITEM-0663 - Current Sensor Assy
+3 items
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+8	25	✓
+ITEM-0168 - 4 pin JST-XH male side entry
+4	45	✓
+SEN-CUR-WCS1700-CTi35 - WCS1700 current Sensor
+8	37	✓
+ITEM-0663 - Current Sensor Assy
+3 items
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+8	25	✓
+ITEM-0168 - 4 pin JST-XH male side entry
+4	45	✓
+SEN-CUR-WCS1700-CTi35 - WCS1700 current Sensor
+8	37	✓
+ITEM-0664 - RPM Sensor Assy
+6 items
+Shortage
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D01uF - Capacitor 0.01uF 0805
+6	41	✓
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+6	25	✓
+IND-SMD-2D2v-RED - LED 0805 SMD
+3	42	✓
+ITEM-0164 - 2 pin JST-XH male side entry
+6	41	✓
+RES-SMD-0805-125mW5P-47k - 47k 0805 PANASONIC
+24	5	19
+SIC-DIO-1N4148-100V1A - 1N4148 SMD
+12	29	✓
+ITEM-0664 - RPM Sensor Assy
+6 items
+Shortage
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D01uF - Capacitor 0.01uF 0805
+6	41	✓
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+6	25	✓
+IND-SMD-2D2v-RED - LED 0805 SMD
+3	42	✓
+ITEM-0164 - 2 pin JST-XH male side entry
+6	41	✓
+RES-SMD-0805-125mW5P-47k - 47k 0805 PANASONIC
+24	5	19
+SIC-DIO-1N4148-100V1A - 1N4148 SMD
+12	29	✓
+ITEM-0656 - Power Switch Assy
+Level 1 Sub-BOM
+1 item
+Item	Required	In Stock	Short
+CON-JXH-HOS-F2 - 2 pin JST-XH housing
+2	36	✓
+ITEM-0671 - STBD Unit Assy
+3 items • 3 sub
+Shortage
+Item	Required	In Stock	Short
+FAS-BLT-CSK-4M20M-PH-304SS - M4x20 CSK Phillips
+2	0	2
+FAS-NUT-4M-NYL-304SS - M4 Nylock Nut SS 304
+4	0	4
+FAS-WAS-PWS-4M12M1M-GI - M4x12 plain washer GI for wooden box
+4	0	4
+ITEM-0667 - STBD Battery Assy
+Level 1 Sub-BOM
+6 items • 4 sub
+Shortage
+Item	Required	In Stock	Short
+CAB-SIL-BLACK8AWG - Cable - Ultra Flexible - Black 8AWG
+1.3	49.75	✓
+CAB-SIL-RED8AWG - Cable - Ultra Flexible - Red 8AWG
+1.3	44.6	✓
+FAB-MCN-60x70-18mmFRP - 2mm FRP 60x70mm with 18 mm hole
+4	31	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+40	0	40
+SLN-STB-100M-2X-BK - HeatShrink Tube 100mm Black
+0.34	51.13	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.12	51.32	✓
+SA-BATTERYB - Battery Block Assy
+Level 1 Sub-BOM
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-3S2P-CU-2170 - Copper Strips 3x2 Cells
+30	0	30
+ITEM-0428 - 1" Masking Tape
+3	42	✓
+SA-BATTERYB - Battery Block Assy
+Level 1 Sub-BOM
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-3S2P-CU-2170 - Copper Strips 3x2 Cells
+30	0	30
+ITEM-0428 - 1" Masking Tape
+3	42	✓
+ITEM-0661 - STBD Signal CM Assy
+Level 2 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Red - Red 14/38 Wire
+0.3	41.15	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+2	0	2
+CON-CRC-SY21BY-CM-M15PL67 - Connector SY21-15 pin Cable Mount(Male)
+2	41	✓
+SEN-TEM-LM61 - LM61 Temperature Sensor
+2	41	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+20	0	20
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.3	48.5	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.2	51.32	✓
+SLN-STB-3M-3X-BK-ADH - HeatShrink Tube 3:1 Adhesive Lined Black
+0.2	51.32	✓
+SLN-STB-4M-3X-BK-ADH - Heatshrink Tube 4:1 Adhesive Lined Black
+0.1	52.04	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+10	0	10
+ITEM-0661 - STBD Signal CM Assy
+Level 2 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Red - Red 14/38 Wire
+0.3	41.15	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+2	0	2
+CON-CRC-SY21BY-CM-M15PL67 - Connector SY21-15 pin Cable Mount(Male)
+2	41	✓
+SEN-TEM-LM61 - LM61 Temperature Sensor
+2	41	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+20	0	20
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.3	48.5	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.2	51.32	✓
+SLN-STB-3M-3X-BK-ADH - HeatShrink Tube 3:1 Adhesive Lined Black
+0.2	51.32	✓
+SLN-STB-4M-3X-BK-ADH - Heatshrink Tube 4:1 Adhesive Lined Black
+0.1	52.04	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+10	0	10
+SA-JETMOTOR - Jet Motor Assy
+Level 1 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-6S3P-CLAMP - Battery Clamp 6S 3P
+8	25	✓
+FAS-BLT-CSK-4M20M-PH-304SS - M4x20 CSK Phillips
+32	0	32
+FAS-NUT-4M-NYL-304SS - M4 Nylock Nut SS 304
+64	0	64
+FAS-NUT-4M-SQR-304SS - M4 Square Nut SS 304
+28	0	28
+FAS-WAS-PWS-4M12M1M-GI - M4x12 plain washer GI for wooden box
+96	0	96
+ITEM-0247 - Coupling Hood
+4	39	✓
+ITEM-0440 - Nozzle on Jet
+4	39	✓
+ITEM-0536 - Silicon Hose 4mm x 8mm
+0.8	50.2	✓
+ITEM-0537 - Silicon Hose 3mm x 6mm
+3	38.5	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+60	0	60
+SA-STBDESCA - STBD_ESC Assy
+Level 1 Sub-BOM
+4 items
+Item	Required	In Stock	Short
+CAB-SIL-BLACK12AWG - Cable - Ultra Flexible - Black 12AWG
+1.1	45.45	✓
+EAC-TOR-CF199T1306C - Ferrite Core
+2	43	✓
+MOD-ESC-HV130v52i130 - Electronic Speed Controller - HV130 ESC
+2	43	✓
+SLN-STB-4.8M-4X-BK-ADH - HeatShrink Tube 4.8/1.2 Adhesive Lined Black
+0.1	52.5	✓
+ITEM-0672 - PORT Unit Assy
+3 items • 3 sub
+Shortage
+Item	Required	In Stock	Short
+FAS-BLT-CSK-4M20M-PH-304SS - M4x20 CSK Phillips
+2	0	2
+FAS-NUT-4M-NYL-304SS - M4 Nylock Nut SS 304
+4	0	4
+FAS-WAS-PWS-4M12M1M-GI - M4x12 plain washer GI for wooden box
+4	0	4
+ITEM-0668 - PORT Battery Assy
+7 items • 4 sub
+Shortage
+Item	Required	In Stock	Short
+CAB-SIL-BLACK12AWG - Cable - Ultra Flexible - Black 12AWG
+1.6	45.45	✓
+CAB-SIL-BLACK18AWG - Cable - Ultra Flexible - Black 18 AWG
+1.1	47.1	✓
+CAB-SIL-RED8AWG - Cable - Ultra Flexible - Red 8AWG
+1.3	44.6	✓
+FAB-MCN-60x70-18mmFRP - 2mm FRP 60x70mm with 18 mm hole
+4	31	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+40	0	40
+SLN-STB-100M-2X-BK - HeatShrink Tube 100mm Black
+0.34	51.13	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.06	51.32	✓
+ITEM-0662 - PORT Signal CM Assy
+Level 1 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Black - Black 14/38 Wire
+0.45	40.85	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+3	0	3
+CON-CRC-SY21BY-CM-M15PL67 - Connector SY21-15 pin Cable Mount(Male)
+3	41	✓
+SEN-TEM-LM61 - LM61 Temperature Sensor
+3	41	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+30	0	30
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.45	48.5	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.3	51.32	✓
+SLN-STB-3M-3X-BK-ADH - HeatShrink Tube 3:1 Adhesive Lined Black
+0.3	51.32	✓
+SLN-STB-4M-3X-BK-ADH - Heatshrink Tube 4:1 Adhesive Lined Black
+0.15	52.04	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+15	0	15
+ITEM-0662 - PORT Signal CM Assy
+Level 1 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Black - Black 14/38 Wire
+0.45	40.85	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+3	0	3
+CON-CRC-SY21BY-CM-M15PL67 - Connector SY21-15 pin Cable Mount(Male)
+3	41	✓
+SEN-TEM-LM61 - LM61 Temperature Sensor
+3	41	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+30	0	30
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.45	48.5	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.3	51.32	✓
+SLN-STB-3M-3X-BK-ADH - HeatShrink Tube 3:1 Adhesive Lined Black
+0.3	51.32	✓
+SLN-STB-4M-3X-BK-ADH - Heatshrink Tube 4:1 Adhesive Lined Black
+0.15	52.04	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+15	0	15
+SA-BATTERYB - Battery Block Assy
+Level 1 Sub-BOM
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-3S2P-CU-2170 - Copper Strips 3x2 Cells
+30	0	30
+ITEM-0428 - 1" Masking Tape
+3	42	✓
+SA-BATTERYB - Battery Block Assy
+Level 1 Sub-BOM
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-3S2P-CU-2170 - Copper Strips 3x2 Cells
+30	0	30
+ITEM-0428 - 1" Masking Tape
+3	42	✓
+SA-JETMOTOR - Jet Motor Assy
+Level 1 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-6S3P-CLAMP - Battery Clamp 6S 3P
+8	25	✓
+FAS-BLT-CSK-4M20M-PH-304SS - M4x20 CSK Phillips
+32	0	32
+FAS-NUT-4M-NYL-304SS - M4 Nylock Nut SS 304
+64	0	64
+FAS-NUT-4M-SQR-304SS - M4 Square Nut SS 304
+28	0	28
+FAS-WAS-PWS-4M12M1M-GI - M4x12 plain washer GI for wooden box
+96	0	96
+ITEM-0247 - Coupling Hood
+4	39	✓
+ITEM-0440 - Nozzle on Jet
+4	39	✓
+ITEM-0536 - Silicon Hose 4mm x 8mm
+0.8	50.2	✓
+ITEM-0537 - Silicon Hose 3mm x 6mm
+3	38.5	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+60	0	60
+SA-PORTESCA - PORT_ESC Assy
+Level 1 Sub-BOM
+3 items
+Item	Required	In Stock	Short
+EAC-TOR-CF199T1306C - Ferrite Core
+2	43	✓
+MOD-ESC-HV130v52i130 - Electronic Speed Controller - HV130 ESC
+2	43	✓
+SLN-STB-4.8M-4X-BK-ADH - HeatShrink Tube 4.8/1.2 Adhesive Lined Black
+0.1	52.5	✓
+ITEM-0673 - Self Rightening Assy
+3 items
+Shortage
+Item	Required	In Stock	Short
+MAC-ADH-407-INSTA - Sealant - Instant Adhesive 407 for EPE sticking
+5	33	✓
+MAC-ADH-TAPE-RR - RR Tape
+2.6	42.6	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+20	0	20
+ITEM-0674 - IP Remote Assy
+18 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Black - Black 14/38 Wire
+0.2	40.85	✓
+CAB-SCO-1C14/38LENChetan-Purple - Purple 14/38 Wire
+0.2	52.6	✓
+CAB-SCO-1C14/38LENChetan-Red - Red 14/38 Wire
+0.2	41.15	✓
+CAB-SCO-1C14/38LENChetan-SkyBlue - Sky Blue 14/38 Wire
+0.2	52.6	✓
+CAB-SCO-1C14/38LENChetan-Yellow - Yellow 14/38 Wire
+0.2	44.6	✓
+CON-JXH-HOS-F3 - 3 pin JST-XH housing
+1	45	✓
+FAB-3DP-QX7-ANT-CLMP1 - Remote - Antenna clamp -1 3D Print
+1	51	✓
+FAB-3DP-QX7-ANT-CLMP2 - Remote - Antenna Clamp -2 3D Print
+1	51	✓
+FAB-3DP-QX7-PRES-BRAC - Remote - Button No. 1 Pressure Bracket 3D Print
+2	49	✓
+ITEM-0224 - White 14/38 Wire
+0.2	52.6	✓
+ITEM-0227 - Orange 14/38 Wire
+0.2	52.6	✓
+ITEM-0228 - Green 14/38 Wire
+0.2	52.6	✓
+ITEM-0230 - Brown 14/38 Wire
+0.2	52.6	✓
+ITEM-0497 - Button spacer No. 1/1 3D Print
+2	49	✓
+ITEM-0499 - Button Spacer No. 2 3D Print
+2	49	✓
+PCB-QX7-BUTTON - PWB of Button -2
+2	49	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+20	0	20
+SWI-PUS-THT-4LEG - Tactile Switch for IFU four leg
+1	46	✓
+ITEM-0675 - IP Remote Charging Cable Assy
+1 item
+Item	Required	In Stock	Short
+FAB-3DP-IFU-KNOB - Remote - IFU - Rotary Knob Box 3D Print
+1	49	✓
+ITEM-0676 - AMCA Elec Assy
+24 items
+Shortage
+Item	Required	In Stock	Short
+ACT-PMP-DIA550 - Water Pump 550 Diaphragm
+1	49	✓
+CAB-SCO-1C14/38LENChetan-Black - Black 14/38 Wire
+2	40.85	✓
+CAB-SCO-1C14/38LENChetan-Red - Red 14/38 Wire
+2	41.15	✓
+CAB-SCO-1C14/38LENChetan-Yellow - Yellow 14/38 Wire
+2	44.6	✓
+CON-BRG-40X1-F2.54MM - Female Bergstrip 40x1 2.54mm
+1	44	✓
+CON-BRG-40X1-M2.54MM - Male Bergstrip 40x1 2.54mm
+1	44	✓
+CON-CRS-LP12PF-CM-M4PL67-ST - LP12 4 pin plug male clip lock CM
+1	49	✓
+CON-CRS-LP12PF-PM-F4PL67-ST - LP12 4 pin socket female clip lock PM
+1	49	✓
+CON-JXH-HOS-F2 - 2 pin JST-XH housing
+3	36	✓
+CON-JXH-TOP-M3 - 3 pin JST-XH male top entry
+1	44	✓
+EAC-CONFORMAL - Conformal Coating
+10	0	10
+IND-LIP-CASING - Lipo Indicator Casings
+1	49	✓
+ITEM-0142 - 16pin IC base
+1	49	✓
+ITEM-0145 - iMAx B3 Charger
+1	49	✓
+ITEM-0146 - 9v Piezo Electric Buzzer
+1	49	✓
+ITEM-0163 - 2 pin JST-XH male top entry RED
+3	21	✓
+ITEM-0385 - 3S BMS
+1	49	✓
+ITEM-0388 - 130x80x60 enclosure box
+1	47	✓
+SEN-WFL-YFS401v5 - Water flow Sensor YFS401
+1	49	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+10	0	10
+SLN-STB-3M-3X-BK-ADH - HeatShrink Tube 3:1 Adhesive Lined Black
+0.12	51.32	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+5	0	5
+SWI-PUS-LS16MM-PM-16MM - Latching Power Switch JCB
+1	49	✓
+SWI-PUS-MS16MM-PM-16MM - Momentary Switch JCB
+1	49	✓
+ITEM-0677 - AMCA Mech Assy
+8 items
+Shortage
+Item	Required	In Stock	Short
+FAS-NUT-4M-NYL-304SS - M4 Nylock Nut SS 304
+10	0	10
+FAS-WAS-PWS-4M12M1M-GI - M4x12 plain washer GI for wooden box
+14	0	14
+ITEM-0244 - JCB Body cum mounting frame
+1	49	✓
+ITEM-0249 - flow sensor Clamp
+2	45	✓
+ITEM-0434 - Brass nozzle for water outlet from JCB
+1	49	✓
+ITEM-0521 - 8 mm OD pneaumatic pipe
+0.5	51	✓
+ITEM-0524 - 12mm OD pneumatic pipe
+0.1	52.6	✓
+ITEM-0537 - Silicon Hose 3mm x 6mm
+1	38.5	✓
+ITEM-0678 - Final Craft Assy
+3 items
+Shortage
+Item	Required	In Stock	Short
+FAS-WAS-PWS-4M12M1M-GI - M4x12 plain washer GI for wooden box
+8	0	8
+FAS-WAS-PWS-4M20M1M-304SS - M4x20 Plain Washer
+6	29	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+50	0	50
+ITEM-0679 - Bottom Block Assy
+1 item
+Shortage
+Item	Required	In Stock	Short
+FAS-BLT-CSK-3M8M-PH-304SS - Bolt M3x8 CSK Phillips
+14	11	3
+SA-A21MOTHE - A21 MotherBoard Assy
+28 items • 4 sub
+Shortage
+Item	Required	In Stock	Short
+CAB-SIL-RED18AWG - Cable - Ultra Flexible - Red 18 AWG
+0.6	51	✓
+CAB-SIL-RED8AWG - Cable - Ultra Flexible - Red 8AWG
+0.5	44.6	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+24	0	24
+CAP-SMD-0805-50V5P-18pF - 18pF 0805 capacitor
+8	33	✓
+CAP-SMD-TANTA-10V10P-10UF - 10uF 10v Tantalum Capacitor Case A
+6	35	✓
+CON-BRG-40X1-F2.54MM - Female Bergstrip 40x1 2.54mm
+2	44	✓
+CON-BRG-40X1-M2.54MM - Male Bergstrip 40x1 2.54mm
+2	44	✓
+CON-JXH-TOP-M3 - 3 pin JST-XH male top entry
+2	44	✓
+EAC-CONFORMAL - Conformal Coating
+40	0	40
+IND-SMD-2D2v-RED - LED 0805 SMD
+2	42	✓
+ITEM-0114 - Fuse 500mA
+2	48	✓
+ITEM-0133 - Power Relay 120A 12v Y7
+2	48	✓
+ITEM-0163 - 2 pin JST-XH male top entry RED
+8	21	✓
+ITEM-0170 - 5 pin JST-XH male top entry
+4	43	✓
+ITEM-0176 - JST-XH Crimping pins
+20	3	17
+MOD-BLE-HC05 - BlueTooth Module
+2	48	✓
+OSC-SMD-ABM3-16MHZ-18pF - 16MHz Crystal oscillator
+4	43	✓
+RES-SMD-0805-125mW1P-330E - 330E 0805 Resistor
+24	0	24
+RES-SMD-0805-125mW5P-10k - 10k 0805 resistor
+2	48	✓
+RES-SMD-0805-125mW5P-1k - 1k 0805 Resistor
+6	38	✓
+RES-SMD-0805-500mW5P-470k - 470k 0805 PANASONIC
+24	0	24
+SIC-ADC-MCP3208-5V8CH - MCP3208 Analog to Digital Conv.
+4	43	✓
+SIC-DIO-M7-v100i1 - Free Wheel Diode SMD M7
+14	18	✓
+SIC-SSR-AQW282SX-63vD35A-2CH - SSR AQW282SX
+12	23	✓
+SLN-STB-6.4M-4X-BK-ADH - Heatshrink Tube 6.4:1.6 Adhesive Lined Black
+0.4	51.7	✓
+SOL-PAS-6040-ROHS - Lead Paste
+20	3	17
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+20	0	20
+SWI-PUS-THT-4LEG - Tactile Switch for IFU four leg
+2	46	✓
+ITEM-0663 - Current Sensor Assy
+3 items
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+8	25	✓
+ITEM-0168 - 4 pin JST-XH male side entry
+4	45	✓
+SEN-CUR-WCS1700-CTi35 - WCS1700 current Sensor
+8	37	✓
+ITEM-0663 - Current Sensor Assy
+3 items
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+8	25	✓
+ITEM-0168 - 4 pin JST-XH male side entry
+4	45	✓
+SEN-CUR-WCS1700-CTi35 - WCS1700 current Sensor
+8	37	✓
+ITEM-0664 - RPM Sensor Assy
+6 items
+Shortage
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D01uF - Capacitor 0.01uF 0805
+6	41	✓
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+6	25	✓
+IND-SMD-2D2v-RED - LED 0805 SMD
+3	42	✓
+ITEM-0164 - 2 pin JST-XH male side entry
+6	41	✓
+RES-SMD-0805-125mW5P-47k - 47k 0805 PANASONIC
+24	5	19
+SIC-DIO-1N4148-100V1A - 1N4148 SMD
+12	29	✓
+ITEM-0664 - RPM Sensor Assy
+6 items
+Shortage
+Item	Required	In Stock	Short
+CAP-SMD-0805-100V10P-0D01uF - Capacitor 0.01uF 0805
+6	41	✓
+CAP-SMD-0805-100V10P-0D1uF - Capacitor 0.1uF 0805
+6	25	✓
+IND-SMD-2D2v-RED - LED 0805 SMD
+3	42	✓
+ITEM-0164 - 2 pin JST-XH male side entry
+6	41	✓
+RES-SMD-0805-125mW5P-47k - 47k 0805 PANASONIC
+24	5	19
+SIC-DIO-1N4148-100V1A - 1N4148 SMD
+12	29	✓
+SA-FINALPAC - Final Packing
+5 items
+Shortage
+Item	Required	In Stock	Short
+GAC-ENVELOPE - Envelope for User Manual
+1	50	✓
+GAC-USERMANUAL - User Manual
+1	50	✓
+ITEM-0405 - Grease
+180	0	180
+ITEM-0420 - Greasing Pump
+1	50	✓
+ITEM-0564 - EPE sheet 20mm 48"x72"
+1	50	✓
+SA-FLPORTEL - FL_PORT Elec
+2 items
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Black - Black 14/38 Wire
+0.55	40.85	✓
+CAB-SCO-1C14/38LENChetan-Red - Red 14/38 Wire
+0.35	41.15	✓
+SA-FLPORTME - FL_PORT Mech
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAS-BLT-ALN-3M6M-HX-304SS - M3x6 Allen Head
+2	41	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+5	0	5
+SA-FLSTBDEL - FL_STBD Elec
+2 items
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Black - Black 14/38 Wire
+0.35	40.85	✓
+CAB-SCO-1C14/38LENChetan-Red - Red 14/38 Wire
+0.55	41.15	✓
+SA-FLSTBDME - FL_STBD Mech
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAS-BLT-ALN-3M6M-HX-304SS - M3x6 Allen Head
+2	41	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+5	0	5
+SA-PORTAFTP - PORT Aft Plate Assy
+5 items
+Item	Required	In Stock	Short
+FAB-MCN-PAFT-SSLIFE-AL - PORT Aft Plate Aluminium
+1	50	✓
+ITEM-0436 - SS Cooling Water Outlet nozzle
+1	47	✓
+ITEM-0437 - SS Cooling Water Inlet nozzle
+1	47	✓
+ITEM-0438 - Greasing nozzle
+1	47	✓
+MAC-AIR-NOZZLE - BPSPLB - Air Nozzle
+1	50	✓
+SA-R9MXADAP - R9MX Adapter
+4 items
+Shortage
+Item	Required	In Stock	Short
+CAP-SMD-TANTA-10V10P-10UF - 10uF 10v Tantalum Capacitor Case A
+1	35	✓
+CON-BRG-40X1-F2MM - Female Bergstrip 40x1 2.0mm
+0.25	52.25	✓
+CON-BRG-40X1-M2MM - Male Bergstrip 40x1 2.0mm
+0.25	52.25	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+2	0	2
+SA-STBDAFTP - STBD Aft Plate Assy
+4 items
+Item	Required	In Stock	Short
+FAB-MCN-SAFT-SSLIFE-AL - STBD Aft Plate Aluminium
+1	50	✓
+ITEM-0436 - SS Cooling Water Outlet nozzle
+1	47	✓
+ITEM-0437 - SS Cooling Water Inlet nozzle
+1	47	✓
+ITEM-0438 - Greasing nozzle
+1	47	✓
+ITEM-0656 - Power Switch Assy
+Level 1 Sub-BOM
+1 item
+Item	Required	In Stock	Short
+CON-JXH-HOS-F2 - 2 pin JST-XH housing
+2	36	✓
+ITEM-0662 - PORT Signal CM Assy
+Level 1 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Black - Black 14/38 Wire
+0.45	40.85	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+3	0	3
+CON-CRC-SY21BY-CM-M15PL67 - Connector SY21-15 pin Cable Mount(Male)
+3	41	✓
+SEN-TEM-LM61 - LM61 Temperature Sensor
+3	41	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+30	0	30
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.45	48.5	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.3	51.32	✓
+SLN-STB-3M-3X-BK-ADH - HeatShrink Tube 3:1 Adhesive Lined Black
+0.3	51.32	✓
+SLN-STB-4M-3X-BK-ADH - Heatshrink Tube 4:1 Adhesive Lined Black
+0.15	52.04	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+15	0	15
+ITEM-0667 - STBD Battery Assy
+Level 1 Sub-BOM
+6 items • 4 sub
+Shortage
+Item	Required	In Stock	Short
+CAB-SIL-BLACK8AWG - Cable - Ultra Flexible - Black 8AWG
+1.3	49.75	✓
+CAB-SIL-RED8AWG - Cable - Ultra Flexible - Red 8AWG
+1.3	44.6	✓
+FAB-MCN-60x70-18mmFRP - 2mm FRP 60x70mm with 18 mm hole
+4	31	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+40	0	40
+SLN-STB-100M-2X-BK - HeatShrink Tube 100mm Black
+0.34	51.13	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.12	51.32	✓
+SA-BATTERYB - Battery Block Assy
+Level 1 Sub-BOM
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-3S2P-CU-2170 - Copper Strips 3x2 Cells
+30	0	30
+ITEM-0428 - 1" Masking Tape
+3	42	✓
+SA-BATTERYB - Battery Block Assy
+Level 1 Sub-BOM
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-3S2P-CU-2170 - Copper Strips 3x2 Cells
+30	0	30
+ITEM-0428 - 1" Masking Tape
+3	42	✓
+ITEM-0661 - STBD Signal CM Assy
+Level 2 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Red - Red 14/38 Wire
+0.3	41.15	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+2	0	2
+CON-CRC-SY21BY-CM-M15PL67 - Connector SY21-15 pin Cable Mount(Male)
+2	41	✓
+SEN-TEM-LM61 - LM61 Temperature Sensor
+2	41	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+20	0	20
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.3	48.5	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.2	51.32	✓
+SLN-STB-3M-3X-BK-ADH - HeatShrink Tube 3:1 Adhesive Lined Black
+0.2	51.32	✓
+SLN-STB-4M-3X-BK-ADH - Heatshrink Tube 4:1 Adhesive Lined Black
+0.1	52.04	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+10	0	10
+ITEM-0661 - STBD Signal CM Assy
+Level 2 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+CAB-SCO-1C14/38LENChetan-Red - Red 14/38 Wire
+0.3	41.15	✓
+CAP-SMD-0805-25V10P-1uF - 1uF 0805 PANASONIC
+2	0	2
+CON-CRC-SY21BY-CM-M15PL67 - Connector SY21-15 pin Cable Mount(Male)
+2	41	✓
+SEN-TEM-LM61 - LM61 Temperature Sensor
+2	41	✓
+SLN-RTV-734-FLOWABLE-400ML - Sealant Silicon RTV 734 Potting compound
+20	0	20
+SLN-STB-1.6M-4X-BK - HeatShrink Tube 1.5mm/1.6mm
+0.3	48.5	✓
+SLN-STB-12M-4X-BK-ADH - HeatShrink Tube 12:3 Adhesive Lined Black
+0.2	51.32	✓
+SLN-STB-3M-3X-BK-ADH - HeatShrink Tube 3:1 Adhesive Lined Black
+0.2	51.32	✓
+SLN-STB-4M-3X-BK-ADH - Heatshrink Tube 4:1 Adhesive Lined Black
+0.1	52.04	✓
+SOL-WIR-6040-ROHS-22AWG - Lead Wire 22AWG
+10	0	10
+SA-BATTERYB - Battery Block Assy
+Level 1 Sub-BOM
+2 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-3S2P-CU-2170 - Copper Strips 3x2 Cells
+30	0	30
+ITEM-0428 - 1" Masking Tape
+3	42	✓
+SA-JETMOTOR - Jet Motor Assy
+Level 1 Sub-BOM
+10 items
+Shortage
+Item	Required	In Stock	Short
+FAB-MCN-6S3P-CLAMP - Battery Clamp 6S 3P
+8	25	✓
+FAS-BLT-CSK-4M20M-PH-304SS - M4x20 CSK Phillips
+32	0	32
+FAS-NUT-4M-NYL-304SS - M4 Nylock Nut SS 304
+64	0	64
+FAS-NUT-4M-SQR-304SS - M4 Square Nut SS 304
+28	0	28
+FAS-WAS-PWS-4M12M1M-GI - M4x12 plain washer GI for wooden box
+96	0	96
+ITEM-0247 - Coupling Hood
+4	39	✓
+ITEM-0440 - Nozzle on Jet
+4	39	✓
+ITEM-0536 - Silicon Hose 4mm x 8mm
+0.8	50.2	✓
+ITEM-0537 - Silicon Hose 3mm x 6mm
+3	38.5	✓
+SLN-SMP-MS930-400ML - Sealant Teroson MS930
+60	0	60
+SA-PORTESCA - PORT_ESC Assy
+Level 1 Sub-BOM
+3 items
+Item	Required	In Stock	Short
+EAC-TOR-CF199T1306C - Ferrite Core
+2	43	✓
+MOD-ESC-HV130v52i130 - Electronic Speed Controller - HV130 ESC
+2	43	✓
+SLN-STB-4.8M-4X-BK-ADH - HeatShrink Tube 4.8/1.2 Adhesive Lined Black
+0.1	52.5	✓
+SA-STBDESCA - STBD_ESC Assy
+Level 1 Sub-BOM
+4 items
+Item	Required	In Stock	Short
+CAB-SIL-BLACK12AWG - Cable - Ultra Flexible - Black 12AWG
+1.1	45.45	✓
+EAC-TOR-CF199T1306C - Ferrite Core
+2	43	✓
+MOD-ESC-HV130v52i130 - Electronic Speed Controller - HV130 ESC
+2	43	✓
+SLN-STB-4.8M-4X-BK-ADH - HeatShrink Tube 4.8/1.2 Adhesive Lined Black
+0.1	52.5	

@@ -1,0 +1,360 @@
+SAK ERP – Windows Server Installation & Deployment Runbook
+
+Version: 1.0
+Date: 14-Feb-2026
+Audience: Provider Deployment Team + Client IT Team
+Target OS: Windows Server 2019 / 2022
+
+====================================================================
+1) PURPOSE
+====================================================================
+This runbook provides exact steps to install and run SAK ERP on a client Windows Server.
+It covers:
+- Prerequisites
+- Runtime installation
+- App deployment
+- IIS reverse proxy setup
+- Service management
+- Validation
+- Troubleshooting and rollback
+
+
+====================================================================
+2) ARCHITECTURE (WINDOWS)
+====================================================================
+- Web App (Next.js): localhost:3000
+- API App (NestJS): localhost:4000
+- Reverse Proxy: IIS (public 80/443) forwarding:
+  - /              -> http://127.0.0.1:3000
+  - /api/v1/*      -> http://127.0.0.1:4000/api/v1/*
+- Process Manager: PM2
+
+
+====================================================================
+3) PREREQUISITES
+====================================================================
+3.1 Server
+[ ] Windows Server 2019/2022 (updated)
+[ ] 4 vCPU, 8 GB RAM, 80+ GB SSD
+[ ] Static IP or fixed DNS
+[ ] Firewall rules ready: 80, 443, 3389
+
+3.2 Access
+[ ] RDP access with local Administrator permissions
+[ ] Folder path confirmed (example: C:\apps\sak-erp)
+
+3.3 External Dependencies
+[ ] Decide DB mode: Managed Supabase OR Local Self-Hosted Supabase
+[ ] If Local Supabase: Docker + WSL2 (or Linux VM) approved by client IT
+[ ] Storage configuration (Supabase local object storage/S3/local)
+[ ] SMTP/OAuth config for email
+[ ] SSL certificate availability (IIS cert or org cert)
+
+
+====================================================================
+4) INSTALL REQUIRED SOFTWARE
+====================================================================
+Open PowerShell as Administrator.
+
+4.1 Install Node.js LTS 20.x
+- Download MSI from official Node.js site and install.
+- Verify:
+  node -v
+  npm -v
+
+4.2 Enable Corepack + PNPM 9.x
+  corepack enable
+  corepack prepare pnpm@9.0.0 --activate
+  pnpm -v
+
+4.3 Install PM2 globally
+  npm install -g pm2
+  pm2 -v
+
+4.4 Install Git
+- Install Git for Windows.
+- Verify:
+  git --version
+
+4.5 Install IIS + URL Rewrite + ARR
+- Enable IIS role from Server Manager.
+- Install URL Rewrite module.
+- Install Application Request Routing (ARR).
+- In IIS Manager, enable Proxy under ARR settings.
+
+
+
+4.6 Install Docker + WSL2 (Required for Local Supabase)
+- Enable WSL2 and install Ubuntu:
+  wsl --install
+- Reboot if prompted.
+- Install Docker Desktop (or Docker Engine in Linux VM).
+- Verify Docker:
+  docker --version
+  docker compose version
+
+4.7 (Optional but recommended) Install Supabase CLI
+  npm install -g supabase
+  supabase --version
+
+
+====================================================================
+5) LOCAL SUPABASE SETUP (SELF-HOSTED ON WINDOWS SERVER)
+====================================================================
+If client wants local database + auth + storage, use this section.
+
+5.1 Clone Supabase self-host stack
+  New-Item -ItemType Directory -Path C:\apps\supabase -Force
+  Set-Location C:\apps\supabase
+  git clone https://github.com/supabase/supabase .
+  Set-Location .\docker
+
+5.2 Prepare configuration
+  Copy-Item .env.example .env
+- Edit `.env` and set strong secrets/passwords:
+  [ ] POSTGRES_PASSWORD
+  [ ] JWT_SECRET
+  [ ] ANON_KEY
+  [ ] SERVICE_ROLE_KEY
+  [ ] SMTP settings (if using local auth email)
+
+5.3 Start Supabase services
+  docker compose pull
+  docker compose up -d
+  docker compose ps
+
+5.4 Validate local Supabase endpoints
+- API gateway: http://127.0.0.1:8000
+- Postgres (inside stack, commonly mapped to 5432/54322 depending config)
+- Studio: http://127.0.0.1:3000 (if enabled in compose)
+
+5.5 Save values for SAK ERP env
+- SUPABASE_URL=http://127.0.0.1:8000
+- SUPABASE_KEY=<SERVICE_ROLE_KEY from Supabase .env>
+
+Note:
+- For production reliability on Windows Server, hosting Supabase in a dedicated Linux VM is preferred over long-term Docker Desktop usage.
+
+====================================================================
+5) DEPLOY APPLICATION FILES
+6) DEPLOY APPLICATION FILES
+5.1 Prepare directory
+6.1 Prepare directory
+  Set-Location C:\apps\sak-erp
+
+5.2 Get source/artifact
+6.2 Get source/artifact
+  git clone <your_repo_url> .
+
+Option B: Copy artifact zip/tar and extract into C:\apps\sak-erp
+
+5.3 Install dependencies
+6.3 Install dependencies
+
+5.4 Build apps
+6.4 Build apps
+  pnpm -C apps/web build
+
+
+====================================================================
+6) CONFIGURE ENVIRONMENT VARIABLES
+7) CONFIGURE ENVIRONMENT VARIABLES
+Create env files with production values:
+
+6.1 API env file
+7.1 API env file
+Minimum typical keys:
+- NODE_ENV=production
+- PORT=4000
+- SUPABASE_URL=...
+- SUPABASE_URL=http://127.0.0.1:8000   (for local Supabase)
+- SUPABASE_KEY=<SERVICE_ROLE_KEY>      (from local Supabase .env)
+- JWT_REFRESH_SECRET=...
+- EMAIL_* (if SMTP/OAuth used)
+
+6.2 Web env file
+7.2 Web env file
+Minimum typical keys:
+- NODE_ENV=production
+- NEXT_PUBLIC_API_URL=/api/v1
+- INTERNAL_API_URL=http://127.0.0.1:4000/api/v1
+
+Security Note:
+- Do not share secrets over email/chat.
+- Restrict file permissions to admin/deployment users only.
+
+
+====================================================================
+8) DATABASE MIGRATIONS
+====================================================================
+Run required migrations/scripts in approved order.
+Examples (project-specific):
+- SQL scripts provided by release package
+- Prisma generate/migrate if applicable
+
+If using Local Supabase Postgres:
+- Run SQL scripts against Supabase Postgres database (via psql/Studio/SQL editor).
+- Confirm all required tables/functions/views are present before app start.
+
+If using Prisma generation:
+  Set-Location C:\apps\sak-erp\packages\database
+  pnpm exec prisma generate --schema prisma\schema.prisma
+
+
+====================================================================
+9) START SERVICES WITH PM2
+====================================================================
+From C:\apps\sak-erp:
+
+9.1 Start API
+  pm2 start npm --name sak-api --cwd C:\apps\sak-erp\apps\api -- run start:prod
+
+9.2 Start Web
+  pm2 start node_modules\next\dist\bin\next --name sak-web --cwd C:\apps\sak-erp\apps\web -- start -p 3000
+
+9.3 Verify process list
+  pm2 list
+
+9.4 Save PM2 process state
+  pm2 save
+
+9.5 Configure startup after reboot (Windows)
+Recommended options:
+- Use PM2 startup helper for Windows if available in environment
+- OR create Scheduled Task at startup that runs:
+    pm2 resurrect
+
+(If using Scheduled Task, run it with highest privileges under service account.)
+
+
+====================================================================
+10) CONFIGURE IIS REVERSE PROXY
+====================================================================
+10.1 Create/choose IIS Site
+- Bind host/domain and ports 80/443.
+- Attach SSL certificate for 443.
+
+10.2 URL Rewrite rules
+Rule 1: API
+- Match URL: ^api/v1/(.*)
+- Rewrite to: http://127.0.0.1:4000/api/v1/{R:1}
+
+Rule 2: Web
+- Match URL: (.*)
+- Rewrite to: http://127.0.0.1:3000/{R:1}
+
+10.3 Enable proxy features
+- In ARR Server Proxy Settings: Enable Proxy.
+- Preserve host header if required by app behavior.
+
+10.4 Optional hardening
+- Add HTTP -> HTTPS redirect.
+- Add security headers (HSTS, X-Content-Type-Options, etc.).
+
+
+====================================================================
+11) GO-LIVE VALIDATION CHECKS
+====================================================================
+11.1 Service-level checks
+  pm2 list
+  pm2 logs sak-api --lines 100
+  pm2 logs sak-web --lines 100
+
+11.2 Local endpoint checks (on server)
+  curl http://127.0.0.1:3000/
+  curl http://127.0.0.1:4000/api/v1
+  curl http://127.0.0.1:8000/rest/v1/
+
+11.3 Public URL checks
+- Open application URL in browser.
+- Login with admin user.
+- Verify key workflows:
+  [ ] Purchase Requisition create
+  [ ] Smart Job Order create/preview
+  [ ] Complete Job Order flow
+  [ ] UID traceability view
+  [ ] Email action (if configured)
+
+
+====================================================================
+12) OPERATIONS (DAY-2)
+====================================================================
+12.1 Common PM2 commands
+  pm2 list
+  pm2 restart sak-api
+  pm2 restart sak-web
+  pm2 stop sak-api
+  pm2 stop sak-web
+  pm2 logs sak-api --lines 200
+  pm2 logs sak-web --lines 200
+
+12.2 App update process
+1. Backup DB and env files.
+2. Pull/copy new release.
+3. Install deps and build.
+4. Restart PM2 processes.
+5. Smoke test critical flows.
+
+12.3 Backup expectations
+- Daily DB backup
+- Weekly restore test (non-prod)
+- Keep app artifact for rollback
+
+12.4 Local Supabase backup commands (example)
+- Logical backup:
+  docker exec -t supabase-db pg_dump -U postgres -d postgres > C:\backups\sakerp_YYYYMMDD.sql
+- Restore (planned window):
+  type C:\backups\sakerp_YYYYMMDD.sql | docker exec -i supabase-db psql -U postgres -d postgres
+
+
+====================================================================
+13) TROUBLESHOOTING QUICK GUIDE
+====================================================================
+Issue: App not reachable on domain
+- Check IIS site bindings (host/port/cert)
+- Check URL Rewrite rules
+- Check Windows Firewall ports
+
+Issue: API 500/permission errors
+- Check API env values
+- Check role/permission data in DB
+- Check PM2 logs for stack trace
+
+Issue: Supabase local services not available
+- Check Docker daemon is running
+- Run `docker compose ps` in Supabase docker folder
+- Check container logs (`docker compose logs -f`)
+- Confirm app uses correct `SUPABASE_URL` and `SUPABASE_KEY`
+
+Issue: Web loads but API fails
+- Confirm reverse proxy route /api/v1 -> 4000
+- Confirm API process is running
+- Confirm NEXT_PUBLIC_API_URL is /api/v1
+
+Issue: PM2 not restoring on reboot
+- Validate startup task/service account permissions
+- Test `pm2 resurrect` manually
+
+
+====================================================================
+14) ROLLBACK PROCEDURE
+====================================================================
+1. Stop current processes:
+   pm2 stop sak-api
+   pm2 stop sak-web
+2. Restore previous app artifact/build.
+3. Restore previous DB backup if schema/data changed.
+4. Start previous version:
+   pm2 start sak-api
+   pm2 start sak-web
+5. Validate login + 2 critical business flows.
+
+
+====================================================================
+15) SIGN-OFF
+====================================================================
+Deployment Engineer: ____________________  Date: __________
+Client IT Owner:       ____________________  Date: __________
+Business Owner/UAT:    ____________________  Date: __________
+
+End of Runbook

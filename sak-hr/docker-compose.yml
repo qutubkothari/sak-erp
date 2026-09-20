@@ -1,0 +1,17 @@
+version: '3.9'
+
+services:
+  hr-postgres:
+    image: postgres:16
+    container_name: sak-hr-postgres
+    environment:
+      POSTGRES_DB: sak_hr
+      POSTGRES_USER: sak_hr
+      POSTGRES_PASSWORD: sak_hr_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - sak_hr_pgdata:/var/lib/postgresql/data
+
+volumes:
+  sak_hr_pgdata:

@@ -1,0 +1,444 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  PROBATION
+}
+
+enum EvaluationStatus {
+  DRAFT
+  SELF_REVIEW
+  MANAGER_REVIEW
+  HR_REVIEW
+  CALIBRATION
+  FINALIZED
+}
+
+enum EvaluationItemType {
+  COMPETENCY
+  KPI
+  MERIT
+  DEMERIT
+}
+
+enum MeritDemeritType {
+  MERIT
+  DEMERIT
+}
+
+enum ApprovalStage {
+  EMPLOYEE
+  MANAGER
+  HR
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EvidenceStage {
+  SELF_ASSESSMENT
+  MANAGER_REVIEW
+  HR_REVIEW
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MANAGER
+  SALESMAN
+
+  @@map("Role")
+}
+
+model Department {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+  employees Employee[]
+}
+
+model User {
+  id            String    @id @default(uuid())
+  tenantId      String?   @map("tenantId")
+  email         String    @unique
+  passwordHash  String    @map("passwordHash")
+  role          UserRole  @default(SALESMAN)
+  displayName   String?   @map("displayName")
+  active        Boolean   @default(true)
+  phone         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  notifications Notification[]
+  evaluationActivities EvaluationActivity[]
+}
+
+model Role {
+  id        String     @id @default(uuid())
+  title     String
+  createdAt DateTime   @default(now())
+  employees Employee[]
+}
+
+model Employee {
+  id               String           @id @default(uuid())
+  code             String           @unique
+  firstName        String
+  lastName         String
+  email            String           @unique
+  departmentId     String?
+  roleId           String?
+  managerId        String?
+  location         String?
+  nationality      String?
+  emiratesId       String?
+  employmentType   EmploymentType  @default(FULL_TIME)
+  status           EmploymentStatus @default(ACTIVE)
+  hireDate         DateTime
+  probationEndDate DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  department Department? @relation(fields: [departmentId], references: [id])
+  role       Role?       @relation(fields: [roleId], references: [id])
+  manager    Employee?   @relation("ManagerRelation", fields: [managerId], references: [id])
+  reports    Employee[]  @relation("ManagerRelation")
+
+  evaluations       Evaluation[]
+  approvals         EvaluationApproval[] @relation("ApproverRelation")
+  feedbackRequests  FeedbackRequest[]
+  feedbackResponses FeedbackResponse[]
+  improvementPlansManaged ImprovementPlan[] @relation("ImprovementPlanManager")
+  appraisalLettersApproved AppraisalLetter[] @relation("AppraisalLetterApprover")
+  improvementPlansApproved ImprovementPlan[] @relation("ImprovementPlanApprover")
+  evidenceUploads EvaluationEvidence[] @relation("EvidenceUploadedBy")
+  managerReviews ManagerReview[]
+  goals Goal[]
+}
+
+model ReviewCycle {
+  id          String           @id @default(uuid())
+  name        String
+  startDate   DateTime
+  endDate     DateTime
+  selfAssessmentDeadline DateTime?
+  status      String
+  ratingScaleId String?
+  createdAt   DateTime         @default(now())
+  evaluations Evaluation[]
+  ratingScale RatingScale? @relation(fields: [ratingScaleId], references: [id])
+  calibrationSessions CalibrationSession[]
+}
+
+model Competency {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  weight      Float            @default(1)
+  createdAt   DateTime         @default(now())
+  items       EvaluationItem[]
+}
+
+model KPI {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  unit        String?
+  category    String?
+  target      Float?
+  frequency   String?
+  dataSource  String?
+  weight      Float            @default(1)
+  createdAt   DateTime         @default(now())
+  items       EvaluationItem[]
+}
+
+model MeritDemerit {
+  id          String            @id @default(uuid())
+  name        String
+  description String?
+  weight      Float             @default(1)
+  type        MeritDemeritType
+  createdAt   DateTime          @default(now())
+  items       EvaluationItem[]
+}
+
+model Evaluation {
+  id            String           @id @default(uuid())
+  employeeId    String
+  cycleId       String
+  status        EvaluationStatus @default(DRAFT)
+  overallScore  Float?
+  selfScore     Float?
+  managerScore  Float?
+  finalRating   Float?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  employee Employee      @relation(fields: [employeeId], references: [id])
+  cycle    ReviewCycle   @relation(fields: [cycleId], references: [id])
+  items    EvaluationItem[]
+  approvals EvaluationApproval[]
+  evidence  EvaluationEvidence[]
+  activities EvaluationActivity[]
+  calibrations CalibrationEntry[]
+  feedbackRequests FeedbackRequest[]
+  feedbackResponses FeedbackResponse[]
+  appraisalLetter AppraisalLetter?
+  improvementPlan ImprovementPlan?
+  selfAssessment SelfAssessment?
+  managerReview ManagerReview?
+}
+
+model EvaluationActivity {
+  id           String   @id @default(uuid())
+  evaluationId String
+  actorId      String?
+  action       String
+  details      Json?
+  createdAt    DateTime @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  actor      User?      @relation(fields: [actorId], references: [id])
+}
+
+model EvaluationEvidence {
+  id           String       @id @default(uuid())
+  evaluationId String
+  uploadedById String?
+  stage        EvidenceStage
+  title        String
+  url          String
+  notes        String?
+  createdAt    DateTime     @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  uploadedBy Employee?  @relation("EvidenceUploadedBy", fields: [uploadedById], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  actionUrl String?
+  metadata  Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model SelfAssessment {
+  id               String   @id @default(uuid())
+  evaluationId     String   @unique
+  accomplishments  String
+  challenges       String
+  developmentNeeds String
+  comments         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+}
+
+model ManagerReview {
+  id                     String   @id @default(uuid())
+  evaluationId           String   @unique
+  managerId              String?
+  overallRating          Float
+  managerComments        String
+  strengths              String
+  areasForImprovement    String
+  developmentPlan        String
+  salaryRecommendation   String
+  salaryIncreasePercent  Float?
+  recommendedPromotion   String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  manager    Employee?  @relation(fields: [managerId], references: [id])
+}
+
+model Goal {
+  id                 String   @id @default(uuid())
+  employeeId         String
+  title              String
+  description        String
+  category           String
+  priority           String
+  targetDate         DateTime
+  measurableMetric   String
+  alignedCompetency  String?
+  status             String   @default("draft")
+  progress           Float    @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model EvaluationItem {
+  id           String              @id @default(uuid())
+  evaluationId String
+  type         EvaluationItemType
+  competencyId String?
+  kpiId        String?
+  meritDemeritId String?
+  weight       Float               @default(1)
+  selfScore    Float?
+  managerScore Float?
+  finalScore   Float?
+  comments     String?
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  competency Competency? @relation(fields: [competencyId], references: [id])
+  kpi        KPI?       @relation(fields: [kpiId], references: [id])
+  meritDemerit MeritDemerit? @relation(fields: [meritDemeritId], references: [id])
+}
+
+model EvaluationApproval {
+  id            String          @id @default(uuid())
+  evaluationId  String
+  stage         ApprovalStage
+  status        ApprovalStatus @default(PENDING)
+  approverId    String?
+  notes         String?
+  approvedAt    DateTime?
+  createdAt     DateTime       @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  approver    Employee? @relation("ApproverRelation", fields: [approverId], references: [id])
+}
+
+model RatingScale {
+  id        String         @id @default(uuid())
+  name      String
+  createdAt DateTime       @default(now())
+  levels    RatingLevel[]
+  cycles    ReviewCycle[]
+}
+
+model RatingLevel {
+  id            String       @id @default(uuid())
+  ratingScaleId String
+  label         String
+  minScore      Float
+  maxScore      Float
+  description   String?
+
+  ratingScale RatingScale @relation(fields: [ratingScaleId], references: [id])
+}
+
+model CalibrationSession {
+  id        String             @id @default(uuid())
+  name      String
+  cycleId   String
+  status    String             @default("ACTIVE")
+  createdAt DateTime           @default(now())
+
+  cycle    ReviewCycle       @relation(fields: [cycleId], references: [id])
+  entries  CalibrationEntry[]
+}
+
+model CalibrationEntry {
+  id                 String             @id @default(uuid())
+  calibrationSessionId String
+  evaluationId       String
+  recommendedRating  Float?
+  calibratedRating   Float?
+  notes              String?
+  createdAt          DateTime           @default(now())
+
+  session    CalibrationSession @relation(fields: [calibrationSessionId], references: [id])
+  evaluation Evaluation         @relation(fields: [evaluationId], references: [id])
+}
+
+model FeedbackRequest {
+  id           String     @id @default(uuid())
+  evaluationId String
+  reviewerId   String
+  status       String     @default("PENDING")
+  dueDate      DateTime?
+  createdAt    DateTime   @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  reviewer   Employee   @relation(fields: [reviewerId], references: [id])
+  responses  FeedbackResponse[]
+}
+
+model FeedbackResponse {
+  id             String     @id @default(uuid())
+  evaluationId   String
+  requestId      String
+  reviewerId     String
+  rating         Float?
+  strengths      String?
+  improvements   String?
+  submittedAt    DateTime?
+  createdAt      DateTime   @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  request    FeedbackRequest @relation(fields: [requestId], references: [id])
+  reviewer   Employee   @relation(fields: [reviewerId], references: [id])
+}
+
+model AppraisalLetter {
+  id            String   @id @default(uuid())
+  evaluationId  String   @unique
+  issuedOn      DateTime @default(now())
+  subject       String
+  summary       String
+  rating        Float?
+  adjustment    String?
+  approvalStatus ApprovalStatus @default(PENDING)
+  approvedById   String?
+  approvedAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  approvedBy Employee? @relation("AppraisalLetterApprover", fields: [approvedById], references: [id])
+}
+
+model ImprovementPlan {
+  id            String   @id @default(uuid())
+  evaluationId  String   @unique
+  managerId     String?
+  status        String   @default("ACTIVE")
+  startDate     DateTime
+  endDate       DateTime?
+  objectives    String
+  supportPlan   String?
+  checkpoints   String?
+  approvalStatus ApprovalStatus @default(PENDING)
+  approvedById   String?
+  approvedAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id])
+  manager    Employee?  @relation("ImprovementPlanManager", fields: [managerId], references: [id])
+  approvedBy Employee?  @relation("ImprovementPlanApprover", fields: [approvedById], references: [id])
+}

@@ -1,0 +1,18 @@
+-- Add missing columns to items table
+ALTER TABLE items ADD COLUMN IF NOT EXISTS lead_time_days INTEGER;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS standard_cost NUMERIC(15, 2);
+ALTER TABLE items ADD COLUMN IF NOT EXISTS selling_price NUMERIC(15, 2);
+ALTER TABLE items ADD COLUMN IF NOT EXISTS reorder_level NUMERIC(15, 2);
+ALTER TABLE items ADD COLUMN IF NOT EXISTS reorder_quantity NUMERIC(15, 2);
+ALTER TABLE items ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS category VARCHAR(50);
+ALTER TABLE items ADD COLUMN IF NOT EXISTS uom VARCHAR(20);
+ALTER TABLE items ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW();
+ALTER TABLE items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW();
+
+-- Verify columns exist
+SELECT column_name, data_type 
+FROM information_schema.columns 
+WHERE table_name = 'items' 
+ORDER BY ordinal_position;
