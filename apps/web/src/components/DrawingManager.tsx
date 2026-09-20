@@ -17,6 +17,7 @@ interface Drawing {
   document_id?: string | null;
   drawing_number?: string | null;
   revision_code?: string | null;
+  file_role?: string | null;
   lifecycle_status?: string | null;
   effective_from?: string | null;
   linked_item_codes?: string[];
@@ -1097,6 +1098,9 @@ export default function DrawingManager({
                           </div>
                           <div className="col-span-2 mt-1">
                             Uploaded: {formatDate(drawing.created_at)}
+                          </div>
+                          <div className="col-span-2 mt-1">
+                            Drawing: {drawing.drawing_number || "-"} / Revision: {drawing.revision_code || `R${drawing.version}`} / Role: {drawing.file_role || "-"}
                           </div>
                           {drawing.file_type ===
                             "application/external-link" && (
