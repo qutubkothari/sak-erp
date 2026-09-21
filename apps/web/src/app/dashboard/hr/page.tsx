@@ -13243,14 +13243,13 @@ function HrPageContent() {
                           professional_tax: Number(e.target.value),
                         })
                       }
-                      className="w-full border rounded px-3 py-2 bg-gray-50"
+                      className="w-full border rounded px-3 py-2"
                       min="0"
                       step="0.01"
-                      readOnly={complianceRegion === "INDIA"}
                     />
                     <p className="text-xs text-gray-500 mt-1">
                       {complianceRegion === "INDIA"
-                        ? `Auto: ${complianceState} state slab`
+                        ? `Auto-filled from ${complianceState} state slab; editable by HR`
                         : "Manual entry"}
                     </p>
                   </div>
