@@ -10,6 +10,9 @@ import {
   Query,
   Request,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
   Logger,
   Res,
 } from "@nestjs/common";
@@ -26,6 +29,9 @@ import {
   RequireUpdate,
 } from "../../auth/decorators/permissions.decorator";
 import { hasSuperAdminBypass } from "../../auth/utils/permission-utils";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { memoryStorage } from "multer";
+import { HrHistoricalAttendanceImportService } from "../services/hr-historical-attendance-import.service";
 
 @Controller("hr")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -35,6 +41,7 @@ export class HrController {
   constructor(
     private readonly hrService: HrService,
     private readonly attendanceControl: HrAttendanceControlService,
+    private readonly historicalImport: HrHistoricalAttendanceImportService,
   ) {}
 
   // Employee CRUD
@@ -179,6 +186,29 @@ export class HrController {
   @Get("attendance/policy")
   getAttendancePolicy(@Request() req: any) {
     return this.attendanceControl.getPolicy(req.user.tenantId);
+  }
+
+  @Get("attendance/historical-import/template")
+  @RequireCreate("hr")
+  async historicalAttendanceTemplate(@Res() response: Response) {
+    const workbook = await this.historicalImport.template();
+    response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    response.setHeader("Content-Disposition", 'attachment; filename="historical-attendance-template.xlsx"');
+    response.send(workbook);
+  }
+
+  @Post("attendance/historical-import/preview")
+  @RequireCreate("hr")
+  @UseInterceptors(FileInterceptor("file", { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }))
+  historicalAttendancePreview(@Request() req: any, @UploadedFile() file: Express.Multer.File, @Body("month") month: string) {
+    if (!file) throw new BadRequestException("Choose an Excel workbook");
+    return this.historicalImport.preview(req.user.tenantId, file, month, file.originalname);
+  }
+
+  @Post("attendance/historical-import/confirm")
+  @RequireCreate("hr")
+  historicalAttendanceConfirm(@Request() req: any, @Body() body: any) {
+    return this.historicalImport.confirm(req.user.tenantId, req.user.userId, body);
   }
 
   @Put("attendance/policy")

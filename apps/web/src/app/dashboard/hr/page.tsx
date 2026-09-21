@@ -1540,6 +1540,10 @@ function HrPageContent() {
   const [showAttendanceImport, setShowAttendanceImport] = useState(false);
   const [attendanceImportText, setAttendanceImportText] = useState("");
   const [attendanceImportResult, setAttendanceImportResult] = useState("");
+  const [showHistoricalAttendanceImport, setShowHistoricalAttendanceImport] = useState(false);
+  const [historicalImportMonth, setHistoricalImportMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [historicalImportFile, setHistoricalImportFile] = useState<File | null>(null);
+  const [historicalImportPreview, setHistoricalImportPreview] = useState<any>(null);
 
   // Leave modals
   const [showLeaveDetails, setShowLeaveDetails] = useState(false);
@@ -4496,6 +4500,50 @@ function HrPageContent() {
     }
   };
 
+  const downloadHistoricalAttendanceTemplate = async () => {
+    const blob = await apiClient.getBlob("/hr/attendance/historical-import/template");
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "historical-attendance-template.xlsx";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const previewHistoricalAttendance = async () => {
+    if (!historicalImportFile || !historicalImportMonth) return;
+    const formData = new FormData();
+    formData.append("file", historicalImportFile);
+    formData.append("month", historicalImportMonth);
+    setLoading(true);
+    try {
+      const result = await apiClient.postForm<any>("/hr/attendance/historical-import/preview", formData);
+      setHistoricalImportPreview(result);
+    } catch (error: any) {
+      alert(error?.message || "Historical attendance validation failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmHistoricalAttendance = async () => {
+    if (!historicalImportPreview) return;
+    setLoading(true);
+    try {
+      const result = await apiClient.post<any>("/hr/attendance/historical-import/confirm", {
+        month: historicalImportMonth,
+        filename: historicalImportFile?.name,
+        rows: historicalImportPreview.rows,
+      });
+      setHistoricalImportPreview(result);
+      fetchData();
+    } catch (error: any) {
+      alert(error?.message || "Historical attendance import failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleEmployeeDocumentFileSelect = async (file: File) => {
     if (!canEditHR) {
       alert("You do not have permission to add employee documents");
@@ -7424,6 +7472,18 @@ function HrPageContent() {
                           >
                             <FileText className="h-4 w-4" />
                             Import Biometric
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHistoricalImportPreview(null);
+                              setHistoricalImportFile(null);
+                              setShowHistoricalAttendanceImport(true);
+                            }}
+                            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-[#D8C4A8] bg-[#FFF8EA] px-4 text-sm font-semibold text-[#4A3426] hover:bg-[#F7F3EA]"
+                          >
+                            <FileText className="h-4 w-4" />
+                            Import Historical Attendance
                           </button>
                         </>
                       ) : (
@@ -10960,6 +11020,45 @@ function HrPageContent() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showHistoricalAttendanceImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#2F1B12]/55 p-4 backdrop-blur-sm">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-[#E8DCC4] bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[#E8DCC4] bg-[#FFF8EA] p-5">
+              <div>
+                <h3 className="text-2xl font-bold text-[#2F1B12]">Import Historical Attendance</h3>
+                <p className="mt-1 text-sm text-[#6F5A49]">Preview is read-only. Existing attendance and mobile evidence are never overwritten.</p>
+              </div>
+              <button type="button" onClick={() => setShowHistoricalAttendanceImport(false)} className="rounded-full border border-[#E8DCC4] bg-white px-3 py-1.5 text-lg leading-none text-[#6F5A49]" aria-label="Close historical attendance import">×</button>
+            </div>
+            <div className="max-h-[calc(92vh-132px)] overflow-y-auto p-5">
+              <div className="grid gap-4 md:grid-cols-[180px_1fr_auto] md:items-end">
+                <label className="text-sm font-semibold text-[#4A3426]">Target month
+                  <input type="month" value={historicalImportMonth} onChange={(event) => setHistoricalImportMonth(event.target.value)} className="mt-1 block w-full rounded-lg border border-[#D8C4A8] px-3 py-2" />
+                </label>
+                <label className="text-sm font-semibold text-[#4A3426]">Completed workbook
+                  <input type="file" accept=".xlsx" onChange={(event) => setHistoricalImportFile(event.target.files?.[0] || null)} className="mt-1 block w-full text-sm" />
+                </label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={downloadHistoricalAttendanceTemplate} className="rounded-lg border border-[#D8C4A8] px-3 py-2 text-sm font-semibold">Download template</button>
+                  <button type="button" onClick={previewHistoricalAttendance} disabled={!historicalImportFile || loading} className="rounded-lg bg-[#8B6F47] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{loading ? "Validating..." : "Validate"}</button>
+                </div>
+              </div>
+              {historicalImportPreview && (
+                <>
+                  <div className="mt-5 grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-8">
+                    {Object.entries(historicalImportPreview.counts || {}).map(([key, value]) => <div key={key} className="rounded-lg border border-[#E8DCC4] bg-[#FAF9F6] p-2 text-center"><div className="text-lg font-bold text-[#2F1B12]">{String(value)}</div><div className="text-[10px] font-semibold uppercase text-[#6F5A49]">{key}</div></div>)}
+                  </div>
+                  <div className="mt-4 overflow-x-auto rounded-lg border border-[#E8DCC4]">
+                    <table className="min-w-full text-left text-xs"><thead className="bg-[#FAF9F6]"><tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Employee</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Result</th><th className="px-3 py-2">Issues</th></tr></thead><tbody>{(historicalImportPreview.rows || []).map((row: any) => <tr key={row.row_number} className="border-t border-[#F0E7D8]"><td className="px-3 py-2">{row.row_number}</td><td className="px-3 py-2">{row.employee_code}{row.employee_name ? ` · ${row.employee_name}` : ""}</td><td className="px-3 py-2">{row.date || "-"}</td><td className="px-3 py-2">{row.status || "-"}</td><td className="px-3 py-2 font-semibold">{row.classification}</td><td className="px-3 py-2">{(row.issues || []).join("; ") || "-"}</td></tr>)}</tbody></table>
+                  </div>
+                  <div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setShowHistoricalAttendanceImport(false)} className="rounded-lg border border-[#D8C4A8] px-4 py-2 text-sm font-semibold">Close</button><button type="button" onClick={confirmHistoricalAttendance} disabled={loading || Number(historicalImportPreview.counts?.READY || 0) === 0} className="rounded-lg bg-[#8B6F47] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{loading ? "Importing..." : "Confirm import"}</button></div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
