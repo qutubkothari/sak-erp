@@ -1331,7 +1331,24 @@ export class PurchaseOrdersService {
     });
 
     // Layer 1: Timestamp-based duplicate prevention (within 10 seconds)
-    const creationKey = `${tenantId}:${data.vendorId}:${(data.items ?? []).map((i: any) => `${i.itemId || i.item_code}:${i.orderedQty || i.quantity}`).join('|')}`;
+    const resolvedItems = Array.isArray(data.items)
+      ? data.items.filter((item: any) => {
+        const hasItemReference = Boolean(String(item?.itemId || item?.item_id || item?.itemCode || item?.item_code || '').trim());
+        const quantity = this.safeNumber(item?.orderedQty ?? item?.ordered_qty ?? item?.quantity);
+        return hasItemReference && quantity > 0;
+      })
+      : [];
+    if (resolvedItems.length === 0) {
+      throw new BadRequestException('At least one valid item is required to create a Purchase Order.');
+    }
+    if (resolvedItems.length !== data.items.length) {
+      throw new BadRequestException('Every Purchase Order line must include an item and a quantity greater than zero.');
+    }
+
+    const creationKey = `${tenantId}:${data.prId || ''}:${data.vendorId || ''}:${resolvedItems
+      .map((i: any) => `${i.itemId || i.item_id || i.itemCode || i.item_code}:${i.orderedQty || i.ordered_qty || i.quantity}`)
+      .sort()
+      .join('|')}`;
     const lastCreation = this.recentCreations.get(creationKey);
     const now = Date.now();
     if (lastCreation && (now - lastCreation) < 10000) {
@@ -1576,7 +1593,7 @@ export class PurchaseOrdersService {
     }
 
     // Insert items
-    if (data.items && data.items.length > 0) {
+    try {
       const isImportPo = data.isImportPurchase === true || String(data.supplierCurrency || 'INR').trim().toUpperCase() !== 'INR';
       const items = data.items.map((item: any) => {
         const orderedQty = this.safeNumber(item.orderedQty || item.quantity);
@@ -1624,6 +1641,16 @@ export class PurchaseOrdersService {
           rate: item.rate || null,
         })),
       );
+    } catch (lineError) {
+      const { error: rollbackError } = await this.supabase
+        .from('purchase_orders')
+        .delete()
+        .eq('tenant_id', tenantId)
+        .eq('id', po.id);
+      if (rollbackError) {
+        console.error('[PO CREATE] Failed to roll back header after line failure:', rollbackError);
+      }
+      throw lineError;
     }
 
     return this.findOne(tenantId, po.id);

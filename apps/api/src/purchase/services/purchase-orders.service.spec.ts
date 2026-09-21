@@ -7,6 +7,30 @@ process.env.SUPABASE_KEY = process.env.SUPABASE_KEY || 'test-key';
 describe('PurchaseOrdersService controls', () => {
   const makeService = () => new PurchaseOrdersService({} as any, {} as any);
 
+  it('rejects an empty PO before creating a header', async () => {
+    const service = new PurchaseOrdersService({} as any, {} as any, { ensureSchema: jest.fn() } as any);
+    const from = jest.fn();
+    (service as any).supabase = { from };
+
+    await expect(service.create('tenant-1', 'user-1', { items: [] })).rejects.toThrow(
+      'At least one valid item is required to create a Purchase Order.',
+    );
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('rejects unresolved PO lines before creating a header', async () => {
+    const service = new PurchaseOrdersService({} as any, {} as any, { ensureSchema: jest.fn() } as any);
+    const from = jest.fn();
+    (service as any).supabase = { from };
+
+    await expect(service.create('tenant-1', 'user-1', {
+      items: [{ itemCode: '', orderedQty: 0 }],
+    })).rejects.toThrow(
+      'At least one valid item is required to create a Purchase Order.',
+    );
+    expect(from).not.toHaveBeenCalled();
+  });
+
   it('prevents a PO creator from approving their own purchase order', async () => {
     const service = makeService();
     const query: any = {
