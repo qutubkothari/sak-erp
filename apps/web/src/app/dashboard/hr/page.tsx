@@ -1956,7 +1956,6 @@ function HrPageContent() {
         ? Math.round((grossEstimate <= 21000 ? grossEstimate * 0.0325 : 0) * 100) /
           100
         : 0,
-      professional_tax: deductions.pt,
     }));
   };
 
