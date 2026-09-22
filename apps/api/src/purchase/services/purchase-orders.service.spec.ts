@@ -31,6 +31,21 @@ describe('PurchaseOrdersService controls', () => {
     expect(from).not.toHaveBeenCalled();
   });
 
+  it('does not reject a valid technical item name longer than 200 characters before creation', async () => {
+    const service = new PurchaseOrdersService({} as any, {} as any, { ensureSchema: jest.fn() } as any);
+    const longItemName = `TEMP-LONG - ${'engineering specification '.repeat(10)}`;
+    const from = jest.fn(() => {
+      throw new Error('header validation reached');
+    });
+    (service as any).supabase = { from };
+
+    await expect(service.create('tenant-1', 'user-1', {
+      items: [{ itemCode: 'TEMP-LONG', itemName: longItemName, orderedQty: 1 }],
+    })).rejects.toThrow('header validation reached');
+    expect(longItemName.length).toBeGreaterThan(200);
+    expect(from).toHaveBeenCalled();
+  });
+
   it('prevents a PO creator from approving their own purchase order', async () => {
     const service = makeService();
     const query: any = {

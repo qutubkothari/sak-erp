@@ -1649,6 +1649,9 @@ export class PurchaseOrdersService {
         .eq('id', po.id);
       if (rollbackError) {
         console.error('[PO CREATE] Failed to roll back header after line failure:', rollbackError);
+        throw new BadRequestException(
+          `Purchase Order creation failed and header cleanup also failed: ${rollbackError.message}`,
+        );
       }
       throw lineError;
     }
