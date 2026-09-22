@@ -49,6 +49,43 @@ export function calculateStandardOutput(
   return roundQty(inputQuantity * standardOutputPerInput);
 }
 
+export type RectangularDimensions = { length: number; width: number; thickness?: number };
+export type TheoreticalYield = { orientation: "A" | "B"; lengthPieces: number; widthPieces: number; pieces: number; usableLength: number; usableWidth: number };
+
+export function calculateTheoreticalYield(input: RectangularDimensions, output: RectangularDimensions, kerf = 0, edgeAllowance = 0, allowRotation = true): TheoreticalYield {
+  if ([input.length, input.width, output.length, output.width].some((value) => !Number.isFinite(value) || value <= 0)) throw new BadRequestException("All cutting dimensions must be positive finite values.");
+  if (!Number.isFinite(kerf) || kerf < 0 || !Number.isFinite(edgeAllowance) || edgeAllowance < 0) throw new BadRequestException("Kerf and edge allowance cannot be negative.");
+  const usableLength = input.length - edgeAllowance * 2;
+  const usableWidth = input.width - edgeAllowance * 2;
+  const count = (pieceLength: number, pieceWidth: number) => ({ lengthPieces: Math.max(0, Math.floor((usableLength + kerf) / (pieceLength + kerf))), widthPieces: Math.max(0, Math.floor((usableWidth + kerf) / (pieceWidth + kerf))) });
+  const a = count(output.length, output.width);
+  const b = count(output.width, output.length);
+  const first = a.lengthPieces * a.widthPieces >= b.lengthPieces * b.widthPieces || !allowRotation ? { ...a, orientation: "A" as const } : { ...b, orientation: "B" as const };
+  return { ...first, pieces: first.lengthPieces * first.widthPieces, usableLength, usableWidth };
+}
+
+export function calculateCuttingPlanningMetrics(input: RectangularDimensions, output: RectangularDimensions, yieldResult: TheoreticalYield) {
+  const sheetArea = input.length * input.width;
+  const pieceArea = output.length * output.width;
+  const goodPieceUsedArea = yieldResult.pieces * pieceArea;
+  const utilizationPercentage = sheetArea > 0 ? (goodPieceUsedArea / sheetArea) * 100 : 0;
+  return { sheetArea, pieceArea, goodPieceUsedArea, estimatedUnusedArea: Math.max(0, sheetArea - goodPieceUsedArea), utilizationPercentage, estimatedScrapPercentage: Math.max(0, 100 - utilizationPercentage) };
+}
+
+export function validateRemnantDimensions(remnant: RectangularDimensions & { quantity: number }) {
+  if ([remnant.length, remnant.width, remnant.quantity].some((value) => !Number.isFinite(value) || value <= 0)) throw new BadRequestException("Remnant dimensions and quantity must be positive finite values.");
+  return true;
+}
+
+export function calculateRemnantArea(length: number, width: number, quantity: number) {
+  return length * width * quantity;
+}
+
+export function calculateEquivalentSheetFraction(remnantArea: number, sourceLength: number, sourceWidth: number, sourceThickness: number, remnantThickness: number) {
+  if (sourceThickness !== remnantThickness) return null;
+  return remnantArea / (sourceLength * sourceWidth);
+}
+
 function text(value: any, fallback = "") {
   return String(value ?? fallback).trim();
 }
@@ -355,6 +392,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_subcontract_orders_tenant_client_request
   WHERE client_request_id IS NOT NULL;
 ALTER TABLE public.subcontract_route_steps ADD COLUMN IF NOT EXISTS default_output_qty NUMERIC(18, 4) DEFAULT 0;
 ALTER TABLE public.subcontract_route_steps ADD COLUMN IF NOT EXISTS standard_output_per_input NUMERIC(18, 6);
+ALTER TABLE public.subcontract_route_steps ADD COLUMN IF NOT EXISTS cutting_kerf NUMERIC(18, 6);
+ALTER TABLE public.subcontract_route_steps ADD COLUMN IF NOT EXISTS edge_allowance NUMERIC(18, 6);
+ALTER TABLE public.subcontract_route_steps ADD COLUMN IF NOT EXISTS allow_90_rotation BOOLEAN DEFAULT true;
 ALTER TABLE public.subcontract_order_steps ADD COLUMN IF NOT EXISTS node_key VARCHAR(80);
 ALTER TABLE public.subcontract_order_steps ADD COLUMN IF NOT EXISTS parent_node_key VARCHAR(80);
 ALTER TABLE public.subcontract_order_steps ADD COLUMN IF NOT EXISTS parent_order_step_id UUID;
@@ -437,6 +477,18 @@ ALTER TABLE public.subcontract_receipt_lines ADD COLUMN IF NOT EXISTS qc_approve
 ALTER TABLE public.subcontract_receipt_lines ADD COLUMN IF NOT EXISTS qc_approved_by UUID;
 CREATE INDEX IF NOT EXISTS idx_subcontract_movements_issue ON public.subcontract_movements(issue_movement_id);
 CREATE INDEX IF NOT EXISTS idx_subcontract_receipt_lines_issue ON public.subcontract_receipt_lines(issue_movement_id);
+CREATE TABLE IF NOT EXISTS public.subcontract_remnants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL,
+  subcontract_order_id UUID NOT NULL REFERENCES public.subcontract_orders(id) ON DELETE CASCADE,
+  receipt_movement_id UUID REFERENCES public.subcontract_movements(id) ON DELETE CASCADE,
+  order_step_id UUID REFERENCES public.subcontract_order_steps(id) ON DELETE SET NULL,
+  source_item_id UUID REFERENCES public.items(id) ON DELETE SET NULL,
+  length NUMERIC(18,6) NOT NULL CHECK (length > 0), width NUMERIC(18,6) NOT NULL CHECK (width > 0),
+  thickness NUMERIC(18,6) NOT NULL CHECK (thickness > 0), dimension_uom VARCHAR(20) NOT NULL,
+  quantity NUMERIC(18,4) NOT NULL CHECK (quantity > 0), reusable BOOLEAN NOT NULL DEFAULT true,
+  remarks TEXT, created_by UUID, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_subcontract_remnants_order ON public.subcontract_remnants(tenant_id, subcontract_order_id);
 ALTER TABLE public.subcontract_orders ADD COLUMN IF NOT EXISTS requisition_number VARCHAR(60);
 ALTER TABLE public.subcontract_orders ADD COLUMN IF NOT EXISTS approval_status VARCHAR(30) NOT NULL DEFAULT 'LEGACY_APPROVED';
 ALTER TABLE public.subcontract_orders ADD COLUMN IF NOT EXISTS submitted_by UUID;
@@ -993,6 +1045,9 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_order_approval_history_order
         step.standard_output_per_input == null || step.standard_output_per_input === ""
           ? null
           : num(step.standard_output_per_input),
+      cutting_kerf: num(step.cutting_kerf) || null,
+      edge_allowance: num(step.edge_allowance) || null,
+      allow_90_rotation: step.allow_90_rotation !== false,
       input_weight_per_piece: num(step.input_weight_per_piece) || null,
       output_weight_per_piece: num(step.output_weight_per_piece) || null,
       planned_input_weight: num(step.planned_input_weight) || null,
@@ -1123,6 +1178,9 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_order_approval_history_order
         step.standard_output_per_input == null || step.standard_output_per_input === ""
           ? null
           : num(step.standard_output_per_input),
+      cutting_kerf: num(step.cutting_kerf) || null,
+      edge_allowance: num(step.edge_allowance) || null,
+      allow_90_rotation: step.allow_90_rotation !== false,
       input_weight_per_piece: num(step.input_weight_per_piece) || null,
       output_weight_per_piece: num(step.output_weight_per_piece) || null,
       planned_input_weight: num(step.planned_input_weight) || null,
@@ -2676,6 +2734,34 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_order_approval_history_order
       .from("subcontract_receipt_lines")
       .insert(receiptLines as any);
     if (lineError) throw new BadRequestException(lineError.message);
+    const remnants = Array.isArray(body.remnants) ? body.remnants : [];
+    const remnantRows = remnants.map((remnant: any) => {
+      const row = {
+        length: num(remnant.length),
+        width: num(remnant.width),
+        thickness: num(remnant.thickness),
+        quantity: num(remnant.quantity),
+      };
+      validateRemnantDimensions(row);
+      return {
+        tenant_id: tenantId,
+        subcontract_order_id: order.id,
+        receipt_movement_id: receipt.id,
+        order_step_id: step.id,
+        source_item_id: issue.item_id || step.input_item_id || order.input_item_id,
+        ...row,
+        dimension_uom: text(remnant.dimension_uom || remnant.unit || "MM").toUpperCase(),
+        reusable: remnant.reusable !== false,
+        remarks: text(remnant.remarks),
+        created_by: userId,
+      };
+    });
+    if (remnantRows.length) {
+      const { error: remnantError } = await this.supabase
+        .from("subcontract_remnants")
+        .insert(remnantRows as any);
+      if (remnantError) throw new BadRequestException(remnantError.message);
+    }
     const { error: issueError } = await this.supabase
       .from("subcontract_movements")
       .update({

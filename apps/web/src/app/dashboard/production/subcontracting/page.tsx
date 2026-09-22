@@ -48,6 +48,10 @@ type Item = {
   uom?: string;
   product_size?: number;
   product_size_uom?: string;
+  length?: number;
+  width?: number;
+  thickness?: number;
+  dimension_uom?: string;
   current_stock?: number;
   available_quantity?: number;
 };
@@ -103,6 +107,9 @@ type RouteStep = {
   output_uom?: string;
   standard_output_per_input?: number | string;
   output_size?: number | string;
+  cutting_kerf?: number | string;
+  edge_allowance?: number | string;
+  allow_90_rotation?: boolean;
   default_input_qty?: number | string;
   default_output_qty?: number | string;
   input_weight_per_piece?: number | string;
@@ -872,6 +879,15 @@ export default function SubcontractingPage() {
     invoice_number: "",
     invoice_date: "",
     notes: "",
+    remnants: [] as Array<{
+      length: string;
+      width: string;
+      thickness: string;
+      dimension_uom: string;
+      quantity: string;
+      reusable: boolean;
+      remarks: string;
+    }>,
   });
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
 
@@ -1722,6 +1738,7 @@ export default function SubcontractingPage() {
       invoice_number: "",
       invoice_date: "",
       notes: "",
+      remnants: [],
     });
     setInvoiceFile(null);
   }
@@ -2174,6 +2191,7 @@ export default function SubcontractingPage() {
       invoice_number: "",
       invoice_date: new Date().toISOString().slice(0, 10),
       notes: "",
+      remnants: [],
     });
     setPanel(kind);
   }
@@ -4776,6 +4794,31 @@ export default function SubcontractingPage() {
                                   }
                                 />
                               </Field>
+                              {(() => {
+                                const inputItem = items.find((item) => item.id === (step.input_item_id || routeForm.input_item_id));
+                                const outputItem = items.find((item) => item.id === step.output_item_id);
+                                const inputLength = Number(inputItem?.length || 0);
+                                const inputWidth = Number(inputItem?.width || 0);
+                                const outputLength = Number(outputItem?.length || 0);
+                                const outputWidth = Number(outputItem?.width || 0);
+                                const kerf = Number(step.cutting_kerf || 0);
+                                const edge = Number(step.edge_allowance || 0);
+                                const usableLength = inputLength - edge * 2;
+                                const usableWidth = inputWidth - edge * 2;
+                                const orientationA = outputLength > 0 && outputWidth > 0 ? Math.max(0, Math.floor((usableLength + kerf) / (outputLength + kerf))) * Math.max(0, Math.floor((usableWidth + kerf) / (outputWidth + kerf))) : 0;
+                                const orientationB = outputLength > 0 && outputWidth > 0 ? Math.max(0, Math.floor((usableLength + kerf) / (outputWidth + kerf))) * Math.max(0, Math.floor((usableWidth + kerf) / (outputLength + kerf))) : 0;
+                                const theoretical = step.allow_90_rotation === false ? orientationA : Math.max(orientationA, orientationB);
+                                return inputLength > 0 && inputWidth > 0 && outputLength > 0 && outputWidth > 0 ? <div className="rounded border border-[#d8c6aa] bg-[#f8f5ef] p-3 text-sm">
+                                  <div className="font-bold uppercase text-[#6c4f32]">Cutting plan</div>
+                                  <div className="mt-1 text-xs text-[#5b432c]">Theoretical rectangular yield. Mixed orientation optimization is not implemented.</div>
+                                  <div className="mt-2 grid grid-cols-2 gap-2">
+                                    <label>Cutting kerf<input type="number" min="0" step="any" value={step.cutting_kerf ?? ""} onChange={(e) => updateRouteStep(index, { cutting_kerf: e.target.value })} className="mt-1 w-full border border-[#d8c6aa] px-2 py-1" /></label>
+                                    <label>Edge allowance<input type="number" min="0" step="any" value={step.edge_allowance ?? ""} onChange={(e) => updateRouteStep(index, { edge_allowance: e.target.value })} className="mt-1 w-full border border-[#d8c6aa] px-2 py-1" /></label>
+                                  </div>
+                                  <label className="mt-2 flex items-center gap-2"><input type="checkbox" checked={step.allow_90_rotation !== false} onChange={(e) => updateRouteStep(index, { allow_90_rotation: e.target.checked })} /> Allow 90° rotation</label>
+                                  <div className="mt-2 grid grid-cols-2 gap-2"><span><strong>THEORETICAL:</strong> {theoretical} PCS / input</span><span><strong>ENGINEERING APPROVED:</strong> {step.standard_output_per_input || "Not set"} / input</span></div>
+                                </div> : null;
+                              })()}
                               {step.parent_node_key ? (
                                 <div className="rounded border border-[#d8c6aa] bg-[#f8f5ef] px-3 py-2">
                                   <div className="text-xs font-bold uppercase text-[#6c4f32]">
@@ -5481,6 +5524,25 @@ export default function SubcontractingPage() {
                         </div>
                       )}
                     </div>
+                  </div>
+                  <div className="mt-5 border-t border-[#eadcc8] pt-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold uppercase text-[#6c4f32]">Reusable remnants</h4>
+                        <p className="text-xs text-[#806b56]">Enter actual measured pieces. Recorded for reconciliation only; inventory posting is not enabled.</p>
+                      </div>
+                      <button type="button" className="border border-[#b78b54] px-3 py-2 text-sm font-semibold text-[#6c4f32]" onClick={() => setReceiveForm((current) => ({ ...current, remnants: [...current.remnants, { length: "", width: "", thickness: "", dimension_uom: "MM", quantity: "1", reusable: true, remarks: "" }] }))}>+ Add remnant</button>
+                    </div>
+                    {receiveForm.remnants.map((remnant, index) => (
+                      <div key={index} className="mt-2 grid grid-cols-[1fr_1fr_1fr_90px_90px_110px_1fr_28px] gap-2">
+                        {(["length", "width", "thickness"] as const).map((field) => <input key={field} type="number" min="0" step="0.0001" placeholder={field} value={remnant[field]} onChange={(e) => setReceiveForm((current) => ({ ...current, remnants: current.remnants.map((row, i) => i === index ? { ...row, [field]: e.target.value } : row) }))} className="border border-[#d8c6aa] px-2 py-2 text-sm" />)}
+                        <select value={remnant.dimension_uom} onChange={(e) => setReceiveForm((current) => ({ ...current, remnants: current.remnants.map((row, i) => i === index ? { ...row, dimension_uom: e.target.value } : row) }))} className="border border-[#d8c6aa] px-2 py-2 text-sm"><option>MM</option><option>CM</option><option>MTR</option></select>
+                        <input type="number" min="0" step="0.0001" value={remnant.quantity} onChange={(e) => setReceiveForm((current) => ({ ...current, remnants: current.remnants.map((row, i) => i === index ? { ...row, quantity: e.target.value } : row) }))} className="border border-[#d8c6aa] px-2 py-2 text-sm" placeholder="Qty" />
+                        <select value={remnant.reusable ? "YES" : "NO"} onChange={(e) => setReceiveForm((current) => ({ ...current, remnants: current.remnants.map((row, i) => i === index ? { ...row, reusable: e.target.value === "YES" } : row) }))} className="border border-[#d8c6aa] px-2 py-2 text-sm"><option>YES</option><option>NO</option></select>
+                        <input value={remnant.remarks} onChange={(e) => setReceiveForm((current) => ({ ...current, remnants: current.remnants.map((row, i) => i === index ? { ...row, remarks: e.target.value } : row) }))} className="border border-[#d8c6aa] px-2 py-2 text-sm" placeholder="Remarks" />
+                        <button type="button" className="border border-red-200 text-red-700" onClick={() => setReceiveForm((current) => ({ ...current, remnants: current.remnants.filter((_, i) => i !== index) }))}>x</button>
+                      </div>
+                    ))}
                   </div>
                   <label className="text-xs font-bold uppercase text-[#6c4f32]">
                     Rejected quantity

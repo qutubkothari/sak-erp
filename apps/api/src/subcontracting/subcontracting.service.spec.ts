@@ -1,7 +1,54 @@
 import {
+  calculateCuttingPlanningMetrics,
+  calculateEquivalentSheetFraction,
+  calculateRemnantArea,
   calculateStandardOutput,
+  calculateTheoreticalYield,
   requiresSecondaryLength,
+  validateRemnantDimensions,
 } from './subcontracting.service';
+
+describe('dimensional cutting planning', () => {
+  const sheet = { length: 2400, width: 1200, thickness: 5 };
+  const piece = { length: 267, width: 110, thickness: 5 };
+
+  it('calculates the FRP sheet theoretical yield', () => {
+    const result = calculateTheoreticalYield(sheet, piece, 0, 0, true);
+    expect(result.orientation).toBe('B');
+    expect(result.pieces).toBe(84);
+  });
+
+  it('uses rotation when it produces more pieces', () => {
+    const result = calculateTheoreticalYield({ length: 300, width: 500 }, { length: 180, width: 100 }, 0, 0, true);
+    expect(result.orientation).toBe('B');
+  });
+
+  it('accounts for kerf and edge allowance', () => {
+    const base = calculateTheoreticalYield(sheet, piece, 0, 0, false);
+    const constrained = calculateTheoreticalYield(sheet, piece, 5, 50, false);
+    expect(constrained.pieces).toBeLessThan(base.pieces);
+    expect(constrained.usableLength).toBe(2300);
+  });
+
+  it('calculates planning-only area metrics', () => {
+    const yieldResult = calculateTheoreticalYield(sheet, piece);
+    const metrics = calculateCuttingPlanningMetrics(sheet, piece, yieldResult);
+    expect(metrics.sheetArea).toBe(2880000);
+    expect(metrics.utilizationPercentage).toBeGreaterThan(0);
+    expect(metrics.estimatedScrapPercentage).toBeGreaterThanOrEqual(0);
+  });
+
+  it('validates positive remnant dimensions without posting stock', () => {
+    expect(validateRemnantDimensions({ length: 100, width: 50, quantity: 1 })).toBe(true);
+    expect(() => validateRemnantDimensions({ length: 0, width: 50, quantity: 1 })).toThrow();
+  });
+
+  it('calculates remnant area and equivalent sheet fraction only for matching thickness', () => {
+    expect(calculateRemnantArea(800, 350, 1)).toBe(280000);
+    expect(calculateEquivalentSheetFraction(280000, 2400, 1200, 5, 5)).toBeCloseTo(280000 / 2880000);
+    expect(calculateEquivalentSheetFraction(280000, 2400, 1200, 5, 4)).toBeNull();
+  });
+});
 
 describe('calculateStandardOutput', () => {
   it.each([

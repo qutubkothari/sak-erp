@@ -1118,6 +1118,10 @@ export class ItemsService {
           this.normalizeOptionalText(
             itemData.product_size_uom ?? itemData.productSizeUom,
           )?.toUpperCase() || null,
+        length: this.normalizeNumber(itemData.length),
+        width: this.normalizeNumber(itemData.width),
+        thickness: this.normalizeNumber(itemData.thickness),
+        dimension_uom: this.normalizeOptionalText(itemData.dimension_uom)?.toUpperCase() || null,
         reorder_level: reorderLevel,
         min_stock: itemData.minStock,
         max_stock: itemData.maxStock,
@@ -1844,6 +1848,11 @@ export class ItemsService {
         this.normalizeOptionalText(
           itemData.product_size_uom ?? itemData.productSizeUom,
         )?.toUpperCase() || null;
+    for (const field of ["length", "width", "thickness"] as const) {
+      if (itemData[field] !== undefined) updateData[field] = this.normalizeNumber(itemData[field]);
+    }
+    if (itemData.dimension_uom !== undefined)
+      updateData.dimension_uom = this.normalizeOptionalText(itemData.dimension_uom)?.toUpperCase() || null;
     const standardCostProvided =
       itemData.standard_cost !== undefined ||
       itemData.standardCost !== undefined;

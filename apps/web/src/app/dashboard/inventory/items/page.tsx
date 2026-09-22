@@ -51,6 +51,10 @@ interface Item {
   uom: string;
   product_size?: number;
   product_size_uom?: string;
+  length?: number;
+  width?: number;
+  thickness?: number;
+  dimension_uom?: string;
   hsn_code?: string;
   standard_cost?: number;
   selling_price?: number;
@@ -426,6 +430,10 @@ export default function ItemsPage() {
     uom: "PCS",
     product_size: "",
     product_size_uom: "MM",
+    length: "",
+    width: "",
+    thickness: "",
+    dimension_uom: "MM",
     hsn_code: "",
     standard_cost: "",
     selling_price: "",
@@ -1019,6 +1027,10 @@ export default function ItemsPage() {
       uom: item.uom,
       product_size: item.product_size?.toString() || "",
       product_size_uom: item.product_size_uom || "MM",
+      length: item.length?.toString() || "",
+      width: item.width?.toString() || "",
+      thickness: item.thickness?.toString() || "",
+      dimension_uom: item.dimension_uom || "MM",
       // Some older records/imports can have whitespace; trim so HTML pattern validation doesn't block saving
       hsn_code: (item.hsn_code ? String(item.hsn_code) : "").replace(
         /[^0-9]/g,
@@ -1123,6 +1135,10 @@ export default function ItemsPage() {
         uom: detail.uom || "PCS",
         product_size: detail.product_size?.toString() || "",
         product_size_uom: detail.product_size_uom || "MM",
+        length: detail.length?.toString() || "",
+        width: detail.width?.toString() || "",
+        thickness: detail.thickness?.toString() || "",
+        dimension_uom: detail.dimension_uom || "MM",
         hsn_code: (detail.hsn_code ? String(detail.hsn_code) : "").replace(
           /[^0-9]/g,
           "",
@@ -1786,6 +1802,10 @@ export default function ItemsPage() {
       uom: "PCS",
       product_size: "",
       product_size_uom: "MM",
+      length: "",
+      width: "",
+      thickness: "",
+      dimension_uom: "MM",
       hsn_code: "",
       standard_cost: "",
       selling_price: "",
@@ -3298,6 +3318,17 @@ export default function ItemsPage() {
                       Optional physical size. Stock/production quantity remains
                       in {formData.uom}.
                     </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Physical dimensions (optional)</label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {(["length", "width", "thickness"] as const).map((field) => (
+                        <input key={field} type="number" min="0" step="0.0001" placeholder={field[0].toUpperCase() + field.slice(1)} value={formData[field]} onChange={(e) => setFormData({ ...formData, [field]: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                      ))}
+                      <select value={formData.dimension_uom} onChange={(e) => setFormData({ ...formData, dimension_uom: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg"><option value="MM">MM</option><option value="CM">CM</option><option value="MTR">MTR</option><option value="INCH">INCH</option></select>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">Length x width x thickness; separate from Product size.</p>
                   </div>
 
                   <div>
