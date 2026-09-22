@@ -39,10 +39,6 @@ export function toUpperCode(value: unknown): string {
   return normalizeSpaces(value).toUpperCase();
 }
 
-export function normalizeTechnicalText(value: unknown): string {
-  return String(value ?? '').trim();
-}
-
 export function normalizeEmail(value: unknown): string {
   const email = normalizeSpaces(value).toLowerCase();
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email)) {

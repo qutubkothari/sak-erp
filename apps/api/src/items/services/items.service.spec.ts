@@ -27,28 +27,9 @@ describe("resolveDrawingRevisionUpload", () => {
 });
 import { BadRequestException } from '@nestjs/common';
 import { ItemsService } from './items.service';
-import { normalizeTechnicalText } from '../../common/utils/data-quality';
 
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
 process.env.SUPABASE_KEY = process.env.SUPABASE_KEY || 'test-key';
-
-describe('technical item text normalization', () => {
-  it.each([
-    'Capacitor 0.01uF, 10nF, 0805, 500V',
-    'Fan Axial 80x25mm 24VDC, 80mA, 2W, Wire, Unknown CFM',
-    'Converter AC/DC - 24V',
-    'M8x100mm',
-    '230VAC',
-    '12VDC',
-    '5mA',
-    '10kΩ',
-    '100MHz',
-    'USB-C',
-    'RS-485',
-  ])('preserves exact technical casing for %s', (description) => {
-    expect(normalizeTechnicalText(`  ${description}  `)).toBe(description);
-  });
-});
 
 describe('ItemsService temporary R&D procurement items', () => {
   it('applies the R&D-only filter in the database so reusable TEMP items are not lost to pagination', async () => {
@@ -218,9 +199,9 @@ describe('ItemsService temporary R&D procurement items', () => {
     expect(itemInsertQuery.insert).toHaveBeenCalledWith(
       expect.objectContaining({
         name: longDescription.slice(0, 200),
-        description: longDescription.trim(),
+        description: longDescription,
         metadata: expect.objectContaining({
-          temporaryItem: expect.objectContaining({ description: longDescription.trim() }),
+          temporaryItem: expect.objectContaining({ description: longDescription }),
         }),
       }),
     );
