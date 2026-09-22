@@ -11,6 +11,29 @@ import { normalizeInventoryCategory } from "../../inventory/utils/inventory-cate
 import { ProjectsService } from "../../projects/projects.service";
 import { EngineeringDrawingStorageService } from "./engineering-drawing-storage.service";
 
+export function resolveDrawingRevisionUpload(input: {
+  mode: string;
+  currentRevision?: { version: number; revision_code: string };
+  currentFiles: Array<{ version: number; file_role?: string | null }>;
+  fileRole: string;
+  nextVersion: number;
+  revisionCode: string;
+}) {
+  const mode = String(input.mode || "NEW_REVISION").trim().toUpperCase();
+  if (mode !== "ADD_TO_CURRENT") {
+    return { version: input.nextVersion, revisionCode: input.revisionCode, duplicate: false };
+  }
+  if (!input.currentRevision) throw new BadRequestException("No current drawing revision exists. Create a new revision first.");
+  const duplicate = input.currentFiles.some(
+    (file) => file.version === input.currentRevision?.version &&
+      String(file.file_role || "").trim().toUpperCase() === String(input.fileRole).trim().toUpperCase(),
+  );
+  return {
+    version: input.currentRevision.version,
+    revisionCode: input.currentRevision.revision_code,
+    duplicate,
+  };
+}
 function mapDeleteAuditError(error: any, resourceLabel: string): string {
   const details = String(error?.details || "");
   const message = String(error?.message || "");
@@ -2566,6 +2589,32 @@ export class ItemsService {
       throw new Error("Missing drawing fileUrl");
     }
 
+    const uploadMode = String(
+      drawingData?.uploadMode || drawingData?.upload_mode || "NEW_REVISION",
+    ).trim().toUpperCase();
+
+    // A companion file belongs to the latest design revision, not a new revision.
+    const requestedDrawingNumber = String(
+      drawingData?.drawingNumber || drawingData?.drawing_number || `DRW-${itemId.slice(0, 8)}`,
+    ).trim().toUpperCase();
+    const { data: currentRevisionFiles, error: currentRevisionError } =
+      uploadMode === "ADD_TO_CURRENT"
+        ? await this.supabase
+            .from("item_drawings")
+            .select("id,version,revision_code,revision_package_id,file_role,drawing_number")
+            .eq("tenant_id", tenantId)
+            .eq("item_id", itemId)
+            .eq("drawing_number", requestedDrawingNumber)
+            .neq("lifecycle_status", "DELETED")
+            .order("version", { ascending: false })
+        : { data: [], error: null };
+    if (currentRevisionError) throw new Error(`Failed to find current drawing revision: ${currentRevisionError.message}`);
+
+    const currentRevision = currentRevisionFiles?.[0];
+    if (uploadMode === "ADD_TO_CURRENT" && !currentRevision) {
+      throw new BadRequestException("No current drawing revision exists. Create a new revision first.");
+    }
+
     // Get current max version for this item
     const { data: existingDrawings } = await this.supabase
       .from("item_drawings")
@@ -2593,6 +2642,21 @@ export class ItemsService {
         ? "CONTROLLED_2D"
         : "SUPPORTING";
     const fileRole = String(drawingData?.fileRole || drawingData?.file_role || inferredRole).trim().toUpperCase();
+    const uploadPlan = resolveDrawingRevisionUpload({
+      mode: uploadMode,
+      currentRevision,
+      currentFiles: currentRevisionFiles || [],
+      fileRole,
+      nextVersion,
+      revisionCode,
+    });
+    if (uploadPlan.duplicate) {
+        throw new BadRequestException(
+          `A ${fileRole} file already exists for Revision ${currentRevision.revision_code}. Create a new revision to upload a revised file.`,
+        );
+    }
+    const resolvedVersion = uploadPlan.version;
+    const resolvedRevisionCode = uploadPlan.revisionCode;
     const defaultDeliveryMethod = String(
       drawingData?.defaultDeliveryMethod || drawingData?.default_delivery_method ||
       (fileRole === "CONTROLLED_2D" ? "MERGE_PO" : "ATTACH_SEPARATELY"),
@@ -2605,9 +2669,9 @@ export class ItemsService {
       file_url: resolvedFileUrl,
       file_type: resolvedFileType,
       file_size: resolvedFileSize,
-      version: nextVersion,
+      version: resolvedVersion,
       drawing_number: drawingNumber,
-      revision_code: revisionCode,
+      revision_code: resolvedRevisionCode,
       document_type: String(
         drawingData?.documentType || drawingData?.document_type || "DRAWING",
       )
@@ -2672,20 +2736,22 @@ export class ItemsService {
       throw new Error(`Failed to upload drawing: ${error.message}`);
     }
 
-    const { data: revisionPackage, error: packageError } = await this.supabase
-      .from("engineering_drawing_revision_packages")
-      .upsert({
-        tenant_id: tenantId,
-        owner_item_id: itemId,
-        drawing_number: drawingNumber,
-        revision_code: revisionCode,
-        title: drawingData?.packageTitle || drawingData?.package_title || resolvedFileName,
-        lifecycle_status: "DRAFT",
-        created_by: userId || null,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "tenant_id,owner_item_id,drawing_number,revision_code" })
-      .select("id")
-      .single();
+    const { data: revisionPackage, error: packageError } = uploadMode === "ADD_TO_CURRENT"
+      ? { data: { id: currentRevision.revision_package_id }, error: null }
+      : await this.supabase
+          .from("engineering_drawing_revision_packages")
+          .upsert({
+            tenant_id: tenantId,
+            owner_item_id: itemId,
+            drawing_number: drawingNumber,
+            revision_code: resolvedRevisionCode,
+            title: drawingData?.packageTitle || drawingData?.package_title || resolvedFileName,
+            lifecycle_status: "DRAFT",
+            created_by: userId || null,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "tenant_id,owner_item_id,drawing_number,revision_code" })
+          .select("id")
+          .single();
     if (packageError || !revisionPackage) {
       throw new Error(`Failed to correlate drawing revision: ${packageError?.message || "Unknown error"}`);
     }
@@ -2696,12 +2762,14 @@ export class ItemsService {
       .eq("id", data.id);
     if (packageLinkError) throw new Error(`Failed to link drawing revision package: ${packageLinkError.message}`);
     data.revision_package_id = revisionPackage.id;
-    const { error: packageDraftError } = await this.supabase
-      .from("item_drawings")
-      .update({ lifecycle_status: "DRAFT", is_active: false })
-      .eq("tenant_id", tenantId)
-      .eq("revision_package_id", revisionPackage.id);
-    if (packageDraftError) throw new Error(`Failed to reopen drawing package approval: ${packageDraftError.message}`);
+    if (uploadMode !== "ADD_TO_CURRENT") {
+      const { error: packageDraftError } = await this.supabase
+        .from("item_drawings")
+        .update({ lifecycle_status: "DRAFT", is_active: false })
+        .eq("tenant_id", tenantId)
+        .eq("revision_package_id", revisionPackage.id);
+      if (packageDraftError) throw new Error(`Failed to reopen drawing package approval: ${packageDraftError.message}`);
+    }
     data.lifecycle_status = "DRAFT";
     data.is_active = false;
 

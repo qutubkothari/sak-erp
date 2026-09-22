@@ -63,6 +63,7 @@ export default function DrawingManager({
   const [drawingNumber, setDrawingNumber] = useState(itemCode);
   const [revisionCode, setRevisionCode] = useState("R1");
   const [fileRole, setFileRole] = useState("CONTROLLED_2D");
+  const [uploadMode, setUploadMode] = useState<"ADD_TO_CURRENT" | "NEW_REVISION">("NEW_REVISION");
   const [sharedItemCodes, setSharedItemCodes] = useState("");
   const [linkingSharedItems, setLinkingSharedItems] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -73,6 +74,9 @@ export default function DrawingManager({
   const [externalUrl, setExternalUrl] = useState("");
   const [externalUrlName, setExternalUrlName] = useState("");
   const [linkingUrl, setLinkingUrl] = useState(false);
+  const currentRevision = drawings
+    .filter((drawing) => (drawing.drawing_number || itemCode).toUpperCase() === drawingNumber.toUpperCase())
+    .sort((a, b) => (Number(b.version) || 0) - (Number(a.version) || 0))[0];
   const canDeleteDrawings = getUserRoleNames(readStoredUser()).some((name) => {
     const normalized = String(name)
       .trim()
@@ -564,6 +568,7 @@ export default function DrawingManager({
             drawingNumber,
             revisionCode,
             fileRole,
+            uploadMode,
           }),
         },
       );
@@ -897,27 +902,45 @@ export default function DrawingManager({
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
                 <div className="text-sm font-semibold text-amber-950">Drawing revision correlation</div>
                 <select
-                  value=""
+                  value={uploadMode === "ADD_TO_CURRENT" ? currentRevision?.id || "" : ""}
                   onChange={(event) => {
                     const existing = drawings.find((drawing) => drawing.id === event.target.value);
                     if (existing) {
                       setDrawingNumber(existing.drawing_number || itemCode);
                       setRevisionCode(existing.revision_code || `R${existing.version || 1}`);
+                      setUploadMode("ADD_TO_CURRENT");
+                    } else {
+                      setUploadMode("NEW_REVISION");
                     }
                   }}
                   className="w-full rounded border border-amber-200 bg-white px-3 py-2 text-sm"
                 >
-                  <option value="">New revision, or correlate with an existing revision...</option>
+                  <option value="">Create new revision</option>
                   {drawings.map((drawing) => (
                     <option key={drawing.id} value={drawing.id}>
                       {drawing.drawing_number || itemCode} — {drawing.revision_code || `R${drawing.version}`}
                     </option>
                   ))}
                 </select>
+                {currentRevision && (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="flex items-center gap-2 rounded border border-amber-200 bg-white px-3 py-2 text-sm">
+                      <input type="radio" checked={uploadMode === "ADD_TO_CURRENT"} onChange={() => {
+                        setUploadMode("ADD_TO_CURRENT");
+                        setRevisionCode(currentRevision.revision_code || `R${currentRevision.version || 1}`);
+                      }} />
+                      Add file to current revision {currentRevision.revision_code || `R${currentRevision.version}`}
+                    </label>
+                    <label className="flex items-center gap-2 rounded border border-amber-200 bg-white px-3 py-2 text-sm">
+                      <input type="radio" checked={uploadMode === "NEW_REVISION"} onChange={() => setUploadMode("NEW_REVISION")} />
+                      Create new revision
+                    </label>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <input value={drawingNumber} onChange={(event) => setDrawingNumber(event.target.value.toUpperCase())}
                     placeholder="Drawing number" className="rounded border border-amber-200 bg-white px-3 py-2 text-sm" />
-                  <input value={revisionCode} onChange={(event) => setRevisionCode(event.target.value.toUpperCase())}
+                  <input value={revisionCode} readOnly={uploadMode === "ADD_TO_CURRENT"} onChange={(event) => setRevisionCode(event.target.value.toUpperCase())}
                     placeholder="Revision" className="rounded border border-amber-200 bg-white px-3 py-2 text-sm" />
                   <select value={fileRole} onChange={(event) => setFileRole(event.target.value)}
                     className="rounded border border-amber-200 bg-white px-3 py-2 text-sm">

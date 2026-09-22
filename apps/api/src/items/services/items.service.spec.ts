@@ -1,3 +1,30 @@
+import { BadRequestException } from "@nestjs/common";
+import { resolveDrawingRevisionUpload } from "./items.service";
+
+describe("resolveDrawingRevisionUpload", () => {
+  const currentRevision = { version: 1, revision_code: "R1" };
+  const native = { version: 1, file_role: "NATIVE_CAD" };
+
+  it("keeps a 2D companion in R1", () => {
+    expect(resolveDrawingRevisionUpload({ mode: "ADD_TO_CURRENT", currentRevision, currentFiles: [native], fileRole: "CONTROLLED_2D", nextVersion: 2, revisionCode: "R2" })).toEqual({ version: 1, revisionCode: "R1", duplicate: false });
+  });
+
+  it("keeps a native companion in R1", () => {
+    expect(resolveDrawingRevisionUpload({ mode: "ADD_TO_CURRENT", currentRevision, currentFiles: [{ version: 1, file_role: "CONTROLLED_2D" }], fileRole: "NATIVE_CAD", nextVersion: 2, revisionCode: "R2" }).revisionCode).toBe("R1");
+  });
+
+  it("flags a duplicate role without replacing the file", () => {
+    expect(resolveDrawingRevisionUpload({ mode: "ADD_TO_CURRENT", currentRevision, currentFiles: [native], fileRole: "NATIVE_CAD", nextVersion: 2, revisionCode: "R2" }).duplicate).toBe(true);
+  });
+
+  it("creates R2 only for explicit new revision intent", () => {
+    expect(resolveDrawingRevisionUpload({ mode: "NEW_REVISION", currentRevision, currentFiles: [native], fileRole: "CONTROLLED_2D", nextVersion: 2, revisionCode: "R2" })).toEqual({ version: 2, revisionCode: "R2", duplicate: false });
+  });
+
+  it("requires a current revision for companion uploads", () => {
+    expect(() => resolveDrawingRevisionUpload({ mode: "ADD_TO_CURRENT", currentFiles: [], fileRole: "CONTROLLED_2D", nextVersion: 1, revisionCode: "R1" })).toThrow(BadRequestException);
+  });
+});
 import { BadRequestException } from '@nestjs/common';
 import { ItemsService } from './items.service';
 
