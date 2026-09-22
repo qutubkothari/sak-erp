@@ -914,7 +914,7 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_order_approval_history_order
     let request = this.supabase
       .from("subcontract_routes")
       .select(
-        "id, tenant_id, route_number, name, input_item_id, output_item_id, default_input_qty, default_output_qty, uom, status, notes, created_at, input_item:items!subcontract_routes_input_item_id_fkey(id, code, name, uom), output_item:items!subcontract_routes_output_item_id_fkey(id, code, name, uom), steps:subcontract_route_steps(id, route_id, sequence_no, node_key, parent_node_key, branch_no, operation_name, process_type, vendor_id, input_item_id, output_item_id, default_input_qty, default_output_qty, standard_output_per_input, output_uom, output_size)",
+        "id, tenant_id, route_number, name, input_item_id, output_item_id, default_input_qty, default_output_qty, uom, status, notes, created_at, input_item:items!subcontract_routes_input_item_id_fkey(id, code, name, uom), output_item:items!subcontract_routes_output_item_id_fkey(id, code, name, uom), steps:subcontract_route_steps(id, route_id, sequence_no, node_key, parent_node_key, branch_no, operation_name, process_type, vendor_id, input_item_id, output_item_id, default_input_qty, default_output_qty, standard_output_per_input, cutting_kerf, edge_allowance, allow_90_rotation, output_uom, output_size)",
       )
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
