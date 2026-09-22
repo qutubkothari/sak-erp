@@ -35,6 +35,20 @@ function roundQty(value: number) {
   return Math.round(value * 10_000) / 10_000;
 }
 
+export function calculateStandardOutput(
+  inputQuantity: number,
+  standardOutputPerInput: number,
+) {
+  if (
+    !Number.isFinite(inputQuantity) ||
+    !Number.isFinite(standardOutputPerInput) ||
+    inputQuantity <= 0 ||
+    standardOutputPerInput <= 0
+  )
+    return 0;
+  return roundQty(inputQuantity * standardOutputPerInput);
+}
+
 function text(value: any, fallback = "") {
   return String(value ?? fallback).trim();
 }
@@ -331,6 +345,7 @@ ALTER TABLE public.subcontract_order_steps ADD COLUMN IF NOT EXISTS other_charge
 ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS freight_amount NUMERIC(18,2) DEFAULT 0;
 ALTER TABLE public.subcontract_movements ADD COLUMN IF NOT EXISTS other_charges_amount NUMERIC(18,2) DEFAULT 0;
 ALTER TABLE public.subcontract_orders ADD COLUMN IF NOT EXISTS input_uom VARCHAR(30);
+ALTER TABLE public.subcontract_orders ADD COLUMN IF NOT EXISTS standard_calculated_output_qty NUMERIC(18, 4);
 ALTER TABLE public.subcontract_orders ADD COLUMN IF NOT EXISTS secondary_input_qty NUMERIC(18,4);
 ALTER TABLE public.subcontract_orders ADD COLUMN IF NOT EXISTS secondary_input_uom VARCHAR(30);
 ALTER TABLE public.subcontract_orders ADD COLUMN IF NOT EXISTS remaining_secondary_input_qty NUMERIC(18,4);
@@ -339,6 +354,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_subcontract_orders_tenant_client_request
   ON public.subcontract_orders(tenant_id, client_request_id)
   WHERE client_request_id IS NOT NULL;
 ALTER TABLE public.subcontract_route_steps ADD COLUMN IF NOT EXISTS default_output_qty NUMERIC(18, 4) DEFAULT 0;
+ALTER TABLE public.subcontract_route_steps ADD COLUMN IF NOT EXISTS standard_output_per_input NUMERIC(18, 6);
 ALTER TABLE public.subcontract_order_steps ADD COLUMN IF NOT EXISTS node_key VARCHAR(80);
 ALTER TABLE public.subcontract_order_steps ADD COLUMN IF NOT EXISTS parent_node_key VARCHAR(80);
 ALTER TABLE public.subcontract_order_steps ADD COLUMN IF NOT EXISTS parent_order_step_id UUID;
@@ -515,6 +531,18 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_order_approval_history_order
       default_input_qty: num(raw.default_input_qty),
       default_output_qty: num(raw.default_output_qty),
     }));
+    for (const node of nodes) {
+      if (
+        node.standard_output_per_input != null &&
+        node.standard_output_per_input !== "" &&
+        (!Number.isFinite(num(node.standard_output_per_input)) ||
+          num(node.standard_output_per_input) <= 0)
+      ) {
+        throw new BadRequestException(
+          `Standard output per input must be greater than zero for ${node.operation_name || node.node_key}`,
+        );
+      }
+    }
     const byKey = new Map<string, any>();
     for (const node of nodes) {
       if (byKey.has(node.node_key))
@@ -834,7 +862,7 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_order_approval_history_order
     let request = this.supabase
       .from("subcontract_routes")
       .select(
-        "id, tenant_id, route_number, name, input_item_id, output_item_id, default_input_qty, default_output_qty, uom, status, notes, created_at, input_item:items!subcontract_routes_input_item_id_fkey(id, code, name, uom), output_item:items!subcontract_routes_output_item_id_fkey(id, code, name, uom), steps:subcontract_route_steps(id, route_id, sequence_no, node_key, parent_node_key, branch_no, operation_name, process_type, vendor_id, input_item_id, output_item_id, default_input_qty, default_output_qty, output_uom, output_size)",
+        "id, tenant_id, route_number, name, input_item_id, output_item_id, default_input_qty, default_output_qty, uom, status, notes, created_at, input_item:items!subcontract_routes_input_item_id_fkey(id, code, name, uom), output_item:items!subcontract_routes_output_item_id_fkey(id, code, name, uom), steps:subcontract_route_steps(id, route_id, sequence_no, node_key, parent_node_key, branch_no, operation_name, process_type, vendor_id, input_item_id, output_item_id, default_input_qty, default_output_qty, standard_output_per_input, output_uom, output_size)",
       )
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
@@ -961,6 +989,10 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_order_approval_history_order
       output_size: num(step.output_size) || null,
       default_input_qty: num(step.default_input_qty),
       default_output_qty: num(step.default_output_qty),
+      standard_output_per_input:
+        step.standard_output_per_input == null || step.standard_output_per_input === ""
+          ? null
+          : num(step.standard_output_per_input),
       input_weight_per_piece: num(step.input_weight_per_piece) || null,
       output_weight_per_piece: num(step.output_weight_per_piece) || null,
       planned_input_weight: num(step.planned_input_weight) || null,
@@ -1087,6 +1119,10 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_order_approval_history_order
       output_size: num(step.output_size) || null,
       default_input_qty: num(step.default_input_qty),
       default_output_qty: num(step.default_output_qty),
+      standard_output_per_input:
+        step.standard_output_per_input == null || step.standard_output_per_input === ""
+          ? null
+          : num(step.standard_output_per_input),
       input_weight_per_piece: num(step.input_weight_per_piece) || null,
       output_weight_per_piece: num(step.output_weight_per_piece) || null,
       planned_input_weight: num(step.planned_input_weight) || null,
@@ -1356,15 +1392,56 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_order_approval_history_order
       body.planned_input_qty,
       num(route.default_input_qty),
     );
-    const plannedLength = requiresLength ? num(body.secondary_input_qty) : 0;
-    const plannedOutput = outputLines.reduce(
-      (sum: number, line: any) => sum + num(line.quantity),
-      0,
-    );
     if (plannedInput <= 0)
       throw new BadRequestException(
         "Enter the input-material quantity for the work order",
       );
+    if (
+      rootSteps.some(
+        (step: any) =>
+          step.standard_output_per_input != null &&
+          num(step.standard_output_per_input) <= 0,
+      )
+    )
+      throw new BadRequestException(
+        "Standard output per input must be greater than zero",
+      );
+    if (rootSteps.some((step: any) => !step.input_item_id || !step.output_item_id))
+      throw new BadRequestException(
+        "Input and output items are required for every route step",
+      );
+    const standardCalculatedOutput = rootSteps.reduce(
+      (sum: number, step: any) =>
+        sum +
+        calculateStandardOutput(
+          plannedInput,
+          num(step.standard_output_per_input),
+        ),
+      0,
+    );
+    for (const step of rootSteps) {
+      const line = outputByNode.get(text(step.node_key));
+      if (
+        standardCalculatedOutput > 0 &&
+        (!line || num(line.quantity) <= 0) &&
+        num(step.standard_output_per_input) > 0
+      ) {
+        step.default_output_qty = calculateStandardOutput(
+          plannedInput,
+          num(step.standard_output_per_input),
+        );
+      }
+    }
+    const plannedLength = requiresLength ? num(body.secondary_input_qty) : 0;
+    const plannedOutput = outputLines.length
+      ? outputLines.reduce(
+          (sum: number, line: any) => sum + num(line.quantity),
+          0,
+        )
+      : rootSteps.reduce(
+          (sum: number, step: any) => sum + num(step.default_output_qty),
+          0,
+        );
     if (!inputUom)
       throw new BadRequestException(
         "The input material must have a UOM in the item master",
@@ -1394,6 +1471,8 @@ CREATE INDEX IF NOT EXISTS idx_subcontract_order_approval_history_order
         output_item_id: route.output_item_id,
         planned_input_qty: plannedInput,
         planned_output_qty: plannedOutput,
+        standard_calculated_output_qty:
+          standardCalculatedOutput > 0 ? standardCalculatedOutput : null,
         input_uom: inputUom,
         secondary_input_qty: plannedLength,
         secondary_input_uom: requiresLength ? "MTR" : null,

@@ -1,4 +1,25 @@
-import { requiresSecondaryLength } from './subcontracting.service';
+import {
+  calculateStandardOutput,
+  requiresSecondaryLength,
+} from './subcontracting.service';
+
+describe('calculateStandardOutput', () => {
+  it.each([
+    [1, 88, 88],
+    [10, 88, 880],
+    [2.5, 3.2, 8],
+  ])('calculates %s input at %s output per input as %s', (input, factor, expected) => {
+    expect(calculateStandardOutput(input, factor)).toBe(expected);
+  });
+
+  it.each([0, -1])('rejects non-positive conversion %s', (factor) => {
+    expect(calculateStandardOutput(10, factor)).toBe(0);
+  });
+
+  it('keeps null-factor legacy planning at zero for manual output entry', () => {
+    expect(calculateStandardOutput(10, Number.NaN)).toBe(0);
+  });
+});
 
 describe('requiresSecondaryLength', () => {
   it('does not request metres for a piece-to-piece outside process', () => {

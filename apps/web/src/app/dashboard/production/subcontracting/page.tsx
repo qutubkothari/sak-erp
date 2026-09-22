@@ -101,6 +101,7 @@ type RouteStep = {
   input_uom?: string;
   input_size?: number | string;
   output_uom?: string;
+  standard_output_per_input?: number | string;
   output_size?: number | string;
   default_input_qty?: number | string;
   default_output_qty?: number | string;
@@ -711,6 +712,7 @@ function createEmptyRouteForm() {
         input_uom: "",
         input_size: "",
         output_uom: "",
+        standard_output_per_input: "",
         output_size: "",
         default_input_qty: "",
         default_output_qty: "",
@@ -2582,6 +2584,7 @@ export default function SubcontractingPage() {
         node_key: step.node_key || `NODE-${index + 1}`,
         parent_node_key: step.parent_node_key || "",
         output_uom: stockItemUom(items, step.output_item_id, step.output_uom),
+        standard_output_per_input: step.standard_output_per_input ?? "",
       })),
     });
     setPanel("route");
@@ -2642,6 +2645,7 @@ export default function SubcontractingPage() {
           input_uom: "",
           input_size: "",
           output_uom: "",
+          standard_output_per_input: "",
           output_size: "",
           default_input_qty: "",
           default_output_qty: "",
@@ -4686,6 +4690,26 @@ export default function SubcontractingPage() {
                                 value="Subcontract Processing"
                                 readOnly
                               />
+                              <Field
+                                label={`Standard output per input unit (${stockItemUom(items, step.input_item_id || routeForm.input_item_id, step.input_uom) || "input UOM"})`}
+                              >
+                                <input
+                                  type="number"
+                                  min="0.000001"
+                                  step="any"
+                                  className="w-full border border-[#d8c6aa] px-3 py-2"
+                                  placeholder="Optional approved conversion"
+                                  value={step.standard_output_per_input ?? ""}
+                                  onChange={(e) =>
+                                    updateRouteStep(index, {
+                                      standard_output_per_input: e.target.value,
+                                    })
+                                  }
+                                />
+                                <div className="mt-1 text-[11px] text-[#805f35]">
+                                  Expected output from 1 {stockItemUom(items, step.input_item_id || routeForm.input_item_id, step.input_uom) || "input unit"}.
+                                </div>
+                              </Field>
                               <input
                                 type="hidden"
                                 value={step.vendor_id || ""}
@@ -4895,16 +4919,62 @@ export default function SubcontractingPage() {
                       placeholder={`Input material quantity${selectedOrderInputUom ? ` (${selectedOrderInputUom})` : ""} *`}
                       value={orderForm.planned_input_qty}
                       onChange={(e) =>
-                        setOrderForm({
-                          ...orderForm,
-                          planned_input_qty: e.target.value,
-                        })
+                        (() => {
+                          const plannedInput = Number(e.target.value || 0);
+                          const selectedRoute = routes.find(
+                            (route) => route.id === orderForm.route_id,
+                          );
+                          setOrderForm({
+                            ...orderForm,
+                            planned_input_qty: e.target.value,
+                          });
+                          if (plannedInput > 0 && selectedRoute) {
+                            setOrderLines((lines) =>
+                              lines.map((line) => {
+                                const step = selectedRoute.steps?.find(
+                                  (candidate) => candidate.node_key === line.node_key,
+                                );
+                                const factor = Number(
+                                  step?.standard_output_per_input || 0,
+                                );
+                                return factor > 0
+                                  ? {
+                                      ...line,
+                                      quantity: String(
+                                        Math.round(plannedInput * factor * 1e6) /
+                                          1e6,
+                                      ),
+                                    }
+                                  : line;
+                              }),
+                            );
+                          }
+                        })()
                       }
                     />
                     <div className="border border-[#d8c6aa] bg-[#fbf8f2] px-3 py-2 font-semibold">
                       {selectedOrderInputUom || "UOM"}
                     </div>
                   </div>
+                  {(() => {
+                    const selectedRoute = routes.find(
+                      (route) => route.id === orderForm.route_id,
+                    );
+                    const factor = (selectedRoute?.steps || [])
+                      .filter((step) => !step.parent_node_key)
+                      .reduce(
+                        (sum, step) =>
+                          sum + Number(step.standard_output_per_input || 0),
+                        0,
+                      );
+                    const standardOutput =
+                      Number(orderForm.planned_input_qty || 0) * factor;
+                    return factor > 0 && standardOutput > 0 ? (
+                      <div className="md:col-span-2 border border-[#d8c6aa] bg-[#fbf8f2] px-3 py-2 text-sm">
+                        Standard planned output: {orderForm.planned_input_qty} × {factor} = {standardOutput} {selectedRoute?.steps?.find((step) => !step.parent_node_key)?.output_uom || "output units"}. Output quantities remain editable before approval.
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="grid grid-cols-[1fr_120px] gap-2">
                     <input
                       type="number"
