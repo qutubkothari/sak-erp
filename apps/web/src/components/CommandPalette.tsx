@@ -38,6 +38,27 @@ interface CmdItem {
 
 type StoredRecentItem = Omit<CmdItem, "icon"> & { selectedAt: string };
 
+const DRAWING_SEARCH_TERMS = [
+  "drawing",
+  "drawings",
+  "drawing management",
+  "step",
+  "step file",
+  "cad",
+  "native cad",
+  "controlled 2d",
+  "drawing revision",
+];
+
+export function matchesNavigationQuery(item: CmdItem, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+  const text = `${item.label} ${item.subtitle ?? ""} ${item.group} ${
+    item.id === "drawing-management" ? DRAWING_SEARCH_TERMS.join(" ") : ""
+  }`.toLowerCase();
+  return text.includes(normalizedQuery) || normalizedQuery.split(/\s+/).every((term) => text.includes(term));
+}
+
 type SearchMetrics = {
   version: 1;
   searches: number;
@@ -602,7 +623,10 @@ export function CommandPalette() {
     isPathAllowedForUser(user, item.href.split("?")[0]),
   );
   const quickActions = allowedItems.filter((item) => quickActionIds.has(item.id));
-  const groups = Array.from(new Set(allowedItems.map((i) => i.group)));
+  const visibleNavigationItems = allowedItems.filter((item) =>
+    matchesNavigationQuery(item, query),
+  );
+  const groups = Array.from(new Set(visibleNavigationItems.map((i) => i.group)));
 
   return (
     <div className="fixed inset-0 z-[300] flex items-start justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-4 sm:px-4 sm:pt-20">
@@ -737,7 +761,7 @@ export function CommandPalette() {
             ) : null}
 
             {groups.map((group) => {
-              const items = allowedItems.filter(
+              const items = visibleNavigationItems.filter(
                 (item) =>
                   item.group === group &&
                   (query.trim().length > 0 || !quickActionIds.has(item.id)),
