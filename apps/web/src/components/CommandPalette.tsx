@@ -174,6 +174,14 @@ const staticItems: CmdItem[] = [
     group: "Inventory",
   },
   {
+    id: "drawing-management",
+    label: "Drawing Management",
+    subtitle: "Inventory · Stock Master · Drawings",
+    icon: <FileText className="h-4 w-4" />,
+    href: "/dashboard/inventory/items",
+    group: "Inventory",
+  },
+  {
     id: "low-stock-planning",
     label: "Low Stock Planning",
     icon: <Package className="h-4 w-4" />,
@@ -741,7 +749,7 @@ export function CommandPalette() {
                   {items.map((item) => (
                     <Command.Item
                       key={item.id}
-                      value={`${item.label} ${item.subtitle ?? ""} ${item.group}`}
+                      value={`${item.label} ${item.subtitle ?? ""} ${item.group} ${item.id === "drawing-management" ? "drawing drawings drawing management cad native cad step step file 2d drawing controlled 2d drawing revision revision" : ""}`}
                       onSelect={() => handleSelect(item, "navigation")}
                       className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 cursor-pointer aria-selected:bg-amber-50 aria-selected:text-amber-900 transition-colors"
                     >
