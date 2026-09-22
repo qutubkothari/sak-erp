@@ -6,7 +6,11 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { createClient } from "@supabase/supabase-js";
-import { toTitleCase, toUpperCode } from "../../common/utils/data-quality";
+import {
+  normalizeTechnicalText,
+  toTitleCase,
+  toUpperCode,
+} from "../../common/utils/data-quality";
 import { normalizeInventoryCategory } from "../../inventory/utils/inventory-category";
 import { ProjectsService } from "../../projects/projects.service";
 import { EngineeringDrawingStorageService } from "./engineering-drawing-storage.service";
@@ -1104,7 +1108,7 @@ export class ItemsService {
         name: itemData.name,
         oem_part_no: oemPartNo,
         oem_name: oemName,
-        description: toTitleCase(itemData.description),
+        description: normalizeTechnicalText(itemData.description),
         category,
         product_category:
           toTitleCase(
@@ -1578,7 +1582,7 @@ export class ItemsService {
           name: itemData.name,
           oem_part_no: itemData.oem_part_no,
           oem_name: itemData.oem_name,
-          description: toTitleCase(itemData.description),
+          description: normalizeTechnicalText(itemData.description),
           category: itemData.category,
           uom: toUpperCode(itemData.uom),
           standard_cost: itemData.standard_cost,
@@ -1788,7 +1792,7 @@ export class ItemsService {
       );
     }
     if (itemData.description !== undefined)
-      updateData.description = toTitleCase(itemData.description);
+      updateData.description = normalizeTechnicalText(itemData.description);
     if (itemData.category !== undefined)
       updateData.category = normalizeInventoryCategory(itemData.category);
     if (
