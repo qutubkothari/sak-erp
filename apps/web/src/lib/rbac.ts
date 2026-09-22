@@ -88,8 +88,11 @@ export function getUserRoleNames(user: StoredUser | null): string[] {
     });
   }
 
-  const single = (user as { role?: { name?: unknown } }).role;
-  if (single && typeof single.name === "string") names.push(single.name);
+  const single = (user as { role?: unknown }).role;
+  if (typeof single === "string") names.push(single);
+  else if (isRecord(single) && typeof single.name === "string") {
+    names.push(single.name);
+  }
   return names;
 }
 
