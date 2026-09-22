@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { apiClient } from "../../lib/api-client";
 import { useAuthStore } from "@/stores/auth.store";
-import { isPathAllowedForUser } from "@/lib/rbac";
+import { isAdminLike, isPathAllowedForUser } from "@/lib/rbac";
 
 interface CmdItem {
   id: string;
@@ -593,7 +593,10 @@ export function CommandPalette() {
 
   // Group items
   const allowedItems = staticItems.filter((item) =>
-    isPathAllowedForUser(user, item.href.split("?")[0]),
+    item.id === "drawing-management"
+      ? isAdminLike(user) ||
+        isPathAllowedForUser(user, "/dashboard/inventory/items")
+      : isPathAllowedForUser(user, item.href.split("?")[0]),
   );
   const allowedRecentItems = recentItems.filter((item) =>
     isPathAllowedForUser(user, item.href.split("?")[0]),

@@ -84,7 +84,9 @@ export function getUserRoleNames(user: StoredUser | null): string[] {
         typeof entry.role.name === "string"
       ) {
         names.push(entry.role.name);
+        return;
       }
+      if (isRecord(entry) && typeof entry.name === "string") names.push(entry.name);
     });
   }
 
