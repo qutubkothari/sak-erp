@@ -910,6 +910,47 @@ export class PurchaseRequisitionsService {
 
     if (error) throw new NotFoundException('Purchase Requisition not found');
 
+    // Resolve current item-master identification fields for approval visibility.
+    try {
+      const pr: any = data as any;
+      const items: any[] = Array.isArray(pr?.purchase_requisition_items)
+        ? pr.purchase_requisition_items
+        : [];
+      const ids = Array.from(new Set(items.map((item) => String(item?.item_id || '').trim()).filter(Boolean)));
+      const codes = Array.from(new Set(items.map((item) => String(item?.item_code || '').trim()).filter(Boolean)));
+      const byId = new Map<string, any>();
+      const byCode = new Map<string, any>();
+      const attach = (row: any) => {
+        if (row?.id) byId.set(String(row.id), row);
+        if (row?.code) byCode.set(String(row.code), row);
+      };
+
+      if (ids.length > 0) {
+        const { data: rows } = await this.supabase
+          .from('items')
+          .select('id, code, oem_part_no, oem_name')
+          .eq('tenant_id', tenantId)
+          .in('id', ids);
+        (Array.isArray(rows) ? rows : []).forEach(attach);
+      }
+      if (codes.length > 0) {
+        const { data: rows } = await this.supabase
+          .from('items')
+          .select('id, code, oem_part_no, oem_name')
+          .eq('tenant_id', tenantId)
+          .in('code', codes);
+        (Array.isArray(rows) ? rows : []).forEach(attach);
+      }
+
+      items.forEach((item) => {
+        const master = byId.get(String(item?.item_id || '').trim()) || byCode.get(String(item?.item_code || '').trim());
+        item.oem_part_no = master?.oem_part_no || null;
+        item.oem_name = master?.oem_name || null;
+      });
+    } catch (e) {
+      console.warn('PR item OEM response backfill failed:', (e as any)?.message || e);
+    }
+
     // Backfill missing UOM in response from master items (best-effort)
     try {
       const pr: any = data as any;

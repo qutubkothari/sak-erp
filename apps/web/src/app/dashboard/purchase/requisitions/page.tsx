@@ -132,6 +132,8 @@ interface PRDetailItem {
   item_id?: string;
   item_code: string;
   item_name: string;
+  oem_part_no?: string | null;
+  oem_name?: string | null;
   uom?: string;
   serial_no?: number;
   vendor_id?: string | null;
@@ -2271,6 +2273,59 @@ function PRContent() {
       : []),
   ];
   const canSubmitRequisition = Boolean(formData.department && formData.requiredDate && items.length > 0);
+  const prDetailColumns: Array<ListTableColumn<PRDetailItem>> = [
+    { id: 'serial_no', label: 'S.No', accessor: (item) => item.serial_no || '', cell: (item) => item.serial_no || '-', align: 'center', minWidth: 70 },
+    { id: 'item_code', label: 'SAS Part Number', accessor: (item) => item.item_code, cell: (item) => item.item_code || '-', minWidth: 170 },
+    { id: 'oem_part_no', label: 'OEM Part No.', accessor: (item) => item.oem_part_no, cell: (item) => item.oem_part_no || '-', defaultVisible: true, minWidth: 170 },
+    { id: 'oem_name', label: 'OEM Name / Manufacturer', accessor: (item) => item.oem_name, cell: (item) => item.oem_name || '-', defaultVisible: false, minWidth: 210 },
+    { id: 'item_name', label: 'Item Name', accessor: (item) => item.item_name, cell: (item) => item.item_name || '-', minWidth: 220 },
+    ...(rfqPanelOpen ? [{
+      id: 'vendors',
+      label: 'Vendors (Select Multiple)',
+      hideable: false,
+      minWidth: 280,
+      cell: (item: PRDetailItem) => {
+        const preferredVendorId = preferredVendorByPrItemId[item.id] || String(item.vendor_id || '');
+        return (
+          <div className="min-w-[260px] space-y-2">
+            <SearchableSelect
+              value={rfqVendorDrafts[item.id] || ''}
+              onChange={(value) => addItemVendor(item.id, String(value || ''))}
+              options={rfqVendors
+                .filter((vendor) => !(rfqItemVendors[item.id] || []).includes(vendor.id))
+                .map((vendor) => ({
+                  value: vendor.id,
+                  label: vendor.name,
+                  subtitle: preferredVendorId === vendor.id ? `${vendor.email || 'No email'} - Preferred vendor` : (vendor.email || vendor.code || ''),
+                }))}
+              placeholder="Search vendor..."
+              disabled={rfqVendors.filter((vendor) => !(rfqItemVendors[item.id] || []).includes(vendor.id)).length === 0}
+            />
+            <div className="flex flex-wrap gap-2">
+              {(rfqItemVendors[item.id] || []).map((vendorId) => {
+                const vendor = rfqVendors.find((entry) => entry.id === vendorId);
+                if (!vendor) return null;
+                return <span key={vendor.id} className="inline-flex items-center gap-1 rounded-full border border-[#E8DCC4] bg-[#FAF9F6] px-2 py-1 text-xs font-medium text-[#5E4635]">
+                  <span>{vendor.name}</span>
+                  {preferredVendorId === vendor.id && <span>(Preferred)</span>}
+                  <button type="button" onClick={() => removeItemVendor(item.id, vendor.id)} className="text-[#7A6555] hover:text-[#4A3426]" aria-label={`Remove ${vendor.name}`}>x</button>
+                </span>;
+              })}
+            </div>
+          </div>
+        );
+      },
+    } as ListTableColumn<PRDetailItem>] : []),
+    { id: 'requested_qty', label: 'Requested Qty', accessor: (item) => item.requested_qty, cell: (item) => item.requested_qty, align: 'right', minWidth: 120 },
+    { id: 'uom', label: 'UOM', accessor: (item) => resolveUomForPRDetailItem(item), cell: (item) => resolveUomForPRDetailItem(item), align: 'center', minWidth: 90 },
+    { id: 'total_ordered_qty', label: 'Ordered', accessor: (item) => item.total_ordered_qty || 0, cell: (item) => item.total_ordered_qty || 0, align: 'right', minWidth: 100 },
+    { id: 'remaining_qty', label: 'Remaining', accessor: (item) => item.remaining_qty ?? item.requested_qty, cell: (item) => item.remaining_qty ?? item.requested_qty, align: 'right', minWidth: 110 },
+    { id: 'status', label: 'Status', accessor: (item) => item.po_conversion_status || 'PENDING', cell: (item) => <span className="inline-block rounded-full bg-[#F5EFE3] px-2 py-1 text-xs font-semibold text-[#7A6555]">{item.po_conversion_status === 'COMPLETED' ? 'DONE' : item.po_conversion_status === 'PARTIAL' ? 'PARTIAL' : 'PENDING'}</span>, align: 'center', minWidth: 110 },
+    { id: 'estimated_rate', label: 'Estimated Rate', accessor: (item) => item.estimated_rate || 0, cell: (item) => `₹${(item.estimated_rate || 0).toFixed(2)}`, align: 'right', minWidth: 130 },
+    { id: 'total_amount', label: 'Total', accessor: (item) => (item.requested_qty || 0) * (item.estimated_rate || 0), cell: (item) => `₹${((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}`, align: 'right', minWidth: 130 },
+    { id: 'required_date', label: 'Delivery Date', accessor: (item) => item.required_date, cell: (item) => item.required_date ? formatDateInputDisplay(String(item.required_date).slice(0, 10)) : '-', minWidth: 140 },
+    { id: 'remarks', label: 'Remarks', accessor: (item) => item.remarks, cell: (item) => item.remarks || '-', defaultVisible: false, minWidth: 220 },
+  ];
 
   return (
     <div className="w-full">
@@ -3333,7 +3388,25 @@ function PRContent() {
                   {/* Items Table */}
                   <div className="mb-6">
                     <h3 className="text-lg font-bold mb-3">Items</h3>
-                    <div className="border rounded-lg overflow-x-auto">
+                    <ListTable
+                      storageKey="purchase-requisition-detail-items"
+                      rows={selectedPR.purchase_requisition_items || []}
+                      columns={prDetailColumns}
+                      getRowId={(item) => item.id}
+                      defaultSort={{ id: 'serial_no' }}
+                      defaultPageSize={25}
+                      pageSizeOptions={[25, 50, 100]}
+                      hideSearch
+                      fitToContainer
+                      ariaLabel="Purchase requisition items"
+                      toolbarRight={(
+                        <span className="text-sm font-semibold text-[#5E4635]">
+                          Total: ₹{(selectedPR.purchase_requisition_items || []).reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0).toFixed(2)}
+                        </span>
+                      )}
+                      emptyState={<span>No items found in this requisition</span>}
+                    />
+                    <div className="hidden">
                       <table className="w-full">
                         <thead className="bg-[#F5EFE3]">
                           <tr>
