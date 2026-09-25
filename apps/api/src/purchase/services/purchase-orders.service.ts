@@ -1001,7 +1001,8 @@ export class PurchaseOrdersService {
     );
     const receivedByPoItem = new Map<string, number>();
     const receivedByPoId = new Map<string, number>();
-    if (normalizedPoIds.length === 0) return { receivedByPoItem, receivedByPoId };
+    const receiptFactsByPoItem = new Map<string, { received: number; accepted: number; rejected: number; qcPending: number }>();
+    if (normalizedPoIds.length === 0) return { receivedByPoItem, receivedByPoId, receiptFactsByPoItem };
 
     const { data: grns, error: grnError } = await this.supabase
       .from('grns')
@@ -1011,7 +1012,7 @@ export class PurchaseOrdersService {
 
     if (grnError) {
       console.error('[PO] Failed to batch-fetch GRNs for receipt summaries:', grnError);
-      return { receivedByPoItem, receivedByPoId };
+      return { receivedByPoItem, receivedByPoId, receiptFactsByPoItem };
     }
 
     const poIdByGrnId = new Map<string, string>();
@@ -1022,7 +1023,7 @@ export class PurchaseOrdersService {
       if (grnId && poId) poIdByGrnId.set(grnId, poId);
     }
     const grnIds = Array.from(poIdByGrnId.keys());
-    if (grnIds.length === 0) return { receivedByPoItem, receivedByPoId };
+    if (grnIds.length === 0) return { receivedByPoItem, receivedByPoId, receiptFactsByPoItem };
 
     const { data: grnItems, error: grnItemsError } = await this.supabase
       .from('grn_items')
@@ -1031,7 +1032,7 @@ export class PurchaseOrdersService {
 
     if (grnItemsError) {
       console.error('[PO] Failed to batch-fetch GRN items for receipt summaries:', grnItemsError);
-      return { receivedByPoItem, receivedByPoId };
+      return { receivedByPoItem, receivedByPoId, receiptFactsByPoItem };
     }
 
     for (const item of grnItems || []) {
@@ -1044,10 +1045,21 @@ export class PurchaseOrdersService {
       const poItemId = String(item.po_item_id || '').trim();
       if (poItemId) {
         receivedByPoItem.set(poItemId, (receivedByPoItem.get(poItemId) || 0) + quantity);
+        const received = this.toNumber(item.received_qty);
+        const accepted = this.toNumber(item.accepted_qty);
+        const rejected = this.toNumber(item.rejected_qty);
+        const qcStatus = String(item.qc_status || '').trim().toUpperCase();
+        const qcRecorded = ['ACCEPTED', 'PARTIAL', 'REJECTED'].includes(qcStatus) || accepted > 0 || rejected > 0;
+        const facts = receiptFactsByPoItem.get(poItemId) || { received: 0, accepted: 0, rejected: 0, qcPending: 0 };
+        facts.received += received;
+        facts.accepted += accepted;
+        facts.rejected += rejected;
+        if (!qcRecorded && received > 0) facts.qcPending += received;
+        receiptFactsByPoItem.set(poItemId, facts);
       }
     }
 
-    return { receivedByPoItem, receivedByPoId };
+    return { receivedByPoItem, receivedByPoId, receiptFactsByPoItem };
   }
 
   private async computeReceiptSummary(
@@ -1056,6 +1068,7 @@ export class PurchaseOrdersService {
     receiptLedger?: {
       receivedByPoItem: Map<string, number>;
       receivedByPoId: Map<string, number>;
+      receiptFactsByPoItem?: Map<string, { received: number; accepted: number; rejected: number; qcPending: number }>;
     },
   ) {
     const items: any[] = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
@@ -1086,6 +1099,9 @@ export class PurchaseOrdersService {
 
     let orderedTotal = 0;
     let receivedTotal = 0;
+    let acceptedTotal = 0;
+    let rejectedTotal = 0;
+    let qcPendingTotal = 0;
 
     const patchedItems = items.map((it: any) => {
       const ordered = getOrderedQty(it);
@@ -1096,6 +1112,10 @@ export class PurchaseOrdersService {
         ? grnLedgerReceived
         : (grnReceivedByPoItem.has(poItemId) ? grnLedgerReceived : storedPoReceived);
       const remaining = Math.max(0, ordered - received);
+      const facts = receiptLedger?.receiptFactsByPoItem?.get(poItemId);
+      acceptedTotal += facts?.accepted || 0;
+      rejectedTotal += facts?.rejected || 0;
+      qcPendingTotal += facts?.qcPending || 0;
       orderedTotal += ordered;
       receivedTotal += Math.min(received, ordered);
       return {
@@ -1121,10 +1141,21 @@ export class PurchaseOrdersService {
       }
     }
 
-    const allFullyReceived = patchedItems.every((it: any) => getOrderedQty(it) <= this.toNumber(it.received_qty) + 1e-9);
+    const hasReceiptFacts = Boolean(receiptLedger?.receiptFactsByPoItem);
+    const allFullyReceived = hasReceiptFacts
+      ? acceptedTotal >= orderedTotal - 1e-9
+      : patchedItems.every((it: any) => getOrderedQty(it) <= this.toNumber(it.received_qty) + 1e-9);
     const anyReceived = patchedItems.some((it: any) => this.toNumber(it.received_qty) > 0);
 
-    const receiptStatus = allFullyReceived ? 'FULLY_RECEIVED' : anyReceived ? 'PARTIALLY_RECEIVED' : 'OPEN';
+    const receiptStatus = allFullyReceived
+      ? 'FULLY_RECEIVED'
+      : hasReceiptFacts && rejectedTotal > 0 && acceptedTotal + rejectedTotal >= orderedTotal - 1e-9
+        ? 'REJECTED_PENDING'
+        : hasReceiptFacts && qcPendingTotal > 0
+          ? 'QC_PENDING'
+          : anyReceived
+            ? 'PARTIALLY_RECEIVED'
+            : 'OPEN';
     const receivedPercent = orderedTotal > 0 ? Math.round((effectiveReceivedTotal / orderedTotal) * 1000) / 10 : 0;
 
     if (process.env.DEBUG_RECEIPT_SUMMARY === 'true') {
@@ -1136,6 +1167,8 @@ export class PurchaseOrdersService {
       receipt_progress: {
         ordered_qty: orderedTotal,
         received_qty: effectiveReceivedTotal,
+        accepted_qty: acceptedTotal,
+        rejected_qty: rejectedTotal,
         remaining_qty: Math.max(0, orderedTotal - effectiveReceivedTotal),
         received_percent: receivedPercent,
       },
@@ -1669,7 +1702,7 @@ export class PurchaseOrdersService {
       `)
       .eq('tenant_id', tenantId);
 
-    if (filters?.status) {
+    if (filters?.status && String(filters.status).toUpperCase() !== 'OPEN_PO') {
       query = query.eq('status', filters.status);
     }
 
@@ -1785,6 +1818,7 @@ export class PurchaseOrdersService {
     }
 
     const result = [];
+    const openPoStatuses = new Set(['APPROVED', 'SENT', 'ACKNOWLEDGED', 'PARTIAL', 'COMPLETED', 'CLOSED']);
     for (const po of rows) {
       const poStatus = String(po?.status || '').trim().toUpperCase();
 
@@ -1800,6 +1834,10 @@ export class PurchaseOrdersService {
       const approvedByName = String(termsMetadata.approvedByName || '').trim() || approvedNameById.get(approvedById) || '';
       const receiptAwareStatus = this.getReceiptAwarePoStatus(hydratedPo, receipt);
       const receiptAwarePoStatus = String(receiptAwareStatus || '').trim().toUpperCase();
+      if (
+        String(filters?.status || '').trim().toUpperCase() === 'OPEN_PO' &&
+        (!openPoStatuses.has(poStatus) || receipt.receipt_status === 'FULLY_RECEIVED' || this.toNumber(receipt.receipt_progress?.remaining_qty) <= 0)
+      ) continue;
       if (filters?.pendingOnly && !['APPROVED', 'PARTIAL'].includes(receiptAwarePoStatus)) continue;
       
       // GRN creation must only list POs that still have receivable balance.
@@ -1822,6 +1860,7 @@ export class PurchaseOrdersService {
         payment_terms: this.resolvePoPaymentTermsDisplay(amountAwarePo, termsMetadata),
         ...receipt,
         status: receiptAwareStatus,
+        open_po: openPoStatuses.has(poStatus) && receipt.receipt_status !== 'FULLY_RECEIVED' && this.toNumber(receipt.receipt_progress?.remaining_qty) > 0,
         vendor: po?.vendor_id ? vendorById.get(po.vendor_id) ?? null : null,
         pr: po?.pr_id ? prById.get(po.pr_id) ?? null : null,
         approved_by_name: approvedByName,

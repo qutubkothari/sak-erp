@@ -213,6 +213,7 @@ interface PurchaseOrder {
   payment_terms_code?: string;
   delivery_terms?: string;
   status: string;
+  open_po?: boolean;
   total_amount: number;
   remarks?: string;
   payment_status?: string;
@@ -3748,7 +3749,7 @@ function PurchaseOrdersContent() {
     { label: 'Total Orders', value: orders.length },
     { label: 'Pending Approval', value: orders.filter((order) => order.status === 'PENDING').length, tone: 'warning' as const },
     { label: 'Approved', value: orders.filter((order) => order.status === 'APPROVED').length, tone: 'success' as const },
-    { label: 'Open Receipt', value: orders.filter((order) => !order.receipt_status || order.receipt_status === 'OPEN').length },
+    { label: 'Open Receipt', value: orders.filter((order) => order.open_po === true).length },
   ];
 
   return (
@@ -3851,6 +3852,7 @@ function PurchaseOrdersContent() {
                   <SearchableSelect
                     options={[
                       { value: 'ALL', label: 'All statuses' },
+                      { value: 'OPEN_PO', label: 'Open PO' },
                       { value: 'DRAFT', label: 'Draft' },
                       { value: 'PENDING', label: 'Pending Approval' },
                       { value: 'APPROVED', label: 'Approved' },

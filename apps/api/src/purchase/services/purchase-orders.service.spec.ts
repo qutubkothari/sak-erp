@@ -186,4 +186,50 @@ describe('PurchaseOrdersService controls', () => {
       table: 'grns', grnId: 'grn-1', grnNumber: 'GRN-001',
     });
   });
+
+  it.each([
+    ['zero receipt', 'OPEN', 0, 0, 0, 0],
+    ['partial accepted', 'PARTIALLY_RECEIVED', 4, 4, 0, 0],
+    ['rejected pending', 'REJECTED_PENDING', 0, 10, 10, 0],
+    ['QC pending', 'QC_PENDING', 0, 0, 0, 10],
+    ['fully accepted', 'FULLY_RECEIVED', 10, 10, 0, 0],
+  ])('derives receipt state for %s', async (_label, expectedStatus, accepted, received, rejected, qcPending) => {
+    const service = makeService();
+    const receipt = await (service as any).computeReceiptSummary('tenant-1', {
+      id: 'po-1',
+      purchase_order_items: [{ id: 'po-item-1', ordered_qty: 10 }],
+    }, {
+      receivedByPoItem: new Map([['po-item-1', accepted || qcPending]]),
+      receivedByPoId: new Map([['po-1', accepted || qcPending]]),
+      receiptFactsByPoItem: new Map([['po-item-1', {
+        received,
+        accepted,
+        rejected,
+        qcPending,
+      }]]),
+    });
+
+    expect(receipt.receipt_status).toBe(expectedStatus);
+  });
+
+  it('keeps a PO with one incomplete line open', async () => {
+    const service = makeService();
+    const receipt = await (service as any).computeReceiptSummary('tenant-1', {
+      id: 'po-1',
+      purchase_order_items: [
+        { id: 'po-item-1', ordered_qty: 5 },
+        { id: 'po-item-2', ordered_qty: 5 },
+      ],
+    }, {
+      receivedByPoItem: new Map([['po-item-1', 5], ['po-item-2', 0]]),
+      receivedByPoId: new Map([['po-1', 5]]),
+      receiptFactsByPoItem: new Map([
+        ['po-item-1', { received: 5, accepted: 5, rejected: 0, qcPending: 0 }],
+        ['po-item-2', { received: 0, accepted: 0, rejected: 0, qcPending: 0 }],
+      ]),
+    });
+
+    expect(receipt.receipt_status).toBe('PARTIALLY_RECEIVED');
+    expect(receipt.receipt_progress.remaining_qty).toBe(5);
+  });
 });
