@@ -232,4 +232,44 @@ describe('PurchaseOrdersService controls', () => {
     expect(receipt.receipt_status).toBe('PARTIALLY_RECEIVED');
     expect(receipt.receipt_progress.remaining_qty).toBe(5);
   });
+
+  it('allocates PO numbers through the durable database counter', async () => {
+    const service = makeService();
+    (service as any).supabase = { rpc: jest.fn().mockResolvedValue({ data: 313, error: null }) };
+
+    await expect((service as any).generatePONumber('tenant-1')).resolves.toMatch(/^PO-\d{4}-\d{2}-313$/);
+    expect((service as any).supabase.rpc).toHaveBeenCalledWith('allocate_document_number', {
+      p_tenant_id: 'tenant-1',
+      p_document_type: 'PURCHASE_ORDER',
+    });
+  });
+
+  it('does not derive a new PO number from existing rows after deletion', async () => {
+    const service = makeService();
+    const rpc = jest.fn()
+      .mockResolvedValueOnce({ data: 313, error: null })
+      .mockResolvedValueOnce({ data: 314, error: null });
+    (service as any).supabase = { rpc };
+
+    await expect((service as any).generatePONumber('tenant-1')).resolves.toMatch(/-313$/);
+    await expect((service as any).generatePONumber('tenant-1')).resolves.toMatch(/-314$/);
+    expect((service as any).supabase.from).toBeUndefined();
+  });
+
+  it('uses distinct allocator results for concurrent PO number requests', async () => {
+    let next = 314;
+    const service = makeService();
+    (service as any).supabase = {
+      rpc: jest.fn().mockImplementation(async () => ({ data: next++, error: null })),
+    };
+
+    const numbers = await Promise.all([
+      (service as any).generatePONumber('tenant-1'),
+      (service as any).generatePONumber('tenant-1'),
+    ]);
+
+    expect(new Set(numbers).size).toBe(2);
+    expect(numbers.some((number: string) => number.endsWith('-314'))).toBe(true);
+    expect(numbers.some((number: string) => number.endsWith('-315'))).toBe(true);
+  });
 });

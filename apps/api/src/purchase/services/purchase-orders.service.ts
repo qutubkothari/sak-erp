@@ -2582,26 +2582,22 @@ export class PurchaseOrdersService {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `PO-${year}-${month}`;
+    const { data, error } = await this.supabase.rpc('allocate_document_number', {
+      p_tenant_id: tenantId,
+      p_document_type: 'PURCHASE_ORDER',
+    });
 
-    // Fetch ALL real PO numbers across all months to find the global max sequence.
-    // This prevents the counter resetting to 001 when the month rolls over.
-    const { data } = await this.supabase
-      .from('purchase_orders')
-      .select('po_number')
-      .eq('tenant_id', tenantId)
-      .like('po_number', 'PO-%');
-
-    let maxSeq = 0;
-    for (const row of (data || [])) {
-      const match = /^PO-\d{4}-\d{2}-(\d+)$/.exec(row.po_number || '');
-      if (match) {
-        const seq = parseInt(match[1], 10);
-        if (seq > maxSeq) maxSeq = seq;
-      }
+    if (error) {
+      console.error('[PO NUMBER] Atomic allocation failed:', error);
+      throw new BadRequestException(`Unable to allocate Purchase Order number: ${error.message}`);
     }
 
-    return `${prefix}-${String(maxSeq + 1).padStart(3, '0')}`;
+    const sequence = Number(data);
+    if (!Number.isInteger(sequence) || sequence < 1) {
+      throw new BadRequestException('Unable to allocate a valid Purchase Order number.');
+    }
+
+    return `PO-${year}-${month}-${String(sequence).padStart(3, '0')}`;
   }
 
   private sanitizeFilename(value: string) {
