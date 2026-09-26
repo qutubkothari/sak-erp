@@ -1104,8 +1104,10 @@ function HrPageContent() {
     try {
       const data = await apiClient.get("/hr/attendance/today");
       setTodayAttendance(data);
+      return data;
     } catch {
       setTodayAttendance(null);
+      throw new Error("Unable to confirm today's attendance from the server.");
     }
   };
 
@@ -1157,7 +1159,10 @@ function HrPageContent() {
         : undefined,
     });
 
-    await fetchTodayAttendance();
+    const persisted = await fetchTodayAttendance();
+    if (!persisted?.check_in_time) {
+      throw new Error("Check-in was not confirmed by the server.");
+    }
     setPendingOutsideCheckIn(null);
     setIsOutsideZone(false);
     setOfficeDistanceMeters(null);
@@ -1296,7 +1301,10 @@ function HrPageContent() {
       });
 
       // Refresh today's attendance
-      await fetchTodayAttendance();
+      const persisted = await fetchTodayAttendance();
+      if (!persisted?.check_out_time) {
+        throw new Error("Check-out was not confirmed by the server.");
+      }
 
       // Reset states
       setPendingOutsideCheckIn(null);
@@ -2079,7 +2087,7 @@ function HrPageContent() {
   // Fetch today's attendance when on attendance tab
   useEffect(() => {
     if (activeTab === "attendance") {
-      fetchTodayAttendance();
+      fetchTodayAttendance().catch(() => undefined);
     }
   }, [activeTab]);
 

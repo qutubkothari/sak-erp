@@ -95,6 +95,24 @@ describe("HR attendance mobile idempotency", () => {
     });
   });
 
+  it("returns the original check-in for a later duplicate check-in", async () => {
+    const { service, inserted } = createService();
+    const original = {
+      ...attendance,
+      check_in_time: "2026-09-26T02:46:00.000Z",
+      punches: [{ punch_type: "IN", punch_at: "2026-09-26T02:46:00.000Z" }],
+    };
+    jest.spyOn(service, "getTodayAttendance").mockResolvedValue(original as any);
+
+    await expect(
+      service.checkIn("tenant-1", "user-1", "employee-1", {
+        lat: 22.579128,
+        lng: 88.349857,
+      }),
+    ).resolves.toEqual(original);
+    expect(inserted).toHaveLength(0);
+  });
+
   it("repairs a completed day whose closing punch was interrupted", async () => {
     const { service, inserted } = createService();
     const completed = {
