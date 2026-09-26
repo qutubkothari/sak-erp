@@ -1086,6 +1086,20 @@ export class GrnService {
     }
   }
 
+  private validateUniqueReceiptLines(items: any[]) {
+    const seenPoItemIds = new Set<string>();
+    for (const item of items) {
+      const poItemId = String(item?.poItemId || item?.po_item_id || "").trim();
+      if (!poItemId) continue;
+      if (seenPoItemIds.has(poItemId)) {
+        throw new BadRequestException(
+          `Duplicate GRN receipt line for PO item ${poItemId}. Refresh the PO and submit each PO line once.`,
+        );
+      }
+      seenPoItemIds.add(poItemId);
+    }
+  }
+
   private async resolveGrnItemStockIdentity(
     tenantId: string,
     grnItem: any,
@@ -1487,6 +1501,7 @@ export class GrnService {
         "Each GRN line needs a valid PO item, item, and a receipt quantity greater than zero. Refresh the PO and try again.",
       );
     }
+    this.validateUniqueReceiptLines(rawItems);
 
     // A service is accepted through a Service Entry Sheet (SES), never a GRN.
     // This protects inventory from being increased for labour/maintenance/etc.
@@ -2102,6 +2117,7 @@ export class GrnService {
           "Each GRN line needs a valid PO item, item, and a receipt quantity greater than zero.",
         );
       }
+      this.validateUniqueReceiptLines(data.items);
     }
 
     const oldReceivedByPoItemId = new Map<string, number>();

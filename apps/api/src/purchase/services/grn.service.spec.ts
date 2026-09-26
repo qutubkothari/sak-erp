@@ -95,6 +95,28 @@ describe("GrnService commercial amount controls", () => {
     expect(insert).not.toHaveBeenCalled();
   });
 
+  it("rejects duplicate receipt payload lines by PO item ID", () => {
+    const service = new GrnService({} as any);
+
+    expect(() =>
+      (service as any).validateUniqueReceiptLines([
+        { poItemId: "po-line-1" },
+        { poItemId: "po-line-1" },
+      ]),
+    ).toThrow("Duplicate GRN receipt line");
+  });
+
+  it("keeps legitimate same-item receipts distinct by PO item ID", () => {
+    const service = new GrnService({} as any);
+
+    expect(() =>
+      (service as any).validateUniqueReceiptLines([
+        { poItemId: "po-line-1", itemId: "item-1" },
+        { poItemId: "po-line-2", itemId: "item-1" },
+      ]),
+    ).not.toThrow();
+  });
+
   it("reopens PO receipt quantity after QC rejection while keeping pending QC blocked", async () => {
     const service = new GrnService({} as any);
 
