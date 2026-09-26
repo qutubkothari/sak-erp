@@ -273,6 +273,16 @@ class ApiClient {
 
       const headers: Record<string, string> = {};
 
+      // Attendance state must be re-read after a mobile punch; a stale browser
+      // or PWA cache can otherwise hide a successful write from the employee.
+      const isAttendanceRead =
+        String(options.method || "GET").toUpperCase() === "GET" &&
+        /^\/hr\/attendance\/(?:today|my)(?:\?|$)/.test(endpoint);
+      if (isAttendanceRead) {
+        headers["Cache-Control"] = "no-cache, no-store, max-age=0";
+        headers.Pragma = "no-cache";
+      }
+
       if (!isFormData) {
         headers["Content-Type"] = "application/json";
       }
