@@ -1,4 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
+import { ConflictException, NotFoundException } from "@nestjs/common";
+import { createHash } from "crypto";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import {
   hasAdminBypass,
@@ -436,6 +438,24 @@ const normalizeDateOnly = (value: unknown, fieldName: string): string => {
   throw new BadRequestException(`${fieldName} must be a valid date`);
 };
 
+const normalizeHolidayDate = (value: unknown, fieldName: string): string => {
+  const dateOnly = normalizeDateOnly(value, fieldName);
+  const match = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) throw new BadRequestException(`${fieldName} must be a valid date`);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new BadRequestException(`${fieldName} must be a valid date`);
+  }
+  return dateOnly;
+};
+
 const toLocalDate = (dateOnly: string) => {
   const [year, month, day] = dateOnly.split("-").map((part) => Number(part));
   return new Date(year, month - 1, day);
@@ -589,6 +609,28 @@ const DEFAULT_HR_HOLIDAYS_2026 = [
   },
 ];
 
+const getDefaultHolidayId = (tenantId: string, index: number): string => {
+  const bytes = createHash("sha1")
+    .update(`sak-erp:hr-default-holiday:${tenantId}:${index}`)
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+};
+
+const getDefaultHolidayIndex = (tenantId: string, id: string): number => {
+  const legacyMatch = id.match(/^default-2026-(\d+)$/);
+  if (legacyMatch) {
+    const index = Number(legacyMatch[1]) - 1;
+    if (index >= 0 && index < DEFAULT_HR_HOLIDAYS_2026.length) return index;
+  }
+  return DEFAULT_HR_HOLIDAYS_2026.findIndex(
+    (_, index) => getDefaultHolidayId(tenantId, index) === id,
+  );
+};
+
 @Injectable()
 export class HrService {
   private supabase: SupabaseClient;
@@ -672,22 +714,62 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     try {
       await this.ensureHolidaySeeded(tenantId);
     } catch {
-      const fallbackYear = year || new Date().getFullYear();
-      return DEFAULT_HR_HOLIDAYS_2026.filter((holiday) => {
-        const yearStart = `${fallbackYear}-01-01`;
-        const yearEnd = `${fallbackYear}-12-31`;
-        const start = String(holiday.start_date || "");
-        const end = String(holiday.end_date || holiday.start_date || "");
-        return start <= yearEnd && end >= yearStart;
-      }).map((holiday, index) => ({
-        id: `default-${fallbackYear}-${index + 1}`,
-        tenant_id: tenantId,
-        ...holiday,
-        end_date: holiday.end_date || holiday.start_date,
-        notes: "notes" in holiday ? (holiday as any).notes || null : null,
-        day_count: this.countHolidayDays(holiday.start_date, holiday.end_date),
-        is_default: true,
-      }));
+      const { data: storedHolidays } = await this.supabase
+        .from("hr_holidays")
+        .select("*")
+        .eq("tenant_id", tenantId);
+      const storedById = new Map(
+        (storedHolidays || []).map((holiday: any) => [String(holiday.id), holiday]),
+      );
+      const fallbackIds = new Set(
+        DEFAULT_HR_HOLIDAYS_2026.map((_, index) =>
+          getDefaultHolidayId(tenantId, index),
+        ),
+      );
+      const fallbackHolidays = DEFAULT_HR_HOLIDAYS_2026.map(
+        (holiday, index) => {
+          const id = getDefaultHolidayId(tenantId, index);
+          return (
+            storedById.get(id) || {
+              id,
+              tenant_id: tenantId,
+              ...holiday,
+              end_date: holiday.end_date || holiday.start_date,
+              notes: "notes" in holiday ? (holiday as any).notes || null : null,
+              day_count: this.countHolidayDays(
+                holiday.start_date,
+                holiday.end_date,
+              ),
+              is_default: true,
+            }
+          );
+        },
+      );
+      const merged = [
+        ...fallbackHolidays,
+        ...(storedHolidays || []).filter(
+          (holiday: any) => !fallbackIds.has(String(holiday.id)),
+        ),
+      ];
+      return merged
+        .filter((holiday: any) => {
+          if (!year) return true;
+          const yearStart = `${year}-01-01`;
+          const yearEnd = `${year}-12-31`;
+          const start = String(holiday.start_date || "");
+          const end = String(holiday.end_date || holiday.start_date || "");
+          return start <= yearEnd && end >= yearStart;
+        })
+        .sort((a: any, b: any) =>
+          String(a.start_date).localeCompare(String(b.start_date)) ||
+          String(a.holiday_name).localeCompare(String(b.holiday_name)),
+        )
+        .map((holiday: any) => ({
+          ...holiday,
+          day_count:
+            holiday.day_count ||
+            this.countHolidayDays(holiday.start_date, holiday.end_date),
+        }));
     }
 
     const { data, error } = await this.supabase
@@ -743,39 +825,140 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   async updateHoliday(tenantId: string, id: string, data: any) {
-    await this.ensureHolidayTable();
+    const fallbackIndex = getDefaultHolidayIndex(tenantId, id);
+    const holidayId =
+      fallbackIndex >= 0 ? getDefaultHolidayId(tenantId, fallbackIndex) : id;
+    const { data: tenantHolidays, error: readError } = await this.supabase
+      .from("hr_holidays")
+      .select("*")
+      .eq("tenant_id", tenantId);
+    if (readError) throw new Error(readError.message);
 
-    const updates: any = {
-      updated_at: new Date().toISOString(),
-    };
-    if (data.holiday_name !== undefined)
-      updates.holiday_name = String(data.holiday_name || "").trim();
-    if (data.start_date !== undefined)
-      updates.start_date = String(data.start_date || "").trim();
-    if (data.end_date !== undefined)
-      updates.end_date = String(data.end_date || "").trim() || null;
-    if (data.holiday_type !== undefined)
-      updates.holiday_type =
-        String(data.holiday_type || "PUBLIC").trim() || "PUBLIC";
-    if (data.notes !== undefined)
-      updates.notes = String(data.notes || "").trim() || null;
-
-    const startDate = String(
-      updates.start_date || data.start_date || "",
-    ).trim();
-    const endDate = String(updates.end_date || "").trim();
-    if (startDate && endDate && endDate < startDate) {
-      throw new Error("end_date cannot be earlier than start_date");
+    const stored = tenantHolidays || [];
+    const existing = stored.find(
+      (holiday: any) => String(holiday.id) === holidayId,
+    );
+    const fallback =
+      fallbackIndex >= 0
+        ? DEFAULT_HR_HOLIDAYS_2026[fallbackIndex]
+        : null;
+    if (!existing && !fallback) {
+      throw new NotFoundException("Holiday not found");
     }
 
-    const { data: result, error } = await this.supabase
-      .from("hr_holidays")
-      .update(updates)
-      .eq("tenant_id", tenantId)
-      .eq("id", id)
-      .select();
-    if (error) throw new Error(error.message);
-    return result;
+    const current = existing || fallback;
+    const holidayName =
+      data?.holiday_name === undefined
+        ? String(current.holiday_name || "").trim()
+        : String(data.holiday_name || "").trim();
+    if (!holidayName) throw new BadRequestException("Holiday name is required");
+
+    const startDate = normalizeHolidayDate(
+      data?.start_date === undefined ? current.start_date : data.start_date,
+      "Holiday date",
+    );
+    const rawEndDate =
+      data?.end_date === undefined ? current.end_date : data.end_date;
+    const endDate = rawEndDate
+      ? normalizeHolidayDate(rawEndDate, "Holiday end date")
+      : null;
+    if (endDate && endDate < startDate) {
+      throw new BadRequestException("Holiday end date cannot be before its start date");
+    }
+
+    const holidayType =
+      data?.holiday_type === undefined
+        ? String(current.holiday_type || "PUBLIC").trim()
+        : String(data.holiday_type || "").trim();
+    if (!["PUBLIC", "COMPANY", "OPTIONAL"].includes(holidayType)) {
+      throw new BadRequestException("Holiday type must be Public, Company, or Optional");
+    }
+    const notes =
+      data?.notes === undefined
+        ? current.notes || null
+        : String(data.notes || "").trim() || null;
+
+    const defaultRows =
+      fallbackIndex >= 0
+        ? DEFAULT_HR_HOLIDAYS_2026.map((holiday, index) => {
+            const defaultId = getDefaultHolidayId(tenantId, index);
+            return (
+              stored.find((row: any) => String(row.id) === defaultId) || {
+                ...holiday,
+                id: defaultId,
+                tenant_id: tenantId,
+              }
+            );
+          })
+        : [];
+    const configuredRows =
+      fallbackIndex >= 0
+        ? [
+            ...defaultRows,
+            ...stored.filter(
+              (row: any) =>
+                getDefaultHolidayIndex(tenantId, String(row.id)) < 0,
+            ),
+          ]
+        : stored;
+    const conflicting = configuredRows.some((holiday: any) => {
+      if (String(holiday.id) === holidayId) return false;
+      const otherStart = String(holiday.start_date || "").slice(0, 10);
+      const otherEnd = String(
+        holiday.end_date || holiday.start_date || "",
+      ).slice(0, 10);
+      const candidateEnd = endDate || startDate;
+      return otherStart <= candidateEnd && otherEnd >= startDate;
+    });
+    if (conflicting) {
+      throw new ConflictException("A holiday already exists for this date.");
+    }
+
+    const updates = {
+      holiday_name: holidayName,
+      start_date: startDate,
+      end_date: endDate,
+      holiday_type: holidayType,
+      notes,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      if (existing) {
+        const { data: result, error } = await this.supabase
+          .from("hr_holidays")
+          .update(updates)
+          .eq("tenant_id", tenantId)
+          .eq("id", holidayId)
+          .select("*")
+          .maybeSingle();
+        if (error) throw error;
+        if (!result) throw new NotFoundException("Holiday not found");
+        return result;
+      }
+
+      // Legacy fallback IDs are not database rows. Materialize just this
+      // selected holiday with a stable UUID so later reads and edits find it.
+      const { data: result, error } = await this.supabase
+        .from("hr_holidays")
+        .insert({
+          id: holidayId,
+          tenant_id: tenantId,
+          ...updates,
+        })
+        .select("*")
+        .single();
+      if (error) throw error;
+      return result;
+    } catch (error: any) {
+      if (
+        error?.code === "23505" ||
+        /duplicate key|unique constraint/i.test(String(error?.message || ""))
+      ) {
+        throw new ConflictException("A holiday already exists for this date.");
+      }
+      throw error;
+    }
   }
 
   async deleteHoliday(tenantId: string, id: string) {
