@@ -13,7 +13,7 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "../../../../lib/api-client";
-import { formatWeekday, getTodayDateInputValue } from "@/lib/date";
+import { formatDateInputDisplay, formatWeekday, getTodayDateInputValue } from "@/lib/date";
 import {
   buildDocumentBranding,
   escapeHtml,
@@ -8243,7 +8243,7 @@ function HrPageContent() {
                           )}
                           <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-[#4A3426]">
                             <div>
-                              {new Date(record.attendance_date).toLocaleDateString("en-IN")}
+                              {formatDateInputDisplay(record.attendance_date)}
                               <p className="text-xs font-medium text-[#8B6F47]">
                                 {formatWeekday(record.attendance_date)}
                               </p>
