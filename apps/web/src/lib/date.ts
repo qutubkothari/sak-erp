@@ -49,9 +49,11 @@ export function formatWeekday(value: string | null | undefined): string {
   const inputValue = parseDisplayDateToInputValue(value);
   if (!inputValue) return '';
   const [year, month, day] = inputValue.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return '';
-  return date.toLocaleDateString('en-IN', { weekday: 'long' });
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return '';
+  // The global toLocaleDateString patch replaces weekday options with a date.
+  // Use Intl directly and pin date-only values to UTC in every browser timezone.
+  return new Intl.DateTimeFormat('en-IN', { weekday: 'long', timeZone: 'UTC' }).format(date);
 }
 
 export function formatDateInputDisplay(value: string | Date | null | undefined): string {
