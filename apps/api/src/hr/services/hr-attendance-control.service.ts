@@ -724,6 +724,7 @@ export class HrAttendanceControlService {
     });
     daily.columns = [
       ["Date", "date", 13],
+      ["Day", "day", 13],
       ["Employee Code", "employee_code", 16],
       ["Employee Name", "employee_name", 28],
       ["Department", "department", 20],
@@ -751,6 +752,9 @@ export class HrAttendanceControlService {
     daily.addRows(
       register.daily.map((row) => ({
         ...row,
+        day: new Intl.DateTimeFormat("en-IN", { weekday: "long", timeZone: "UTC" }).format(
+          new Date(`${row.date}T00:00:00Z`),
+        ),
         check_in_time: row.check_in_time
           ? new Date(row.check_in_time).toLocaleString("en-IN", {
               timeZone: register.policy.timezone,

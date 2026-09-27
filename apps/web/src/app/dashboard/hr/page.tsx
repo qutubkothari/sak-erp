@@ -13,7 +13,7 @@ import {
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "../../../../lib/api-client";
-import { getTodayDateInputValue } from "@/lib/date";
+import { formatWeekday, getTodayDateInputValue } from "@/lib/date";
 import {
   buildDocumentBranding,
   escapeHtml,
@@ -8242,9 +8242,12 @@ function HrPageContent() {
                             </td>
                           )}
                           <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-[#4A3426]">
-                            {new Date(
-                              record.attendance_date,
-                            ).toLocaleDateString("en-IN")}
+                            <div>
+                              {new Date(record.attendance_date).toLocaleDateString("en-IN")}
+                              <p className="text-xs font-medium text-[#8B6F47]">
+                                {formatWeekday(record.attendance_date)}
+                              </p>
+                            </div>
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-[#4A3426]">
                             {record.check_in_time ? (
