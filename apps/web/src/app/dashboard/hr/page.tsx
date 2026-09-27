@@ -15,6 +15,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiClient } from "../../../../lib/api-client";
 import { getTodayDateInputValue } from "@/lib/date";
 import { AttendanceDateCell } from "./AttendanceDateCell";
+import { buildAttendanceHolidayMap } from "./attendance-date-display";
 import {
   buildDocumentBranding,
   escapeHtml,
@@ -1655,6 +1656,8 @@ function HrPageContent() {
   const [attendanceToDate, setAttendanceToDate] = useState(serverSafeTodayDate);
   const [attendanceEmployeeFilter, setAttendanceEmployeeFilter] =
     useState("ALL");
+  const [attendanceWorkingWeekdays, setAttendanceWorkingWeekdays] = useState<number[] | null>(null);
+  const [attendanceHolidayMap, setAttendanceHolidayMap] = useState<Record<string, string>>({});
   const [attendanceForm, setAttendanceForm] = useState({
     employee_id: "",
     attendance_date: getTodayDateInputValue(),
@@ -2431,8 +2434,29 @@ function HrPageContent() {
           allEmployees.map((employee) => [employee.id, employee]),
         );
         const query = buildAttendanceQuery();
-        const attData = await apiClient.get<any>(`/hr/attendance?${query}`);
+        const firstYear = Number(attendanceFromDate.slice(0, 4));
+        const lastYear = Number(attendanceToDate.slice(0, 4));
+        const years = Number.isInteger(firstYear) && Number.isInteger(lastYear) && firstYear <= lastYear
+          ? Array.from({ length: lastYear - firstYear + 1 }, (_, index) => firstYear + index)
+          : [new Date().getFullYear()];
+        const [attData, policyData, holidayResults] = await Promise.all([
+          apiClient.get<any>(`/hr/attendance?${query}`),
+          apiClient.get<any>("/hr/attendance/policy").catch(() => null),
+          Promise.all(years.map((year) =>
+            apiClient.get<any>(`/hr/holidays?year=${encodeURIComponent(year)}`).catch(() => []),
+          )),
+        ]);
         const records = Array.isArray(attData) ? attData : attData.data || [];
+        const policy = Array.isArray(policyData) ? null : policyData?.data || policyData;
+        setAttendanceWorkingWeekdays(
+          Array.isArray(policy?.working_weekdays) ? policy.working_weekdays.map(Number) : null,
+        );
+        const holidays = holidayResults.flatMap((result) =>
+          Array.isArray(result) ? result : result?.data || [],
+        );
+        setAttendanceHolidayMap(
+          buildAttendanceHolidayMap(holidays, attendanceFromDate, attendanceToDate),
+        );
         setAttendance(
           records.map((record: any) => {
             const employee = employeeById.get(record.employee_id);
@@ -8242,7 +8266,11 @@ function HrPageContent() {
                               )}
                             </td>
                           )}
-                          <AttendanceDateCell attendanceDate={record.attendance_date} />
+                          <AttendanceDateCell
+                            attendanceDate={record.attendance_date}
+                            workingWeekdays={attendanceWorkingWeekdays}
+                            holidayName={attendanceHolidayMap[String(record.attendance_date).slice(0, 10)]}
+                          />
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-[#4A3426]">
                             {record.check_in_time ? (
                               <div>
