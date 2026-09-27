@@ -46,11 +46,9 @@ export function formatDisplayDateTime(value: string | Date | null | undefined): 
 }
 
 export function formatWeekday(value: string | null | undefined): string {
-  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return '';
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
+  const inputValue = parseDisplayDateToInputValue(value);
+  if (!inputValue) return '';
+  const [year, month, day] = inputValue.split('-').map(Number);
   const date = new Date(year, month - 1, day);
   if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return '';
   return date.toLocaleDateString('en-IN', { weekday: 'long' });
