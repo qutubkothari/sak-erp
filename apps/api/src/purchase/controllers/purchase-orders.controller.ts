@@ -137,6 +137,17 @@ export class PurchaseOrdersController {
     return this.poService.findAll(req.user.tenantId, query);
   }
 
+  @Get('export.xlsx')
+  async export(@Request() req: any, @Query() query: any, @Res() response: Response) {
+    const workbook = await this.poService.exportRegister(req.user.tenantId, query);
+    const isOpen = String(query?.status || '').toUpperCase() === 'OPEN_PO';
+    const prefix = isOpen ? 'Open_Purchase_Orders' : 'Purchase_Orders';
+    const date = new Date().toISOString().slice(0, 10);
+    response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    response.setHeader('Content-Disposition', `attachment; filename="${prefix}_${date}.xlsx"`);
+    response.send(workbook);
+  }
+
   @Get(':id')
   async findOne(@Request() req: any, @Param('id') id: string) {
     return this.poService.findOne(req.user.tenantId, id);

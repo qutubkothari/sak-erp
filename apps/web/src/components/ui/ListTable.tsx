@@ -53,6 +53,7 @@ export type ListTableProps<T> = {
   defaultPageSize?: number;
   searchPlaceholder?: string;
   initialSearch?: string;
+  onSearchChange?: (value: string) => void;
   hideSearch?: boolean;
   toolbarRight?: ReactNode;
   toolbarLayout?: 'default' | 'singleLine';
@@ -168,6 +169,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
     defaultPageSize = 10,
     searchPlaceholder = 'Search...',
     initialSearch = '',
+    onSearchChange,
     hideSearch,
     toolbarRight,
     toolbarLayout = 'default',
@@ -591,6 +593,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
               onChange={(e) => {
                 setSearchTerm(e.target.value);
                 setPageIndex(0);
+                onSearchChange?.(e.target.value);
               }}
               placeholder={searchPlaceholder}
               className={`min-h-9 w-full min-w-0 flex-[1_1_12rem] border border-[#D8C8AA] px-3 py-1.5 text-sm focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/30 sm:max-w-lg ${searchClassName}`}

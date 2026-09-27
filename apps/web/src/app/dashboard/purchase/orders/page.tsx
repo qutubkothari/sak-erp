@@ -429,6 +429,7 @@ function PurchaseOrdersContent() {
   const [deliveryAddresses, setDeliveryAddresses] = useState<DeliveryAddressOption[]>([]);
   const [deliveryAddressName, setDeliveryAddressName] = useState('');
   const [deliveryAddressSaving, setDeliveryAddressSaving] = useState(false);
+  const [exportingOrders, setExportingOrders] = useState(false);
 
   // Row target used only by the temporary R&D item creator.
   const [quickCreateItemIndex, setQuickCreateItemIndex] = useState<number | null>(null);
@@ -1256,6 +1257,35 @@ function PurchaseOrdersContent() {
       if (!options?.silent) {
         setLoading(false);
       }
+    }
+  };
+
+  const handleExportOrders = async () => {
+    setExportingOrders(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterStatus !== 'ALL') params.set('status', filterStatus);
+      if (filterVendor) params.set('vendorId', filterVendor);
+      if (searchTerm.trim()) params.set('search', searchTerm.trim());
+      const response = await fetch(`/api/v1/purchase/orders/export.xlsx?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('Failed to export purchase orders');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = response.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/i)?.[1]
+        || `Purchase_Orders_${getTodayDateInputValue()}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 30000);
+    } catch (error: any) {
+      setAlertMessage({ type: 'error', message: error?.message || 'Failed to export purchase orders' });
+    } finally {
+      setExportingOrders(false);
     }
   };
 
@@ -3815,8 +3845,15 @@ function PurchaseOrdersContent() {
             defaultPageSize={10}
             pageSizeOptions={[10, 25, 50, 100]}
             searchPlaceholder="Search PO number, vendor, PR ref, item code, name, description…"
+            onSearchChange={setSearchTerm}
             toolbarRight={
               <div className="flex w-full flex-wrap items-center gap-2 2xl:w-auto 2xl:flex-nowrap">
+                {canDownloadPO && (
+                  <ErpButton type="button" onClick={handleExportOrders} disabled={exportingOrders} variant="secondary">
+                    <Download className="h-4 w-4" />
+                    {exportingOrders ? 'Exporting…' : 'Export Excel'}
+                  </ErpButton>
+                )}
                 {orders.length > 0 && (
                   <div className="flex min-h-9 items-center gap-2 border-r border-[#E8DCC4] pr-3">
                     <label className="flex items-center gap-1.5 cursor-pointer">

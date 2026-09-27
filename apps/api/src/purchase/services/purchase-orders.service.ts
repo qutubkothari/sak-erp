@@ -18,6 +18,7 @@ import { EmailService } from '../../email/email.service';
 import { normalizeInventoryCategory } from '../../inventory/utils/inventory-category';
 import { resolveVendorContactSalutation, WorldClassPoPdfService } from './world-class-po-pdf.service';
 import { ProjectsService } from '../../projects/projects.service';
+import ExcelJS from 'exceljs';
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -1122,6 +1123,8 @@ export class PurchaseOrdersService {
         ...it,
         ordered_qty: ordered,
         received_qty: received,
+        accepted_qty: facts?.accepted ?? it?.accepted_qty,
+        rejected_qty: facts?.rejected ?? it?.rejected_qty,
         remaining_qty: remaining,
       };
     });
@@ -1867,6 +1870,49 @@ export class PurchaseOrdersService {
       });
     }
     return result;
+  }
+
+  async exportRegister(tenantId: string, filters?: any): Promise<Buffer> {
+    const orders = await this.findAll(tenantId, filters);
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Purchase Order Lines', { views: [{ state: 'frozen', ySplit: 1 }] });
+    sheet.columns = [
+      ['PO Date', 'po_date', 13], ['PO Number', 'po_number', 18], ['Supplier', 'supplier', 28],
+      ['PR Number / Reference', 'pr_reference', 22], ['PO Status', 'po_status', 18], ['Receipt Status', 'receipt_status', 24],
+      ['Item Code / SAS Part Number', 'item_code', 24], ['OEM Part No.', 'oem_part_no', 20], ['Item Name', 'item_name', 32],
+      ['Ordered Qty', 'ordered_qty', 14], ['UOM', 'uom', 10], ['Received Qty', 'received_qty', 14], ['Accepted Qty', 'accepted_qty', 14],
+      ['Rejected Qty', 'rejected_qty', 14], ['Open Qty', 'open_qty', 12], ['Delivery Date', 'delivery_date', 15],
+      ['Rate', 'rate', 14], ['Line Amount', 'line_amount', 16], ['Buyer / Created By', 'created_by', 24],
+    ].map(([header, key, width]) => ({ header: String(header), key: String(key), width: Number(width) }));
+
+    const receiptLabels: Record<string, string> = {
+      OPEN: 'Not Received', NOT_RECEIVED: 'Not Received', PARTIALLY_RECEIVED: 'Partially Received',
+      QC_PENDING: 'QC Pending', REJECTED_PENDING: 'Rejected / Replacement Pending', FULLY_RECEIVED: 'Fully Received',
+    };
+    const rows = orders.flatMap((po: any) => (Array.isArray(po.purchase_order_items) ? po.purchase_order_items : []).map((item: any) => {
+      const ordered = this.toNumber(item.ordered_qty);
+      const received = this.toNumber(item.received_qty);
+      const accepted = this.toNumber(item.accepted_qty ?? received);
+      const rejected = this.toNumber(item.rejected_qty);
+      return {
+        po_date: po.po_date || '', po_number: po.po_number || '', supplier: po.vendor?.name || '',
+        pr_reference: po.pr?.pr_number || po.pr_id || '', po_status: po.status || '',
+        receipt_status: receiptLabels[String(po.receipt_status || '').toUpperCase()] || po.receipt_status || '',
+        item_code: item.item_code || item.item?.code || '', oem_part_no: item.item?.oem_part_no || '',
+        item_name: item.item_name || item.item?.name || '', ordered_qty: ordered, uom: item.uom || item.item?.uom || '',
+        received_qty: received, accepted_qty: accepted, rejected_qty: rejected, open_qty: Math.max(0, ordered - accepted),
+        delivery_date: po.delivery_date || '', rate: this.toNumber(item.rate), line_amount: this.toNumber(item.amount),
+        created_by: po.created_by || '',
+      };
+    }));
+    sheet.addRows(rows);
+    sheet.autoFilter = { from: 'A1', to: `${sheet.getColumn(sheet.columnCount).letter}1` };
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6F4E37' } };
+    for (const key of ['ordered_qty', 'received_qty', 'accepted_qty', 'rejected_qty', 'open_qty', 'rate', 'line_amount']) {
+      sheet.getColumn(key).numFmt = '#,##0.00';
+    }
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
   async findOne(tenantId: string, id: string) {
