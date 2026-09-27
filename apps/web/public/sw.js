@@ -1,6 +1,6 @@
 // Keep this version in step with the registration URL in PWARegister.  A new
 // worker clears bundles from previous releases before it takes control.
-const CACHE_NAME = 'saif-erp-shell-v6';
+const CACHE_NAME = 'saif-erp-shell-v7';
 const SHELL_ASSETS = [
   '/',
   '/login',
