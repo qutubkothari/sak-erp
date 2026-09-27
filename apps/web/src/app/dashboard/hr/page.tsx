@@ -915,6 +915,7 @@ function HrPageContent() {
     key: "date",
     direction: "desc",
   });
+  const [attendancePage, setAttendancePage] = useState(1);
   const [attendanceColumnWidths, setAttendanceColumnWidths] = useState<
     Record<AttendanceColumnKey, number>
   >(DEFAULT_ATTENDANCE_COLUMN_WIDTHS);
@@ -5336,6 +5337,59 @@ function HrPageContent() {
     });
   }, [attendance, attendanceSort, getAttendancePayDayCredit]);
 
+  const attendancePageSize = 25;
+  const attendancePageCount = Math.max(
+    1,
+    Math.ceil(sortedAttendance.length / attendancePageSize),
+  );
+  const attendancePageRows = sortedAttendance.slice(
+    (attendancePage - 1) * attendancePageSize,
+    attendancePage * attendancePageSize,
+  );
+
+  useEffect(() => {
+    setAttendancePage(1);
+  }, [attendance, attendanceSort, attendanceFromDate, attendanceToDate, attendanceEmployeeFilter]);
+
+  useEffect(() => {
+    if (attendancePage > attendancePageCount) setAttendancePage(attendancePageCount);
+  }, [attendancePage, attendancePageCount]);
+
+  const renderAttendancePagination = () => {
+    if (sortedAttendance.length <= attendancePageSize) return null;
+    const firstRow = (attendancePage - 1) * attendancePageSize + 1;
+    const lastRow = Math.min(attendancePage * attendancePageSize, sortedAttendance.length);
+
+    return (
+      <div className="flex flex-col gap-3 border-t border-[#E8DCC4] bg-[#FAF9F6] px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-[#6F5A49]">
+          Showing {formatCount(firstRow)}–{formatCount(lastRow)} of {formatCount(sortedAttendance.length)} records
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAttendancePage((page) => Math.max(1, page - 1))}
+            disabled={attendancePage <= 1}
+            className="min-h-9 rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#4A3426] hover:bg-[#F5EFE3] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <span className="min-w-20 text-center text-sm font-medium text-[#6F5A49]">
+            Page {attendancePage} of {attendancePageCount}
+          </span>
+          <button
+            type="button"
+            onClick={() => setAttendancePage((page) => Math.min(attendancePageCount, page + 1))}
+            disabled={attendancePage >= attendancePageCount}
+            className="min-h-9 rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#4A3426] hover:bg-[#F5EFE3] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   useEffect(() => {
     try {
       const savedWidths = window.localStorage.getItem(
@@ -8228,7 +8282,7 @@ function HrPageContent() {
                       </td>
                     </tr>
                   )}
-                  {sortedAttendance.map((record) => {
+                  {attendancePageRows.map((record) => {
                     const isExpanded = expandedAttendanceId === record.id;
                     const photoLinks = getAttendancePhotoLinks(record);
                     return (
@@ -8527,6 +8581,7 @@ function HrPageContent() {
                 </tbody>
               </table>
             </div>
+            {renderAttendancePagination()}
           </div>
 
           {/* Mobile Attendance History Cards */}
@@ -8559,7 +8614,7 @@ function HrPageContent() {
                 </div>
               </div>
             )}
-            {attendance.map((record) => (
+            {attendancePageRows.map((record) => (
               <div
                 key={record.id}
                 className="rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm"
@@ -8675,6 +8730,7 @@ function HrPageContent() {
                 )}
               </div>
             ))}
+            {renderAttendancePagination()}
           </div>
         </div>
       )}
