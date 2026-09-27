@@ -52,9 +52,15 @@ describe("HR holiday updates", () => {
         }),
         insert: jest.fn((values: any) => {
           inserts.push(values);
-          const row = { ...values };
+          const row = { ...(Array.isArray(values) ? values[0] : values) };
           rows.push(row);
-          return { select: jest.fn(() => ({ single: jest.fn().mockResolvedValue({ data: { ...row }, error: null }) })) };
+          return {
+            select: jest.fn(() => ({
+              single: jest.fn().mockResolvedValue({ data: { ...row }, error: null }),
+              then: (resolve: any, reject: any) =>
+                Promise.resolve({ data: [{ ...row }], error: null }).then(resolve, reject),
+            })),
+          };
         }),
       })),
     };
@@ -150,5 +156,34 @@ describe("HR holiday updates", () => {
       start_date: "2026-08-22",
     });
     expect(list).toHaveLength(16);
+  });
+
+  it("creates a holiday without calling the unavailable DDL RPC", async () => {
+    const { service, inserts } = makeService();
+    const created = await service.createHoliday(tenantId, {
+      holiday_name: "Company Foundation Day",
+      start_date: "2026-09-28",
+      holiday_type: "COMPANY",
+    });
+
+    expect(created[0]).toMatchObject({
+      tenant_id: tenantId,
+      holiday_name: "Company Foundation Day",
+      start_date: "2026-09-28",
+      holiday_type: "COMPANY",
+    });
+    expect(inserts).toHaveLength(1);
+    expect(service.supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it("rejects a create that overlaps an existing or default holiday", async () => {
+    const { service, inserts } = makeService();
+    await expect(
+      service.createHoliday(tenantId, {
+        holiday_name: "Another Day",
+        start_date: "2026-08-21",
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(inserts).toHaveLength(0);
   });
 });

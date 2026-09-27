@@ -796,32 +796,73 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   async createHoliday(tenantId: string, data: any) {
-    await this.ensureHolidayTable();
-
-    const startDate = String(data?.start_date || "").trim();
-    const endDate = String(data?.end_date || "").trim() || null;
-    if (!startDate || !String(data?.holiday_name || "").trim()) {
-      throw new Error("holiday_name and start_date are required");
-    }
+    const holidayName = String(data?.holiday_name || "").trim();
+    if (!holidayName) throw new BadRequestException("Holiday name is required");
+    const startDate = normalizeHolidayDate(data?.start_date, "Holiday date");
+    const endDate = data?.end_date
+      ? normalizeHolidayDate(data.end_date, "Holiday end date")
+      : null;
     if (endDate && endDate < startDate) {
-      throw new Error("end_date cannot be earlier than start_date");
+      throw new BadRequestException("Holiday end date cannot be before its start date");
+    }
+    const holidayType = String(data?.holiday_type || "PUBLIC").trim().toUpperCase();
+    if (!["PUBLIC", "COMPANY", "OPTIONAL"].includes(holidayType)) {
+      throw new BadRequestException("Holiday type must be Public, Company, or Optional");
+    }
+
+    // The production database already has hr_holidays. Avoid the legacy DDL
+    // RPC here; it is unavailable in production and is not needed to insert.
+    const { data: storedHolidays, error: readError } = await this.supabase
+      .from("hr_holidays")
+      .select("*")
+      .eq("tenant_id", tenantId);
+    if (readError) throw new Error(readError.message);
+
+    const defaultRows = DEFAULT_HR_HOLIDAYS_2026.map((holiday, index) =>
+      (storedHolidays || []).find(
+        (row: any) => String(row.id) === getDefaultHolidayId(tenantId, index),
+      ) || holiday,
+    );
+    const configuredRows = [
+      ...defaultRows,
+      ...(storedHolidays || []).filter(
+        (row: any) => getDefaultHolidayIndex(tenantId, String(row.id)) < 0,
+      ),
+    ];
+    const candidateEnd = endDate || startDate;
+    if (configuredRows.some((holiday: any) => {
+      const otherStart = String(holiday.start_date || "").slice(0, 10);
+      const otherEnd = String(holiday.end_date || holiday.start_date || "").slice(0, 10);
+      return otherStart <= candidateEnd && otherEnd >= startDate;
+    })) {
+      throw new ConflictException("A holiday already exists for this date.");
     }
 
     const payload = {
       tenant_id: tenantId,
-      holiday_name: String(data.holiday_name).trim(),
+      holiday_name: holidayName,
       start_date: startDate,
       end_date: endDate,
-      holiday_type: String(data?.holiday_type || "PUBLIC").trim() || "PUBLIC",
+      holiday_type: holidayType,
       notes: String(data?.notes || "").trim() || null,
     };
 
-    const { data: result, error } = await this.supabase
-      .from("hr_holidays")
-      .insert([payload])
-      .select();
-    if (error) throw new Error(error.message);
-    return result;
+    try {
+      const { data: result, error } = await this.supabase
+        .from("hr_holidays")
+        .insert([payload])
+        .select();
+      if (error) throw error;
+      return result;
+    } catch (error: any) {
+      if (
+        error?.code === "23505" ||
+        /duplicate key|unique constraint/i.test(String(error?.message || ""))
+      ) {
+        throw new ConflictException("A holiday already exists for this date.");
+      }
+      throw error;
+    }
   }
 
   async updateHoliday(tenantId: string, id: string, data: any) {
