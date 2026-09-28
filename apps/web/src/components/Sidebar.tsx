@@ -31,6 +31,7 @@ import {
   Clock3,
   Menu,
   X,
+  LifeBuoy,
 } from "lucide-react";
 import {
   useAuthStore,
@@ -449,6 +450,11 @@ const navigation: NavigationItem[] = [
     href: "/dashboard/documents",
   },
   {
+    name: "Support",
+    icon: LifeBuoy,
+    href: "/dashboard/support",
+  },
+  {
     name: "UID Tracking",
     href: "/dashboard/uid",
     icon: Tag,
@@ -672,7 +678,7 @@ function getUserPermissions(user: StoredUser | null): unknown {
 }
 
 function getAllowedNavigationNames(user: StoredUser | null): Set<string> {
-  const allowed = new Set<string>();
+  const allowed = new Set<string>(["Support"]);
 
   const rawPermissions = getUserPermissions(user);
   if (!Array.isArray(rawPermissions)) return allowed;
@@ -896,6 +902,9 @@ function filterNavigationByRouteAccess(
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { t } = useLocale();
   const pathname = usePathname();
+  const supportHref = pathname && pathname !== "/dashboard/support"
+    ? `/dashboard/support?from=${encodeURIComponent(pathname)}`
+    : "/dashboard/support";
   const [currentSearch, setCurrentSearch] = useState("");
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
   // Tracks sections the user explicitly collapsed, so auto-expand doesn't immediately re-open them.
@@ -1303,7 +1312,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     </>
                   ) : (
                     <Link
-                      href={item.href}
+                      href={item.name === "Support" ? supportHref : item.href}
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                         isActive
                           ? "bg-[#8B6F47] text-white shadow-sm"
@@ -1384,7 +1393,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
               return (
                 <Link
                   key={`${item.href}-${item.name}`}
-                  href={item.href}
+                  href={item.name === "Support" ? supportHref : item.href}
                   className={`flex min-h-[58px] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold transition-colors ${
                     active
                       ? "bg-[#8B6F47] text-white shadow-sm"
@@ -1455,7 +1464,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     return (
                       <Link
                         key={`mobile-more-${item.name}`}
-                        href={item.href}
+                        href={item.name === "Support" ? supportHref : item.href}
                         onClick={() => setShowMobileMore(false)}
                         className="flex min-h-[78px] items-center gap-3 rounded-2xl border border-[#E8DCC4] bg-white p-3 text-sm font-semibold text-[#3E2A1F]"
                       >
