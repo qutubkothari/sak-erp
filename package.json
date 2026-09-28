@@ -21,7 +21,8 @@
     "docker:down": "docker-compose down",
     "db:migrate": "pnpm --filter @sak-erp/database migrate",
     "db:seed": "pnpm --filter @sak-erp/database seed",
-    "db:studio": "pnpm --filter @sak-erp/database studio"
+    "db:studio": "pnpm --filter @sak-erp/database studio",
+    "autoheal:worker": "pnpm --filter @sak-erp/api autoheal:worker"
   },
   "devDependencies": {
     "@turbo/gen": "^2.0.0",

@@ -21,8 +21,8 @@ export interface AutoFixAgentProvider {
 }
 
 export function selectModelForRisk(risk: AutoHealRisk, env: NodeJS.ProcessEnv = process.env): string | null {
-  if (risk === 'LOW') return env.AUTOHEAL_CODEX_MODEL_LOW || 'gpt-6-luna';
-  if (risk === 'MEDIUM') return env.AUTOHEAL_CODEX_MODEL_MEDIUM || 'gpt-6-sol';
+  if (risk === 'LOW') return env.AUTOHEAL_CODEX_MODEL_LOW === 'gpt-6-luna' ? env.AUTOHEAL_CODEX_MODEL_LOW : 'gpt-6-luna';
+  if (risk === 'MEDIUM') return env.AUTOHEAL_CODEX_MODEL_MEDIUM === 'gpt-6-sol' ? env.AUTOHEAL_CODEX_MODEL_MEDIUM : 'gpt-6-sol';
   return null;
 }
 
@@ -42,6 +42,7 @@ export class MockAutoFixAgentProvider implements AutoFixAgentProvider {
 @Injectable()
 export class CodexCliAutoFixAgentProvider implements AutoFixAgentProvider {
   async run(request: AutoFixAgentRequest): Promise<AutoFixAgentResult> {
+    if (!codingWorkerEnabled()) return { provider: 'codex-cli', model: 'none', success: false, output: '', detail: 'AutoHeal coding worker is disabled.' };
     const model = selectModelForRisk(request.risk);
     if (!model) {
       return { provider: 'codex-cli', model: 'none', success: false, output: '', detail: 'High or blocked risk is diagnosis-only.' };
@@ -65,10 +66,14 @@ export class CodexCliAutoFixAgentProvider implements AutoFixAgentProvider {
         env: this.sanitizedEnvironment(),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+      const killSwitchTimer = setInterval(() => {
+        if (!codingWorkerEnabled()) child.kill('SIGTERM');
+      }, 1000);
       const finish = (result: AutoFixAgentResult) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        clearInterval(killSwitchTimer);
         resolve(result);
       };
       const append = (chunk: Buffer) => {
@@ -92,6 +97,11 @@ export class CodexCliAutoFixAgentProvider implements AutoFixAgentProvider {
     for (const key of allowed) if (process.env[key]) safe[key] = process.env[key];
     return safe;
   }
+}
+
+function codingWorkerEnabled() {
+  return String(process.env.AUTOHEAL_ENABLED || 'false').toLowerCase() === 'true'
+    && String(process.env.AUTOHEAL_WORKER_ENABLED || 'false').toLowerCase() === 'true';
 }
 
 export function createConfiguredAutoFixAgent(env: NodeJS.ProcessEnv = process.env): AutoFixAgentProvider {

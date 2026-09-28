@@ -9,6 +9,7 @@ type Incident = { id: string; tenant_id?: string; title: string; module?: string
 type Target = { id: string; domain: string };
 type Detail = Incident & { screenshot_ref?: string; reported_by?: string; reported_employee_id?: string; description?: string; error_message?: string; http_status?: number; request_id?: string; build_sha?: string; browser_info?: string; root_cause?: string; attempts: any[]; deployments: any[] };
 type Configuration = { enabled: boolean; mode: string; deploymentTargets: Target[] };
+type WorkerHealth = { status: "ONLINE" | "OFFLINE"; lastHeartbeat: string | null; queueDepth: number; currentIncident: string | null };
 
 function pretty(value: unknown) {
   if (value === undefined || value === null || value === "") return "Not available";
@@ -20,6 +21,7 @@ export default function SupportAutoHealAdminPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selected, setSelected] = useState<Detail | null>(null);
   const [config, setConfig] = useState<Configuration | null>(null);
+  const [worker, setWorker] = useState<WorkerHealth | null>(null);
   const [targetId, setTargetId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -38,12 +40,14 @@ export default function SupportAutoHealAdminPage() {
 
   const refresh = async () => {
     try {
-      const [nextIncidents, nextConfig] = await Promise.all([
+      const [nextIncidents, nextConfig, nextWorker] = await Promise.all([
         apiClient.get<Incident[]>("/support/admin/incidents"),
         apiClient.get<Configuration>("/support/admin/configuration"),
+        apiClient.get<WorkerHealth>("/support/admin/worker-health"),
       ]);
       setIncidents(nextIncidents);
       setConfig(nextConfig);
+      setWorker(nextWorker);
       setError("");
       setTargetId((current) => current || nextConfig.deploymentTargets[0]?.id || "");
     } catch (cause: any) {
@@ -79,6 +83,13 @@ export default function SupportAutoHealAdminPage() {
 
       {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><ShieldAlert className="mr-2 inline" size={17} />{error}</div>}
 
+      <section aria-label="Coding worker status" className="grid gap-3 rounded-xl border border-stone-200 bg-white p-4 text-sm sm:grid-cols-4">
+        <p><span className="text-stone-500">Worker</span><br /><strong className={worker?.status === "ONLINE" ? "text-emerald-700" : "text-stone-600"}>{worker?.status || "OFFLINE"}</strong></p>
+        <p><span className="text-stone-500">Last heartbeat</span><br /><strong>{worker?.lastHeartbeat ? new Date(worker.lastHeartbeat).toLocaleString() : "No heartbeat"}</strong></p>
+        <p><span className="text-stone-500">Queue depth</span><br /><strong>{worker?.queueDepth ?? 0}</strong></p>
+        <p><span className="text-stone-500">Current incident</span><br /><strong>{worker?.currentIncident || "Idle"}</strong></p>
+      </section>
+
       <div className="grid gap-6 xl:grid-cols-[minmax(18rem,0.75fr)_minmax(0,1.5fr)]">
         <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
           <div className="border-b border-stone-200 px-5 py-4"><h2 className="font-semibold text-stone-900">Incidents</h2><p className="mt-1 text-xs text-stone-500">{incidents.length} recent records</p></div>
@@ -91,7 +102,7 @@ export default function SupportAutoHealAdminPage() {
             <div className="grid gap-4 md:grid-cols-2"><Info title="Risk decision" value={selected.risk_reason} /><Info title="Root cause" value={selected.root_cause} /><Info title="Client description" value={selected.description} /><Info title="Visible error" value={selected.error_message} /><Info title="Reported by user" value={selected.reported_by} /><Info title="Employee reference" value={selected.reported_employee_id} /><Info title="HTTP status" value={selected.http_status} /><Info title="Build SHA" value={selected.build_sha} /><Info title="Request ID" value={selected.request_id} /><Info title="Browser/device" value={selected.browser_info} /></div>
 
             {/^[0-9a-f-]{36}$/i.test(selected.screenshot_ref || '') && <button type="button" onClick={() => void downloadScreenshot(selected.screenshot_ref || '')} className="rounded-lg border px-3 py-2 text-sm">Download reported screenshot</button>}
-            <div><h3 className="font-semibold text-stone-900">Fix attempts</h3>{selected.attempts?.length ? <div className="mt-2 space-y-3">{selected.attempts.map((attempt) => <article key={attempt.id} className="rounded-xl border border-stone-200 p-4"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{attempt.status} · {attempt.agent_provider}/{attempt.agent_model}</strong><span className="text-xs text-stone-500">Risk after diff: {attempt.risk_after_diff}</span></div><p className="mt-2 break-all text-xs text-stone-600">Branch: {attempt.branch_name} · Base: {attempt.base_sha}</p><p className="mt-1 break-all text-xs text-stone-600">Files: {(attempt.files_changed || []).join(", ") || "None"}</p><p className="mt-1 break-all text-xs text-stone-600">Commit: {attempt.commit_sha || "Not created"}</p><div className="mt-3 grid gap-3 md:grid-cols-2"><Info title="Tests and smoke" value={attempt.test_result} /><Info title="Build" value={attempt.build_result} /></div>{attempt.safety_reasons?.length > 0 && <p className="mt-2 text-xs text-red-700">Safety gate: {attempt.safety_reasons.join("; ")}</p>}</article>)}</div> : <p className="mt-2 text-sm text-stone-500">No patch attempts recorded.</p>}</div>
+            <div><h3 className="font-semibold text-stone-900">Fix attempts</h3>{selected.attempts?.length ? <div className="mt-2 space-y-3">{selected.attempts.map((attempt) => <article key={attempt.id} className="rounded-xl border border-stone-200 p-4"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{attempt.status} · {attempt.agent_provider}/{attempt.agent_model}</strong><span className="text-xs text-stone-500">Risk after diff: {attempt.risk_after_diff}</span></div><p className="mt-2 break-all text-xs text-stone-600">Branch: {attempt.branch_name} · Base: {attempt.base_sha}</p><p className="mt-1 break-all text-xs text-stone-600">Files: {(attempt.files_changed || []).join(", ") || "None"}</p><p className="mt-1 text-xs text-stone-600">Lines: +{attempt.lines_added || 0} / -{attempt.lines_removed || 0}</p><p className="mt-1 break-all text-xs text-stone-600">Commit: {attempt.commit_sha || "Not created"}</p><div className="mt-3 grid gap-3 md:grid-cols-2"><Info title="Tests and smoke" value={attempt.test_result} /><Info title="Build" value={attempt.build_result} /></div>{attempt.safety_reasons?.length > 0 && <p className="mt-2 text-xs text-red-700">Safety gate: {attempt.safety_reasons.join("; ")}</p>}</article>)}</div> : <p className="mt-2 text-sm text-stone-500">No patch attempts recorded.</p>}</div>
 
             <div><h3 className="font-semibold text-stone-900">Deployments and rollback</h3>{selected.deployments?.length ? <div className="mt-2 space-y-2">{selected.deployments.map((deployment) => <article key={deployment.id} className="rounded-xl border border-stone-200 p-4 text-sm"><p className="font-medium">{deployment.target} · {deployment.deployment_status}</p><p className="mt-1 break-all text-xs text-stone-600">Previous {deployment.previous_sha} → New {deployment.new_sha}</p><p className="mt-1 text-xs text-stone-600">Smoke: {pretty(deployment.smoke_result)} · Rollback: {deployment.rollback_status}</p></article>)}</div> : <p className="mt-2 text-sm text-stone-500">No deployment attempts recorded.</p>}</div>
 

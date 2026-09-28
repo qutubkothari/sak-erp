@@ -2,7 +2,7 @@
 
 ## Current state
 
-This commit adds the platform only. It is not deployed, the SQL migration is not applied, `AUTOHEAL_ENABLED` remains false by default, and no target VPS was contacted. Do not set AUTO mode as part of the first shadow test.
+AutoHeal defaults to `AUTOHEAL_ENABLED=false`; the isolated coding worker also defaults to `AUTOHEAL_WORKER_ENABLED=false`. The worker is a separate process and uses an authenticated, scoped API to read incident context and write attempt results. Do not install it on the SaifSeas web/API host. Do not set AUTO mode as part of the first shadow test.
 
 ## Emergency disable
 
@@ -13,8 +13,37 @@ Set `AUTOHEAL_ENABLED=false` for the API process and restart the API through the
 1. Apply `migrations/add-support-autofix.sql` manually to a non-production database after review. The application does not run schema changes on startup.
 2. Grant `support_autofix:read`, `support_autofix:manage`, and `support_autofix:approve` to the intended support-admin role. Super Admin retains the existing platform override.
 3. Configure `AUTOHEAL_ENABLED=true`, `AUTOHEAL_MODE=SHADOW`, and `AUTOHEAL_AGENT_PROVIDER=mock` first. Verify incidents are recorded, tenant boundaries hold, fingerprint repeats increment occurrence count, and the mock provider changes no files and cannot deploy.
-4. For a real isolated patch exercise, configure `AUTOHEAL_AGENT_PROVIDER=codex-cli`, an approved `AUTOHEAL_CODEX_PATH`, a supported coding model, and the CLI's own authentication on the isolated worker host. Confirm the CLI runs with `workspace-write`, operates only in the incident worktree, and cannot read database credentials from its environment. If the host does not have a supported CLI/auth setup, leave the provider as mock.
-5. Keep `AUTOHEAL_MODE=SHADOW`, leave `AUTOHEAL_DEPLOYMENT_TARGETS_JSON` empty, and verify the support/admin UI, audit history, risk gate, web tests, build, and local smoke result. Do not use production incidents as test data.
+4. First run only the API with `AUTOHEAL_ENABLED=false`. After review and isolated staging, enable the API kill switch and separately provision the coding worker below. The worker requires its own `AUTOHEAL_WORKER_ENABLED=true`, Codex CLI authentication, an approved model, and Git push credentials. The CLI receives an allowlisted OS environment and no API/database credentials.
+5. Keep `AUTOHEAL_MODE=SHADOW`, leave `AUTOHEAL_DEPLOYMENT_TARGETS_JSON` empty, and verify the support/admin UI, audit history, risk gate, web tests/build/smoke result. Do not use production incidents as test data.
+
+## Separate coding-worker host
+
+Supported host: dedicated Linux x86_64 VPS/VM, Ubuntu 22.04 or 24.04, at least 4 vCPU/8 GB RAM/40 GB disk, outbound HTTPS to the approved Git remote, Redis, and AutoHeal API. Do not install on the SaifSeas web/API machine. Install Node.js 20 LTS, pnpm 9, Git 2.30+, and the approved Codex CLI. Use a dedicated OS account with no application/database access. Store Git authentication in a read-only SSH deploy key or host credential agent with write access restricted to `autofix/*`; never embed credentials in `AUTOHEAL_REPO_URL`. Configure known-host verification.
+
+Build the API package artifacts in the worker deployment image/release, set the documented keys below, then run `pnpm autoheal:worker` under a separate PM2 process such as `mizantra-autoheal-worker`. The process exits without connecting to Redis when either kill switch is false. It consumes only `autoheal-patch` incident jobs, concurrency one, and has no deployment/rollback handler. Use `pm2 save` only on the worker host after explicit operational approval.
+
+Required environment keys (values come from the secret manager where marked):
+
+| Key | Purpose |
+| --- | --- |
+| `AUTOHEAL_ENABLED` | Global API and worker kill switch; must be `true` for processing |
+| `AUTOHEAL_WORKER_ENABLED` | Worker-specific kill switch; default `false` |
+| `AUTOHEAL_WORKER_API_URL` | HTTPS API base including `/api/v1`, for example `https://erp.example.invalid/api/v1` |
+| `AUTOHEAL_WORKER_API_TOKEN` | Shared worker API bearer token, minimum 32 random characters; same value in API and worker secret stores |
+| `AUTOHEAL_AGENT_PROVIDER` | Set to `codex-cli` on the isolated worker host |
+| `AUTOHEAL_REPO_URL` | Approved Git remote (SSH or credential helper; no embedded credentials) |
+| `AUTOHEAL_REPO_BASE_BRANCH` | Approved target branch, default `clean-main` |
+| `AUTOHEAL_WORKSPACE_ROOT` | Dedicated worker data/worktree directory |
+| `AUTOHEAL_CODEX_PATH` | Codex CLI executable path |
+| `AUTOHEAL_CODEX_MODEL_LOW` | LOW-risk model pinned to `gpt-6-luna`; unapproved values fall back to Luna |
+| `AUTOHEAL_CODEX_MODEL_MEDIUM` | MEDIUM policy pinned to `gpt-6-sol`; worker does not run MEDIUM jobs |
+| `AUTOHEAL_GIT_PUSH_ENABLED` | Explicit gate for pushing a validated `autofix/*` branch; default `false` |
+| `REDIS_URL` | Redis connection URL for the dedicated queue |
+| `AUTOHEAL_WORKER_ID` | Optional non-sensitive worker label |
+
+The worker needs no database URL, Supabase URL/key, or application DB credential. `AUTOHEAL_WORKER_API_TOKEN` must match the API-side guard configuration. Rotate it through the secret manager if the host is retired.
+
+On the API host, set the same `AUTOHEAL_WORKER_API_TOKEN` and `AUTOHEAL_WORKER_ENABLED=true` only when the separately approved worker is ready. Keep `AUTOHEAL_ENABLED=false` until the controlled pilot is authorized. Review and apply `migrations/add-autoheal-worker-heartbeats.sql` through the normal database change process before enabling worker-health reporting. The worker host itself receives no database credentials.
 
 ## Deployment target configuration
 

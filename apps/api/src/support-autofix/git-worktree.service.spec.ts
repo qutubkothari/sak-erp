@@ -8,6 +8,27 @@ import { GitWorktreeService } from './git-worktree.service';
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
 describe('AutoHeal isolated Git workspace', () => {
+  it('pushes only an autofix branch and never accepts a target branch name', async () => {
+    const previousRoot = process.env.AUTOHEAL_WORKTREE_ROOT;
+    const previousRemote = process.env.AUTOHEAL_REPO_URL;
+    const isolatedRoot = join(tmpdir(), 'autoheal-push-worktrees');
+    process.env.AUTOHEAL_WORKTREE_ROOT = isolatedRoot;
+    process.env.AUTOHEAL_REPO_URL = 'ssh://git.example.invalid/erp.git';
+    const run = jest.fn().mockImplementation((_command: string, args: string[]) => Promise.resolve({ code: 0, output: args[0] === 'branch' ? 'autofix/incident-1-fix-label' : args[0] === 'remote' ? 'ssh://git.example.invalid/erp.git' : '' }));
+    try {
+      const service = new GitWorktreeService({ run } as any);
+      await service.pushBranch(join(isolatedRoot, 'incident-1'), 'autofix/incident-1-fix-label');
+      expect(run).toHaveBeenCalledWith('git', ['push', 'origin', 'autofix/incident-1-fix-label'], join(isolatedRoot, 'incident-1'), 120_000);
+      await expect(service.pushBranch(join(isolatedRoot, 'incident-1'), 'clean-main')).rejects.toThrow('only its isolated autofix branch');
+      expect(run.mock.calls.filter((call) => call[1][0] === 'push')).toHaveLength(1);
+    } finally {
+      if (previousRoot === undefined) delete process.env.AUTOHEAL_WORKTREE_ROOT;
+      else process.env.AUTOHEAL_WORKTREE_ROOT = previousRoot;
+      if (previousRemote === undefined) delete process.env.AUTOHEAL_REPO_URL;
+      else process.env.AUTOHEAL_REPO_URL = previousRemote;
+    }
+  });
+
   it('creates a separate worktree and leaves the approved base worktree unchanged', async () => {
     const temporaryRoot = mkdtempSync(join(tmpdir(), 'autoheal-worktree-test-'));
     const repo = join(temporaryRoot, 'repo');

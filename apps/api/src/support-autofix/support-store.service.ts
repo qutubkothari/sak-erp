@@ -217,4 +217,16 @@ export class SupportStoreService {
     if (error) throw error;
     this.events.publish(event);
   }
+
+  async recordWorkerHeartbeat(values: Record<string, unknown>) {
+    const { data, error } = await this.supabase.from('support_worker_heartbeats').upsert(values, { onConflict: 'worker_id' }).select('worker_id,current_incident,queue_depth,updated_at').single();
+    if (error) throw error;
+    return data;
+  }
+
+  async getWorkerHeartbeat() {
+    const { data, error } = await this.supabase.from('support_worker_heartbeats').select('worker_id,current_incident,queue_depth,updated_at').order('updated_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
 }

@@ -25,7 +25,9 @@ flowchart LR
 
 ## Data and services
 
-`apps/api/src/support-autofix/` contains the incident controller, tenant-scoped persistence, state machine, classifier, scoped prompt builder, provider interface, isolated worktree manager, validation runner, deployment-target registry, web deployment adapter, rollback coordinator, and Bull worker. The additive schema is in `migrations/add-support-autofix.sql`; it is not applied automatically.
+`apps/api/src/support-autofix/` contains the incident API, tenant-scoped persistence, deterministic classifier, scoped prompt builder, isolated worktree manager, validation runner, worker API guard, heartbeat support, and standalone Bull coding worker. The normal API process only records incidents and enqueues LOW-risk patch jobs; it does not register a patch processor or Codex provider. The dedicated `autoheal-patch` queue is consumed only by `pnpm autoheal:worker`; human deployment/rollback jobs use a separate queue with no coding-worker handler. Additive schemas are in `migrations/add-support-autofix.sql` and `migrations/add-autoheal-worker-heartbeats.sql`; neither is applied automatically.
+
+The worker has no database credential. It receives tenant/incident IDs from Redis, requests approved incident context over the authenticated worker API, creates one dedicated Git worktree, runs Codex and web-only validation, then posts the diff summary and commit metadata. The API independently re-runs the deterministic diff and validation gate before marking `READY_FOR_APPROVAL`. The coding worker has no deployment or rollback processor.
 
 `/dashboard/support` is the client status and issue form. `/dashboard/support/admin` is the permission-checked engineering control center. Support capture and state changes also write scoped support audit events; the generic audit interceptor skips support request bodies so free text is not copied into general activity logs.
 
