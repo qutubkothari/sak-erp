@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { createClient } from "@supabase/supabase-js";
@@ -10,6 +11,7 @@ import { SupabaseStorageService } from "../documents/services/supabase-storage.s
 
 @Injectable()
 export class PlannerSupportAttachmentsService {
+  private readonly logger = new Logger(PlannerSupportAttachmentsService.name);
   private readonly db = createClient(
     process.env.SUPABASE_URL!,
     (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY)!,
@@ -55,7 +57,13 @@ export class PlannerSupportAttachmentsService {
       });
       if (error) throw error;
       return { ref: id };
-    } catch {
+    } catch (error) {
+      const code =
+        typeof (error as any)?.code === "string" &&
+        /^[A-Za-z0-9_-]{1,32}$/.test((error as any).code)
+          ? (error as any).code
+          : "unknown";
+      this.logger.warn(`Support screenshot upload failed (code=${code}).`);
       if (path) await this.storage.deleteFile(path).catch(() => undefined);
       throw new ServiceUnavailableException(
         "Screenshot upload failed. Your description is still here; retry or remove the screenshot.",

@@ -281,8 +281,9 @@ describe("Private support screenshots", () => {
     ) as any;
     service.storage = {
       uploadFile: jest.fn().mockResolvedValue({ path: "private/path.png" }),
-      deleteFile: jest.fn(),
+      deleteFile: jest.fn().mockResolvedValue(undefined),
     };
+    service.logger = { warn: jest.fn() };
     service.db = {
       storage: {
         getBucket: jest
@@ -311,6 +312,23 @@ describe("Private support screenshots", () => {
       }),
     );
   });
+  it("uploads a JPG screenshot and returns only an opaque reference", async () => {
+    const service = makeService();
+    service.storage.uploadFile.mockResolvedValue({ path: "private/path.jpg" });
+    const result = await service.upload(user, {
+      originalname: "screen.jpg",
+      mimetype: "image/jpeg",
+      buffer: Buffer.from([255, 216, 255]),
+      size: 3,
+    });
+    expect(Object.keys(result)).toEqual(["ref"]);
+    expect(result.ref).toMatch(/^[0-9a-f-]{36}$/);
+    expect(service.storage.uploadFile).toHaveBeenCalledWith(
+      expect.objectContaining({ originalname: expect.stringMatching(/\.jpg$/) }),
+      "support-screenshots",
+      user.tenantId,
+    );
+  });
   it("refuses public storage before uploading screenshots", async () => {
     const service = makeService();
     service.db.storage.getBucket.mockResolvedValue({ data: { public: true } });
@@ -332,6 +350,17 @@ describe("Private support screenshots", () => {
       }),
     ).rejects.toThrow("PNG or JPEG");
   });
+  it("rejects oversized screenshots before storage is called", async () => {
+    const service = makeService();
+    await expect(
+      service.upload(user, {
+        mimetype: "image/jpeg",
+        buffer: Buffer.from([255, 216, 255]),
+        size: 10 * 1024 * 1024 + 1,
+      }),
+    ).rejects.toThrow("up to 10 MB");
+    expect(service.storage.uploadFile).not.toHaveBeenCalled();
+  });
   it("returns usable upload failure without exposing internals", async () => {
     const service = makeService();
     service.storage.uploadFile.mockRejectedValue(
@@ -344,6 +373,33 @@ describe("Private support screenshots", () => {
         size: 3,
       }),
     ).rejects.toThrow("Your description is still here");
+    expect(service.logger.warn).toHaveBeenCalledWith(
+      "Support screenshot upload failed (code=unknown).",
+    );
+  });
+  it("logs only a safe backend code when screenshot metadata cannot be saved", async () => {
+    const service = makeService();
+    const metadataError = Object.assign(
+      new Error("sensitive server detail"),
+      { code: "PGRST205" },
+    );
+    service.db.from.mockReturnValue({
+      insert: jest.fn().mockResolvedValue({ error: metadataError }),
+    });
+    await expect(
+      service.upload(user, {
+        mimetype: "image/jpeg",
+        buffer: Buffer.from([255, 216, 255]),
+        size: 3,
+      }),
+    ).rejects.toThrow("Your description is still here");
+    expect(service.logger.warn).toHaveBeenCalledWith(
+      "Support screenshot upload failed (code=PGRST205).",
+    );
+    expect(service.logger.warn.mock.calls.flat().join(" ")).not.toContain(
+      "sensitive server detail",
+    );
+    expect(service.storage.deleteFile).toHaveBeenCalledWith("private/path.png");
   });
   it("rejects cross-user and cross-tenant references", async () => {
     const service = makeService();
