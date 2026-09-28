@@ -7,7 +7,7 @@ import { apiClient } from "../../../../../lib/api-client";
 
 type Incident = { id: string; tenant_id?: string; title: string; module?: string; route?: string; status: string; risk_level: string; risk_reason?: string; created_at: string; occurrence_count: number };
 type Target = { id: string; domain: string };
-type Detail = Incident & { reported_by?: string; reported_employee_id?: string; description?: string; error_message?: string; http_status?: number; request_id?: string; build_sha?: string; browser_info?: string; root_cause?: string; attempts: any[]; deployments: any[] };
+type Detail = Incident & { screenshot_ref?: string; reported_by?: string; reported_employee_id?: string; description?: string; error_message?: string; http_status?: number; request_id?: string; build_sha?: string; browser_info?: string; root_cause?: string; attempts: any[]; deployments: any[] };
 type Configuration = { enabled: boolean; mode: string; deploymentTargets: Target[] };
 
 function pretty(value: unknown) {
@@ -23,6 +23,18 @@ export default function SupportAutoHealAdminPage() {
   const [targetId, setTargetId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const downloadScreenshot = async (ref: string) => {
+    try {
+      const blob = await apiClient.getBlob(`/active-planner/support-screenshots/${encodeURIComponent(ref)}`);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `support-screenshot.${blob.type === 'image/png' ? 'png' : 'jpg'}`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch { setError('The screenshot could not be loaded.'); }
+  };
 
   const refresh = async () => {
     try {
@@ -78,6 +90,7 @@ export default function SupportAutoHealAdminPage() {
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-100 pb-4"><div><p className="text-xs uppercase tracking-wide text-stone-500">{selected.module || "General"} · {selected.route || "Route unavailable"}</p><h2 className="mt-1 text-xl font-semibold text-stone-900">{selected.title}</h2><p className="mt-2 text-sm text-stone-600">Tenant {selected.tenant_id || "current tenant"} · {selected.occurrence_count} occurrence(s)</p></div><div className="flex gap-2"><span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold">{selected.status}</span><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">{selected.risk_level}</span></div></div>
             <div className="grid gap-4 md:grid-cols-2"><Info title="Risk decision" value={selected.risk_reason} /><Info title="Root cause" value={selected.root_cause} /><Info title="Client description" value={selected.description} /><Info title="Visible error" value={selected.error_message} /><Info title="Reported by user" value={selected.reported_by} /><Info title="Employee reference" value={selected.reported_employee_id} /><Info title="HTTP status" value={selected.http_status} /><Info title="Build SHA" value={selected.build_sha} /><Info title="Request ID" value={selected.request_id} /><Info title="Browser/device" value={selected.browser_info} /></div>
 
+            {/^[0-9a-f-]{36}$/i.test(selected.screenshot_ref || '') && <button type="button" onClick={() => void downloadScreenshot(selected.screenshot_ref || '')} className="rounded-lg border px-3 py-2 text-sm">Download reported screenshot</button>}
             <div><h3 className="font-semibold text-stone-900">Fix attempts</h3>{selected.attempts?.length ? <div className="mt-2 space-y-3">{selected.attempts.map((attempt) => <article key={attempt.id} className="rounded-xl border border-stone-200 p-4"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{attempt.status} · {attempt.agent_provider}/{attempt.agent_model}</strong><span className="text-xs text-stone-500">Risk after diff: {attempt.risk_after_diff}</span></div><p className="mt-2 break-all text-xs text-stone-600">Branch: {attempt.branch_name} · Base: {attempt.base_sha}</p><p className="mt-1 break-all text-xs text-stone-600">Files: {(attempt.files_changed || []).join(", ") || "None"}</p><p className="mt-1 break-all text-xs text-stone-600">Commit: {attempt.commit_sha || "Not created"}</p><div className="mt-3 grid gap-3 md:grid-cols-2"><Info title="Tests and smoke" value={attempt.test_result} /><Info title="Build" value={attempt.build_result} /></div>{attempt.safety_reasons?.length > 0 && <p className="mt-2 text-xs text-red-700">Safety gate: {attempt.safety_reasons.join("; ")}</p>}</article>)}</div> : <p className="mt-2 text-sm text-stone-500">No patch attempts recorded.</p>}</div>
 
             <div><h3 className="font-semibold text-stone-900">Deployments and rollback</h3>{selected.deployments?.length ? <div className="mt-2 space-y-2">{selected.deployments.map((deployment) => <article key={deployment.id} className="rounded-xl border border-stone-200 p-4 text-sm"><p className="font-medium">{deployment.target} · {deployment.deployment_status}</p><p className="mt-1 break-all text-xs text-stone-600">Previous {deployment.previous_sha} → New {deployment.new_sha}</p><p className="mt-1 text-xs text-stone-600">Smoke: {pretty(deployment.smoke_result)} · Rollback: {deployment.rollback_status}</p></article>)}</div> : <p className="mt-2 text-sm text-stone-500">No deployment attempts recorded.</p>}</div>

@@ -291,11 +291,12 @@ export class SupportAutofixService {
   private enabled() { return String(process.env.AUTOHEAL_ENABLED || 'false').toLowerCase() === 'true'; }
 
   private clientStatus(value: string) {
-    if (['DEPLOYING', 'VERIFYING'].includes(value)) return 'Safe fix being tested';
-    if (value === 'RESOLVED') return 'Issue resolved';
-    if (value === 'NEW') return 'Issue received';
-    if (['TRIAGING', 'PATCHING', 'TESTING'].includes(value)) return 'Checking problem';
-    return 'Engineering review required';
+    if (['PATCHING', 'TESTING', 'DEPLOYING', 'VERIFYING'].includes(value)) return 'A safe fix is being tested.';
+    if (value === 'RESOLVED') return 'The issue has been fixed.';
+    if (['NEW', 'TRIAGING'].includes(value)) return 'Checking the problem.';
+    if (value === 'READY_FOR_APPROVAL') return 'The fix has passed checks and is awaiting engineering approval.';
+    if (value === 'ROLLED_BACK') return 'The attempted change was reversed safely and engineering is reviewing it.';
+    return 'This needs engineering review. Your issue is recorded and has not been lost.';
   }
 
   private attemptPassedSafetyGate(attempt: any): boolean {

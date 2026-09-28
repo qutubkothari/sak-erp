@@ -19,7 +19,7 @@ describe('AutoHeal service safety controls', () => {
     service.queue = queue;
     service.store = store;
     const result = await service.captureIncident({ tenantId: 'tenant-a', userId: 'user-a' }, { title: 'Date display', description: 'Weekday missing' });
-    expect(result).toMatchObject({ status: 'Issue received', riskLevel: 'LOW' });
+    expect(result).toMatchObject({ status: 'Checking the problem.', riskLevel: 'LOW' });
     expect(store.captureIncident).toHaveBeenCalledTimes(1);
     expect(queue.add).not.toHaveBeenCalled();
   });

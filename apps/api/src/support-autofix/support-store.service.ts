@@ -68,13 +68,14 @@ export class SupportStoreService {
       .select('*')
       .eq('tenant_id', tenantId)
       .eq('fingerprint', fingerprint)
+      .eq('reported_by', reporterId)
       .gte('last_seen_at', dedupeSince)
       .maybeSingle();
     if (lookupError) throw lookupError;
     if (recent) {
       const { data, error } = await this.supabase
         .from('support_incidents')
-        .update({ occurrence_count: Number(recent.occurrence_count || 1) + 1, last_seen_at: now.toISOString(), updated_at: now.toISOString() })
+        .update({ occurrence_count: Number(recent.occurrence_count || 1) + 1, ...(safeScreenshotRef(input.screenshot_ref) ? { screenshot_ref: safeScreenshotRef(input.screenshot_ref) } : {}), last_seen_at: now.toISOString(), updated_at: now.toISOString() })
         .eq('tenant_id', tenantId)
         .eq('id', recent.id)
         .select('*')
