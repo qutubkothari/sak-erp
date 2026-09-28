@@ -7,6 +7,7 @@ import { SupportStoreService } from './support-store.service';
 import { SupportAutofixEvents } from './support-events';
 import { DeploymentTargetRegistry, SshDeploymentTargetAdapter } from './deployment';
 import { AutoHealWorkerGuard } from './worker-auth.guard';
+import { CommandRunner } from './command-runner';
 
 @Module({
   imports: [AuditModule, BullModule.registerQueue({ name: 'autoheal-patch' }), BullModule.registerQueue({ name: 'support-autofix-deployment' })],
@@ -14,6 +15,7 @@ import { AutoHealWorkerGuard } from './worker-auth.guard';
   providers: [
     DeploymentTargetRegistry,
     SshDeploymentTargetAdapter,
+    CommandRunner,
     SupportAutofixEvents,
     SupportStoreService,
     SupportAutofixService,
