@@ -50,8 +50,12 @@ export class AuditInterceptor implements NestInterceptor {
       context.getHandler(),
       context.getClass(),
     ]);
+    const skipAutomaticAudit = this.reflector.getAllAndOverride<boolean>('skipAutomaticAudit', [
+      context.getHandler(),
+      context.getClass(),
+    ]);
 
-    if (isPublic || !MUTATING_METHODS.has(method) || !request.user) {
+    if (isPublic || skipAutomaticAudit || !MUTATING_METHODS.has(method) || !request.user) {
       return next.handle();
     }
 

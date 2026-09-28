@@ -9,6 +9,30 @@ const DEFAULT_BROWSER_API_BASE_URL = "/api/v1";
 const DEFAULT_SERVER_API_BASE_URL =
   process.env.INTERNAL_API_URL || "http://localhost:4000/api/v1";
 
+export interface LastFailedApiContext {
+  endpoint: string;
+  status: number | null;
+  requestId?: string;
+  occurredAt: number;
+}
+
+let lastFailedApiContext: LastFailedApiContext | null = null;
+
+export function getLastFailedApiContext(): LastFailedApiContext | null {
+  if (!lastFailedApiContext || Date.now() - lastFailedApiContext.occurredAt > 5 * 60 * 1000) return null;
+  return { ...lastFailedApiContext };
+}
+
+function safeEndpoint(endpoint: string): string {
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const parsed = new URL(endpoint, base);
+    return `${parsed.origin === base ? "" : parsed.origin}${parsed.pathname}`.slice(0, 500);
+  } catch {
+    return "";
+  }
+}
+
 function normalizeBaseUrl(value: string): string {
   // Trim whitespace and remove a trailing slash to avoid double slashes when joining.
   const trimmed = value.trim();
@@ -387,6 +411,12 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        lastFailedApiContext = {
+          endpoint: safeEndpoint(endpoint),
+          status: response.status,
+          requestId: response.headers.get("x-request-id")?.slice(0, 128) || undefined,
+          occurredAt: Date.now(),
+        };
         const governance = masterDataGovernanceDetail(
           endpoint,
           String(options.method || "GET").toUpperCase(),
@@ -415,6 +445,11 @@ class ApiClient {
         data,
       };
     } catch (error: any) {
+      lastFailedApiContext = {
+        endpoint: safeEndpoint(endpoint),
+        status: null,
+        occurredAt: Date.now(),
+      };
       console.error("API request failed:", error);
       const rawMessage = String(error?.message || "").trim();
       const isNetworkFailure =
