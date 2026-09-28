@@ -43,7 +43,7 @@ Required environment keys (values come from the secret manager where marked):
 
 The worker needs no database URL, Supabase URL/key, or application DB credential. `AUTOHEAL_WORKER_API_TOKEN` must match the API-side guard configuration. Rotate it through the secret manager if the host is retired.
 
-On the API host, set the same `AUTOHEAL_WORKER_API_TOKEN` and `AUTOHEAL_WORKER_ENABLED=true` only when the separately approved worker is ready. Keep `AUTOHEAL_ENABLED=false` until the controlled pilot is authorized. Review and apply `migrations/add-autoheal-worker-heartbeats.sql` through the normal database change process before enabling worker-health reporting. The worker host itself receives no database credentials.
+On the API host, `AUTOHEAL_WORKER_ENABLED` is not used; never set it there. The API callbacks require `AUTOHEAL_ENABLED=true` and a configured `AUTOHEAL_WORKER_API_TOKEN`. Keep the token unset until a separate worker is approved, then provision the same secret to the API and worker secret stores without printing it. Apply `migrations/add-autoheal-worker-heartbeats.sql` through the normal database change process before enabling worker-health reporting. The worker host itself receives no database credentials.
 
 ## Deployment target configuration
 

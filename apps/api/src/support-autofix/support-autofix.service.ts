@@ -58,7 +58,7 @@ export class SupportAutofixService {
   }
 
   async startWorkerAttempt(tenantId: string, incidentId: string, input: any) {
-    if (!this.enabled() || String(process.env.AUTOHEAL_WORKER_ENABLED || 'false').toLowerCase() !== 'true') throw new ConflictException('AutoHeal worker is disabled.');
+    if (!this.enabled()) throw new ConflictException('AutoHeal is disabled.');
     const incident = await this.requireIncident(tenantId, incidentId);
     const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
     const count = await this.store.countAttempts(incidentId);
@@ -81,7 +81,7 @@ export class SupportAutofixService {
   }
 
   async getWorkerIncident(tenantId: string, incidentId: string) {
-    if (!this.enabled() || String(process.env.AUTOHEAL_WORKER_ENABLED || 'false').toLowerCase() !== 'true') throw new ConflictException('AutoHeal worker is disabled.');
+    if (!this.enabled()) throw new ConflictException('AutoHeal is disabled.');
     const incident = await this.requireIncident(tenantId, incidentId);
     if (!['NEW', 'TRIAGING'].includes(String(incident.status))) throw new ConflictException('This incident is already being processed or is not eligible for a patch attempt.');
     const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
@@ -98,7 +98,7 @@ export class SupportAutofixService {
   }
 
   async finishWorkerAttempt(tenantId: string, incidentId: string, input: any) {
-    if (input.status === 'READY_FOR_APPROVAL' && (!this.enabled() || String(process.env.AUTOHEAL_WORKER_ENABLED || 'false').toLowerCase() !== 'true')) throw new ConflictException('AutoHeal is disabled; the worker cannot complete approval handoff.');
+    if (input.status === 'READY_FOR_APPROVAL' && !this.enabled()) throw new ConflictException('AutoHeal is disabled; the worker cannot complete approval handoff.');
     const attemptId = String(input.attemptId || '');
     const incident = await this.requireIncident(tenantId, incidentId);
     const currentAttempt = await this.store.latestAttempt(incidentId);

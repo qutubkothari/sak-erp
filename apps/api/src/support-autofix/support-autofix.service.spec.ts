@@ -54,7 +54,7 @@ describe('AutoHeal service safety controls', () => {
   });
 
   it('escalates before creating a third automatic attempt', async () => {
-    process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true';
+    process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'false';
     const store = { getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'TRIAGING', risk_level: 'LOW', title: 'Date display', description: 'Weekday missing' }), countAttempts: jest.fn().mockResolvedValue(2), updateIncident: jest.fn() };
     const service = Object.create(SupportAutofixService.prototype) as any;
     service.store = store;
@@ -63,7 +63,7 @@ describe('AutoHeal service safety controls', () => {
   });
 
   it('rechecks the reported diff and validations before setting READY_FOR_APPROVAL', async () => {
-    process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true';
+    process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'false';
     const store = {
       getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'PATCHING', risk_level: 'LOW' }),
       latestAttempt: jest.fn().mockResolvedValue({ id: 'a', status: 'RUNNING', base_sha: 'a'.repeat(40) }),
