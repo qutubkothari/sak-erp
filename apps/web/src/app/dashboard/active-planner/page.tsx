@@ -35,7 +35,7 @@ import {
   Trash2,
   Volume2,
 } from "lucide-react";
-import { apiClient } from "../../../../lib/api-client";
+import { apiClient, getLastFailedApiContext } from "../../../../lib/api-client";
 import { useLocale } from "@/lib/locale";
 
 type Capability = {
@@ -48,6 +48,8 @@ type Capability = {
   examples: string[];
 };
 type Result = {
+  support_incident?: { id: string; status: string };
+  support_incidents?: Array<{ id: string; status: string }>;
   status: string;
   intent_type: string;
   extracted: any;
@@ -394,6 +396,12 @@ export default function ActivePlannerPage() {
     [approvalRequest, setApprovalRequest] = useState<any>(null),
     [attachments, setAttachments] = useState<Attachment[]>([]),
     [uploading, setUploading] = useState(false),
+    [pendingFile, setPendingFile] = useState<File | null>(null),
+    [supportMode, setSupportMode] = useState(false),
+    [clarifySupport, setClarifySupport] = useState(false),
+    [supportStatuses, setSupportStatuses] = useState<
+      Array<{ id: string; status: string }>
+    >([]),
     [voiceLanguage, setVoiceLanguage] = useState("en"),
     [voiceState, setVoiceState] = useState<
       "idle" | "recording" | "transcribing"
@@ -686,62 +694,190 @@ export default function ActivePlannerPage() {
     }
   };
   const uploadAttachment = async (file?: File) => {
-    if (!file) return;
+    if (!file || busy || uploading) return;
     if (file.size > 10 * 1024 * 1024) {
       setError("Attachment must be 10 MB or smaller.");
       return;
     }
-    setUploading(true);
-    setError("");
-    try {
-      const token = localStorage.getItem("accessToken");
-      const form = new FormData();
-      form.append("file", file);
-      const response = await fetch("/api/v1/purchase/grn/invoice/upload", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data?.url)
-        throw new Error(data?.message || "Document upload failed.");
-      setAttachments([
-        {
-          url: String(data.url),
-          name: String(data.name || file.name),
-          type: String(data.type || file.type),
-          size: Number(data.size || file.size),
-        },
-      ]);
-    } catch (x: any) {
-      setError(x?.message || "Document upload failed.");
-    } finally {
-      setUploading(false);
+    if (
+      !["application/pdf", "image/png", "image/jpeg"].includes(file.type) ||
+      (supportMode && file.type === "application/pdf")
+    ) {
+      setError(
+        supportMode
+          ? "Choose a PNG or JPEG screenshot."
+          : "Choose a PDF, PNG or JPEG.",
+      );
+      return;
     }
+    setError("");
+    setPendingFile(file);
+    setAttachments([
+      { url: "pending", name: file.name, type: file.type, size: file.size },
+    ]);
   };
-  const submitMessage = async (rawMessage: string) => {
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("report") === "1")
+      setSupportMode(true);
+    void apiClient
+      .get<Result>("/active-planner/support-status")
+      .then((data) => setSupportStatuses(data.support_incidents || []))
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!supportStatuses.length) return;
+    const timer = window.setInterval(() => {
+      void apiClient
+        .get<Result>("/active-planner/support-status")
+        .then((data) => {
+          setSupportStatuses(data.support_incidents || []);
+        })
+        .catch(() => undefined);
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [supportStatuses.length]);
+
+  const submitMessage = async (
+    rawMessage: string,
+    mode?: "support" | "planner" | "status",
+  ) => {
     const message = rawMessage.trim();
-    if (!message) return;
+    if (!message || busy || uploading) return;
     setBusy(true);
     setMobilePanel("chat");
     setError("");
     setCreated(null);
     setApprovalRequest(null);
-    setTurns((x) => [...x, { role: "user", text: message }]);
-    setInput("");
     try {
+      const failedApi = getLastFailedApiContext();
+      const support_mode = mode || (supportMode ? "support" : undefined);
+      const classification = await apiClient.post<{ intent: string }>(
+        "/active-planner/support-intent",
+        { message, support_mode },
+      );
+      if (classification.intent === "CLARIFY_SUPPORT") {
+        setClarifySupport(true);
+        setTurns((x) => [
+          ...x,
+          {
+            role: "planner",
+            text: "Are you reporting a problem with the ERP?",
+          },
+        ]);
+        return;
+      }
+      const isSupport = classification.intent === "SUPPORT_INCIDENT";
+      const isPlanner = classification.intent === "NORMAL_PLANNER_REQUEST";
+      if (isSupport && attachments.length && !pendingFile)
+        throw new Error(
+          "Please attach the screenshot again, or remove it to report without one.",
+        );
+      let uploadedAttachments = attachments;
+      let screenshotRef: string | undefined;
+      if (pendingFile && classification.intent !== "SUPPORT_STATUS") {
+        if (
+          isSupport &&
+          !["image/png", "image/jpeg"].includes(pendingFile.type)
+        )
+          throw new Error(
+            "Choose a PNG or JPEG screenshot, or remove the attachment to report without one.",
+          );
+        setUploading(true);
+        const form = new FormData();
+        form.append("file", pendingFile);
+        const response = await fetch(
+          isSupport
+            ? "/api/v1/active-planner/support-screenshot"
+            : "/api/v1/purchase/grn/invoice/upload",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+            },
+            body: form,
+          },
+        );
+        const uploaded = await response.json().catch(() => ({}));
+        if (!response.ok || !(isSupport ? uploaded.ref : uploaded.url))
+          throw new Error(
+            "Attachment upload failed. Your description is still here; retry or remove the attachment.",
+          );
+        if (isSupport) screenshotRef = uploaded.ref;
+        else
+          uploadedAttachments = [
+            {
+              url: String(uploaded.url),
+              name: pendingFile.name,
+              type: pendingFile.type,
+              size: pendingFile.size,
+            },
+          ];
+      }
+      let originatingRoute = "/dashboard";
+      try {
+        originatingRoute =
+          sessionStorage.getItem("mizantra-source-route") || originatingRoute;
+      } catch {}
+      const browser = /Edg\//.test(navigator.userAgent)
+        ? "Edge"
+        : /Firefox\//.test(navigator.userAgent)
+          ? "Firefox"
+          : /Chrome\//.test(navigator.userAgent)
+            ? "Chrome"
+            : /Safari\//.test(navigator.userAgent)
+              ? "Safari"
+              : "Other";
+      const device = /Mobi/i.test(navigator.userAgent) ? "mobile" : "desktop";
       const data = await apiClient.post<Result>("/active-planner/interpret", {
-        message,
+        message: rawMessage,
+        support_mode,
+        source_route: originatingRoute,
+        failed_endpoint: failedApi?.endpoint,
+        http_status: failedApi?.status || undefined,
+        build_sha: process.env.NEXT_PUBLIC_APP_BUILD_SHA,
+        browser_info: `${device}; ${browser}`,
+        support_screenshot_ref: screenshotRef,
         response_language:
           language === "ar"
             ? "ar-EG"
             : voiceLanguage !== "en"
               ? voiceLanguage
               : "auto",
-        conversation_id: conversationId || undefined,
-        context_token: context || undefined,
-        attachments: attachments.length ? attachments : undefined,
+        conversation_id: isPlanner ? conversationId || undefined : undefined,
+        context_token: isPlanner ? context || undefined : undefined,
+        attachments:
+          isPlanner && uploadedAttachments.length
+            ? uploadedAttachments
+            : undefined,
       });
+      if (mode !== "status") setInput("");
+      setClarifySupport(false);
+      setTurns((x) => [...x, { role: "user", text: message }]);
+      if (
+        data.intent_type.startsWith("SUPPORT_") ||
+        data.intent_type === "CLARIFY_SUPPORT"
+      ) {
+        setTurns((x) => [
+          ...x,
+          { role: "planner", text: data.assistant_message || "" },
+        ]);
+        if (data.support_incident)
+          setSupportStatuses((x) => [
+            data.support_incident!,
+            ...x.filter((row) => row.id !== data.support_incident!.id),
+          ]);
+        if (data.support_incidents) setSupportStatuses(data.support_incidents);
+        if (isSupport) {
+          setSupportMode(false);
+          setPendingFile(null);
+          setAttachments([]);
+        }
+        return;
+      }
+      setPendingFile(null);
+      setAttachments(uploadedAttachments);
       setResult(data);
       setConversationId(data.conversation_id || conversationId);
       setContext(data.context_token);
@@ -774,9 +910,13 @@ export default function ActivePlannerPage() {
       ]);
       void loadHistory(data.conversation_id || conversationId);
     } catch (x: any) {
-      setError(x?.message || "The planner could not interpret this request.");
+      setError(
+        x?.message ||
+          "Your request could not be sent. Your description is still here; please retry.",
+      );
     } finally {
       setBusy(false);
+      setUploading(false);
     }
   };
   const send = async (e: FormEvent) => {
@@ -852,6 +992,9 @@ export default function ActivePlannerPage() {
     setCreated(null);
     setApprovalRequest(null);
     setAttachments([]);
+    setPendingFile(null);
+    setSupportMode(false);
+    setClarifySupport(false);
     setError("");
     setFeedbackState("");
     setCorrectionOpen(false);
@@ -897,6 +1040,9 @@ export default function ActivePlannerPage() {
       setCreated(null);
       setApprovalRequest(null);
       setAttachments([]);
+      setPendingFile(null);
+      setSupportMode(false);
+      setClarifySupport(false);
       setFeedbackState("");
       setCorrectionOpen(false);
       setCorrectionText("");
@@ -1300,12 +1446,85 @@ export default function ActivePlannerPage() {
                 <FileText className="h-4 w-4 shrink-0" />
                 <span className="truncate">{attachment.name}</span>
               </span>
-              <button type="button" onClick={() => setAttachments([])}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAttachments([]);
+                  setPendingFile(null);
+                }}
+              >
                 Remove
               </button>
             </div>
           ))}
+          {supportStatuses.length > 0 && (
+            <div
+              aria-live="polite"
+              className="border-t bg-amber-50 p-3 text-sm"
+            >
+              {supportStatuses.map((row) => (
+                <p key={row.id}>
+                  Incident: {row.id} - {row.status}
+                </p>
+              ))}
+            </div>
+          )}
           <div className="sticky bottom-0 shrink-0 border-t bg-white">
+            <div className="flex flex-wrap items-center gap-2 px-3 pt-2 text-xs">
+              <button
+                type="button"
+                aria-pressed={supportMode}
+                disabled={busy || uploading}
+                onClick={() => {
+                  setSupportMode(!supportMode);
+                  setClarifySupport(false);
+                }}
+                className="rounded-lg border border-[#D8C8AA] px-3 py-2"
+              >
+                {supportMode
+                  ? "Reporting a problem - Cancel"
+                  : "Report a problem"}
+              </button>
+              <button
+                type="button"
+                disabled={busy || uploading}
+                onClick={() =>
+                  void submitMessage("what happened to my issue?", "status")
+                }
+                className="underline"
+              >
+                My issue status
+              </button>
+              {supportMode && (
+                <span>
+                  Describe what went wrong. A PNG or JPEG screenshot is
+                  optional.
+                </span>
+              )}
+              {clarifySupport && (
+                <div
+                  role="group"
+                  aria-label="Are you reporting a problem with the ERP?"
+                >
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void submitMessage(input, "support")}
+                    className="rounded border px-3 py-2"
+                  >
+                    Yes, report a problem
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void submitMessage(input, "planner")}
+                    className="rounded border px-3 py-2"
+                  >
+                    No, continue planning
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="flex items-center justify-between gap-2 border-b border-[#EEE4D2] px-3 py-2">
               <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[#65452B]">
                 Voice
@@ -1336,7 +1555,11 @@ export default function ActivePlannerPage() {
                 <Paperclip className="h-5 w-5" />
                 <input
                   type="file"
-                  accept="application/pdf,image/png,image/jpeg"
+                  accept={
+                    supportMode
+                      ? "image/png,image/jpeg"
+                      : "application/pdf,image/png,image/jpeg"
+                  }
                   className="hidden"
                   disabled={busy || uploading}
                   onChange={(event) => {
@@ -1369,6 +1592,15 @@ export default function ActivePlannerPage() {
                 )}
               </button>
               <textarea
+                onPaste={(event) => {
+                  const image = Array.from(event.clipboardData.files).find(
+                    (file) => ["image/png", "image/jpeg"].includes(file.type),
+                  );
+                  if (image) {
+                    event.preventDefault();
+                    void uploadAttachment(image);
+                  }
+                }}
                 value={input}
                 onChange={(x) => setInput(x.target.value)}
                 disabled={busy}
@@ -1663,9 +1895,9 @@ export default function ActivePlannerPage() {
                                 {line.item_code} — {line.item_name}
                               </b>
                               <span className="mt-1 block text-amber-900">
-                                Shortage{" "}
-                                {erpQuantity(line.shortage, line.uom)} from
-                                required {erpQuantity(line.required, line.uom)}
+                                Shortage {erpQuantity(line.shortage, line.uom)}{" "}
+                                from required{" "}
+                                {erpQuantity(line.required, line.uom)}
                               </span>
                             </li>
                           ),

@@ -29,4 +29,15 @@ describe('AutoHeal incident privacy and deduplication', () => {
     expect(update).toHaveBeenCalledTimes(1);
     expect(from).toHaveBeenCalledTimes(2);
   });
+
+  it('upserts heartbeat without exposing worker host information', async () => {
+    const single = jest.fn().mockResolvedValue({ data: { worker_id: 'worker-a', current_incident: 'incident-a', queue_depth: 2, updated_at: '2026-09-28T00:00:00Z' }, error: null });
+    const select = jest.fn(() => ({ single }));
+    const upsert = jest.fn(() => ({ select }));
+    const service = Object.create(SupportStoreService.prototype) as any;
+    service.supabase = { from: jest.fn(() => ({ upsert })) };
+    const result = await service.recordWorkerHeartbeat({ worker_id: 'worker-a', current_incident: 'incident-a', queue_depth: 2, updated_at: '2026-09-28T00:00:00Z' });
+    expect(result).toEqual({ worker_id: 'worker-a', current_incident: 'incident-a', queue_depth: 2, updated_at: '2026-09-28T00:00:00Z' });
+    expect(upsert).toHaveBeenCalledWith(expect.not.objectContaining({ hostname: expect.anything(), host: expect.anything() }), { onConflict: 'worker_id' });
+  });
 });

@@ -51,6 +51,17 @@ export default function DashboardLayout({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { setUser } = useAuthStore();
 
+  useEffect(() => {
+    if (pathname && pathname !== "/dashboard/active-planner") {
+      try {
+        sessionStorage.setItem(
+          "mizantra-source-route",
+          pathname.split(/[?#]/)[0],
+        );
+      } catch {}
+    }
+  }, [pathname]);
+
   // Persist sidebar state
   useEffect(() => {
     const saved = localStorage.getItem("sidebarCollapsed");
@@ -288,7 +299,9 @@ export default function DashboardLayout({
           id="main-content"
           tabIndex={-1}
           className={`min-h-screen min-w-0 overflow-x-hidden pb-20 transition-all duration-300 md:pb-0 ${
-            sidebarCollapsed ? "dashboard-main-collapsed md:ml-16" : "dashboard-main-expanded md:ml-56"
+            sidebarCollapsed
+              ? "dashboard-main-collapsed md:ml-16"
+              : "dashboard-main-expanded md:ml-56"
           }`}
         >
           {/* Top sub-header with breadcrumbs */}

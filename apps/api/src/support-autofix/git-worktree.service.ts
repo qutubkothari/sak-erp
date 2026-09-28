@@ -83,6 +83,14 @@ export class GitWorktreeService {
   async pushBranch(workspacePath: string, branchName: string): Promise<void> {
     this.assertWorktreePath(workspacePath);
     if (!/^autofix\/[a-zA-Z0-9-]+$/.test(branchName)) throw new Error('AutoHeal can push only its isolated autofix branch.');
+    const approvedRemote = String(process.env.AUTOHEAL_REPO_URL || '');
+    if (!approvedRemote) throw new Error('The approved repository URL is required before pushing an AutoHeal branch.');
+    const [branch, remote] = await Promise.all([
+      this.commands.run('git', ['branch', '--show-current'], workspacePath),
+      this.commands.run('git', ['remote', 'get-url', 'origin'], workspacePath),
+    ]);
+    if (branch.code !== 0 || branch.output.trim() !== branchName) throw new Error('AutoHeal refused to push because the isolated worktree branch changed.');
+    if (remote.code !== 0 || remote.output.trim() !== approvedRemote) throw new Error('AutoHeal refused to push because the origin remote changed.');
     const result = await this.commands.run('git', ['push', 'origin', branchName], workspacePath, 120_000);
     if (result.code !== 0) throw new Error(`Could not publish verified isolated branch: ${result.output.slice(-1200)}`);
   }

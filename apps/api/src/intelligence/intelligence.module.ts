@@ -1,3 +1,6 @@
+import { SupportAutofixModule } from "../support-autofix/support-autofix.module";
+import { PlannerSupportService } from "./planner-support.service";
+import { PlannerSupportAttachmentsService } from "./planner-support-attachments.service";
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { DashboardModule } from "../dashboard/dashboard.module";
@@ -41,6 +44,7 @@ import { FsmModule } from "../fsm/fsm.module";
 
 @Module({
   imports: [
+    SupportAutofixModule,
     AuditModule,
     DashboardModule,
     EnterpriseEdgeModule,
@@ -61,6 +65,8 @@ import { FsmModule } from "../fsm/fsm.module";
   ],
   controllers: [IntelligenceController, ActivePlannerController],
   providers: [
+    PlannerSupportService,
+    PlannerSupportAttachmentsService,
     IntelligenceService,
     CrossModuleExceptionService,
     DocumentIntelligenceService,

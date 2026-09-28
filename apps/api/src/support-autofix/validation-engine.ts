@@ -9,7 +9,7 @@ import { ValidationResults } from './support-autofix.types';
 export class ValidationEngine {
   constructor(private readonly commands: CommandRunner) {}
 
-  async runWeb(worktreePath: string, changedPaths: string[], affectedRoute: string): Promise<ValidationResults> {
+  async runWeb(worktreePath: string, changedPaths: string[], affectedRoute: string, includeLocalSmoke = true): Promise<ValidationResults> {
     const webRoot = resolve(worktreePath, 'apps/web');
     const focusedFiles = this.findFocusedTests(worktreePath, changedPaths, 'apps/web/');
     const focusedTest = focusedFiles.length
@@ -20,7 +20,9 @@ export class ValidationEngine {
       ? await this.commands.run('pnpm', ['--filter', '@sak-erp/web', 'build'], worktreePath, 600_000)
       : { code: 1, output: 'Web build skipped because type-check failed.' };
     const diffResult = await this.commands.run('git', ['diff', 'HEAD', '--check'], worktreePath);
-    const smoke = buildResult.code === 0 ? await this.runLocalWebSmoke(worktreePath, webRoot, affectedRoute) : { passed: false, detail: 'Smoke check skipped because build failed.' };
+    const smoke = includeLocalSmoke
+      ? buildResult.code === 0 ? await this.runLocalWebSmoke(worktreePath, webRoot, affectedRoute) : { passed: false, detail: 'Smoke check skipped because build failed.' }
+      : { passed: buildResult.code === 0, detail: 'Separate smoke test is not part of the isolated worker validation set.' };
     return {
       focusedTest,
       typeCheck: { passed: typeCheckResult.code === 0, detail: this.resultDetail(typeCheckResult) },
