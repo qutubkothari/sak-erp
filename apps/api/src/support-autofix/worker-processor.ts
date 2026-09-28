@@ -1,5 +1,5 @@
 import { Process, Processor } from '@nestjs/bull';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
 import { AutoFixAgentProvider, selectModelForRisk } from './agent-provider';
@@ -9,6 +9,7 @@ import { buildScopedAutoFixPrompt } from './prompt-builder';
 import { ValidationEngine } from './validation-engine';
 import { AutoHealWorkerApiClient } from './worker-api-client';
 import { ValidationResults } from './support-autofix.types';
+import { AUTO_FIX_AGENT } from './worker-tokens';
 
 @Processor('autoheal-patch')
 @Injectable()
@@ -20,7 +21,7 @@ export class AutoHealWorkerProcessor {
     private readonly api: AutoHealWorkerApiClient,
     private readonly worktrees: GitWorktreeService,
     private readonly validation: ValidationEngine,
-    private readonly agent: AutoFixAgentProvider,
+    @Inject(AUTO_FIX_AGENT) private readonly agent: AutoFixAgentProvider,
     @InjectQueue('autoheal-patch') private readonly queue: Queue,
   ) {}
 
