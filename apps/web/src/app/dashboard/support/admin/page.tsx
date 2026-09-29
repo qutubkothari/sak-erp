@@ -17,6 +17,20 @@ function pretty(value: unknown) {
   return JSON.stringify(value, null, 2);
 }
 
+function hasInfrastructureRetryAvailable(incident: Detail) {
+  const latest = incident.attempts?.[0];
+  const diagnostics = latest?.test_result?.agent_diagnostics || {};
+  const failure = `${diagnostics.summary || ''}\n${diagnostics.stderr_summary || ''}`;
+  return incident.risk_level === 'LOW'
+    && ['FAILED', 'ESCALATED'].includes(incident.status)
+    && incident.attempts?.length === 2
+    && latest?.status === 'FAILED'
+    && !(latest.files_changed || []).length
+    && !latest.commit_sha
+    && /\bEWADDR\b/i.test(failure)
+    && /operation not permitted/i.test(failure);
+}
+
 export default function SupportAutoHealAdminPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selected, setSelected] = useState<Detail | null>(null);
@@ -111,6 +125,7 @@ export default function SupportAutoHealAdminPage() {
               {selected.status === "READY_FOR_APPROVAL" && config?.mode === "APPROVAL" && <button disabled={busy || !targetId} onClick={() => void act("approve-deployment", "Approve this verified low-risk web fix for deployment?")} className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Approve deployment</button>}
               {!["RESOLVED", "ROLLED_BACK"].includes(selected.status) && <button disabled={busy} onClick={() => void act("reject-fix", "Reject this fix and escalate it for engineering review?")} className="rounded-lg border border-stone-300 px-3 py-2 text-sm">Reject fix</button>}
               {selected.status === "FAILED" && <button disabled={busy} onClick={() => void act("retry", "Retry analysis? The incident is limited to two automatic patch attempts.")} className="rounded-lg border border-stone-300 px-3 py-2 text-sm">Retry analysis</button>}
+              {hasInfrastructureRetryAvailable(selected) && <button disabled={busy} onClick={() => void act("retry-infrastructure", "Use the one-time administrator recovery attempt after this verified worker infrastructure failure?")} className="rounded-lg border border-amber-300 px-3 py-2 text-sm text-amber-900">Retry after worker fix</button>}
               {selected.status === "RESOLVED" && <button disabled={busy} onClick={() => void act("rollback", "Roll back the deployed web fix to its previous verified SHA?")} className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm text-red-800"><RotateCcw size={15} />Rollback</button>}
               {busy && <Loader2 className="animate-spin text-stone-500" size={18} />}
             </div>

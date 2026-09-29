@@ -62,13 +62,13 @@ describe('isolated AutoHeal coding worker', () => {
   it('records no-change diagnostics as a failed attempt and does not push', async () => {
     process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true'; process.env.AUTOHEAL_GIT_PUSH_ENABLED = 'true';
     const result = setup([]);
-    result.agent.run.mockResolvedValue({ success: true, provider: 'codex-cli', model: 'gpt-6-luna', exitCode: 0, durationMs: 1500, summary: 'No changes', stderrSummary: '' });
+    result.agent.run.mockResolvedValue({ success: true, provider: 'codex-cli', model: 'gpt-6-luna', exitCode: 0, durationMs: 1500, summary: 'No changes', stderrSummary: '', cwd: 'C:/isolated/i1', sandboxMode: 'workspace-write', commandSummary: 'codex exec --cd C:/isolated/i1 --sandbox workspace-write --ephemeral --model gpt-6-luna <prompt>' });
     await result.processor.process({ data: { tenantId: 't1', incidentId: 'i1' } } as any);
     expect(result.worktrees.commit).not.toHaveBeenCalled();
     expect(result.worktrees.pushBranch).not.toHaveBeenCalled();
     expect(result.api.finishAttempt).toHaveBeenCalledWith('t1', 'i1', expect.objectContaining({
       status: 'ESCALATED',
-      agentDiagnostics: expect.objectContaining({ exitCode: 0, durationMs: 1500, summary: 'No changes', filesChanged: false, validationStage: 'diff' }),
+      agentDiagnostics: expect.objectContaining({ exitCode: 0, durationMs: 1500, summary: 'No changes', filesChanged: false, validationStage: 'diff', cwd: 'C:/isolated/i1', sandboxMode: 'workspace-write' }),
     }));
   });
 

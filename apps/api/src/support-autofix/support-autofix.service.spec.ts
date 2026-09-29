@@ -55,7 +55,7 @@ describe('AutoHeal service safety controls', () => {
 
   it('escalates before creating a third automatic attempt', async () => {
     process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'false';
-    const store = { getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'TRIAGING', risk_level: 'LOW', title: 'Date display', description: 'Weekday missing' }), countAttempts: jest.fn().mockResolvedValue(2), updateIncident: jest.fn() };
+    const store = { getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'TRIAGING', risk_level: 'LOW', title: 'Date display', description: 'Weekday missing' }), countAttempts: jest.fn().mockResolvedValue(2), latestAttempt: jest.fn().mockResolvedValue(null), hasInfrastructureRetryRequest: jest.fn().mockResolvedValue(false), updateIncident: jest.fn() };
     const service = Object.create(SupportAutofixService.prototype) as any;
     service.store = store;
     await expect(service.startWorkerAttempt('t', 'i', {})).rejects.toThrow('automatic attempt limit has been reached');
@@ -90,10 +90,10 @@ describe('AutoHeal service safety controls', () => {
       attemptId: 'a', status: 'ESCALATED', filesChanged: [], diff: '',
       testResult: { focusedTest: failed, typeCheck: failed, diffCheck: failed, smoke: failed },
       buildResult: failed,
-      agentDiagnostics: { exitCode: 0, durationMs: 1200, summary: 'No changes. token=private', filesChanged: false, validationStage: 'diff', stderrSummary: 'password=private' },
+      agentDiagnostics: { exitCode: 0, durationMs: 1200, summary: 'No changes. token=private', filesChanged: false, validationStage: 'diff', stderrSummary: 'password=private', cwd: '/home/autoheal/workspaces/worktrees/i', sandboxMode: 'workspace-write', commandSummary: 'codex exec --cd /home/autoheal/workspaces/worktrees/i --sandbox workspace-write --ephemeral --model gpt-6-luna <prompt>' },
     });
     expect(result).toEqual({ status: 'FAILED', attemptStatus: 'FAILED' });
-    expect(store.updateAttempt).toHaveBeenCalledWith('a', expect.objectContaining({ status: 'FAILED', risk_after_diff: 'MEDIUM', test_result: expect.objectContaining({ agent_diagnostics: expect.objectContaining({ exit_code: 0, files_changed: false, validation_stage: 'diff', summary: 'No changes. token [redacted]', stderr_summary: 'password [redacted]' }) }) }));
+    expect(store.updateAttempt).toHaveBeenCalledWith('a', expect.objectContaining({ status: 'FAILED', risk_after_diff: 'MEDIUM', test_result: expect.objectContaining({ agent_diagnostics: expect.objectContaining({ exit_code: 0, files_changed: false, validation_stage: 'diff', summary: 'No changes. token [redacted]', stderr_summary: 'password [redacted]', cwd: '/home/autoheal/workspaces/worktrees/i', sandbox_mode: 'workspace-write', command_summary: expect.stringContaining('--sandbox workspace-write') }) }) }));
     expect(store.updateIncident).toHaveBeenCalledWith('t', 'i', expect.objectContaining({ status: 'FAILED', risk_level: 'LOW' }));
   });
 
@@ -111,5 +111,43 @@ describe('AutoHeal service safety controls', () => {
     expect(store.updateIncident).toHaveBeenCalledWith('tenant', 'i', expect.objectContaining({ status: 'TRIAGING', risk_level: 'LOW', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders', page_url: '/dashboard/purchase/orders' }));
     expect(queue.add).toHaveBeenCalledTimes(1);
     expect(queue.add).toHaveBeenCalledWith('incident', { tenantId: 'tenant', incidentId: 'i' }, expect.objectContaining({ jobId: 'retry-i-2' }));
+  });
+
+  it('allows one admin infrastructure retry after exactly two attempts with a recognized Codex failure', async () => {
+    process.env.AUTOHEAL_ENABLED = 'true';
+    const incident = { id: 'i', status: 'ESCALATED', risk_level: 'LOW', title: 'PO Search', description: 'Unable to search Purchase Orders', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders' };
+    const latest = { status: 'FAILED', files_changed: [], commit_sha: null, test_result: { agent_diagnostics: { summary: 'EWADDR: Operation not permitted' } } };
+    const store = { getIncident: jest.fn().mockResolvedValue(incident), countAttempts: jest.fn().mockResolvedValue(2), latestAttempt: jest.fn().mockResolvedValue(latest), hasInfrastructureRetryRequest: jest.fn().mockResolvedValue(false), updateIncident: jest.fn().mockResolvedValue({}), writeEvent: jest.fn().mockResolvedValue(undefined) };
+    const queue = { add: jest.fn().mockResolvedValue(undefined) };
+    const audit = { logActivity: jest.fn().mockResolvedValue(undefined) };
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    service.store = store; service.queue = queue; service.audit = audit;
+    await expect(service.retryAfterInfrastructureFailure('tenant', 'i', 'admin')).resolves.toEqual({ queued: true, attemptNumber: 3 });
+    expect(store.updateIncident).toHaveBeenCalledWith('tenant', 'i', expect.objectContaining({ status: 'TRIAGING', risk_level: 'LOW', route: '/dashboard/purchase/orders' }));
+    expect(store.writeEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'autofix.infrastructure-retry-requested', details: expect.objectContaining({ attemptNumber: 3, priorAttempts: 2 }) }), 'admin');
+    expect(queue.add).toHaveBeenCalledTimes(1);
+    expect(queue.add).toHaveBeenCalledWith('incident', { tenantId: 'tenant', incidentId: 'i' }, expect.objectContaining({ jobId: 'infrastructure-retry-i-attempt-3' }));
+  });
+
+  it('prevents reuse of the one-time infrastructure retry and keeps ordinary attempts capped at two', async () => {
+    process.env.AUTOHEAL_ENABLED = 'true';
+    const incident = { id: 'i', status: 'ESCALATED', risk_level: 'LOW', title: 'PO Search', description: 'Unable to search Purchase Orders', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders' };
+    const store = { getIncident: jest.fn().mockResolvedValue(incident), countAttempts: jest.fn().mockResolvedValue(2), latestAttempt: jest.fn().mockResolvedValue({ status: 'FAILED', files_changed: [], test_result: { agent_diagnostics: { summary: 'EWADDR: Operation not permitted' } } }), hasInfrastructureRetryRequest: jest.fn().mockResolvedValue(true), updateIncident: jest.fn() };
+    const queue = { add: jest.fn() };
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    service.store = store; service.queue = queue;
+    await expect(service.retryAfterInfrastructureFailure('tenant', 'i', 'admin')).rejects.toThrow('already used');
+    await expect(service.retryAnalysis('tenant', 'i', 'admin')).rejects.toThrow('automatic attempt limit');
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('allows the worker to create attempt three only when the one-time infrastructure recovery was authorized', async () => {
+    process.env.AUTOHEAL_ENABLED = 'true';
+    const store = { getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'TRIAGING', risk_level: 'LOW', title: 'PO Search', description: 'Unable to search Purchase Orders', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders' }), countAttempts: jest.fn().mockResolvedValue(2), latestAttempt: jest.fn().mockResolvedValue({ status: 'FAILED', files_changed: [], test_result: { agent_diagnostics: { summary: 'EWADDR: Operation not permitted' } } }), hasInfrastructureRetryRequest: jest.fn().mockResolvedValue(true), updateIncident: jest.fn().mockResolvedValue({}), createAttempt: jest.fn().mockResolvedValue({ id: 'attempt-3' }) };
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    service.store = store;
+    const started = await service.startWorkerAttempt('tenant', 'i', { branchName: 'autofix/i-attempt-3-po-search', baseSha: 'a'.repeat(40) });
+    expect(started).toMatchObject({ attemptId: 'attempt-3', attemptNumber: 3, incident: { riskLevel: 'LOW', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders', category: 'search-filter-ui' } });
+    expect(store.createAttempt).toHaveBeenCalledTimes(1);
   });
 });

@@ -93,7 +93,7 @@ export class AutoHealWorkerProcessor {
   }
 
   private agentDiagnostics(result: any, filesChanged: boolean, validationStage: string, error?: unknown) {
-    return { exitCode: result?.exitCode ?? null, durationMs: result?.durationMs ?? null, summary: result?.summary || safeError(error || result?.detail || ''), filesChanged, validationStage, stderrSummary: result?.stderrSummary || '' };
+    return { exitCode: result?.exitCode ?? null, durationMs: result?.durationMs ?? null, summary: result?.summary || safeError(error || result?.detail || ''), filesChanged, validationStage, stderrSummary: result?.stderrSummary || '', cwd: result?.cwd || '', sandboxMode: result?.sandboxMode || '', commandSummary: result?.commandSummary || '' };
   }
 
   private async reportFailure(tenantId: string, incidentId: string, attemptId: string, provider: string, model: string, risk: string, reasons: string[], filesChanged: string[], diff: string, linesChanged: number, validation: ValidationResults, agentDiagnostics: Record<string, unknown>) {

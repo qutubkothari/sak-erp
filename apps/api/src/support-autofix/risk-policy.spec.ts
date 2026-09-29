@@ -1,4 +1,4 @@
-import { autoHealDiffLimits, canAttemptAutoFix, classifyDiff, classifyIncident, makeIncidentFingerprint, safeAutoHealMode } from './risk-policy';
+import { autoHealDiffLimits, canAttemptAutoFix, classifyDiff, classifyIncident, isRecognizedCodexInfrastructureFailure, makeIncidentFingerprint, safeAutoHealMode } from './risk-policy';
 import { SafetyGateInput } from './support-autofix.types';
 
 const passed = { passed: true, detail: 'passed' };
@@ -109,6 +109,13 @@ describe('AutoHeal deterministic risk policy', () => {
     expect(canAttemptAutoFix(0)).toBe(true);
     expect(canAttemptAutoFix(1)).toBe(true);
     expect(canAttemptAutoFix(2)).toBe(false);
+  });
+
+  it('recognizes only no-change Codex EWADDR infrastructure failures for administrator recovery', () => {
+    expect(isRecognizedCodexInfrastructureFailure({ status: 'FAILED', files_changed: [], commit_sha: null, test_result: { agent_diagnostics: { summary: 'EWADDR: Operation not permitted' } } })).toBe(true);
+    expect(isRecognizedCodexInfrastructureFailure({ status: 'FAILED', files_changed: ['apps/web/a.tsx'], test_result: { agent_diagnostics: { summary: 'EWADDR: Operation not permitted' } } })).toBe(false);
+    expect(isRecognizedCodexInfrastructureFailure({ status: 'FAILED', files_changed: [], test_result: { agent_diagnostics: { summary: 'No files changed' } } })).toBe(false);
+    expect(isRecognizedCodexInfrastructureFailure({ status: 'READY_FOR_APPROVAL', files_changed: [], test_result: { agent_diagnostics: { summary: 'EWADDR: Operation not permitted' } } })).toBe(false);
   });
 
   it('deduplicates an identical tenant, route, endpoint, status, error and build fingerprint', () => {

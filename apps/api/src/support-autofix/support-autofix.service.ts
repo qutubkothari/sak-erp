@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { AuditService } from '../audit/audit.service';
 import { canDeployFix, deployWithRollback, DeploymentTargetRegistry, SshDeploymentTargetAdapter } from './deployment';
-import { autoHealDiffLimits, canAttemptAutoFix, classifyDiff, classifyIncident, makeIncidentFingerprint, safeAutoHealMode } from './risk-policy';
+import { autoHealDiffLimits, canAttemptAutoFix, classifyDiff, classifyIncident, isRecognizedCodexInfrastructureFailure, makeIncidentFingerprint, safeAutoHealMode } from './risk-policy';
 import { sanitizeSupportText, SupportStoreService } from './support-store.service';
 import { SupportAutofixEvents } from './support-events';
 import { IncidentInput } from './support-autofix.types';
@@ -70,7 +70,7 @@ export class SupportAutofixService {
       await this.store.updateIncident(tenantId, incidentId, { status: 'ESCALATED', risk_level: decision.risk, risk_reason: decision.reason });
       throw new ConflictException('Only LOW risk incidents can be processed by the coding worker.');
     }
-    if (!canAttemptAutoFix(count)) {
+    if (!canAttemptAutoFix(count) && !(await this.hasAuthorizedInfrastructureRetry(incidentId, count))) {
       await this.store.updateIncident(tenantId, incidentId, { status: 'ESCALATED', risk_reason: 'The maximum of two automatic patch attempts was reached.' });
       throw new ConflictException('The automatic attempt limit has been reached.');
     }
@@ -94,7 +94,7 @@ export class SupportAutofixService {
       throw new ConflictException('Only LOW risk incidents can be processed by the coding worker.');
     }
     const attemptCount = await this.store.countAttempts(incidentId);
-    if (!canAttemptAutoFix(attemptCount)) {
+    if (!canAttemptAutoFix(attemptCount) && !(await this.hasAuthorizedInfrastructureRetry(incidentId, attemptCount))) {
       await this.store.updateIncident(tenantId, incidentId, { status: 'ESCALATED', risk_reason: 'The maximum of two automatic patch attempts was reached.' });
       throw new ConflictException('The automatic attempt limit has been reached.');
     }
@@ -157,6 +157,38 @@ export class SupportAutofixService {
     await this.audit.logActivity({ tenantId, userId: actorId, action: 'SUPPORT_AUTOFIX_RETRY_REQUESTED', resourceType: 'support_incident', resourceId: incidentId });
     await this.queue.add('incident', { tenantId, incidentId }, { jobId: `retry-${incidentId}-${attempts + 1}`, attempts: 2, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: false });
     return { queued: true };
+  }
+
+  async retryAfterInfrastructureFailure(tenantId: string, incidentId: string, actorId: string) {
+    if (!this.enabled()) throw new ConflictException('AutoHeal is disabled by the emergency kill switch.');
+    const incident = await this.requireIncident(tenantId, incidentId);
+    const attempts = await this.store.countAttempts(incidentId);
+    if (attempts !== 2 || !['FAILED', 'ESCALATED'].includes(String(incident.status)) || incident.risk_level !== 'LOW') {
+      throw new ConflictException('Infrastructure recovery is available only after two failed attempts on a LOW risk incident.');
+    }
+    const [latest, alreadyUsed] = await Promise.all([
+      this.store.latestAttempt(incidentId),
+      this.store.hasInfrastructureRetryRequest(incidentId),
+    ]);
+    if (!isRecognizedCodexInfrastructureFailure(latest)) throw new ConflictException('The latest attempt is not a recognized no-change Codex infrastructure failure.');
+    if (alreadyUsed) throw new ConflictException('The one-time infrastructure recovery retry was already used.');
+    const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
+    if (decision.risk !== 'LOW') throw new ConflictException('Only LOW risk incidents can use infrastructure recovery.');
+    const routeContext = this.resolveIncidentRoute(incident);
+    await this.store.updateIncident(tenantId, incidentId, { status: 'TRIAGING', risk_level: 'LOW', risk_reason: decision.reason, ...(routeContext.route ? { route: routeContext.route, page_url: routeContext.route } : {}), ...(routeContext.module ? { module: routeContext.module } : {}) });
+    await this.audit.logActivity({ tenantId, userId: actorId, action: 'SUPPORT_AUTOFIX_INFRASTRUCTURE_RETRY_REQUESTED', resourceType: 'support_incident', resourceId: incidentId });
+    await this.store.writeEvent({ type: 'autofix.infrastructure-retry-requested', tenantId, incidentId, at: new Date().toISOString(), details: { action: 'retry-after-infrastructure-failure', attemptNumber: 3, priorAttempts: 2 } }, actorId);
+    await this.queue.add('incident', { tenantId, incidentId }, { jobId: `infrastructure-retry-${incidentId}-attempt-3`, attempts: 2, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: false });
+    return { queued: true, attemptNumber: 3 };
+  }
+
+  private async hasAuthorizedInfrastructureRetry(incidentId: string, attemptCount: number) {
+    if (attemptCount !== 2) return false;
+    const [latest, authorized] = await Promise.all([
+      this.store.latestAttempt(incidentId),
+      this.store.hasInfrastructureRetryRequest(incidentId),
+    ]);
+    return authorized && isRecognizedCodexInfrastructureFailure(latest);
   }
 
   async rejectFix(tenantId: string, incidentId: string, actorId: string, reason?: string) {
@@ -302,6 +334,9 @@ export class SupportAutofixService {
       files_changed: filesChanged,
       validation_stage: allowedStages.has(String(value?.validationStage)) ? String(value.validationStage) : 'agent',
       stderr_summary: sanitizeSupportText(value?.stderrSummary || '', 300),
+      cwd: sanitizeSupportText(value?.cwd || '', 500),
+      sandbox_mode: value?.sandboxMode === 'workspace-write' ? 'workspace-write' : 'unknown',
+      command_summary: sanitizeSupportText(value?.commandSummary || '', 700),
     };
   }
 

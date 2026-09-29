@@ -96,6 +96,13 @@ export function canAttemptAutoFix(attemptCount: number, maximum = 2): boolean {
   return Number.isInteger(attemptCount) && attemptCount >= 0 && attemptCount < maximum;
 }
 
+export function isRecognizedCodexInfrastructureFailure(attempt: any): boolean {
+  if (!attempt || attempt.status !== 'FAILED' || (Array.isArray(attempt.files_changed) && attempt.files_changed.length > 0) || attempt.commit_sha) return false;
+  const diagnostics = attempt.test_result?.agent_diagnostics || {};
+  const failureText = `${diagnostics.summary || ''}\n${diagnostics.stderr_summary || ''}`;
+  return /\bEWADDR\b/i.test(failureText) && /operation not permitted/i.test(failureText);
+}
+
 export function autoHealDiffLimits(env: NodeJS.ProcessEnv = process.env): { files: number; lines: number } {
   const bounded = (value: string | undefined, fallback: number, ceiling: number) => {
     const parsed = Number(value);

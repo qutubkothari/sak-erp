@@ -88,6 +88,13 @@ export class SupportAutofixController {
     return this.service.retryAnalysis(req.user.tenantId, id, req.user.userId || req.user.id);
   }
 
+  @Post('admin/incidents/:id/retry-infrastructure')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('support_autofix:manage')
+  retryInfrastructure(@Request() req: any, @Param('id') id: string) {
+    return this.service.retryAfterInfrastructureFailure(req.user.tenantId, id, req.user.userId || req.user.id);
+  }
+
   @Post('admin/incidents/:id/approve-deployment')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:approve')

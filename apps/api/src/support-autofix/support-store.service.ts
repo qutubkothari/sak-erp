@@ -187,6 +187,16 @@ export class SupportStoreService {
     return data || [];
   }
 
+  async hasInfrastructureRetryRequest(incidentId: string): Promise<boolean> {
+    const { data, error } = await this.supabase.from('support_audit_events')
+      .select('id')
+      .eq('incident_id', incidentId)
+      .eq('event_type', 'autofix.infrastructure-retry-requested')
+      .limit(1);
+    if (error) throw error;
+    return Boolean(data?.length);
+  }
+
   async createDeployment(values: Record<string, unknown>) {
     const { data, error } = await this.supabase.from('support_deployments').insert(values).select('*').single();
     if (error) throw error;

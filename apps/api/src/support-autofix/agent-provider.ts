@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { spawn } from 'child_process';
+import { existsSync, realpathSync, statSync } from 'fs';
+import { homedir } from 'os';
+import { isAbsolute, join, relative, resolve, sep } from 'path';
 import { AutoHealRisk } from './support-autofix.types';
 
 export interface AutoFixAgentRequest {
@@ -18,10 +21,51 @@ export interface AutoFixAgentResult {
   durationMs?: number;
   summary?: string;
   stderrSummary?: string;
+  cwd?: string;
+  sandboxMode?: 'workspace-write';
+  commandSummary?: string;
 }
 
 export interface AutoFixAgentProvider {
   run(request: AutoFixAgentRequest): Promise<AutoFixAgentResult>;
+}
+
+export function buildCodexInvocation(request: AutoFixAgentRequest, env: NodeJS.ProcessEnv = process.env) {
+  const configuredRoot = resolve(env.AUTOHEAL_WORKTREE_ROOT || join(env.AUTOHEAL_WORKSPACE_ROOT || '/var/lib/mizantra-autoheal', 'worktrees'));
+  if (!existsSync(configuredRoot)) throw new Error('The configured AutoHeal worktree root is not available.');
+  const workspaceRoot = realpathSync(configuredRoot);
+  const cwd = realpathSync(resolve(request.worktreePath));
+  if (!statSync(cwd).isDirectory()) throw new Error('The AutoHeal worktree is not a directory.');
+  const relativePath = relative(workspaceRoot, cwd);
+  if (!relativePath || relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+    throw new Error('Codex may run only inside an isolated AutoHeal worktree.');
+  }
+
+  const home = resolve(env.HOME || env.USERPROFILE || homedir());
+  const configuredCodexHome = env.CODEX_HOME ? resolve(env.CODEX_HOME) : join(home, '.codex');
+  const codexHomeRelative = relative(home, configuredCodexHome);
+  const codexHome = codexHomeRelative === '..' || codexHomeRelative.startsWith(`..${sep}`) || isAbsolute(codexHomeRelative)
+    ? join(home, '.codex')
+    : configuredCodexHome;
+  const safeEnv: NodeJS.ProcessEnv = {
+    PATH: env.PATH || env.Path || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    HOME: home,
+    CODEX_HOME: codexHome,
+  };
+  for (const key of ['USERPROFILE', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'CODEX_HOME']) {
+    if (key !== 'CODEX_HOME' && env[key]) safeEnv[key] = env[key];
+  }
+  const executable = env.AUTOHEAL_CODEX_PATH || 'codex';
+  const model = selectModelForRisk(request.risk, env) || 'gpt-6-luna';
+  const args = ['exec', '--cd', cwd, '--sandbox', 'workspace-write', '--ephemeral', '--model', model, request.prompt];
+  return {
+    executable,
+    args,
+    cwd,
+    sandboxMode: 'workspace-write' as const,
+    env: safeEnv,
+    commandSummary: `${executable} exec --cd ${cwd} --sandbox workspace-write --ephemeral --model ${model} <prompt>`,
+  };
 }
 
 export function selectModelForRisk(risk: AutoHealRisk, env: NodeJS.ProcessEnv = process.env): string | null {
@@ -55,25 +99,22 @@ export class CodexCliAutoFixAgentProvider implements AutoFixAgentProvider {
     if (!model) {
       return { provider: 'codex-cli', model: 'none', success: false, output: '', detail: 'High or blocked risk is diagnosis-only.' };
     }
-    const executable = process.env.AUTOHEAL_CODEX_PATH || 'codex';
-    const args = [
-      'exec',
-      '--cd', request.worktreePath,
-      '--sandbox', 'workspace-write',
-      '--ephemeral',
-      '--model', model,
-      request.prompt,
-    ];
+    let invocation: ReturnType<typeof buildCodexInvocation>;
+    try {
+      invocation = buildCodexInvocation(request);
+    } catch (error: any) {
+      return { provider: 'codex-cli', model, success: false, output: '', exitCode: null, detail: safeDiagnosticText(error?.message || error, 300), cwd: '[rejected outside isolated worktree]', sandboxMode: 'workspace-write', commandSummary: 'codex exec --cd <validated-worktree> --sandbox workspace-write --ephemeral' };
+    }
     return new Promise((resolve) => {
       const startedAt = Date.now();
       let stdout = '';
       let stderr = '';
       let settled = false;
-      const child = spawn(executable, args, {
-        cwd: request.worktreePath,
+      const child = spawn(invocation.executable, invocation.args, {
+        cwd: invocation.cwd,
         shell: false,
         windowsHide: true,
-        env: this.sanitizedEnvironment(),
+        env: invocation.env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       const killSwitchTimer = setInterval(() => {
@@ -84,7 +125,7 @@ export class CodexCliAutoFixAgentProvider implements AutoFixAgentProvider {
         settled = true;
         clearTimeout(timer);
         clearInterval(killSwitchTimer);
-        resolve({ ...result, durationMs: Date.now() - startedAt, summary: result.summary || safeDiagnosticText(stdout, 300), stderrSummary: safeDiagnosticText(stderr, 300), output: safeDiagnosticText(stdout, 1000) });
+        resolve({ ...result, durationMs: Date.now() - startedAt, summary: result.summary || safeDiagnosticText(stdout, 300), stderrSummary: safeDiagnosticText(stderr, 300), output: safeDiagnosticText(stdout, 1000), cwd: invocation.cwd, sandboxMode: invocation.sandboxMode, commandSummary: invocation.commandSummary });
       };
       child.stdout.on('data', (chunk: Buffer) => { stdout = `${stdout}${chunk.toString('utf8')}`.slice(-20_000); });
       child.stderr.on('data', (chunk: Buffer) => { stderr = `${stderr}${chunk.toString('utf8')}`.slice(-20_000); });
@@ -98,12 +139,6 @@ export class CodexCliAutoFixAgentProvider implements AutoFixAgentProvider {
     });
   }
 
-  private sanitizedEnvironment(): NodeJS.ProcessEnv {
-    const allowed = ['PATH', 'Path', 'HOME', 'USERPROFILE', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'CODEX_HOME'];
-    const safe: NodeJS.ProcessEnv = {};
-    for (const key of allowed) if (process.env[key]) safe[key] = process.env[key];
-    return safe;
-  }
 }
 
 function safeDiagnosticText(value: string, limit: number) {
