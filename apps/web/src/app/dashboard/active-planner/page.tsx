@@ -98,6 +98,29 @@ type AnalyticsAnswer = {
 };
 type Turn = { role: "user" | "planner"; text: string };
 
+const SUPPORT_SOURCE_ROUTE_KEY = "mizantra-source-route";
+const SUPPORT_SOURCE_ROUTE_MAX_AGE_MS = 15 * 60 * 1000;
+
+function readSupportSourceRouteAtOpen(): string | null {
+  try {
+    const stored = sessionStorage.getItem(SUPPORT_SOURCE_ROUTE_KEY);
+    if (!stored) return null;
+    const value = JSON.parse(stored) as { route?: unknown; capturedAt?: unknown };
+    const route = String(value.route || "").split(/[?#]/)[0];
+    const capturedAt = Number(value.capturedAt);
+    if (
+      !Number.isFinite(capturedAt) ||
+      Date.now() - capturedAt < 0 ||
+      Date.now() - capturedAt > SUPPORT_SOURCE_ROUTE_MAX_AGE_MS ||
+      !/^\/dashboard\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/.test(route) ||
+      /^\/dashboard\/(?:active-planner|support|reports|command-center|settings|documents)(?:\/|$)/i.test(route)
+    ) return null;
+    return route.slice(0, 500);
+  } catch {
+    return null;
+  }
+}
+
 function consumePendingSupportUpdates() {
   try {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
@@ -415,6 +438,7 @@ export default function ActivePlannerPage() {
     [uploading, setUploading] = useState(false),
     [pendingFile, setPendingFile] = useState<File | null>(null),
     [supportMode, setSupportMode] = useState(false),
+    [supportSourceRoute, setSupportSourceRoute] = useState<string | null>(null),
     [clarifySupport, setClarifySupport] = useState(false),
     [supportStatuses, setSupportStatuses] = useState<
       Array<{ id: string; status: string }>
@@ -752,8 +776,10 @@ export default function ActivePlannerPage() {
   };
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("report") === "1")
+    if (new URLSearchParams(window.location.search).get("report") === "1") {
       setSupportMode(true);
+      setSupportSourceRoute(readSupportSourceRouteAtOpen());
+    }
     void apiClient
       .get<Result>("/active-planner/support-status")
       .then((data) => setSupportStatuses(data.support_incidents || []))
@@ -849,11 +875,6 @@ export default function ActivePlannerPage() {
             },
           ];
       }
-      let originatingRoute = "/dashboard";
-      try {
-        originatingRoute =
-          sessionStorage.getItem("mizantra-source-route") || originatingRoute;
-      } catch {}
       const browser = /Edg\//.test(navigator.userAgent)
         ? "Edge"
         : /Firefox\//.test(navigator.userAgent)
@@ -867,7 +888,8 @@ export default function ActivePlannerPage() {
       const data = await apiClient.post<Result>("/active-planner/interpret", {
         message: rawMessage,
         support_mode,
-        source_route: originatingRoute,
+        ...(supportSourceRoute ? { source_route: supportSourceRoute } : {}),
+        current_route: window.location.pathname,
         failed_endpoint: failedApi?.endpoint,
         http_status: failedApi?.status || undefined,
         build_sha: process.env.NEXT_PUBLIC_APP_BUILD_SHA,
@@ -1510,7 +1532,9 @@ export default function ActivePlannerPage() {
                 aria-pressed={supportMode}
                 disabled={busy || uploading}
                 onClick={() => {
-                  setSupportMode(!supportMode);
+                  const opening = !supportMode;
+                  setSupportMode(opening);
+                  setSupportSourceRoute(opening ? readSupportSourceRouteAtOpen() : null);
                   setClarifySupport(false);
                 }}
                 className="rounded-lg border border-[#D8C8AA] px-3 py-2"

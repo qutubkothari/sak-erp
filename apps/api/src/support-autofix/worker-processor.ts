@@ -40,6 +40,9 @@ export class AutoHealWorkerProcessor {
     this.currentIncident = incidentId;
     await this.sendHeartbeat();
     let attemptId = '';
+    let agentResult: any = null;
+    let changedFiles: string[] = [];
+    let validationStage = 'setup';
     try {
       const { incident, attemptNumber } = await this.api.getIncident(tenantId, incidentId) as any;
       if (incident.riskLevel !== 'LOW') return;
@@ -48,33 +51,40 @@ export class AutoHealWorkerProcessor {
       attemptId = started.attemptId;
       const prompt = buildScopedAutoFixPrompt({ ...incident, category: incident.category });
       if (!workerEnabled()) throw new Error('AutoHeal coding worker was disabled before agent execution.');
-      const agentResult = await this.agent.run({ prompt, worktreePath: workspace.path, risk: 'LOW' });
+      validationStage = 'agent';
+      agentResult = await this.agent.run({ prompt, worktreePath: workspace.path, risk: 'LOW' });
       if (!agentResult.success) throw new Error(agentResult.detail || 'Coding agent failed.');
-      const changed = await this.worktrees.changedFiles(workspace.path);
-      if (!changed.length) throw new Error('The coding agent produced no file changes.');
+      validationStage = 'diff';
+      changedFiles = await this.worktrees.changedFiles(workspace.path);
+      if (!changedFiles.length) throw new Error('The coding agent produced no file changes.');
       await this.worktrees.stageAllInWorktree(workspace.path);
       const diff = await this.worktrees.stagedDiff(workspace.path);
+      validationStage = 'validation';
       const validation: ValidationResults = diff.paths.every((path) => path.replace(/\\/g, '/').startsWith('apps/web/'))
         ? await this.validation.runWeb(workspace.path, diff.paths, incident.route || '/', false)
         : failedValidation('Only web-only diffs are eligible for automated approval.');
-      const gate = classifyDiff({ initialRisk: 'LOW', changedPaths: diff.paths, diff: diff.diff, linesChanged: diff.linesChanged, validation, limits: autoHealDiffLimits() });
+      const gate = classifyDiff({ initialRisk: 'LOW', module: incident.module, category: incident.category, changedPaths: diff.paths, diff: diff.diff, linesChanged: diff.linesChanged, validation, limits: autoHealDiffLimits() });
       if (!gate.allowed) {
-        await this.reportFailure(tenantId, incidentId, attemptId, agentResult.provider, agentResult.model, gate.risk, gate.reasons, diff.paths, diff.diff, diff.linesChanged, validation);
+        await this.reportFailure(tenantId, incidentId, attemptId, agentResult.provider, agentResult.model, gate.risk, gate.reasons, diff.paths, diff.diff, diff.linesChanged, validation, this.agentDiagnostics(agentResult, diff.paths.length > 0, validationStage));
         return;
       }
       if (!workerEnabled()) throw new Error('AutoHeal coding worker was disabled before commit and push.');
       if (String(process.env.AUTOHEAL_GIT_PUSH_ENABLED || 'false').toLowerCase() !== 'true') throw new Error('Verified commit is ready, but AUTOHEAL_GIT_PUSH_ENABLED is false.');
+      validationStage = 'commit';
       const commitSha = await this.worktrees.commit(workspace.path, incident.title);
+      validationStage = 'push';
       await this.worktrees.pushBranch(workspace.path, workspace.branchName);
+      validationStage = 'complete';
       await this.api.finishAttempt(tenantId, incidentId, {
         attemptId, status: 'READY_FOR_APPROVAL', provider: agentResult.provider, model: agentResult.model,
         filesChanged: diff.paths, diff: diff.diff, linesAdded: countLines(diff.diff, '+'), linesRemoved: countLines(diff.diff, '-'),
         testResult: { focusedTest: validation.focusedTest, typeCheck: validation.typeCheck, diffCheck: validation.diffCheck, smoke: validation.smoke },
         buildResult: validation.build, riskAfterDiff: gate.risk, commitSha,
         rootCause: 'A scoped web-only patch passed validation. Review the changed files before any separate approval decision.',
+        agentDiagnostics: this.agentDiagnostics(agentResult, diff.paths.length > 0, validationStage),
       });
     } catch (error: any) {
-      if (attemptId) await this.reportFailure(tenantId, incidentId, attemptId, 'codex-cli', selectModelForRisk('LOW') || 'unknown', 'MEDIUM', [safeError(error)], [], '', 0, failedValidation(safeError(error))).catch(() => undefined);
+      if (attemptId) await this.reportFailure(tenantId, incidentId, attemptId, agentResult?.provider || 'codex-cli', agentResult?.model || selectModelForRisk('LOW') || 'unknown', 'MEDIUM', [safeError(error)], changedFiles, '', 0, failedValidation(safeError(error)), this.agentDiagnostics(agentResult, changedFiles.length > 0, validationStage, error)).catch(() => undefined);
       else throw error;
     } finally {
       this.currentIncident = null;
@@ -82,10 +92,15 @@ export class AutoHealWorkerProcessor {
     }
   }
 
-  private async reportFailure(tenantId: string, incidentId: string, attemptId: string, provider: string, model: string, risk: string, reasons: string[], filesChanged: string[], diff: string, linesChanged: number, validation: ValidationResults) {
+  private agentDiagnostics(result: any, filesChanged: boolean, validationStage: string, error?: unknown) {
+    return { exitCode: result?.exitCode ?? null, durationMs: result?.durationMs ?? null, summary: result?.summary || safeError(error || result?.detail || ''), filesChanged, validationStage, stderrSummary: result?.stderrSummary || '' };
+  }
+
+  private async reportFailure(tenantId: string, incidentId: string, attemptId: string, provider: string, model: string, risk: string, reasons: string[], filesChanged: string[], diff: string, linesChanged: number, validation: ValidationResults, agentDiagnostics: Record<string, unknown>) {
     await this.api.finishAttempt(tenantId, incidentId, {
       attemptId, status: 'ESCALATED', provider, model, riskAfterDiff: risk, safetyReasons: reasons,
       filesChanged, diff, linesAdded: linesChanged, linesRemoved: 0, testResult: { focusedTest: validation.focusedTest, typeCheck: validation.typeCheck, diffCheck: validation.diffCheck, smoke: validation.smoke }, buildResult: validation.build,
+      agentDiagnostics,
     });
   }
 

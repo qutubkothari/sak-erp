@@ -51,6 +51,18 @@ import {
   purgeFsmOfflineIdentity,
 } from "@/lib/fsm-offline";
 
+function captureAskMizantraSourceRoute() {
+  try {
+    const route = window.location.pathname.split(/[?#]/)[0];
+    const reserved = /^\/dashboard\/(?:active-planner|support|reports|command-center|settings|documents)(?:\/|$)/i;
+    if (/^\/dashboard\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/.test(route) && !reserved.test(route)) {
+      sessionStorage.setItem("mizantra-source-route", JSON.stringify({ route, capturedAt: Date.now() }));
+    } else {
+      sessionStorage.removeItem("mizantra-source-route");
+    }
+  } catch {}
+}
+
 const appBranding = buildDocumentBranding(null);
 
 type NavigationChild = {
@@ -1193,6 +1205,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <div className="px-3 pb-1 pt-2">
             <Link
               href="/dashboard/active-planner"
+              onClick={captureAskMizantraSourceRoute}
               className={`flex w-full items-center gap-2 rounded-xl border px-3 py-3 text-sm font-bold shadow-sm transition-all ${
                 pathname === "/dashboard/active-planner"
                   ? "border-[#F3D99B] bg-[#FFF4D6] text-[#4A3426]"
@@ -1214,6 +1227,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <div className="flex justify-center px-2 pb-1 pt-2">
             <Link
               href="/dashboard/active-planner"
+              onClick={captureAskMizantraSourceRoute}
               className={`rounded-xl border p-2.5 transition-colors ${
                 pathname === "/dashboard/active-planner"
                   ? "border-[#F3D99B] bg-[#FFF4D6] text-[#4A3426]"

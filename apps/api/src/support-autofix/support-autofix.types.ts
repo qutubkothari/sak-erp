@@ -46,6 +46,8 @@ export interface ValidationResults {
 
 export interface SafetyGateInput {
   initialRisk: AutoHealRisk;
+  module?: string;
+  category?: string;
   changedPaths: string[];
   diff: string;
   linesChanged: number;

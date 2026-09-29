@@ -35,6 +35,39 @@ describe('AutoHeal deterministic risk policy', () => {
     expect(gate.allowed).toBe(false);
   });
 
+  it('permits a scoped read-only PO register search UI diff', () => {
+    const gate = classifyDiff(validGate({
+      module: 'Procurement / Purchase Orders',
+      category: 'search-filter-ui',
+      changedPaths: ['apps/web/src/app/dashboard/purchase/orders/page.tsx'],
+      diff: '+setSearchTerm(query);',
+    }));
+    expect(gate).toMatchObject({ risk: 'LOW', allowed: true });
+  });
+
+  it('blocks purchase-order writes even inside the scoped search UI path', () => {
+    const gate = classifyDiff(validGate({
+      module: 'Procurement / Purchase Orders',
+      category: 'search-filter-ui',
+      changedPaths: ['apps/web/src/app/dashboard/purchase/orders/page.tsx'],
+      diff: "+await apiClient.post('/purchase/orders', payload);",
+    }));
+    expect(gate.allowed).toBe(false);
+    expect(gate.risk).toBe('BLOCKED');
+    expect(gate.reasons).toContain('The diff leaves the read-only Purchase Order search/filter scope.');
+  });
+
+  it('blocks direct Purchase Order write helpers inside a scoped search file', () => {
+    const gate = classifyDiff(validGate({
+      module: 'Procurement / Purchase Orders',
+      category: 'search-filter-ui',
+      changedPaths: ['apps/web/src/app/dashboard/purchase/orders/page.tsx'],
+      diff: '+await createPurchaseOrder(payload);',
+    }));
+    expect(gate.allowed).toBe(false);
+    expect(gate.risk).toBe('BLOCKED');
+  });
+
   it('escalates attendance writes and corrections', () => {
     const gate = classifyDiff(validGate({ changedPaths: ['apps/api/src/hr/attendance-correction.service.ts'], diff: '+updateAttendanceCorrection(row);', linesChanged: 1 }));
     expect(gate.allowed).toBe(false);

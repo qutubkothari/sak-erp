@@ -8,6 +8,7 @@ import {
   sanitizeSupportText,
   safeRouteOrUrl,
 } from "../support-autofix/support-store.service";
+import { normalizeSupportRoute, resolveSupportRoute } from "../support-autofix/support-route";
 import { PlannerSupportAttachmentsService } from "./planner-support-attachments.service";
 
 export function supportIntent(message: string, mode?: string) {
@@ -39,10 +40,7 @@ export function supportIntent(message: string, mode?: string) {
 }
 
 export function supportRoute(value: unknown): string {
-  const route = String(value || "").split(/[?#]/)[0];
-  return /^\/dashboard(?:\/[a-zA-Z0-9_-]+)*$/.test(route)
-    ? route.slice(0, 500)
-    : "/dashboard";
+  return normalizeSupportRoute(value) || "/dashboard";
 }
 
 @Injectable()
@@ -63,12 +61,14 @@ export class PlannerSupportService {
       throw new BadRequestException(
         "Describe the problem in 1–2000 characters.",
       );
-    const route = supportRoute(body?.source_route);
-    const module =
-      route.startsWith("/dashboard/purchase/orders") ||
-      /\b(po|purchase order)\b/i.test(message)
-        ? "Procurement / Purchase Orders"
-        : "ERP";
+    const routeContext = resolveSupportRoute({
+      sourceRoute: body?.source_route,
+      currentRoute: body?.current_route,
+      title: message,
+      description: message,
+    });
+    const route = routeContext.route;
+    const module = routeContext.module || "ERP";
     const screenshotRef = body?.support_screenshot_ref;
     if (screenshotRef) await this.attachments.assertOwned(user, screenshotRef);
     // Only this allowlist crosses the intake boundary. No deployment commands or model output.
@@ -77,8 +77,8 @@ export class PlannerSupportService {
         source: "client_ui",
         title: `${module}: ${sanitizeSupportText(message, 150)}`,
         description: message,
-        route,
-        page_url: route,
+        route: route || undefined,
+        page_url: route || undefined,
         module,
         screenshot_ref: screenshotRef || undefined,
         browser_info:

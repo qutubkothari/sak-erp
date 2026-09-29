@@ -118,6 +118,20 @@ describe("Mizantra support intake", () => {
     expect(response.assistant_message).toContain("INC-1042");
     expect(response).not.toHaveProperty("riskLevel");
   });
+  it("replaces stale Executive Reports context with the Purchase Orders canonical route", async () => {
+    const captureIncident = jest.fn().mockResolvedValue({ id: "INC-PO", status: "Checking the problem." });
+    const service = new PlannerSupportService({ captureIncident } as any, {} as any);
+    await service.route(user, {
+      message: poMessage,
+      source_route: "/dashboard/reports/executive/overview",
+      current_route: "/dashboard/active-planner",
+    });
+    expect(captureIncident).toHaveBeenCalledWith(user, expect.objectContaining({
+      module: "Procurement / Purchase Orders",
+      route: "/dashboard/purchase/orders",
+      page_url: "/dashboard/purchase/orders",
+    }));
+  });
   it("returns only safe status fields for authenticated recent incidents", async () => {
     const listMine = jest.fn().mockResolvedValue([
       {

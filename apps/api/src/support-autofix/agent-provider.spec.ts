@@ -13,6 +13,14 @@ describe('AutoHeal scoped coding agent provider', () => {
     expect(prompt).toContain('Web production build.');
   });
 
+  it('passes only narrow Purchase Orders search scope to Luna', () => {
+    const prompt = buildScopedAutoFixPrompt({ title: 'PO search does not work', description: 'Unable to search supplier/name.', route: '/dashboard/purchase/orders', module: 'Procurement / Purchase Orders', category: 'search-filter-ui' });
+    expect(prompt).toContain('Purchase Order register search/filter UI and directly related read/query logic');
+    expect(prompt).toContain('PO number, supplier, PR reference, item code, item name and description');
+    expect(prompt).toContain('Purchase Order creation or write workflows, GRN, inventory, accounting');
+    expect(prompt).toContain('Route:\n/dashboard/purchase/orders');
+  });
+
   it('uses a fast model for low risk and a stronger model for medium risk', () => {
     expect(selectModelForRisk('LOW', {})).toBe('gpt-6-luna');
     expect(selectModelForRisk('MEDIUM', {})).toBe('gpt-6-sol');

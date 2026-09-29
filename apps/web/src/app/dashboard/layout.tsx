@@ -56,7 +56,7 @@ export default function DashboardLayout({
       try {
         sessionStorage.setItem(
           "mizantra-source-route",
-          pathname.split(/[?#]/)[0],
+          JSON.stringify({ route: pathname.split(/[?#]/)[0], capturedAt: Date.now() }),
         );
       } catch {}
     }

@@ -8,6 +8,7 @@ import { sanitizeSupportText, SupportStoreService } from './support-store.servic
 import { SupportAutofixEvents } from './support-events';
 import { IncidentInput } from './support-autofix.types';
 import { incidentStatusLabel } from './incident-status';
+import { resolveSupportRoute } from './support-route';
 
 @Injectable()
 export class SupportAutofixService {
@@ -61,6 +62,7 @@ export class SupportAutofixService {
   async startWorkerAttempt(tenantId: string, incidentId: string, input: any) {
     if (!this.enabled()) throw new ConflictException('AutoHeal is disabled.');
     const incident = await this.requireIncident(tenantId, incidentId);
+    const routeContext = this.resolveIncidentRoute(incident);
     const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
     const count = await this.store.countAttempts(incidentId);
     if (!['NEW', 'TRIAGING'].includes(String(incident.status))) throw new ConflictException('This incident is already being processed or is not eligible for a patch attempt.');
@@ -75,15 +77,16 @@ export class SupportAutofixService {
     const branchName = String(input.branchName || '');
     const baseSha = String(input.baseSha || '');
     if (!/^autofix\/[a-zA-Z0-9-]+$/.test(branchName) || !/^[0-9a-f]{40}$/i.test(baseSha)) throw new ConflictException('Worker supplied invalid isolated branch metadata.');
-    await this.store.updateIncident(tenantId, incidentId, { status: 'TRIAGING', risk_level: 'LOW', risk_reason: decision.reason });
-    const attempt = await this.store.createAttempt({ incident_id: incidentId, branch_name: branchName, base_sha: baseSha, agent_provider: 'codex-cli', agent_model: 'gpt-6-luna', prompt_summary: `Low-risk ${decision.category} UI repair for ${incident.route || 'reported route'}.`, risk_after_diff: 'LOW', status: 'RUNNING', worktree_ref: 'isolated-worker-worktree' });
+    await this.store.updateIncident(tenantId, incidentId, { status: 'TRIAGING', risk_level: 'LOW', risk_reason: decision.reason, ...(routeContext.route ? { route: routeContext.route, page_url: routeContext.route } : {}), ...(routeContext.module ? { module: routeContext.module } : {}) });
+    const attempt = await this.store.createAttempt({ incident_id: incidentId, branch_name: branchName, base_sha: baseSha, agent_provider: 'codex-cli', agent_model: 'gpt-6-luna', prompt_summary: `Low-risk ${decision.category} UI repair for ${routeContext.route || 'reported route'}.`, risk_after_diff: 'LOW', status: 'RUNNING', worktree_ref: 'isolated-worker-worktree' });
     await this.store.updateIncident(tenantId, incidentId, { status: 'PATCHING' });
-    return { incident: { id: incident.id, title: incident.title, description: incident.description, route: incident.route, module: incident.module, error: incident.error_message, riskLevel: decision.risk, category: decision.category }, attemptId: attempt.id, attemptNumber: count + 1 };
+    return { incident: { id: incident.id, title: incident.title, description: incident.description, route: routeContext.route, module: routeContext.module || incident.module, error: incident.error_message, riskLevel: decision.risk, category: decision.category }, attemptId: attempt.id, attemptNumber: count + 1 };
   }
 
   async getWorkerIncident(tenantId: string, incidentId: string) {
     if (!this.enabled()) throw new ConflictException('AutoHeal is disabled.');
     const incident = await this.requireIncident(tenantId, incidentId);
+    const routeContext = this.resolveIncidentRoute(incident);
     if (!['NEW', 'TRIAGING'].includes(String(incident.status))) throw new ConflictException('This incident is already being processed or is not eligible for a patch attempt.');
     const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
     if (decision.risk !== 'LOW' || incident.risk_level !== 'LOW') {
@@ -95,7 +98,7 @@ export class SupportAutofixService {
       await this.store.updateIncident(tenantId, incidentId, { status: 'ESCALATED', risk_reason: 'The maximum of two automatic patch attempts was reached.' });
       throw new ConflictException('The automatic attempt limit has been reached.');
     }
-    return { incident: { id: incident.id, title: incident.title, description: incident.description, route: incident.route, module: incident.module, error: incident.error_message, riskLevel: decision.risk, category: decision.category }, attemptNumber: attemptCount + 1 };
+    return { incident: { id: incident.id, title: incident.title, description: incident.description, route: routeContext.route, module: routeContext.module || incident.module, error: incident.error_message, riskLevel: decision.risk, category: decision.category }, attemptNumber: attemptCount + 1 };
   }
 
   async finishWorkerAttempt(tenantId: string, incidentId: string, input: any) {
@@ -106,19 +109,24 @@ export class SupportAutofixService {
     if (!currentAttempt || currentAttempt.id !== attemptId || currentAttempt.status !== 'RUNNING') throw new ConflictException('The worker attempt does not belong to the active incident attempt.');
     const files = Array.isArray(input.filesChanged) ? input.filesChanged.filter((path: unknown) => typeof path === 'string').slice(0, 20) : [];
     const safeDetails = (value: any) => ({ passed: value?.passed === true, detail: sanitizeSupportText(value?.detail || '', 500) });
-    const tests = { focusedTest: safeDetails(input.testResult?.focusedTest), typeCheck: safeDetails(input.testResult?.typeCheck), diffCheck: safeDetails(input.testResult?.diffCheck), smoke: safeDetails(input.testResult?.smoke) };
+    const tests: Record<string, any> = { focusedTest: safeDetails(input.testResult?.focusedTest), typeCheck: safeDetails(input.testResult?.typeCheck), diffCheck: safeDetails(input.testResult?.diffCheck), smoke: safeDetails(input.testResult?.smoke) };
     const build = safeDetails(input.buildResult);
-    const diffGate = classifyDiff({ initialRisk: 'LOW', changedPaths: files, diff: String(input.diff || '').slice(0, 250_000), linesChanged: Math.max(0, Number(input.linesAdded) || 0) + Math.max(0, Number(input.linesRemoved) || 0), validation: { ...tests, build, smoke: tests.smoke }, limits: autoHealDiffLimits() });
+    const incidentDecision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
+    const diffGate = classifyDiff({ initialRisk: 'LOW', module: incident.module, category: incidentDecision.category, changedPaths: files, diff: String(input.diff || '').slice(0, 250_000), linesChanged: Math.max(0, Number(input.linesAdded) || 0) + Math.max(0, Number(input.linesRemoved) || 0), validation: { ...tests, build, smoke: tests.smoke }, limits: autoHealDiffLimits() });
     const commitValid = /^[0-9a-f]{40}$/i.test(String(input.commitSha || '')) && String(input.commitSha) !== String(currentAttempt.base_sha);
     const eligible = diffGate.allowed && commitValid && incident.status === 'PATCHING';
     const attemptCount = await this.store.countAttempts(incidentId);
-    const status = eligible ? 'READY_FOR_APPROVAL' : diffGate.risk === 'BLOCKED' || attemptCount >= 2 ? 'ESCALATED' : 'FAILED';
+    const blocked = diffGate.risk === 'BLOCKED' || diffGate.risk === 'HIGH';
+    const attemptStatus = eligible ? 'READY_FOR_APPROVAL' : blocked ? 'ESCALATED' : 'FAILED';
+    const incidentStatus = eligible ? 'READY_FOR_APPROVAL' : blocked || attemptCount >= 2 ? 'ESCALATED' : 'FAILED';
     const reasons = eligible ? [] : [...diffGate.reasons, ...(commitValid ? [] : ['Fix commit SHA is missing or invalid.']), ...(incident.status === 'PATCHING' ? [] : ['Incident is not in active patching state.'])];
-    await this.store.updateAttempt(attemptId, { files_changed: files, lines_added: Math.max(0, Number(input.linesAdded) || 0), lines_removed: Math.max(0, Number(input.linesRemoved) || 0), test_result: tests, build_result: build, risk_after_diff: eligible ? 'LOW' : diffGate.risk, safety_reasons: reasons.map((reason) => sanitizeSupportText(reason, 300)).slice(0, 10), commit_sha: eligible ? input.commitSha : null, agent_provider: sanitizeSupportText(input.provider || 'codex-cli', 80), agent_model: sanitizeSupportText(input.model || 'unknown', 80), status, completed_at: new Date().toISOString() });
+    const agentDiagnostics = this.sanitizeAgentDiagnostics(input.agentDiagnostics, files.length > 0);
+    tests.agent_diagnostics = agentDiagnostics;
+    await this.store.updateAttempt(attemptId, { files_changed: files, lines_added: Math.max(0, Number(input.linesAdded) || 0), lines_removed: Math.max(0, Number(input.linesRemoved) || 0), test_result: tests, build_result: build, risk_after_diff: eligible ? 'LOW' : diffGate.risk, safety_reasons: reasons.map((reason) => sanitizeSupportText(reason, 300)).slice(0, 10), commit_sha: eligible ? input.commitSha : null, agent_provider: sanitizeSupportText(input.provider || 'codex-cli', 80), agent_model: sanitizeSupportText(input.model || 'unknown', 80), status: attemptStatus, completed_at: new Date().toISOString() });
     if (eligible) await this.store.updateIncident(tenantId, incidentId, { status: 'TESTING' });
-    await this.store.updateIncident(tenantId, incidentId, { status, risk_level: eligible ? 'LOW' : diffGate.risk, risk_reason: eligible ? 'Human approval is required. The coding worker cannot deploy.' : sanitizeSupportText(reasons.join(' ') || 'Worker patch requires engineering review.', 500), ...(eligible ? { root_cause: sanitizeSupportText(input.rootCause || 'Scoped web patch passed validation; review the diff before approval.', 1000) } : {}) });
-    await this.store.writeEvent({ type: eligible ? 'autofix.succeeded' : 'approval.required', tenantId, incidentId, at: new Date().toISOString(), details: { status, commitSha: eligible ? input.commitSha : null } });
-    return { status };
+    await this.store.updateIncident(tenantId, incidentId, { status: incidentStatus, risk_level: eligible ? 'LOW' : blocked ? diffGate.risk : incident.risk_level, risk_reason: eligible ? 'Human approval is required. The coding worker cannot deploy.' : sanitizeSupportText(reasons.join(' ') || 'Worker patch requires engineering review.', 500), ...(eligible ? { root_cause: sanitizeSupportText(input.rootCause || 'Scoped web patch passed validation; review the diff before approval.', 1000) } : {}) });
+    await this.store.writeEvent({ type: eligible ? 'autofix.succeeded' : 'approval.required', tenantId, incidentId, at: new Date().toISOString(), details: { status: incidentStatus, attemptStatus, commitSha: eligible ? input.commitSha : null } });
+    return { status: incidentStatus, attemptStatus };
   }
 
   async recordWorkerHeartbeat(input: any) {
@@ -140,8 +148,11 @@ export class SupportAutofixService {
       await this.store.updateIncident(tenantId, incidentId, { status: 'ESCALATED', risk_reason: 'The maximum of two automatic patch attempts was reached.' });
       throw new ConflictException('The automatic attempt limit has been reached; engineering review is required.');
     }
-    if (incident.risk_level !== 'LOW') throw new ConflictException('Only LOW risk incidents can enter the automatic patch queue.');
-    await this.store.updateIncident(tenantId, incidentId, { status: 'TRIAGING' });
+    const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
+    const recoveredFailedAttempt = incident.risk_level === 'MEDIUM' && this.isAttemptFailureOnlyRisk(incident.risk_reason);
+    if (decision.risk !== 'LOW' || (incident.risk_level !== 'LOW' && !recoveredFailedAttempt)) throw new ConflictException('Only LOW risk incidents can enter the automatic patch queue.');
+    const routeContext = this.resolveIncidentRoute(incident);
+    await this.store.updateIncident(tenantId, incidentId, { status: 'TRIAGING', risk_level: 'LOW', risk_reason: decision.reason, ...(routeContext.route ? { route: routeContext.route, page_url: routeContext.route } : {}), ...(routeContext.module ? { module: routeContext.module } : {}) });
     await this.store.writeEvent({ type: 'approval.required', tenantId, incidentId, at: new Date().toISOString(), details: { action: 'retry-analysis' } }, actorId);
     await this.audit.logActivity({ tenantId, userId: actorId, action: 'SUPPORT_AUTOFIX_RETRY_REQUESTED', resourceType: 'support_incident', resourceId: incidentId });
     await this.queue.add('incident', { tenantId, incidentId }, { jobId: `retry-${incidentId}-${attempts + 1}`, attempts: 2, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: false });
@@ -259,6 +270,39 @@ export class SupportAutofixService {
     const incident = await this.store.getIncident(tenantId, incidentId);
     if (!incident) throw new NotFoundException('Support incident not found.');
     return incident;
+  }
+
+  private resolveIncidentRoute(incident: any) {
+    return resolveSupportRoute({ sourceRoute: incident.route, currentRoute: incident.page_url, module: incident.module, title: incident.title, description: incident.description });
+  }
+
+  private isAttemptFailureOnlyRisk(value: unknown) {
+    const allowedReasons = new Set([
+      'No changed files were found.',
+      'Focused test did not pass.',
+      'Web type-check did not pass.',
+      'Web build did not pass.',
+      'git diff --check did not pass.',
+      'Relevant smoke check did not pass.',
+      'Fix commit SHA is missing or invalid.',
+    ]);
+    const reason = String(value || '').trim();
+    const clauses = reason.match(/[^.]+\./g) || [];
+    return clauses.length > 0 && clauses.map((clause) => clause.trim()).every((clause) => allowedReasons.has(clause));
+  }
+
+  private sanitizeAgentDiagnostics(value: any, filesChanged: boolean) {
+    const allowedStages = new Set(['setup', 'agent', 'diff', 'validation', 'commit', 'push', 'complete']);
+    const exitCode = Number.isInteger(value?.exitCode) ? Math.max(-255, Math.min(255, value.exitCode)) : null;
+    const durationMs = Number.isFinite(Number(value?.durationMs)) ? Math.max(0, Math.min(3_600_000, Math.floor(Number(value.durationMs)))) : null;
+    return {
+      exit_code: exitCode,
+      duration_ms: durationMs,
+      summary: sanitizeSupportText(value?.summary || '', 300),
+      files_changed: filesChanged,
+      validation_stage: allowedStages.has(String(value?.validationStage)) ? String(value.validationStage) : 'agent',
+      stderr_summary: sanitizeSupportText(value?.stderrSummary || '', 300),
+    };
   }
 
   private enabled() { return String(process.env.AUTOHEAL_ENABLED || 'false').toLowerCase() === 'true'; }

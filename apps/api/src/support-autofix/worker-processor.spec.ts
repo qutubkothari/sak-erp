@@ -47,6 +47,31 @@ describe('isolated AutoHeal coding worker', () => {
     expect(api.finishAttempt).toHaveBeenCalledWith('t1', 'i1', expect.objectContaining({ status: 'ESCALATED', riskAfterDiff: 'BLOCKED' }));
   });
 
+  it('sends the resolved Purchase Orders context to the coding agent', async () => {
+    process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true'; process.env.AUTOHEAL_GIT_PUSH_ENABLED = 'true';
+    const result = setup();
+    result.api.getIncident.mockResolvedValue({ incident: { id: 'po-incident', title: 'PO search not working', description: 'Unable to search supplier name', route: '/dashboard/purchase/orders', module: 'Procurement / Purchase Orders', riskLevel: 'LOW', category: 'search-filter-ui' }, attemptNumber: 2 });
+    await result.processor.process({ data: { tenantId: 't1', incidentId: 'po-incident' } } as any);
+    const request = result.agent.run.mock.calls[0][0];
+    expect(request.risk).toBe('LOW');
+    expect(request.prompt).toContain('Route:\n/dashboard/purchase/orders');
+    expect(request.prompt).toContain('Purchase Order register search/filter UI');
+    expect(request.prompt).toContain('Do not investigate unrelated repository areas.');
+  });
+
+  it('records no-change diagnostics as a failed attempt and does not push', async () => {
+    process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true'; process.env.AUTOHEAL_GIT_PUSH_ENABLED = 'true';
+    const result = setup([]);
+    result.agent.run.mockResolvedValue({ success: true, provider: 'codex-cli', model: 'gpt-6-luna', exitCode: 0, durationMs: 1500, summary: 'No changes', stderrSummary: '' });
+    await result.processor.process({ data: { tenantId: 't1', incidentId: 'i1' } } as any);
+    expect(result.worktrees.commit).not.toHaveBeenCalled();
+    expect(result.worktrees.pushBranch).not.toHaveBeenCalled();
+    expect(result.api.finishAttempt).toHaveBeenCalledWith('t1', 'i1', expect.objectContaining({
+      status: 'ESCALATED',
+      agentDiagnostics: expect.objectContaining({ exitCode: 0, durationMs: 1500, summary: 'No changes', filesChanged: false, validationStage: 'diff' }),
+    }));
+  });
+
   it('blocks commit and push when focused validation fails', async () => {
     process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true'; process.env.AUTOHEAL_GIT_PUSH_ENABLED = 'true';
     const setupResult = setup(); setupResult.checks.runWeb.mockResolvedValue({ ...validation, focusedTest: { passed: false, detail: 'failed' } });

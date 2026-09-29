@@ -14,6 +14,10 @@ export interface AutoFixAgentResult {
   success: boolean;
   output: string;
   detail?: string;
+  exitCode?: number | null;
+  durationMs?: number;
+  summary?: string;
+  stderrSummary?: string;
 }
 
 export interface AutoFixAgentProvider {
@@ -35,6 +39,10 @@ export class MockAutoFixAgentProvider implements AutoFixAgentProvider {
       success: true,
       output: '',
       detail: `Dry run only; no files changed for ${request.risk} risk in ${request.worktreePath}.`,
+      exitCode: 0,
+      durationMs: 0,
+      summary: 'Mock provider completed without running an agent.',
+      stderrSummary: '',
     };
   }
 }
@@ -57,7 +65,9 @@ export class CodexCliAutoFixAgentProvider implements AutoFixAgentProvider {
       request.prompt,
     ];
     return new Promise((resolve) => {
-      let output = '';
+      const startedAt = Date.now();
+      let stdout = '';
+      let stderr = '';
       let settled = false;
       const child = spawn(executable, args, {
         cwd: request.worktreePath,
@@ -74,18 +84,15 @@ export class CodexCliAutoFixAgentProvider implements AutoFixAgentProvider {
         settled = true;
         clearTimeout(timer);
         clearInterval(killSwitchTimer);
-        resolve(result);
+        resolve({ ...result, durationMs: Date.now() - startedAt, summary: result.summary || safeDiagnosticText(stdout, 300), stderrSummary: safeDiagnosticText(stderr, 300), output: safeDiagnosticText(stdout, 1000) });
       };
-      const append = (chunk: Buffer) => {
-        output = `${output}${chunk.toString('utf8')}`.slice(-200_000);
-      };
-      child.stdout.on('data', append);
-      child.stderr.on('data', append);
-      child.on('error', (error) => finish({ provider: 'codex-cli', model, success: false, output, detail: error.message }));
-      child.on('close', (code) => finish({ provider: 'codex-cli', model, success: code === 0, output, detail: code === 0 ? undefined : `Codex CLI exited with status ${code}.` }));
+      child.stdout.on('data', (chunk: Buffer) => { stdout = `${stdout}${chunk.toString('utf8')}`.slice(-20_000); });
+      child.stderr.on('data', (chunk: Buffer) => { stderr = `${stderr}${chunk.toString('utf8')}`.slice(-20_000); });
+      child.on('error', (error) => finish({ provider: 'codex-cli', model, success: false, output: '', exitCode: null, detail: safeDiagnosticText(error.message, 300) }));
+      child.on('close', (code) => finish({ provider: 'codex-cli', model, success: code === 0, output: '', exitCode: code, detail: code === 0 ? undefined : `Codex CLI exited with status ${code}.` }));
       const timer = setTimeout(() => {
         child.kill('SIGTERM');
-        finish({ provider: 'codex-cli', model, success: false, output, detail: 'Codex CLI timed out.' });
+        finish({ provider: 'codex-cli', model, success: false, output: '', exitCode: null, detail: 'Codex CLI timed out.' });
       }, Number(process.env.AUTOHEAL_AGENT_TIMEOUT_MS) || 10 * 60 * 1000);
       timer.unref?.();
     });
@@ -97,6 +104,17 @@ export class CodexCliAutoFixAgentProvider implements AutoFixAgentProvider {
     for (const key of allowed) if (process.env[key]) safe[key] = process.env[key];
     return safe;
   }
+}
+
+function safeDiagnosticText(value: string, limit: number) {
+  return String(value || '')
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/\b(password|token|secret|api[_ -]?key|authorization)\s*[:=]\s*[^\s,;]+/gi, '$1=[redacted]')
+    .replace(/https?:\/\/[^\s/@]+:[^\s/@]+@/gi, 'https://[redacted]@')
+    .replace(/\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}(?:\.[a-zA-Z0-9_-]{10,})?\b/g, '[redacted]')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+    .trim()
+    .slice(-limit);
 }
 
 function codingWorkerEnabled() {

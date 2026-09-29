@@ -41,11 +41,13 @@ export function classifyIncident(input: {
   return { risk: 'MEDIUM', category: 'unclassified', reason: 'The report does not match an explicitly allowed low-risk UI category.' };
 }
 
-function escalatesForDiff(paths: string[], diff: string): string[] {
+function escalatesForDiff(paths: string[], diff: string, allowPurchaseOrderSearchUi = false): string[] {
   const reasons: string[] = [];
+  const scopedPoSearchPaths = allowPurchaseOrderSearchUi && paths.length > 0 && paths.every((path) => /^apps\/web\/src\/app\/dashboard\/purchase\/orders\/(?:[^/]+\/)*[^/]+\.(?:tsx?|jsx?)$/i.test(path));
   if (paths.some((path) => !SAFE_WEB_PATH.test(path))) reasons.push('Every changed file must be under apps/web/.');
-  if (paths.some((path) => PROTECTED_PATH.test(path))) reasons.push('The diff touches a protected path.');
-  if (paths.some((path) => WEB_PROTECTED_NAME.test(path))) reasons.push('The diff touches a protected business or security UI area.');
+  if (paths.some((path) => PROTECTED_PATH.test(path)) && !scopedPoSearchPaths) reasons.push('The diff touches a protected path.');
+  if (paths.some((path) => WEB_PROTECTED_NAME.test(path)) && !scopedPoSearchPaths) reasons.push('The diff touches a protected business or security UI area.');
+  if (scopedPoSearchPaths && /(?:\b(?:apiClient|fetch)\s*\.\s*(?:post|put|patch|delete)\s*\(|\b(?:create|save|submit|approve|delete)\s+(?:a\s+)?(?:purchase order|PO)\b|\b(?:create|save|submit|approve|delete|update|cancel|receive|post)(?:PurchaseOrder|PurchaseOrderDraft|PO)\s*\()/i.test(diff)) reasons.push('The diff leaves the read-only Purchase Order search/filter scope.');
   if (SECRET_OR_CONFIG_DIFF.test(diff)) reasons.push('The diff contains a secret or environment/configuration change.');
   if (HIGH_RISK_TERMS.test(diff)) reasons.push('The diff contains protected-domain changes.');
   if (WRITE_OR_CALCULATION.test(diff) && HIGH_RISK_TERMS.test(diff)) reasons.push('The diff appears to change writes, calculations, or protected business behavior.');
@@ -54,7 +56,8 @@ function escalatesForDiff(paths: string[], diff: string): string[] {
 
 export function classifyDiff(input: SafetyGateInput): SafetyGateResult {
   const paths = [...new Set(input.changedPaths.map((path) => path.replace(/\\/g, '/').replace(/^\.\//, '')))];
-  const reasons = escalatesForDiff(paths, input.diff);
+  const allowPurchaseOrderSearchUi = input.module === 'Procurement / Purchase Orders' && input.category === 'search-filter-ui';
+  const reasons = escalatesForDiff(paths, input.diff, allowPurchaseOrderSearchUi);
   const maxFiles = input.limits?.files ?? 5;
   const maxLines = input.limits?.lines ?? 250;
   if (input.initialRisk !== 'LOW') reasons.push('Initial incident classification was not LOW.');
@@ -67,7 +70,7 @@ export function classifyDiff(input: SafetyGateInput): SafetyGateResult {
   if (!input.validation.diffCheck.passed) reasons.push('git diff --check did not pass.');
   if (!input.validation.smoke.passed) reasons.push('Relevant smoke check did not pass.');
   return {
-    risk: reasons.length ? (reasons.some((reason) => /protected|secret|every changed|initial incident/i.test(reason)) ? 'BLOCKED' : 'MEDIUM') : 'LOW',
+    risk: reasons.length ? (reasons.some((reason) => /protected|secret|every changed|initial incident|read-only/i.test(reason)) ? 'BLOCKED' : 'MEDIUM') : 'LOW',
     allowed: reasons.length === 0,
     reasons,
     changedFiles: paths.length,
