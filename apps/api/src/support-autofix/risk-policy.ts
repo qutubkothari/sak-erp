@@ -16,6 +16,12 @@ const LOW_RISK_CATEGORIES: Array<{ category: string; pattern: RegExp }> = [
 
 const HIGH_RISK_TERMS = /\b(database|migration|sql|schema|stock|inventory quantities?|stock movements?|grns?|sivs?|srvs?|purchase transactions?|accounting|journals?|payments?|payroll|salar(?:y|ies)|attendance corrections?|attendance writes?|leave balances?|uid tracking|authentication|authorization|permissions?|security|secrets?|nginx|pm2|deploy(?:ment infrastructure)?|deletions?|reversals?|document numbers?|external integrations?|api writes?|backend writes?)\b/i;
 const SAFE_WEB_PATH = /^apps\/web\//i;
+const PO_REGISTER_PAGE = 'apps/web/src/app/dashboard/purchase/orders/page.tsx';
+const PO_REGISTER_SEARCH_TEST = 'apps/web/src/app/dashboard/purchase/orders/search.test.cjs';
+const PO_REGISTER_UI_PATHS = new Set([PO_REGISTER_PAGE, PO_REGISTER_SEARCH_TEST]);
+const PO_REGISTER_UI_CATEGORIES = new Set(['search-filter-ui', 'table-visibility']);
+const PO_REGISTER_UI_CHANGE = /\b(search|filter|sort|pagination|table|display|visibility|query[- ]string|register rows?)\b|\b(?:set|handle)?search(?:term|accessor|query)?\b/i;
+const PO_REGISTER_TRANSACTION_CHANGE = /(?:\b(?:apiClient|fetch)\s*\.\s*(?:post|put|patch|delete)\s*\(|\bfetch\s*\([\s\S]{0,200}\bmethod\s*:\s*['"](?:POST|PUT|PATCH|DELETE)|\.(?:insert|update|delete)\s*\(|\b(?:handle|on)?(?:create|edit|submit|approve|reject|convert|cancel|delete|receive)(?:purchaseorder|purchaseorderdraft|po|pr|grn|goodsreceipt)?\b|\b(?:create|edit|submit|approve|reject|convert|cancel|delete|receive)\s+(?:a\s+)?(?:purchase orders?|pos?|prs?|goods receipts?|grns?)\b|\b(?:quantity|qty|unit rate|unit price|pricing|price|amount|subtotal|tax|total|approval|approved|rejected|status transition|inventory|accounting|grn|goods receipt|authentication|authorization|permissions?)\b)/i;
 const PROTECTED_PATH = /(^|\/)(migrations?|prisma|schema|sql|auth|security|permissions?|payroll|account(?:ing|s)?|finance|inventory|stock|purchase|grns?|sivs?|srvs?|uid|leave|production|deployment|infra|nginx|pm2|config|settings|integration(?:-hub)?|deletions?|reversals?|document-numbers?|\.env)(?:\/|\.|-|$)|(^|\/)(?:attendance-corrections?|attendance-writes?)(?:\/|\.|$)|(^|\/)(package\.json|pnpm-lock\.yaml|yarn\.lock|package-lock\.json)$/i;
 const WEB_PROTECTED_NAME = /(^|\/)(?:auth|security|permissions?(?:[-_.][^/]*)?|payroll|account(?:ing|s)?|inventory|stock|purchase|grn|siv|srv|uid|attendance-correction|attendance-write|leave-balance|payments?)(?:\/|$)/i;
 const WRITE_OR_CALCULATION = /(?:\.insert\s*\(|\.update\s*\(|\.delete\s*\(|\b(?:create|update|delete|save|submit|approve|reverse|calculate|compute|payable days|check[- ]?in|check[- ]?out|correction|balance|quantity|journal|payment)\b)/i;
@@ -41,23 +47,37 @@ export function classifyIncident(input: {
   return { risk: 'MEDIUM', category: 'unclassified', reason: 'The report does not match an explicitly allowed low-risk UI category.' };
 }
 
-function escalatesForDiff(paths: string[], diff: string, allowPurchaseOrderSearchUi = false): string[] {
+function changedDiffLines(diff: string): string {
+  return diff.split(/\r?\n/)
+    .filter((line) => /^[+-]/.test(line) && !line.startsWith('+++') && !line.startsWith('---'))
+    .join('\n');
+}
+
+function escalatesForDiff(paths: string[], diff: string, module?: string, category?: string): string[] {
   const reasons: string[] = [];
-  const scopedPoSearchPaths = allowPurchaseOrderSearchUi && paths.length > 0 && paths.every((path) => /^apps\/web\/src\/app\/dashboard\/purchase\/orders\/(?:[^/]+\/)*[^/]+\.(?:tsx?|jsx?)$/i.test(path));
+  const changedLines = changedDiffLines(diff);
+  const poRegisterPathsOnly = paths.length > 0
+    && paths.includes(PO_REGISTER_PAGE)
+    && paths.every((path) => PO_REGISTER_UI_PATHS.has(path));
+  const poRegisterCategoryAllowed = module === 'Procurement / Purchase Orders'
+    && PO_REGISTER_UI_CATEGORIES.has(String(category || ''));
+  const poRegisterSemanticChange = PO_REGISTER_UI_CHANGE.test(changedLines);
+  const poRegisterTransactionChange = PO_REGISTER_TRANSACTION_CHANGE.test(changedLines);
+  const scopedPoReadOnlyUi = poRegisterPathsOnly && poRegisterCategoryAllowed && poRegisterSemanticChange && !poRegisterTransactionChange;
   if (paths.some((path) => !SAFE_WEB_PATH.test(path))) reasons.push('Every changed file must be under apps/web/.');
-  if (paths.some((path) => PROTECTED_PATH.test(path)) && !scopedPoSearchPaths) reasons.push('The diff touches a protected path.');
-  if (paths.some((path) => WEB_PROTECTED_NAME.test(path)) && !scopedPoSearchPaths) reasons.push('The diff touches a protected business or security UI area.');
-  if (scopedPoSearchPaths && /(?:\b(?:apiClient|fetch)\s*\.\s*(?:post|put|patch|delete)\s*\(|\b(?:create|save|submit|approve|delete)\s+(?:a\s+)?(?:purchase order|PO)\b|\b(?:create|save|submit|approve|delete|update|cancel|receive|post)(?:PurchaseOrder|PurchaseOrderDraft|PO)\s*\()/i.test(diff)) reasons.push('The diff leaves the read-only Purchase Order search/filter scope.');
-  if (SECRET_OR_CONFIG_DIFF.test(diff)) reasons.push('The diff contains a secret or environment/configuration change.');
-  if (HIGH_RISK_TERMS.test(diff)) reasons.push('The diff contains protected-domain changes.');
-  if (WRITE_OR_CALCULATION.test(diff) && HIGH_RISK_TERMS.test(diff)) reasons.push('The diff appears to change writes, calculations, or protected business behavior.');
+  if (paths.some((path) => PROTECTED_PATH.test(path)) && !scopedPoReadOnlyUi) reasons.push('The diff touches a protected path.');
+  if (paths.some((path) => WEB_PROTECTED_NAME.test(path)) && !scopedPoReadOnlyUi) reasons.push('The diff touches a protected business or security UI area.');
+  if (poRegisterPathsOnly && poRegisterCategoryAllowed && !poRegisterSemanticChange) reasons.push('The PO register diff is not limited to search, filter, sorting, pagination, or table display.');
+  if (poRegisterPathsOnly && poRegisterCategoryAllowed && poRegisterTransactionChange) reasons.push('The diff leaves the read-only Purchase Order register UI scope.');
+  if (SECRET_OR_CONFIG_DIFF.test(changedLines)) reasons.push('The diff contains a secret or environment/configuration change.');
+  if (HIGH_RISK_TERMS.test(changedLines)) reasons.push('The diff contains protected-domain changes.');
+  if (WRITE_OR_CALCULATION.test(changedLines) && HIGH_RISK_TERMS.test(changedLines)) reasons.push('The diff appears to change writes, calculations, or protected business behavior.');
   return reasons;
 }
 
 export function classifyDiff(input: SafetyGateInput): SafetyGateResult {
   const paths = [...new Set(input.changedPaths.map((path) => path.replace(/\\/g, '/').replace(/^\.\//, '')))];
-  const allowPurchaseOrderSearchUi = input.module === 'Procurement / Purchase Orders' && input.category === 'search-filter-ui';
-  const reasons = escalatesForDiff(paths, input.diff, allowPurchaseOrderSearchUi);
+  const reasons = escalatesForDiff(paths, input.diff, input.module, input.category);
   const maxFiles = input.limits?.files ?? 5;
   const maxLines = input.limits?.lines ?? 250;
   if (input.initialRisk !== 'LOW') reasons.push('Initial incident classification was not LOW.');

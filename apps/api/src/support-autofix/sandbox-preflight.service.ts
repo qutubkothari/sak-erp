@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 import { CommandRunner } from './command-runner';
 
 export const SANDBOX_BLOCKED_HEARTBEAT = 'SANDBOX_BLOCKED';
+export const VALIDATION_TOOLS_BLOCKED_HEARTBEAT = 'VALIDATION_TOOLS_BLOCKED';
 
 export type SandboxPreflightResult = {
   passed: boolean;
@@ -13,7 +14,7 @@ export type SandboxPreflightResult = {
 };
 
 export function isCodexSandboxInfrastructureFailure(value: unknown): boolean {
-  return /bwrap|RTM_NEWADDR|sandbox initialization|sandbox preflight|sandbox unavailable|filesystem-restricted execution requires bubblewrap|permission[- ]profile.*(?:startup|initializ|load|unavailable)/i
+  return /bwrap|RTM_NEWADDR|sandbox initialization|sandbox preflight|sandbox unavailable|filesystem-restricted execution requires bubblewrap|permission[- ]profile.*(?:startup|initializ|load|unavailable)|AUTOHEAL_INFRASTRUCTURE_FAILURE|VALIDATION_TOOLS_BLOCKED|pnpm.{0,50}(?:not found|unavailable|failed)|(?:tsc|next).{0,50}(?:not found|unavailable)/i
     .test(String((value as any)?.message || value || ''));
 }
 
@@ -60,6 +61,20 @@ export class CodexSandboxPreflightService {
         PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
         LANG: 'C.UTF-8',
       };
+
+      const pnpmVersion = await this.commands.run('pnpm', ['--version'], worktreePath, 15_000, safeEnv);
+      if (pnpmVersion.code !== 0 || !pnpmVersion.output.trim()) throw new Error(`VALIDATION_TOOLS_BLOCKED: pnpm is unavailable: ${pnpmVersion.output}`);
+      const install = await this.commands.run('pnpm', ['install', '--offline', '--frozen-lockfile', '--filter', '@sak-erp/web...'], worktreePath, 600_000, safeEnv);
+      if (install.code !== 0) throw new Error(`VALIDATION_TOOLS_BLOCKED: locked workspace dependencies are not ready: ${install.output.slice(-1200)}`);
+      const [typeScript, next] = await Promise.all([
+        this.commands.run('pnpm', ['--filter', '@sak-erp/web', 'exec', 'tsc', '--version'], worktreePath, 60_000, safeEnv),
+        this.commands.run('pnpm', ['--filter', '@sak-erp/web', 'exec', 'next', '--version'], worktreePath, 60_000, safeEnv),
+      ]);
+      if (typeScript.code !== 0 || !typeScript.output.trim()) throw new Error(`VALIDATION_TOOLS_BLOCKED: web TypeScript compiler is unavailable: ${typeScript.output}`);
+      if (next.code !== 0 || !next.output.trim()) throw new Error(`VALIDATION_TOOLS_BLOCKED: Next.js build tooling is unavailable: ${next.output}`);
+      const cleanBeforeSandbox = await this.commands.run('git', ['status', '--porcelain', '--untracked-files=all'], worktreePath, 15_000);
+      if (cleanBeforeSandbox.code !== 0 || cleanBeforeSandbox.output.trim()) throw new Error('VALIDATION_TOOLS_BLOCKED: disposable validation worktree is not clean after dependency bootstrap.');
+
       const result = await this.commands.run(codexPath, codexSandboxPreflightArgs(worktreePath), worktreePath, 20_000, safeEnv);
       if (result.code !== 0) throw new Error(result.output || `Codex sandbox preflight exited with status ${result.code}.`);
       if (!result.output.includes('AUTOHEAL_SANDBOX_PREFLIGHT_OK')) throw new Error('Codex sandbox preflight did not complete its workspace checks.');

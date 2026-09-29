@@ -98,7 +98,7 @@ export class SupportAutofixService {
     else if (!isInfrastructureFailure(latest)) recoveryReason = 'The latest attempt is not a recognized no-change infrastructure failure.';
     else if (retryAlreadyUsed) recoveryReason = 'The one-time infrastructure recovery retry was already used.';
     else if (hasReadyFix) recoveryReason = 'A fix is already awaiting approval.';
-    else if (workerHealth.status !== 'ONLINE') recoveryReason = 'The worker sandbox preflight is not currently healthy.';
+    else if (workerHealth.status !== 'ONLINE') recoveryReason = 'The worker sandbox and validation-tool preflight is not currently healthy.';
     else if (!this.enabled()) recoveryReason = 'AutoHeal is disabled by the emergency kill switch.';
     const recoveryEligible = recoveryReason === null;
     return {
@@ -127,6 +127,7 @@ export class SupportAutofixService {
   async startWorkerAttempt(tenantId: string, incidentId: string, input: any) {
     if (!this.enabled()) throw new ConflictException('AutoHeal is disabled.');
     const incident = await this.requireIncident(tenantId, incidentId);
+    if (String(incident.id) !== incidentId) throw new ConflictException('Worker job incident identity did not match the loaded incident.');
     const routeContext = this.resolveIncidentRoute(incident);
     const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
     const count = await this.store.countAttempts(incidentId);
@@ -145,11 +146,13 @@ export class SupportAutofixService {
     const branchName = String(input.branchName || '');
     const baseSha = String(input.baseSha || '');
     if (!/^autofix\/[a-zA-Z0-9-]+$/.test(branchName) || !/^[0-9a-f]{40}$/i.test(baseSha)) throw new ConflictException('Worker supplied invalid isolated branch metadata.');
+    const attemptNumber = await this.store.countHistoricalAttempts(incidentId) + 1;
+    const safeIncidentId = incidentId.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 48);
+    if (!branchName.startsWith(`autofix/${safeIncidentId}-attempt-${attemptNumber}-`)) throw new ConflictException('Worker branch identity does not match the incident attempt.');
     await this.store.updateIncident(tenantId, incidentId, { status: 'TRIAGING', risk_level: 'LOW', risk_reason: decision.reason, ...(routeContext.route ? { route: routeContext.route, page_url: routeContext.route } : {}), ...(routeContext.module ? { module: routeContext.module } : {}) });
-    const attempt = await this.store.createAttempt({ incident_id: incidentId, branch_name: branchName, base_sha: baseSha, agent_provider: 'codex-cli', agent_model: 'gpt-6-luna', prompt_summary: `Low-risk ${decision.category} UI repair for ${routeContext.route || 'reported route'}.`, risk_after_diff: 'LOW', status: 'RUNNING', worktree_ref: 'isolated-worker-worktree' });
+    const attempt = await this.store.createAttempt({ incident_id: incidentId, branch_name: branchName, base_sha: baseSha, agent_provider: 'codex-cli', agent_model: 'gpt-6-luna', prompt_summary: `Low-risk ${decision.category} UI repair for ${routeContext.route || 'reported route'}.`, risk_after_diff: 'LOW', status: 'RUNNING', worktree_ref: branchName });
     await this.store.updateIncident(tenantId, incidentId, { status: 'PATCHING' });
-    const attemptNumber = await this.store.countHistoricalAttempts(incidentId);
-    return { incident: { id: incident.id, title: incident.title, description: incident.description, route: routeContext.route, module: routeContext.module || incident.module, error: incident.error_message, riskLevel: decision.risk, category: decision.category }, attemptId: attempt.id, attemptNumber };
+    return { incidentId, branchName: attempt.branch_name, incident: { id: incident.id, title: incident.title, description: incident.description, route: routeContext.route, module: routeContext.module || incident.module, error: incident.error_message, riskLevel: decision.risk, category: decision.category }, attemptId: attempt.id, attemptNumber };
   }
 
   async getWorkerIncident(tenantId: string, incidentId: string) {
@@ -179,10 +182,10 @@ export class SupportAutofixService {
     const attemptId = String(input.attemptId || '');
     const incident = await this.requireIncident(tenantId, incidentId);
     const currentAttempt = await this.store.latestAttempt(incidentId);
-    if (!currentAttempt || currentAttempt.id !== attemptId || currentAttempt.status !== 'RUNNING') throw new ConflictException('The worker attempt does not belong to the active incident attempt.');
+    if (!currentAttempt || String(currentAttempt.incident_id) !== incidentId || currentAttempt.id !== attemptId || currentAttempt.status !== 'RUNNING') throw new ConflictException('The worker attempt does not belong to the active incident attempt.');
     if (input.status === 'INFRASTRUCTURE_FAILURE') {
       const diagnostics = this.sanitizeAgentDiagnostics({ ...(input.agentDiagnostics || {}), failureClass: 'INFRASTRUCTURE_FAILURE', validationStage: 'sandbox-preflight' }, false);
-      await this.store.updateAttempt(attemptId, {
+      await this.store.updateAttempt(incidentId, attemptId, {
         files_changed: [], lines_added: 0, lines_removed: 0,
         test_result: { agent_diagnostics: diagnostics }, build_result: {},
         risk_after_diff: incident.risk_level, safety_reasons: ['Codex sandbox infrastructure failure; no patch validation was run.'],
@@ -207,7 +210,7 @@ export class SupportAutofixService {
     const reasons = eligible ? [] : [...diffGate.reasons, ...(commitValid ? [] : ['Fix commit SHA is missing or invalid.']), ...(incident.status === 'PATCHING' ? [] : ['Incident is not in active patching state.'])];
     const agentDiagnostics = this.sanitizeAgentDiagnostics(input.agentDiagnostics, files.length > 0);
     tests.agent_diagnostics = agentDiagnostics;
-    await this.store.updateAttempt(attemptId, { files_changed: files, lines_added: Math.max(0, Number(input.linesAdded) || 0), lines_removed: Math.max(0, Number(input.linesRemoved) || 0), test_result: tests, build_result: build, risk_after_diff: eligible ? 'LOW' : diffGate.risk, safety_reasons: reasons.map((reason) => sanitizeSupportText(reason, 300)).slice(0, 10), commit_sha: eligible ? input.commitSha : null, agent_provider: sanitizeSupportText(input.provider || 'codex-cli', 80), agent_model: sanitizeSupportText(input.model || 'unknown', 80), status: attemptStatus, completed_at: new Date().toISOString() });
+    await this.store.updateAttempt(incidentId, attemptId, { files_changed: files, lines_added: Math.max(0, Number(input.linesAdded) || 0), lines_removed: Math.max(0, Number(input.linesRemoved) || 0), test_result: tests, build_result: build, risk_after_diff: eligible ? 'LOW' : diffGate.risk, safety_reasons: reasons.map((reason) => sanitizeSupportText(reason, 300)).slice(0, 10), commit_sha: eligible ? input.commitSha : null, agent_provider: sanitizeSupportText(input.provider || 'codex-cli', 80), agent_model: sanitizeSupportText(input.model || 'unknown', 80), status: attemptStatus, completed_at: new Date().toISOString() });
     if (eligible) await this.store.updateIncident(tenantId, incidentId, { status: 'TESTING' });
     await this.store.updateIncident(tenantId, incidentId, { status: incidentStatus, risk_level: eligible ? 'LOW' : blocked ? diffGate.risk : incident.risk_level, risk_reason: eligible ? 'Human approval is required. The coding worker cannot deploy.' : sanitizeSupportText(reasons.join(' ') || 'Worker patch requires engineering review.', 500), ...(eligible ? { root_cause: sanitizeSupportText(input.rootCause || 'Scoped web patch passed validation; review the diff before approval.', 1000) } : {}) });
     await this.store.writeEvent({ type: eligible ? 'autofix.succeeded' : 'approval.required', tenantId, incidentId, at: new Date().toISOString(), details: { status: incidentStatus, attemptStatus, commitSha: eligible ? input.commitSha : null } });
@@ -222,8 +225,9 @@ export class SupportAutofixService {
     const heartbeat: any = await this.store.getWorkerHeartbeat();
     if (!heartbeat) return { status: 'OFFLINE', lastHeartbeat: null, queueDepth: 0, currentIncident: null };
     const recent = Date.now() - Date.parse(heartbeat.updated_at) < 90_000;
-    const sandboxBlocked = recent && heartbeat.current_incident === 'SANDBOX_BLOCKED';
-    return { status: recent ? sandboxBlocked ? 'DEGRADED' : 'ONLINE' : 'OFFLINE', stateCode: sandboxBlocked ? 'SANDBOX_BLOCKED' : null, stateMessage: sandboxBlocked ? 'Worker sandbox unavailable' : null, lastHeartbeat: heartbeat.updated_at, queueDepth: heartbeat.queue_depth, currentIncident: sandboxBlocked ? null : heartbeat.current_incident };
+    const blockCode = recent && ['SANDBOX_BLOCKED', 'VALIDATION_TOOLS_BLOCKED'].includes(String(heartbeat.current_incident)) ? String(heartbeat.current_incident) : null;
+    const blockMessage = blockCode === 'VALIDATION_TOOLS_BLOCKED' ? 'Worker validation tools unavailable' : blockCode ? 'Worker sandbox unavailable' : null;
+    return { status: recent ? blockCode ? 'DEGRADED' : 'ONLINE' : 'OFFLINE', stateCode: blockCode, stateMessage: blockMessage, lastHeartbeat: heartbeat.updated_at, queueDepth: heartbeat.queue_depth, currentIncident: blockCode ? null : heartbeat.current_incident };
   }
 
   async retryAnalysis(tenantId: string, incidentId: string, actorId: string) {
@@ -265,7 +269,7 @@ export class SupportAutofixService {
     if (hasReadyFix) throw new ConflictException('A fix is already awaiting approval.');
     if (!isInfrastructureFailure(latest)) throw new ConflictException('The latest attempt is not a recognized no-change Codex infrastructure failure.');
     if (alreadyUsed) throw new ConflictException('The one-time infrastructure recovery retry was already used.');
-    if (workerHealth.status !== 'ONLINE') throw new ConflictException('Infrastructure recovery requires a current healthy worker sandbox preflight.');
+    if (workerHealth.status !== 'ONLINE') throw new ConflictException('Infrastructure recovery requires a current healthy worker sandbox and validation-tool preflight.');
     const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
     if (decision.risk !== 'LOW') throw new ConflictException('Only LOW risk incidents can use infrastructure recovery.');
     const routeContext = this.resolveIncidentRoute(incident);

@@ -59,6 +59,59 @@ describe('AutoHeal deterministic risk policy', () => {
     expect(gate).toMatchObject({ risk: 'LOW', allowed: true });
   });
 
+  it('permits the generated PO register search patch and its focused test', () => {
+    const gate = classifyDiff(validGate({
+      module: 'Procurement / Purchase Orders',
+      category: 'search-filter-ui',
+      changedPaths: [
+        'apps/web/src/app/dashboard/purchase/orders/page.tsx',
+        'apps/web/src/app/dashboard/purchase/orders/search.test.cjs',
+      ],
+      diff: [
+        '+useEffect(() => { fetchOrders(); }, [dateRange]);',
+        '+const searchTest = "PO register search matcher and table display";',
+      ].join('\n'),
+      linesChanged: 2,
+    }));
+    expect(gate).toMatchObject({ risk: 'LOW', allowed: true });
+  });
+
+  it('permits PO register table display-only changes', () => {
+    const gate = classifyDiff(validGate({
+      module: 'Procurement / Purchase Orders',
+      category: 'table-visibility',
+      changedPaths: ['apps/web/src/app/dashboard/purchase/orders/page.tsx'],
+      diff: '+render register table display columns;',
+    }));
+    expect(gate).toMatchObject({ risk: 'LOW', allowed: true });
+  });
+
+  it.each([
+    ['PO creation submit handler', '+const handleSubmit = () => createPurchaseOrder(payload);'],
+    ['PO approval logic', '+const approvePurchaseOrder = (id) => setStatus("approved");'],
+    ['quantity and rate calculation', '+const amount = quantity * unitRate;'],
+    ['authentication and permission logic', '+if (!hasPermission("purchase:write")) return;'],
+    ['GRN, inventory, and accounting logic', '+postGoodsReceipt(); updateInventory(); createAccountingJournal();'],
+  ])('blocks PO register %s changes', (_name, diff) => {
+    const gate = classifyDiff(validGate({
+      module: 'Procurement / Purchase Orders',
+      category: 'search-filter-ui',
+      changedPaths: ['apps/web/src/app/dashboard/purchase/orders/page.tsx'],
+      diff,
+    }));
+    expect(gate).toMatchObject({ risk: 'BLOCKED', allowed: false });
+  });
+
+  it('blocks backend PO service changes regardless of read-only category', () => {
+    const gate = classifyDiff(validGate({
+      module: 'Procurement / Purchase Orders',
+      category: 'search-filter-ui',
+      changedPaths: ['apps/api/src/purchase-orders/purchase-orders.service.ts'],
+      diff: '+return filteredOrders;',
+    }));
+    expect(gate).toMatchObject({ risk: 'BLOCKED', allowed: false });
+  });
+
   it('blocks purchase-order writes even inside the scoped search UI path', () => {
     const gate = classifyDiff(validGate({
       module: 'Procurement / Purchase Orders',
@@ -68,7 +121,7 @@ describe('AutoHeal deterministic risk policy', () => {
     }));
     expect(gate.allowed).toBe(false);
     expect(gate.risk).toBe('BLOCKED');
-    expect(gate.reasons).toContain('The diff leaves the read-only Purchase Order search/filter scope.');
+    expect(gate.reasons).toContain('The diff leaves the read-only Purchase Order register UI scope.');
   });
 
   it('blocks direct Purchase Order write helpers inside a scoped search file', () => {

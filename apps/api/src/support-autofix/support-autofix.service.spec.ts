@@ -66,7 +66,7 @@ describe('AutoHeal service safety controls', () => {
     process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'false';
     const store = {
       getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'PATCHING', risk_level: 'LOW' }),
-      latestAttempt: jest.fn().mockResolvedValue({ id: 'a', status: 'RUNNING', base_sha: 'a'.repeat(40) }),
+      latestAttempt: jest.fn().mockResolvedValue({ id: 'a', incident_id: 'i', status: 'RUNNING', base_sha: 'a'.repeat(40) }),
       countAttempts: jest.fn().mockResolvedValue(1), updateAttempt: jest.fn(), updateIncident: jest.fn(), writeEvent: jest.fn(),
     };
     const service = Object.create(SupportAutofixService.prototype) as any; service.store = store;
@@ -80,7 +80,7 @@ describe('AutoHeal service safety controls', () => {
   it('keeps initial LOW risk when an attempt fails without a patch and stores safe diagnostics', async () => {
     const store = {
       getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'PATCHING', risk_level: 'LOW', risk_reason: 'Recognized low-risk UI category: search-filter-ui.', title: 'PO search', description: 'Unable to search', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders' }),
-      latestAttempt: jest.fn().mockResolvedValue({ id: 'a', status: 'RUNNING', base_sha: 'a'.repeat(40) }),
+      latestAttempt: jest.fn().mockResolvedValue({ id: 'a', incident_id: 'i', status: 'RUNNING', base_sha: 'a'.repeat(40) }),
       countAttempts: jest.fn().mockResolvedValue(1), updateAttempt: jest.fn(), updateIncident: jest.fn(), writeEvent: jest.fn(),
     };
     const service = Object.create(SupportAutofixService.prototype) as any;
@@ -93,14 +93,49 @@ describe('AutoHeal service safety controls', () => {
       agentDiagnostics: { exitCode: 0, durationMs: 1200, summary: 'No changes. token=private', filesChanged: false, validationStage: 'diff', stderrSummary: 'password=private', cwd: '/home/autoheal/workspaces/worktrees/i', sandboxMode: 'workspace-write', commandSummary: 'codex exec --cd /home/autoheal/workspaces/worktrees/i --sandbox workspace-write --ephemeral --model gpt-6-luna <prompt>' },
     });
     expect(result).toEqual({ status: 'FAILED', attemptStatus: 'FAILED' });
-    expect(store.updateAttempt).toHaveBeenCalledWith('a', expect.objectContaining({ status: 'FAILED', risk_after_diff: 'MEDIUM', test_result: expect.objectContaining({ agent_diagnostics: expect.objectContaining({ exit_code: 0, files_changed: false, validation_stage: 'diff', summary: 'No changes. token [redacted]', stderr_summary: 'password [redacted]', cwd: '/home/autoheal/workspaces/worktrees/i', sandbox_mode: 'workspace-write', command_summary: expect.stringContaining('--sandbox workspace-write') }) }) }));
+    expect(store.updateAttempt).toHaveBeenCalledWith('i', 'a', expect.objectContaining({ status: 'FAILED', risk_after_diff: 'MEDIUM', test_result: expect.objectContaining({ agent_diagnostics: expect.objectContaining({ exit_code: 0, files_changed: false, validation_stage: 'diff', summary: 'No changes. token [redacted]', stderr_summary: 'password [redacted]', cwd: '/home/autoheal/workspaces/worktrees/i', sandbox_mode: 'workspace-write', command_summary: expect.stringContaining('--sandbox workspace-write') }) }) }));
     expect(store.updateIncident).toHaveBeenCalledWith('t', 'i', expect.objectContaining({ status: 'FAILED', risk_level: 'LOW' }));
+  });
+
+  it('rejects a completion whose attempt belongs to another incident', async () => {
+    const store = {
+      getIncident: jest.fn().mockResolvedValue({ id: 'incident-a', status: 'PATCHING', risk_level: 'LOW' }),
+      latestAttempt: jest.fn().mockResolvedValue({ id: 'attempt-b', incident_id: 'incident-b', status: 'RUNNING' }),
+      updateAttempt: jest.fn(), updateIncident: jest.fn(),
+    };
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    service.store = store;
+    await expect(service.finishWorkerAttempt('tenant-a', 'incident-a', { attemptId: 'attempt-b', status: 'INFRASTRUCTURE_FAILURE' }))
+      .rejects.toThrow('does not belong to the active incident attempt');
+    expect(store.updateAttempt).not.toHaveBeenCalled();
+    expect(store.updateIncident).not.toHaveBeenCalled();
+  });
+
+  it('keeps simultaneous incident completions bound to their own attempts', async () => {
+    const store = {
+      getIncident: jest.fn(async (_tenantId: string, incidentId: string) => ({ id: incidentId, status: 'PATCHING', risk_level: 'LOW' })),
+      latestAttempt: jest.fn(async (incidentId: string) => ({ id: `attempt-${incidentId}`, incident_id: incidentId, status: 'RUNNING' })),
+      updateAttempt: jest.fn().mockResolvedValue({}),
+      updateIncident: jest.fn().mockResolvedValue({}),
+      writeEvent: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    service.store = store;
+    await Promise.all(['incident-a', 'incident-b'].map((incidentId) => service.finishWorkerAttempt('tenant-a', incidentId, {
+      attemptId: `attempt-${incidentId}`, status: 'INFRASTRUCTURE_FAILURE', agentDiagnostics: { summary: 'validation tooling blocked' },
+    })));
+    expect(store.updateAttempt.mock.calls.map((call: any[]) => call.slice(0, 2)).sort()).toEqual([
+      ['incident-a', 'attempt-incident-a'], ['incident-b', 'attempt-incident-b'],
+    ]);
+    expect(store.updateIncident.mock.calls.map((call: any[]) => call.slice(0, 2)).sort()).toEqual([
+      ['tenant-a', 'incident-a'], ['tenant-a', 'incident-b'],
+    ]);
   });
 
   it('records sandbox startup failures as infrastructure only without changing risk or fabricating validation failures', async () => {
     const store = {
       getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'PATCHING', risk_level: 'LOW', risk_reason: 'Recognized low-risk UI category: search-filter-ui.' }),
-      latestAttempt: jest.fn().mockResolvedValue({ id: 'a', status: 'RUNNING', base_sha: 'a'.repeat(40) }),
+      latestAttempt: jest.fn().mockResolvedValue({ id: 'a', incident_id: 'i', status: 'RUNNING', base_sha: 'a'.repeat(40) }),
       updateAttempt: jest.fn(), updateIncident: jest.fn(), writeEvent: jest.fn(),
     };
     const service = Object.create(SupportAutofixService.prototype) as any;
@@ -110,8 +145,8 @@ describe('AutoHeal service safety controls', () => {
       testResult: {}, buildResult: {}, agentDiagnostics: { failureClass: 'INFRASTRUCTURE_FAILURE', summary: 'bwrap: Failed RTM_NEWADDR' },
     });
     expect(result).toEqual({ status: 'TRIAGING', attemptStatus: 'INFRASTRUCTURE_FAILURE' });
-    expect(store.updateAttempt).toHaveBeenCalledWith('a', expect.objectContaining({ status: 'FAILED', risk_after_diff: 'LOW', test_result: expect.objectContaining({ agent_diagnostics: expect.objectContaining({ failure_class: 'INFRASTRUCTURE_FAILURE' }) }) }));
-    expect(store.updateAttempt.mock.calls[0][1].test_result).not.toHaveProperty('focusedTest');
+    expect(store.updateAttempt).toHaveBeenCalledWith('i', 'a', expect.objectContaining({ status: 'FAILED', risk_after_diff: 'LOW', test_result: expect.objectContaining({ agent_diagnostics: expect.objectContaining({ failure_class: 'INFRASTRUCTURE_FAILURE' }) }) }));
+    expect(store.updateAttempt.mock.calls[0][2].test_result).not.toHaveProperty('focusedTest');
     expect(store.updateIncident).toHaveBeenCalledWith('t', 'i', { status: 'TRIAGING' });
     expect(store.writeEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'autofix.infrastructure-failure', details: expect.objectContaining({ attemptCounted: false }) }));
   });
@@ -120,6 +155,12 @@ describe('AutoHeal service safety controls', () => {
     const service = Object.create(SupportAutofixService.prototype) as any;
     service.store = { getWorkerHeartbeat: jest.fn().mockResolvedValue({ worker_id: 'worker-a', current_incident: 'SANDBOX_BLOCKED', queue_depth: 3, updated_at: new Date().toISOString() }) };
     await expect(service.getWorkerHealth()).resolves.toMatchObject({ status: 'DEGRADED', stateCode: 'SANDBOX_BLOCKED', stateMessage: 'Worker sandbox unavailable', queueDepth: 3, currentIncident: null });
+  });
+
+  it('reports unavailable web validation tools as a distinct degraded worker state', async () => {
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    service.store = { getWorkerHeartbeat: jest.fn().mockResolvedValue({ worker_id: 'worker-a', current_incident: 'VALIDATION_TOOLS_BLOCKED', queue_depth: 1, updated_at: new Date().toISOString() }) };
+    await expect(service.getWorkerHealth()).resolves.toMatchObject({ status: 'DEGRADED', stateCode: 'VALIDATION_TOOLS_BLOCKED', stateMessage: 'Worker validation tools unavailable', queueDepth: 1, currentIncident: null });
   });
 
   it('restores LOW risk only for a recognized failed-attempt reason and normalizes route before retry', async () => {
@@ -174,12 +215,26 @@ describe('AutoHeal service safety controls', () => {
 
   it('allows the worker to create the next historical attempt only after authorized infrastructure recovery', async () => {
     process.env.AUTOHEAL_ENABLED = 'true';
-    const store = { getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'TRIAGING', risk_level: 'LOW', title: 'PO Search', description: 'Unable to search Purchase Orders', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders' }), countAttempts: jest.fn().mockResolvedValue(1), countHistoricalAttempts: jest.fn().mockResolvedValue(4), latestAttempt: jest.fn().mockResolvedValue({ status: 'FAILED', files_changed: [], test_result: { agent_diagnostics: { summary: 'bwrap: Failed RTM_NEWADDR' } } }), hasInfrastructureRetryRequest: jest.fn().mockResolvedValue(true), updateIncident: jest.fn().mockResolvedValue({}), createAttempt: jest.fn().mockResolvedValue({ id: 'attempt-4' }) };
+    const store = { getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'TRIAGING', risk_level: 'LOW', title: 'PO Search', description: 'Unable to search Purchase Orders', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders' }), countAttempts: jest.fn().mockResolvedValue(1), countHistoricalAttempts: jest.fn().mockResolvedValue(4), latestAttempt: jest.fn().mockResolvedValue({ status: 'FAILED', files_changed: [], test_result: { agent_diagnostics: { summary: 'bwrap: Failed RTM_NEWADDR' } } }), hasInfrastructureRetryRequest: jest.fn().mockResolvedValue(true), updateIncident: jest.fn().mockResolvedValue({}), createAttempt: jest.fn().mockResolvedValue({ id: 'attempt-5', branch_name: 'autofix/i-attempt-5-po-search' }) };
     const service = Object.create(SupportAutofixService.prototype) as any;
     service.store = store;
-    const started = await service.startWorkerAttempt('tenant', 'i', { branchName: 'autofix/i-attempt-4-po-search', baseSha: 'a'.repeat(40) });
-    expect(started).toMatchObject({ attemptId: 'attempt-4', attemptNumber: 4, incident: { riskLevel: 'LOW', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders', category: 'search-filter-ui' } });
+    const started = await service.startWorkerAttempt('tenant', 'i', { branchName: 'autofix/i-attempt-5-po-search', baseSha: 'a'.repeat(40) });
+    expect(started).toMatchObject({ incidentId: 'i', branchName: 'autofix/i-attempt-5-po-search', attemptId: 'attempt-5', attemptNumber: 5, incident: { id: 'i', riskLevel: 'LOW', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders', category: 'search-filter-ui' } });
     expect(store.createAttempt).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a worktree branch whose incident ID does not match the requested attempt', async () => {
+    process.env.AUTOHEAL_ENABLED = 'true';
+    const store = {
+      getIncident: jest.fn().mockResolvedValue({ id: 'incident-a', status: 'NEW', risk_level: 'LOW', title: 'PO search', description: 'Search UI', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders' }),
+      countAttempts: jest.fn().mockResolvedValue(0), latestAttempt: jest.fn().mockResolvedValue(null),
+      countHistoricalAttempts: jest.fn().mockResolvedValue(0), hasInfrastructureRetryRequest: jest.fn().mockResolvedValue(false), createAttempt: jest.fn(), updateIncident: jest.fn(),
+    };
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    service.store = store;
+    await expect(service.startWorkerAttempt('tenant-a', 'incident-a', { branchName: 'autofix/incident-b-attempt-1-po-search', baseSha: 'a'.repeat(40) }))
+      .rejects.toThrow('branch identity does not match');
+    expect(store.createAttempt).not.toHaveBeenCalled();
   });
 
   it('blocks recovery unless the worker heartbeat confirms a fresh green preflight', async () => {
@@ -189,7 +244,7 @@ describe('AutoHeal service safety controls', () => {
     const queue = { add: jest.fn() };
     const service = Object.create(SupportAutofixService.prototype) as any;
     service.store = store; service.queue = queue; service.getWorkerHealth = jest.fn().mockResolvedValue({ status: 'DEGRADED' });
-    await expect(service.retryAfterInfrastructureFailure('tenant', 'i', 'admin')).rejects.toThrow('healthy worker sandbox preflight');
+    await expect(service.retryAfterInfrastructureFailure('tenant', 'i', 'admin')).rejects.toThrow('healthy worker sandbox and validation-tool preflight');
     expect(store.updateIncident).not.toHaveBeenCalled();
     expect(queue.add).not.toHaveBeenCalled();
   });
@@ -204,6 +259,23 @@ describe('AutoHeal service safety controls', () => {
     await service.listAdminForUser({ tenantId: 'tenant-a', role: 'SUPER_ADMIN' }, {});
     expect(service.store.listIncidents).toHaveBeenLastCalledWith(null, {});
     await expect(service.adminTenantId({ role: 'SUPER_ADMIN' }, 'i')).resolves.toBe('tenant-b');
+  });
+
+  it('loads Admin attempts only through the selected incident ID', async () => {
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    const incident = { id: 'incident-a', tenant_id: 'tenant-a', status: 'FAILED', risk_level: 'LOW' };
+    service.store = {
+      getIncidentById: jest.fn().mockResolvedValue(incident),
+      getIncident: jest.fn().mockResolvedValue(incident),
+      listAttempts: jest.fn().mockResolvedValue([{ id: 'attempt-a', incident_id: 'incident-a' }]),
+      listDeployments: jest.fn().mockResolvedValue([]),
+      countAttempts: jest.fn().mockResolvedValue(0), countHistoricalAttempts: jest.fn().mockResolvedValue(1),
+      hasInfrastructureRetryRequest: jest.fn().mockResolvedValue(false), hasReadyAttempt: jest.fn().mockResolvedValue(false),
+    };
+    service.getWorkerHealth = jest.fn().mockResolvedValue({ status: 'OFFLINE' });
+    const detail = await service.getAdminIncidentForUser({ tenantId: 'tenant-a', role: 'ADMIN' }, 'incident-a');
+    expect(service.store.listAttempts).toHaveBeenCalledWith('incident-a');
+    expect(detail.attempts).toEqual([expect.objectContaining({ id: 'attempt-a', incident_id: 'incident-a' })]);
   });
 
   it('derives recovery eligibility and hides post-diff risk for legacy infrastructure attempts without rewriting history', async () => {
@@ -230,7 +302,7 @@ describe('AutoHeal service safety controls', () => {
 
   it.each([
     { name: 'exhausted genuine attempts', genuine: 2, used: false, worker: 'ONLINE', reason: 'No genuine coding attempts remain under the two-attempt limit.' },
-    { name: 'unhealthy worker', genuine: 1, used: false, worker: 'OFFLINE', reason: 'The worker sandbox preflight is not currently healthy.' },
+    { name: 'unhealthy worker', genuine: 1, used: false, worker: 'OFFLINE', reason: 'The worker sandbox and validation-tool preflight is not currently healthy.' },
     { name: 'already-used recovery', genuine: 1, used: true, worker: 'ONLINE', reason: 'The one-time infrastructure recovery retry was already used.' },
   ])('returns an authoritative ineligible result for $name', async ({ genuine, used, worker, reason }) => {
     process.env.AUTOHEAL_ENABLED = 'true';

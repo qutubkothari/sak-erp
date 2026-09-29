@@ -90,7 +90,7 @@ export default function SupportAutoHealAdminPage() {
       {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><ShieldAlert className="mr-2 inline" size={17} />{error}</div>}
 
       <section aria-label="Coding worker status" className="grid gap-3 rounded-xl border border-stone-200 bg-white p-4 text-sm sm:grid-cols-4">
-        <p><span className="text-stone-500">Worker</span><br /><strong className={worker?.status === "ONLINE" ? "text-emerald-700" : worker?.status === "DEGRADED" ? "text-amber-800" : "text-stone-600"}>{worker?.status || "OFFLINE"}</strong>{worker?.stateCode === "SANDBOX_BLOCKED" && <><br /><span role="status" className="font-medium text-amber-800">Worker sandbox unavailable</span></>}</p>
+        <p><span className="text-stone-500">Worker</span><br /><strong className={worker?.status === "ONLINE" ? "text-emerald-700" : worker?.status === "DEGRADED" ? "text-amber-800" : "text-stone-600"}>{worker?.status || "OFFLINE"}</strong>{worker?.stateMessage && <><br /><span role="status" className="font-medium text-amber-800">{worker.stateMessage}</span></>}</p>
         <p><span className="text-stone-500">Last heartbeat</span><br /><strong>{worker?.lastHeartbeat ? new Date(worker.lastHeartbeat).toLocaleString() : "No heartbeat"}</strong></p>
         <p><span className="text-stone-500">Queue depth</span><br /><strong>{worker?.queueDepth ?? 0}</strong></p>
         <p><span className="text-stone-500">Current incident</span><br /><strong>{worker?.currentIncident || "Idle"}</strong></p>

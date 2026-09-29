@@ -41,6 +41,21 @@ describe('AutoHeal incident privacy and deduplication', () => {
     expect(upsert).toHaveBeenCalledWith(expect.not.objectContaining({ hostname: expect.anything(), host: expect.anything() }), { onConflict: 'worker_id' });
   });
 
+  it('scopes attempt updates to both the attempt ID and its incident ID', async () => {
+    const query: any = {
+      eq: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({ data: { id: 'attempt-a', incident_id: 'incident-a' }, error: null }),
+    };
+    const update = jest.fn(() => query);
+    const service = Object.create(SupportStoreService.prototype) as any;
+    service.supabase = { from: jest.fn(() => ({ update })) };
+    await service.updateAttempt('incident-a', 'attempt-a', { status: 'FAILED' });
+    expect(update).toHaveBeenCalledWith({ status: 'FAILED' });
+    expect(query.eq).toHaveBeenNthCalledWith(1, 'incident_id', 'incident-a');
+    expect(query.eq).toHaveBeenNthCalledWith(2, 'id', 'attempt-a');
+  });
+
   it('excludes explicit and strong legacy infrastructure failures while counting generic no-change attempts', async () => {
     const eq = jest.fn().mockResolvedValue({ data: [
       { status: 'FAILED', files_changed: [], commit_sha: null, test_result: { agent_diagnostics: { failure_class: 'INFRASTRUCTURE_FAILURE' } } },

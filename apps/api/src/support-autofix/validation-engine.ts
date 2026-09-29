@@ -9,6 +9,33 @@ import { ValidationResults } from './support-autofix.types';
 export class ValidationEngine {
   constructor(private readonly commands: CommandRunner) {}
 
+  async prepareWebWorkspace(worktreePath: string): Promise<{ passed: boolean; detail: string }> {
+    const safeEnv: NodeJS.ProcessEnv = {
+      HOME: process.env.HOME || '/home/autoheal',
+      PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+      LANG: process.env.LANG || 'C.UTF-8',
+    };
+    try {
+      const before = await this.commands.run('git', ['status', '--porcelain', '--untracked-files=all'], worktreePath, 15_000);
+      if (before.code !== 0 || before.output.trim()) return { passed: false, detail: 'Validation worktree must be clean before dependency bootstrap.' };
+      const pnpm = await this.commands.run('pnpm', ['--version'], worktreePath, 15_000, safeEnv);
+      if (pnpm.code !== 0 || !pnpm.output.trim()) return { passed: false, detail: `pnpm is unavailable: ${pnpm.output.trim() || 'no version output'}` };
+      const install = await this.commands.run('pnpm', ['install', '--offline', '--frozen-lockfile', '--filter', '@sak-erp/web...'], worktreePath, 600_000, safeEnv);
+      if (install.code !== 0) return { passed: false, detail: `Locked web workspace dependencies are unavailable from the pnpm store: ${install.output.trim().slice(-350)}` };
+      const [typeScript, next] = await Promise.all([
+        this.commands.run('pnpm', ['--filter', '@sak-erp/web', 'exec', 'tsc', '--version'], worktreePath, 60_000, safeEnv),
+        this.commands.run('pnpm', ['--filter', '@sak-erp/web', 'exec', 'next', '--version'], worktreePath, 60_000, safeEnv),
+      ]);
+      if (typeScript.code !== 0 || !typeScript.output.trim()) return { passed: false, detail: `Web TypeScript compiler is unavailable: ${typeScript.output.trim().slice(-350)}` };
+      if (next.code !== 0 || !next.output.trim()) return { passed: false, detail: `Next.js build tooling is unavailable: ${next.output.trim().slice(-350)}` };
+      const after = await this.commands.run('git', ['status', '--porcelain', '--untracked-files=all'], worktreePath, 15_000);
+      if (after.code !== 0 || after.output.trim()) return { passed: false, detail: 'Dependency bootstrap changed tracked or unignored worktree files.' };
+      return { passed: true, detail: `pnpm ${pnpm.output.trim()}; web TypeScript and Next.js are resolvable; worktree is clean.` };
+    } catch (error: any) {
+      return { passed: false, detail: String(error?.message || error).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 500) };
+    }
+  }
+
   async runWeb(worktreePath: string, changedPaths: string[], affectedRoute: string, includeLocalSmoke = true): Promise<ValidationResults> {
     const webRoot = resolve(worktreePath, 'apps/web');
     const focusedFiles = this.findFocusedTests(worktreePath, changedPaths, 'apps/web/');

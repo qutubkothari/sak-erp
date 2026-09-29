@@ -1,4 +1,4 @@
-import { AutoHealWorkerProcessor } from './worker-processor';
+import { AutoHealWorkerProcessor, worktreeMatchesIncident } from './worker-processor';
 
 const passing = { passed: true, detail: 'passed' };
 const validation: any = { focusedTest: passing, typeCheck: passing, build: passing, diffCheck: passing, smoke: passing };
@@ -12,9 +12,9 @@ describe('isolated AutoHeal coding worker', () => {
   });
 
   function setup(diffPaths = ['apps/web/src/example.tsx'], diff = '+<div>fixed</div>') {
-    const api: any = { getIncident: jest.fn().mockResolvedValue({ incident: { id: 'i1', title: 'Fix UI label', description: 'Label missing', route: '/dashboard/example', module: 'UI', riskLevel: 'LOW', category: 'label-text' }, attemptNumber: 1 }), startAttempt: jest.fn().mockResolvedValue({ attemptId: 'a1' }), finishAttempt: jest.fn().mockResolvedValue({ status: 'READY_FOR_APPROVAL' }), heartbeat: jest.fn() };
-    const worktrees: any = { create: jest.fn().mockResolvedValue({ branchName: 'autofix/i1-attempt-1-fix-ui-label', baseSha: 'a'.repeat(40), path: 'C:/isolated/i1' }), changedFiles: jest.fn().mockResolvedValue(diffPaths), stageAllInWorktree: jest.fn(), stagedDiff: jest.fn().mockResolvedValue({ paths: diffPaths, diff, linesChanged: 1 }), commit: jest.fn().mockResolvedValue('b'.repeat(40)), pushBranch: jest.fn() };
-    const checks: any = { runWeb: jest.fn().mockResolvedValue(validation) };
+    const api: any = { getIncident: jest.fn().mockResolvedValue({ incident: { id: 'i1', title: 'Fix UI label', description: 'Label missing', route: '/dashboard/example', module: 'UI', riskLevel: 'LOW', category: 'label-text' }, attemptNumber: 1 }), startAttempt: jest.fn(async (_tenantId: string, incidentId: string, body: any) => ({ incidentId, branchName: body.branchName, attemptId: 'a1', attemptNumber: Number(body.branchName.match(/-attempt-(\d+)-/)?.[1] || 1) })), finishAttempt: jest.fn().mockResolvedValue({ status: 'READY_FOR_APPROVAL' }), heartbeat: jest.fn() };
+    const worktrees: any = { create: jest.fn(async (identity: string) => ({ branchName: `autofix/${identity}-fix-ui-label`, baseSha: 'a'.repeat(40), path: `C:/isolated/${identity}-fix-ui-label` })), remove: jest.fn().mockResolvedValue(undefined), changedFiles: jest.fn().mockResolvedValue(diffPaths), stageAllInWorktree: jest.fn(), stagedDiff: jest.fn().mockResolvedValue({ paths: diffPaths, diff, linesChanged: 1 }), commit: jest.fn().mockResolvedValue('b'.repeat(40)), pushBranch: jest.fn() };
+    const checks: any = { prepareWebWorkspace: jest.fn().mockResolvedValue({ passed: true, detail: 'tooling ready' }), runWeb: jest.fn().mockResolvedValue(validation) };
     const agent: any = { run: jest.fn().mockResolvedValue({ success: true, provider: 'codex-cli', model: 'gpt-6-luna' }) };
     const queue: any = { getWaitingCount: jest.fn().mockResolvedValue(1), getActiveCount: jest.fn().mockResolvedValue(0), getDelayedCount: jest.fn().mockResolvedValue(0), pause: jest.fn().mockResolvedValue(undefined), resume: jest.fn().mockResolvedValue(undefined) };
     const sandboxPreflight: any = { run: jest.fn().mockResolvedValue({ passed: true }) };
@@ -76,7 +76,7 @@ describe('isolated AutoHeal coding worker', () => {
     expect(worktrees.create).toHaveBeenCalledWith('i1-attempt-1', 'Fix UI label');
     expect(agent.run).toHaveBeenCalledTimes(1);
     expect(worktrees.commit).toHaveBeenCalledTimes(1);
-    expect(worktrees.pushBranch).toHaveBeenCalledWith('C:/isolated/i1', 'autofix/i1-attempt-1-fix-ui-label');
+    expect(worktrees.pushBranch).toHaveBeenCalledWith('C:/isolated/i1-attempt-1-fix-ui-label', 'autofix/i1-attempt-1-fix-ui-label');
     expect(api.finishAttempt).toHaveBeenCalledWith('t1', 'i1', expect.objectContaining({ status: 'READY_FOR_APPROVAL', commitSha: 'b'.repeat(40) }));
   });
 
@@ -99,6 +99,35 @@ describe('isolated AutoHeal coding worker', () => {
     expect(request.prompt).toContain('Route:\n/dashboard/purchase/orders');
     expect(request.prompt).toContain('Purchase Order register search/filter UI');
     expect(request.prompt).toContain('Do not investigate unrelated repository areas.');
+  });
+
+  it('refuses to create an attempt when a queued incident resolves to another incident ID', async () => {
+    process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true';
+    const result = setup();
+    result.api.getIncident.mockResolvedValue({ incident: { id: 'incident-b', title: 'Other incident', riskLevel: 'LOW' }, attemptNumber: 1 });
+    await expect(result.processor.process({ data: { tenantId: 'tenant-a', incidentId: 'incident-a' } } as any)).rejects.toThrow('queue incident ID does not match');
+    expect(result.worktrees.create).not.toHaveBeenCalled();
+    expect(result.api.startAttempt).not.toHaveBeenCalled();
+    expect(result.agent.run).not.toHaveBeenCalled();
+  });
+
+  it('blocks the job before attempt creation or model invocation when validation dependencies are missing', async () => {
+    process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true';
+    const result = setup();
+    result.checks.prepareWebWorkspace.mockResolvedValue({ passed: false, detail: 'Web TypeScript compiler is unavailable: tsc not found' });
+    await expect(result.processor.process({ data: { tenantId: 't1', incidentId: 'i1' } } as any)).rejects.toThrow('VALIDATION_TOOLS_BLOCKED');
+    expect(result.api.startAttempt).not.toHaveBeenCalled();
+    expect(result.api.finishAttempt).not.toHaveBeenCalled();
+    expect(result.agent.run).not.toHaveBeenCalled();
+    expect(result.worktrees.remove).toHaveBeenCalled();
+    expect(result.queue.pause).toHaveBeenCalled();
+    expect(result.api.heartbeat).toHaveBeenCalledWith(expect.objectContaining({ currentIncident: 'VALIDATION_TOOLS_BLOCKED' }));
+  });
+
+  it('requires branch and worktree identity to match the incident and attempt number', () => {
+    expect(worktreeMatchesIncident({ branchName: 'autofix/incident-a-attempt-2-po-search', path: '/worktrees/incident-a-attempt-2-po-search' }, 'incident-a', 2)).toBe(true);
+    expect(worktreeMatchesIncident({ branchName: 'autofix/incident-b-attempt-2-po-search', path: '/worktrees/incident-b-attempt-2-po-search' }, 'incident-a', 2)).toBe(false);
+    expect(worktreeMatchesIncident({ branchName: 'autofix/incident-a-attempt-1-po-search', path: '/worktrees/incident-a-attempt-2-po-search' }, 'incident-a', 2)).toBe(false);
   });
 
   it('records no-change diagnostics as a failed attempt and does not push', async () => {
@@ -125,7 +154,7 @@ describe('isolated AutoHeal coding worker', () => {
   it('never invokes Codex for a HIGH-risk incident', async () => {
     process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true';
     const { processor, api, agent, worktrees } = setup();
-    api.getIncident.mockResolvedValue({ incident: { riskLevel: 'HIGH' } });
+    api.getIncident.mockResolvedValue({ incident: { id: 'i-high', riskLevel: 'HIGH' } });
     await processor.process({ data: { tenantId: 't1', incidentId: 'i-high' } } as any);
     expect(agent.run).not.toHaveBeenCalled();
     expect(worktrees.create).not.toHaveBeenCalled();

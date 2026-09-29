@@ -10,7 +10,15 @@ import { ValidationEngine } from './validation-engine';
 import { AutoHealWorkerApiClient } from './worker-api-client';
 import { ValidationResults } from './support-autofix.types';
 import { AUTO_FIX_AGENT } from './worker-tokens';
-import { CodexSandboxPreflightService, SANDBOX_BLOCKED_HEARTBEAT, isCodexSandboxInfrastructureFailure } from './sandbox-preflight.service';
+import { CodexSandboxPreflightService, SANDBOX_BLOCKED_HEARTBEAT, VALIDATION_TOOLS_BLOCKED_HEARTBEAT, isCodexSandboxInfrastructureFailure } from './sandbox-preflight.service';
+import { basename } from 'path';
+
+export function worktreeMatchesIncident(workspace: { branchName: string; path: string }, incidentId: string, attemptNumber: number): boolean {
+  const identity = `${incidentId}-attempt-${attemptNumber}`.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 48);
+  return Boolean(identity)
+    && workspace.branchName.startsWith(`autofix/${identity}-`)
+    && basename(workspace.path).startsWith(`${identity}-`);
+}
 
 @Processor('autoheal-patch')
 @Injectable()
@@ -67,9 +75,26 @@ export class AutoHealWorkerProcessor {
     let validationStage = 'setup';
     try {
       const { incident, attemptNumber } = await this.api.getIncident(tenantId, incidentId) as any;
+      if (String(incident?.id || '') !== incidentId) throw new Error('AUTOHEAL_INFRASTRUCTURE_FAILURE: queue incident ID does not match the worker incident response.');
       if (incident.riskLevel !== 'LOW') return;
       const workspace = await this.worktrees.create(`${incidentId}-attempt-${attemptNumber}`, incident.title);
+      if (!worktreeMatchesIncident(workspace, incidentId, attemptNumber)) {
+        await this.worktrees.remove(workspace.path).catch(() => undefined);
+        throw new Error('AUTOHEAL_INFRASTRUCTURE_FAILURE: worktree branch/path identity does not match its incident attempt.');
+      }
+      const tooling = await this.validation.prepareWebWorkspace(workspace.path);
+      if (!tooling.passed) {
+        await this.worktrees.remove(workspace.path).catch(() => undefined);
+        this.sandboxReady = false;
+        this.sandboxFailure = `VALIDATION_TOOLS_BLOCKED: ${tooling.detail}`;
+        await this.queue.pause();
+        await this.sendHeartbeat();
+        throw new Error(this.sandboxFailure);
+      }
       const started = await this.api.startAttempt(tenantId, incidentId, { branchName: workspace.branchName, baseSha: workspace.baseSha }) as any;
+      if (String(started?.incidentId || '') !== incidentId || String(started?.branchName || '') !== workspace.branchName || !started?.attemptId || Number(started?.attemptNumber) !== Number(attemptNumber)) {
+        throw new Error('AUTOHEAL_INFRASTRUCTURE_FAILURE: persisted attempt identity does not match its queued incident and worktree.');
+      }
       attemptId = started.attemptId;
       const prompt = buildScopedAutoFixPrompt({ ...incident, category: incident.category });
       if (!workerEnabled()) throw new Error('AutoHeal coding worker was disabled before agent execution.');
@@ -158,7 +183,8 @@ export class AutoHealWorkerProcessor {
   private async sendHeartbeat() {
     try {
       const [waiting, active, delayed] = await Promise.all([this.queue.getWaitingCount(), this.queue.getActiveCount(), this.queue.getDelayedCount()]);
-      await this.api.heartbeat({ workerId: process.env.AUTOHEAL_WORKER_ID || 'autoheal-worker', currentIncident: this.sandboxReady ? this.currentIncident : SANDBOX_BLOCKED_HEARTBEAT, queueDepth: waiting + active + delayed });
+      const blockedMarker = /VALIDATION_TOOLS_BLOCKED/i.test(this.sandboxFailure) ? VALIDATION_TOOLS_BLOCKED_HEARTBEAT : SANDBOX_BLOCKED_HEARTBEAT;
+      await this.api.heartbeat({ workerId: process.env.AUTOHEAL_WORKER_ID || 'autoheal-worker', currentIncident: this.sandboxReady ? this.currentIncident : blockedMarker, queueDepth: waiting + active + delayed });
     } catch { /* heartbeat failures are retried on the next interval */ }
   }
 

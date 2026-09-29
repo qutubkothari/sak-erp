@@ -172,8 +172,9 @@ export class SupportStoreService {
     return data;
   }
 
-  async updateAttempt(attemptId: string, values: Record<string, unknown>) {
-    const { data, error } = await this.supabase.from('support_fix_attempts').update(values).eq('id', attemptId).select('*').single();
+  async updateAttempt(incidentId: string, attemptId: string, values: Record<string, unknown>) {
+    const { data, error } = await this.supabase.from('support_fix_attempts').update(values)
+      .eq('incident_id', incidentId).eq('id', attemptId).select('*').single();
     if (error) throw error;
     return data;
   }
