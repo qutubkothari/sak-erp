@@ -222,9 +222,29 @@ describe('AutoHeal service safety controls', () => {
     };
     service.getWorkerHealth = jest.fn().mockResolvedValue({ status: 'ONLINE' });
     const result = await service.getAdminIncidentForUser({ role: 'SUPER_ADMIN' }, 'i');
-    expect(result).toMatchObject({ tenant_id: 'tenant-b', reported_by: 'reporter', isCentralSupportAdmin: true, recovery: { eligible: true, genuineAttempts: 1, remainingAttempts: 1, workerReady: true } });
+    expect(result).toMatchObject({ tenant_id: 'tenant-b', reported_by: 'reporter', isCentralSupportAdmin: true, recovery: { eligible: true, reason: null, genuineAttempts: 1, remainingAttempts: 1, workerReady: true } });
     expect(result.attempts[0]).toMatchObject({ attempt_number: 3, failure_class: 'INFRASTRUCTURE_FAILURE', display_risk_after_diff: null });
     expect(result.attempts[0].risk_after_diff).toBe('MEDIUM');
     expect(result.attempts[2].failure_class).toBeNull();
+  });
+
+  it.each([
+    { name: 'exhausted genuine attempts', genuine: 2, used: false, worker: 'ONLINE', reason: 'No genuine coding attempts remain under the two-attempt limit.' },
+    { name: 'unhealthy worker', genuine: 1, used: false, worker: 'OFFLINE', reason: 'The worker sandbox preflight is not currently healthy.' },
+    { name: 'already-used recovery', genuine: 1, used: true, worker: 'ONLINE', reason: 'The one-time infrastructure recovery retry was already used.' },
+  ])('returns an authoritative ineligible result for $name', async ({ genuine, used, worker, reason }) => {
+    process.env.AUTOHEAL_ENABLED = 'true';
+    const latest = { id: 'a3', status: 'FAILED', risk_after_diff: 'MEDIUM', files_changed: [], commit_sha: null, test_result: { agent_diagnostics: { summary: 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted' } } };
+    const incident = { id: 'i', tenant_id: 'tenant-b', status: 'ESCALATED', risk_level: 'LOW', title: 'PO search', description: 'Unable to search Purchase Orders', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders' };
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    service.store = {
+      getIncidentById: jest.fn().mockResolvedValue(incident), getIncident: jest.fn().mockResolvedValue(incident),
+      listAttempts: jest.fn().mockResolvedValue([latest]), listDeployments: jest.fn().mockResolvedValue([]),
+      countAttempts: jest.fn().mockResolvedValue(genuine), countHistoricalAttempts: jest.fn().mockResolvedValue(3),
+      hasInfrastructureRetryRequest: jest.fn().mockResolvedValue(used), hasReadyAttempt: jest.fn().mockResolvedValue(false),
+    };
+    service.getWorkerHealth = jest.fn().mockResolvedValue({ status: worker });
+    const result = await service.getAdminIncidentForUser({ role: 'SUPER_ADMIN' }, 'i');
+    expect(result.recovery).toMatchObject({ eligible: false, reason, genuineAttempts: genuine, remainingAttempts: Math.max(0, 2 - genuine), workerReady: worker === 'ONLINE' });
   });
 });

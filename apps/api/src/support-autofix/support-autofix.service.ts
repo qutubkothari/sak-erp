@@ -91,18 +91,20 @@ export class SupportAutofixService {
       };
     });
     const latest = detail.attempts[0];
-    const recoveryEligible = ['FAILED', 'ESCALATED'].includes(String(detail.status))
-      && detail.risk_level === 'LOW'
-      && canAttemptAutoFix(genuineAttemptCount)
-      && isInfrastructureFailure(latest)
-      && !retryAlreadyUsed
-      && !hasReadyFix
-      && workerHealth.status === 'ONLINE'
-      && this.enabled();
+    let recoveryReason: string | null = null;
+    if (!['FAILED', 'ESCALATED'].includes(String(detail.status))) recoveryReason = 'Incident must be failed or escalated.';
+    else if (detail.risk_level !== 'LOW') recoveryReason = 'Infrastructure recovery is limited to LOW risk incidents.';
+    else if (!canAttemptAutoFix(genuineAttemptCount)) recoveryReason = 'No genuine coding attempts remain under the two-attempt limit.';
+    else if (!isInfrastructureFailure(latest)) recoveryReason = 'The latest attempt is not a recognized no-change infrastructure failure.';
+    else if (retryAlreadyUsed) recoveryReason = 'The one-time infrastructure recovery retry was already used.';
+    else if (hasReadyFix) recoveryReason = 'A fix is already awaiting approval.';
+    else if (workerHealth.status !== 'ONLINE') recoveryReason = 'The worker sandbox preflight is not currently healthy.';
+    else if (!this.enabled()) recoveryReason = 'AutoHeal is disabled by the emergency kill switch.';
+    const recoveryEligible = recoveryReason === null;
     return {
       ...detail,
       attempts,
-      recovery: { eligible: recoveryEligible, genuineAttempts: genuineAttemptCount, remainingAttempts: Math.max(0, 2 - genuineAttemptCount), workerReady: workerHealth.status === 'ONLINE' },
+      recovery: { eligible: recoveryEligible, reason: recoveryReason, genuineAttempts: genuineAttemptCount, remainingAttempts: Math.max(0, 2 - genuineAttemptCount), workerReady: workerHealth.status === 'ONLINE' },
       isCentralSupportAdmin: hasSuperAdminBypass(user),
     };
   }

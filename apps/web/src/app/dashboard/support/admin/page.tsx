@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { Loader2, RefreshCw, RotateCcw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "../../../../../lib/api-client";
+import { canRenderInfrastructureRecoveryAction } from "../../../../../lib/support-autofix-recovery";
 
 type Incident = { id: string; tenant_id?: string; reported_by?: string; title: string; module?: string; route?: string; status: string; risk_level: string; risk_reason?: string; created_at: string; occurrence_count: number };
 type Target = { id: string; domain: string; tenantId?: string };
-type Detail = Incident & { screenshot_ref?: string; reported_by?: string; reported_employee_id?: string; description?: string; error_message?: string; http_status?: number; request_id?: string; build_sha?: string; browser_info?: string; root_cause?: string; attempts: any[]; deployments: any[]; recovery?: { eligible: boolean; genuineAttempts: number; remainingAttempts: number; workerReady: boolean }; isCentralSupportAdmin?: boolean };
+type Detail = Incident & { screenshot_ref?: string; reported_by?: string; reported_employee_id?: string; description?: string; error_message?: string; http_status?: number; request_id?: string; build_sha?: string; browser_info?: string; root_cause?: string; attempts: any[]; deployments: any[]; recovery?: { eligible: boolean; reason?: string | null; genuineAttempts: number; remainingAttempts: number; workerReady: boolean }; isCentralSupportAdmin?: boolean };
 type Configuration = { enabled: boolean; mode: string; isCentralSupportAdmin?: boolean; deploymentTargets: Target[] };
 type WorkerHealth = { status: "ONLINE" | "OFFLINE" | "DEGRADED"; stateCode?: string | null; stateMessage?: string | null; lastHeartbeat: string | null; queueDepth: number; currentIncident: string | null };
 
@@ -116,7 +117,8 @@ export default function SupportAutoHealAdminPage() {
               {selected.status === "READY_FOR_APPROVAL" && config?.mode === "APPROVAL" && <button disabled={busy || !targetId} onClick={() => void act("approve-deployment", "Approve this verified low-risk web fix for deployment?")} className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Approve deployment</button>}
               {!["RESOLVED", "ROLLED_BACK"].includes(selected.status) && <button disabled={busy} onClick={() => void act("reject-fix", "Reject this fix and escalate it for engineering review?")} className="rounded-lg border border-stone-300 px-3 py-2 text-sm">Reject fix</button>}
               {selected.status === "FAILED" && <button disabled={busy} onClick={() => void act("retry", "Retry analysis? The incident is limited to two automatic patch attempts.")} className="rounded-lg border border-stone-300 px-3 py-2 text-sm">Retry analysis</button>}
-              {config?.isCentralSupportAdmin && selected.isCentralSupportAdmin && selected.recovery?.eligible && selected.recovery.workerReady && worker?.status === "ONLINE" && <button disabled={busy} onClick={() => void act("retry-infrastructure", "Use the one-time administrator recovery attempt after this verified worker infrastructure failure?")} className="rounded-lg border border-amber-300 px-3 py-2 text-sm text-amber-900">Retry after infrastructure failure</button>}
+              {config?.isCentralSupportAdmin && selected.recovery?.eligible === false && selected.recovery.reason && <span className="text-xs text-stone-600">Infrastructure recovery unavailable: {selected.recovery.reason}</span>}
+              {canRenderInfrastructureRecoveryAction(config?.isCentralSupportAdmin, selected.recovery) && <><button disabled={busy} onClick={() => void act("retry-infrastructure", "Use the one-time administrator recovery attempt after this verified worker infrastructure failure?")} className="rounded-lg border border-amber-300 px-3 py-2 text-sm text-amber-900">Retry after infrastructure failure</button><span className="text-xs text-stone-600">{selected.recovery?.remainingAttempts} genuine fix attempt{selected.recovery?.remainingAttempts === 1 ? "" : "s"} remaining</span></>}
               {selected.status === "RESOLVED" && <button disabled={busy} onClick={() => void act("rollback", "Roll back the deployed web fix to its previous verified SHA?")} className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm text-red-800"><RotateCcw size={15} />Rollback</button>}
               {busy && <Loader2 className="animate-spin text-stone-500" size={18} />}
             </div>
