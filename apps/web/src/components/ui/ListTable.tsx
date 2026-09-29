@@ -54,6 +54,10 @@ export type ListTableProps<T> = {
   searchPlaceholder?: string;
   initialSearch?: string;
   onSearchChange?: (value: string) => void;
+  /** Rows have already been searched by the server. */
+  manualFiltering?: boolean;
+  /** Reset the local page when server filters/results change. */
+  resetPageKey?: string;
   hideSearch?: boolean;
   toolbarRight?: ReactNode;
   toolbarLayout?: 'default' | 'singleLine';
@@ -170,6 +174,8 @@ export function ListTable<T>(props: ListTableProps<T>) {
     searchPlaceholder = 'Search...',
     initialSearch = '',
     onSearchChange,
+    manualFiltering = false,
+    resetPageKey,
     hideSearch,
     toolbarRight,
     toolbarLayout = 'default',
@@ -353,7 +359,10 @@ export function ListTable<T>(props: ListTableProps<T>) {
     [getColumnWidth, selectable, visibleColumns],
   );
 
+  useEffect(() => { setPageIndex(0); }, [resetPageKey]);
+
   const filteredRows = useMemo(() => {
+    if (manualFiltering) return rows;
     const tokens = searchTokens(searchTerm);
     if (!tokens.length) return rows;
     const searchableColumns = columns.filter((col) => col.searchAccessor || col.accessor);
@@ -381,7 +390,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
         return a.index - b.index;
       })
       .map((entry) => entry.row);
-  }, [rows, searchTerm, columns]);
+  }, [rows, searchTerm, columns, manualFiltering]);
 
   const sortedRows = useMemo(() => {
     if (!sortId) return filteredRows;
@@ -543,6 +552,7 @@ export function ListTable<T>(props: ListTableProps<T>) {
 
   const applyVariant = (variant: ListTableVariant) => {
     setSearchTerm(variant.searchTerm || '');
+    onSearchChange?.(variant.searchTerm || '');
     setSortId(variant.sortId || '');
     setSortDir(variant.sortDir || 'asc');
     setPageSize(pageSizeOptions.includes(variant.pageSize) ? variant.pageSize : defaultPageSize);

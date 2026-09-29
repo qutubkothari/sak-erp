@@ -1696,36 +1696,46 @@ export class PurchaseOrdersService {
   }
 
   async findAll(tenantId: string, filters?: any) {
-    let query = this.supabase
-      .from('purchase_orders')
-      .select(`
-        *,
-        vendor:vendors(id, code, name, contact_person, email),
+    // Page through the database cap; the existing HTTP contract remains an array
+    // of all matching register rows, shared by the screen and Excel export.
+    let rows: any[] = [];
+    for (let offset = 0; ; ) {
+      let query = this.supabase.from('purchase_orders').select(`
+        *, vendor:vendors(id, code, name, contact_person, email),
         purchase_order_items(*, item:items(id, code, name, description, hsn_code, uom, category, oem_part_no, oem_name))
-      `)
-      .eq('tenant_id', tenantId);
-
-    if (filters?.status && String(filters.status).toUpperCase() !== 'OPEN_PO') {
-      query = query.eq('status', filters.status);
+      `).eq('tenant_id', tenantId);
+      if (filters?.status && String(filters.status).toUpperCase() !== 'OPEN_PO') query = query.eq('status', filters.status);
+      if (filters?.vendorId) query = query.eq('vendor_id', filters.vendorId);
+      if (filters?.prId) query = query.eq('pr_id', filters.prId);
+      const { data, error } = await query.order('created_at', { ascending: false }).order('id', { ascending: false }).range(offset, offset + 499);
+      if (error) throw new BadRequestException(error.message);
+      if (!data?.length) break;
+      rows.push(...data);
+      offset += data.length;
     }
 
-    if (filters?.vendorId) {
-      query = query.eq('vendor_id', filters.vendorId);
+    // PR references must be enriched before applying the shared search predicate.
+    const prIds = Array.from(
+      new Set(
+        rows
+          .map((po: any) => po?.pr_id)
+          .filter((id: any) => typeof id === 'string' && id.trim().length > 0),
+      ),
+    );
+
+    let prById = new Map<string, any>();
+    for (let offset = 0; offset < prIds.length; offset += 250) {
+      const { data: prRows, error: prError } = await this.supabase
+        .from('purchase_requisitions').select('id, pr_number')
+        .eq('tenant_id', tenantId).in('id', prIds.slice(offset, offset + 250));
+      if (prError) throw new BadRequestException(prError.message);
+      for (const pr of prRows || []) prById.set(pr.id, pr);
     }
 
-    if (filters?.prId) {
-      query = query.eq('pr_id', filters.prId);
-    }
-
-    query = query.order('created_at', { ascending: false });
-
-    const { data, error } = await query;
-
-    if (error) throw new BadRequestException(error.message);
-
-    // Avoid PostgREST embed ambiguity: purchase_orders has multiple FKs to purchase_requisitions
-    // (e.g. pr_id and parent_pr_id). Fetch PRs separately and attach as `pr`.
-    let rows = Array.isArray(data) ? data : [];
+    const vendorById = await this.resolveVendorMap(
+      tenantId,
+      rows.map((po: any) => po?.vendor_id),
+    );
 
     if (filters?.search) {
       const tokens = String(filters.search || '')
@@ -1755,6 +1765,10 @@ export class PurchaseOrdersService {
             .join(' ');
           const haystack = [
             po?.po_number,
+            prById.get(po?.pr_id)?.pr_number,
+            po?.pr_number,
+            po?.pr_reference,
+            po?.vendor_id ? vendorById.get(po.vendor_id)?.name : null,
             po?.remarks,
             po?.project_name,
             po?.vendor?.name,
@@ -1768,29 +1782,6 @@ export class PurchaseOrdersService {
         });
       }
     }
-    const prIds = Array.from(
-      new Set(
-        rows
-          .map((po: any) => po?.pr_id)
-          .filter((id: any) => typeof id === 'string' && id.trim().length > 0),
-      ),
-    );
-
-    let prById = new Map<string, any>();
-    if (prIds.length > 0) {
-      const { data: prRows, error: prError } = await this.supabase
-        .from('purchase_requisitions')
-        .select('id, pr_number')
-        .in('id', prIds);
-
-      if (prError) throw new BadRequestException(prError.message);
-      prById = new Map((prRows || []).map((pr: any) => [pr.id, pr]));
-    }
-
-    const vendorById = await this.resolveVendorMap(
-      tenantId,
-      rows.map((po: any) => po?.vendor_id),
-    );
 
     const receiptLedger = await this.fetchReceiptLedgerForPurchaseOrders(
       tenantId,

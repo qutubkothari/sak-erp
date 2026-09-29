@@ -18,6 +18,8 @@ import RndTemporaryItemModal, { type RndTemporaryItem } from '../../../../compon
 import { useSelection } from '../../../../hooks/useSelection';
 import { useEscapeKey } from '../../../../hooks/useEscapeKey';
 import DuplicateWarning, { useDuplicateDetection } from '../../../../components/DuplicateWarning';
+import { useDebouncedValue } from '../../../../hooks/useDebouncedValue';
+import { poRegisterQuery } from './register-query';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { ErpButton, ErpMetricStrip, ErpPageHeader } from '../../../../components/ui/ErpPrimitives';
@@ -397,6 +399,9 @@ function PurchaseOrdersContent() {
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [filterVendor, setFilterVendor] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebouncedValue(searchTerm.trim(), 350);
+  const ordersRequest = useRef(0);
+  const registerQuery = poRegisterQuery(filterStatus, filterVendor, debouncedSearch);
   const [loadingPR, setLoadingPR] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
@@ -657,7 +662,7 @@ function PurchaseOrdersContent() {
   // Fetch orders on mount and when filters change
   useEffect(() => {
     fetchOrders();
-  }, [filterStatus, filterVendor, searchTerm]);
+  }, [registerQuery]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -669,7 +674,7 @@ function PurchaseOrdersContent() {
     }, AUTO_REFRESH_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [filterStatus, searchTerm, showViewModal, selectedPO?.id]);
+  }, [registerQuery, showViewModal, selectedPO?.id]);
 
   // Load PR data if prId is in URL (convert PR to PO)
   useEffect(() => {
@@ -1238,36 +1243,22 @@ function PurchaseOrdersContent() {
   };
 
   const fetchOrders = async (options?: { silent?: boolean }) => {
+    const request = ++ordersRequest.current;
+    if (!options?.silent) setLoading(true);
     try {
-      if (!options?.silent) {
-        setLoading(true);
-      }
-      const params = new URLSearchParams();
-      if (filterStatus !== 'ALL') params.append('status', filterStatus);
-      if (filterVendor) params.append('vendorId', filterVendor);
-      if (searchTerm) params.append('search', searchTerm);
-
-      const data = await apiClient.get(`/purchase/orders?${params}`);
-      if (data && data.length > 0) {
-      }
-      setOrders(Array.isArray(data) ? data : []);
+      const data = await apiClient.get(`/purchase/orders?${registerQuery}`);
+      if (request === ordersRequest.current) setOrders(Array.isArray(data) ? data : []);
     } catch (error) {
-      setOrders([]);
+      if (request === ordersRequest.current) setOrders([]);
     } finally {
-      if (!options?.silent) {
-        setLoading(false);
-      }
+      if (request === ordersRequest.current) setLoading(false);
     }
   };
 
   const handleExportOrders = async () => {
     setExportingOrders(true);
     try {
-      const params = new URLSearchParams();
-      if (filterStatus !== 'ALL') params.set('status', filterStatus);
-      if (filterVendor) params.set('vendorId', filterVendor);
-      if (searchTerm.trim()) params.set('search', searchTerm.trim());
-      const response = await fetch(`/api/v1/purchase/orders/export.xlsx?${params.toString()}`, {
+      const response = await fetch(`/api/v1/purchase/orders/export.xlsx?${registerQuery}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
         cache: 'no-store',
       });
@@ -3832,11 +3823,8 @@ function PurchaseOrdersContent() {
         </div>
 
         {/* Orders List */}
-        {loading ? (
-          <div className="bg-white rounded-lg shadow-md border border-gray-200">
-            <div className="p-8 text-center text-gray-500">Loading orders...</div>
-          </div>
-        ) : (
+        <div aria-busy={loading}>
+          {loading && <div role="status" className="py-2 text-sm text-gray-500">Loading orders...</div>}
           <ListTable
             storageKey="purchaseOrdersTable:sap:v1"
             rows={orders}
@@ -3846,10 +3834,12 @@ function PurchaseOrdersContent() {
             pageSizeOptions={[10, 25, 50, 100]}
             searchPlaceholder="Search PO number, vendor, PR ref, item code, name, description…"
             onSearchChange={setSearchTerm}
+            manualFiltering
+            resetPageKey={registerQuery}
             toolbarRight={
               <div className="flex w-full flex-wrap items-center gap-2 2xl:w-auto 2xl:flex-nowrap">
                 {canDownloadPO && (
-                  <ErpButton type="button" onClick={handleExportOrders} disabled={exportingOrders} variant="secondary">
+                  <ErpButton type="button" onClick={handleExportOrders} disabled={exportingOrders || loading || searchTerm.trim() !== debouncedSearch} variant="secondary">
                     <Download className="h-4 w-4" />
                     {exportingOrders ? 'Exporting…' : 'Export Excel'}
                   </ErpButton>
@@ -3914,7 +3904,7 @@ function PurchaseOrdersContent() {
               </div>
             }
           />
-        )}
+        </div>
           </>
         )}
 
