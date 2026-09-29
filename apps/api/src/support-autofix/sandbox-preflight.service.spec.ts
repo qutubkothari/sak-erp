@@ -65,6 +65,9 @@ describe('Codex sandbox preflight', () => {
     expect(dependencyInstall[1]).toEqual(['install', '--offline', '--frozen-lockfile', '--filter', '@sak-erp/web...']);
     expect(dependencyInstall[4]).not.toHaveProperty('DATABASE_URL');
     expect(dependencyInstall[4]).not.toHaveProperty('AUTOHEAL_WORKER_API_TOKEN');
+    const dependencyBuild = runner.run.mock.calls.find((call: any[]) => call[1].includes('@sak-erp/web^...'));
+    expect(dependencyBuild[1]).toEqual(['--filter', '@sak-erp/web^...', 'run', 'build']);
+    expect(dependencyBuild[4]).not.toHaveProperty('AUTOHEAL_WORKER_API_TOKEN');
   });
 
   it('classifies bubblewrap startup failures as infrastructure failures', async () => {

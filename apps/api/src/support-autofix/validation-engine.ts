@@ -22,6 +22,8 @@ export class ValidationEngine {
       if (pnpm.code !== 0 || !pnpm.output.trim()) return { passed: false, detail: `pnpm is unavailable: ${pnpm.output.trim() || 'no version output'}` };
       const install = await this.commands.run('pnpm', ['install', '--offline', '--frozen-lockfile', '--filter', '@sak-erp/web...'], worktreePath, 600_000, safeEnv);
       if (install.code !== 0) return { passed: false, detail: `Locked web workspace dependencies are unavailable from the pnpm store: ${install.output.trim().slice(-350)}` };
+      const dependencies = await this.commands.run('pnpm', ['--filter', '@sak-erp/web^...', 'run', 'build'], worktreePath, 180_000, safeEnv);
+      if (dependencies.code !== 0) return { passed: false, detail: `Workspace dependency build failed: ${dependencies.output.trim().slice(-350)}` };
       const [typeScript, next] = await Promise.all([
         this.commands.run('pnpm', ['--filter', '@sak-erp/web', 'exec', 'tsc', '--version'], worktreePath, 60_000, safeEnv),
         this.commands.run('pnpm', ['--filter', '@sak-erp/web', 'exec', 'next', '--version'], worktreePath, 60_000, safeEnv),

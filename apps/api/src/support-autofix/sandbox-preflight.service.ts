@@ -66,6 +66,8 @@ export class CodexSandboxPreflightService {
       if (pnpmVersion.code !== 0 || !pnpmVersion.output.trim()) throw new Error(`VALIDATION_TOOLS_BLOCKED: pnpm is unavailable: ${pnpmVersion.output}`);
       const install = await this.commands.run('pnpm', ['install', '--offline', '--frozen-lockfile', '--filter', '@sak-erp/web...'], worktreePath, 600_000, safeEnv);
       if (install.code !== 0) throw new Error(`VALIDATION_TOOLS_BLOCKED: locked workspace dependencies are not ready: ${install.output.slice(-1200)}`);
+      const dependencies = await this.commands.run('pnpm', ['--filter', '@sak-erp/web^...', 'run', 'build'], worktreePath, 180_000, safeEnv);
+      if (dependencies.code !== 0) throw new Error(`VALIDATION_TOOLS_BLOCKED: workspace dependency build failed: ${dependencies.output.slice(-1200)}`);
       const [typeScript, next] = await Promise.all([
         this.commands.run('pnpm', ['--filter', '@sak-erp/web', 'exec', 'tsc', '--version'], worktreePath, 60_000, safeEnv),
         this.commands.run('pnpm', ['--filter', '@sak-erp/web', 'exec', 'next', '--version'], worktreePath, 60_000, safeEnv),

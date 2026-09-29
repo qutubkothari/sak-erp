@@ -13,6 +13,7 @@ describe('AutoHeal worktree validation-tool bootstrap', () => {
 
     await expect(engine.prepareWebWorkspace('/autoheal/worktrees/incident-a-attempt-1-po-search')).resolves.toMatchObject({ passed: true });
     expect(run).toHaveBeenCalledWith('pnpm', ['install', '--offline', '--frozen-lockfile', '--filter', '@sak-erp/web...'], expect.any(String), 600_000, expect.objectContaining({ PATH: expect.any(String) }));
+    expect(run).toHaveBeenCalledWith('pnpm', ['--filter', '@sak-erp/web^...', 'run', 'build'], expect.any(String), 180_000, expect.objectContaining({ PATH: expect.any(String) }));
     expect(run.mock.calls.filter((call) => call[0] === 'git' && call[1][0] === 'status')).toHaveLength(2);
     expect(run.mock.calls.some((call) => call[0] === 'pnpm' && call[1].includes('tsc'))).toBe(true);
     expect(run.mock.calls.some((call) => call[0] === 'pnpm' && call[1].includes('next'))).toBe(true);
@@ -29,5 +30,15 @@ describe('AutoHeal worktree validation-tool bootstrap', () => {
     const engine = new ValidationEngine({ run } as any);
 
     await expect(engine.prepareWebWorkspace('/autoheal/worktrees/incident-a-attempt-1-po-search')).resolves.toMatchObject({ passed: false, detail: expect.stringContaining('Next.js build tooling is unavailable') });
+  });
+
+  it('blocks coding when workspace dependency artifacts cannot be built', async () => {
+    const run = jest.fn(async (command: string, args: string[]) => {
+      if (command === 'git') return { code: 0, output: '' };
+      if (args.includes('@sak-erp/web^...')) return { code: 1, output: 'workspace types unavailable' };
+      return { code: 0, output: 'ready' };
+    });
+    await expect(new ValidationEngine({ run } as any).prepareWebWorkspace('/autoheal/worktrees/test'))
+      .resolves.toMatchObject({ passed: false, detail: expect.stringContaining('Workspace dependency build failed') });
   });
 });
