@@ -72,7 +72,9 @@ export default function SupportAutoHealAdminPage() {
   }, [selected?.tenant_id, config?.deploymentTargets, targetId]);
 
   const act = async (action: string, confirmText: string) => {
-    if (!selected || !window.confirm(confirmText)) return;
+    if (!selected) return;
+    // Resolution already requires an explicit summary and verification checkbox.
+    if (action !== "resolve" && !window.confirm(confirmText)) return;
     setBusy(true);
     try {
       await apiClient.post(`/support/admin/incidents/${selected.id}/${action}`, action === "resolve" ? { summary: resolutionSummary, verified: productionVerified } : action === "approve-deployment" ? { targetId } : {});
