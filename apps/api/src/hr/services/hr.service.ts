@@ -15,6 +15,37 @@ const isNonEmptyString = (value: unknown): value is string =>
 const roundCurrency = (value: number) =>
   Math.round((Number(value) || 0) * 100) / 100;
 
+// The movement ledger can retain the opening IN even when the summary was
+// overwritten. Use that recorded evidence consistently in all attendance reads.
+const withAttendancePunches = (row: any, punches: any[]) => {
+  // A completed day cannot contain later movements. Keep the stored ledger
+  // untouched for audit, but exclude those invalid events from attendance state.
+  const checkoutAt = Date.parse(row.check_out_time);
+  const effectivePunches = Number.isFinite(checkoutAt)
+    ? punches.filter((punch) => Date.parse(punch.punch_at) <= checkoutAt)
+    : punches;
+  const opening = effectivePunches.find(
+    (punch) =>
+      punch.punch_type === "IN" &&
+      isNonEmptyString(punch.punch_at) &&
+      Number.isFinite(Date.parse(punch.punch_at)) &&
+      (!row.check_out_time ||
+        Date.parse(punch.punch_at) <= Date.parse(row.check_out_time)),
+  );
+  const summaryIsValid =
+    isNonEmptyString(row.check_in_time) &&
+    Number.isFinite(Date.parse(row.check_in_time)) &&
+    (!row.check_out_time ||
+      Date.parse(row.check_in_time) <= Date.parse(row.check_out_time));
+  return {
+    ...row,
+    check_in_time: summaryIsValid
+      ? row.check_in_time
+      : opening?.punch_at || null,
+    punches: effectivePunches,
+  };
+};
+
 const getIndiaBusinessDate = (value = new Date()) => {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Kolkata",
@@ -3432,7 +3463,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return rows.map((row: any) => {
       const employee = employeesById.get(String(row?.employee_id || ""));
       return {
-        ...row,
+        ...withAttendancePunches(
+          row,
+          punchesByAttendance.get(String(row.id)) || [],
+        ),
         employee_name: row.employee_name || employee?.employee_name || null,
         employee_code: row.employee_code || employee?.employee_code || null,
         employee_email: row.employee_email || employee?.email || null,
@@ -3443,7 +3477,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
               email: employee.email,
             }
           : null,
-        punches: punchesByAttendance.get(String(row.id)) || [],
       };
     });
   }
@@ -3473,10 +3506,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       const key = String(punch.attendance_id);
       byAttendance.set(key, [...(byAttendance.get(key) || []), punch]);
     });
-    return rows.map((row: any) => ({
-      ...row,
-      punches: byAttendance.get(String(row.id)) || [],
-    }));
+    return rows.map((row: any) =>
+      withAttendancePunches(row, byAttendance.get(String(row.id)) || []),
+    );
   }
 
   async getTodayAttendance(userId: string) {
@@ -3516,7 +3548,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         synthetic: true,
       });
     }
-    return { ...data, punches: attendancePunches };
+    return withAttendancePunches(data, attendancePunches);
   }
 
   private async addAttendancePunch(
@@ -3657,6 +3689,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         }
       }
       return this.getTodayAttendance(userId);
+    }
+
+    if (existing?.check_out_time) {
+      throw new BadRequestException(
+        "This day is already checked out but has no recorded check-in. Contact HR to correct attendance.",
+      );
     }
 
     const timing = await this.attendanceControl.calculateAttendanceMetrics(

@@ -2917,7 +2917,7 @@ export class ItemsService {
     itemId: string,
     candidateDrawingId?: string,
   ) {
-    const [
+    let [
       { data: active },
       { data: jobs, error: jobError },
       { data: demands, error: demandError },
@@ -2943,8 +2943,27 @@ export class ItemsService {
         .eq("item_id", itemId)
         .not("demand_status", "in", "(COMPLETED,CANCELLED)"),
     ]);
+    // Older deployments have job orders without revision snapshots, and the
+    // project execution module is optional. Still inspect all open job orders.
+    const revisionTrackingUnavailable =
+      ["42703", "PGRST204"].includes(String(jobError?.code)) &&
+      String(jobError?.message || "").includes("drawing_revision_id");
+    if (revisionTrackingUnavailable) {
+      const legacyJobs = await this.supabase
+        .from("production_job_orders")
+        .select("id,job_order_number,status")
+        .eq("tenant_id", tenantId)
+        .eq("item_id", itemId)
+        .not("status", "in", "(COMPLETED,CANCELLED,STOPPED)");
+      jobs = legacyJobs.data;
+      jobError = legacyJobs.error;
+    }
     if (jobError) throw new Error(jobError.message);
-    if (demandError) throw new Error(demandError.message);
+    const projectModuleUnavailable =
+      ["42P01", "PGRST205"].includes(String(demandError?.code)) &&
+      String(demandError?.message || "").includes("project_work_package_lines");
+    if (demandError && !projectModuleUnavailable)
+      throw new Error(demandError.message);
     const frozenJobs = (jobs || []).filter(
       (job: any) =>
         job.drawing_revision_id &&
@@ -2954,10 +2973,14 @@ export class ItemsService {
       current_revision: active || null,
       open_job_count: (jobs || []).length,
       frozen_open_jobs: frozenJobs,
+      revision_tracking_available: !revisionTrackingUnavailable,
+      project_demand_available: !projectModuleUnavailable,
       open_project_demand_count: (demands || []).length,
       warning:
         (jobs || []).length || (demands || []).length
-          ? "This revision change affects open demand. Existing released jobs retain their frozen revision; review unreleased demand before planning."
+          ? revisionTrackingUnavailable
+            ? "This revision change affects open demand. Drawing revision tracking is unavailable for existing jobs; review all open jobs before approving."
+            : "This revision change affects open demand. Existing released jobs retain their frozen revision; review unreleased demand before planning."
           : null,
     };
   }

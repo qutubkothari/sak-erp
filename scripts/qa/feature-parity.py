@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source-only ERP parity inventory. Never connects to a database or deployment."""
+"""Read-only ERP source, profile, build provenance and optional live-schema parity inventory."""
 import argparse
 import csv
 import hashlib
@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -45,6 +46,7 @@ FEATURES = [
   ('REMNANTS', 'Production', 'apps/web/src/app/dashboard/production/subcontracting/page.tsx', 'apps/api/src/subcontracting/subcontracting.service.ts', 'add-subcontract-remnants.sql'),
   ('COSTING', 'Production', 'apps/web/src/app/dashboard/accounts/costing/page.tsx', 'apps/api/src/costing/costing.controller.ts', ''),
   ('ACCOUNTS', 'Accounts', 'apps/web/src/app/dashboard/accounts/page.tsx', 'apps/api/src/accounting/accounting.controller.ts', 'add-accounting-core.sql'),
+  ('ACCOUNT_GROUPS', 'Accounts', 'apps/web/src/app/dashboard/accounts/page.tsx', 'apps/api/src/accounting/accounting.service.ts', 'add-accounting-account-groups.sql'),
   ('SALES', 'Sales', 'apps/web/src/app/dashboard/sales/page.tsx', 'apps/api/src/sales/controllers/sales.controller.ts', ''),
   ('EMPLOYEES', 'HR', 'apps/web/src/app/dashboard/hr/employees/page.tsx', 'apps/api/src/hr/controllers/hr.controller.ts', ''),
   ('MOBILE_ATTENDANCE', 'HR', 'apps/web/src/app/dashboard/hr/page.tsx', 'apps/api/src/hr/services/hr.service.ts', ''),
@@ -55,6 +57,7 @@ FEATURES = [
   ('DOCUMENTS', 'Documents', 'apps/web/src/app/dashboard/documents/page.tsx', 'apps/api/src/documents/services/documents.service.ts', ''),
   ('QUICK_SEARCH', 'Search', 'apps/web/src/components/CommandPalette.tsx', 'apps/api/src/dashboard/dashboard.controller.ts', ''),
   ('ACTIVE_PLANNER', 'Intelligence', 'apps/web/src/app/dashboard/active-planner/page.tsx', 'apps/api/src/intelligence/active-planner.service.ts', ''),
+  ('EGYPT_ARABIC_PLANNER', 'Intelligence', 'apps/web/src/app/dashboard/active-planner/page.tsx', 'apps/api/src/intelligence/egypt-arabic-planner.ts', ''),
   ('AUTOHEAL_SUPPORT', 'Support', 'apps/web/src/app/dashboard/automation/page.tsx', 'apps/api/src/automation/automation.service.ts', ''),
 ]
 
@@ -69,6 +72,28 @@ def sha(root):
         return subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], stderr=subprocess.DEVNULL, text=True).strip()
     except Exception:
         return 'UNKNOWN (artifact/source snapshot without Git metadata)'
+
+def provenance(url):
+    if not url:
+        return {'status': 'UNKNOWN', 'reason': 'No provenance URL supplied'}
+    try:
+        with urllib.request.urlopen(url, timeout=8) as response:
+            data = json.load(response)
+        if re.fullmatch(r'[0-9a-f]{40}', str(data.get('version', ''))) and data.get('profile') in ('SAIFSEAS', 'MIZANTRA', 'ARWA') and data.get('built_at'):
+            return data
+        return {'status': 'UNKNOWN', 'reason': 'Incomplete build provenance'}
+    except Exception as error:
+        return {'status': 'UNKNOWN', 'reason': str(error)}
+
+def live_columns(path):
+    if not path:
+        return None
+    rows = {}
+    for line in path.read_text(encoding='utf-8').splitlines():
+        parts = line.split('|')
+        if len(parts) >= 5:
+            rows[(parts[0], parts[1])] = tuple(parts[2:5])
+    return rows
 
 def write_csv(path, header, rows):
     with path.open('w', encoding='utf-8', newline='') as f:
@@ -101,6 +126,9 @@ def main():
     ap.add_argument('--mizantra', type=Path, default=Path(os.environ.get('ERP_MIZANTRA_SOURCE', ROOT.parent/'mizantra')))
     ap.add_argument('--arwa', type=Path, default=Path(os.environ.get('ERP_ARWA_SOURCE', ROOT.parent/'arwa-mizantra')))
     ap.add_argument('--out', type=Path, default=Path(os.environ.get('ERP_PARITY_OUT', ROOT/'parity-report')))
+    for name in ('saifseas', 'mizantra', 'arwa'):
+        ap.add_argument(f'--provenance-{name}', metavar='URL', help='Read-only public build metadata endpoint')
+        ap.add_argument(f'--schema-{name}', type=Path, help='Read-only column metadata PSV from information_schema')
     a=ap.parse_args(); roots=[p.resolve() for p in (a.saifseas,a.mizantra,a.arwa)]
     for root in roots:
         if not (root/'apps/api/src').is_dir(): ap.error(f'No ERP source at {root}')
@@ -176,11 +204,44 @@ def main():
       'sha':{n:sha(r) for n,r in zip(names,roots)},
       'saifseas_ahead_of_mizantra': [r[0] for r in comparisons[0] if r[2]=='SAIFSEAS_NEWER'],
       'mizantra_ahead_of_arwa': [r[0] for r in comparisons[1] if r[2]=='MIZANTRA_NEWER'],
-      'intentional_tenant_overrides': ['SAIFSEAS India/INR', 'MIZANTRA India/INR with Active Planner', 'ARWA Egypt/EGP/ar-EG with Arabic planner held off'],
+      'intentional_tenant_overrides': ['SAIFSEAS India/INR', 'MIZANTRA India/INR with Active Planner', 'ARWA Egypt/EGP/ar-EG; Arabic planner requires explicit runtime tenant flag'],
       'unreviewed_drift': {names[j]:sum(r[2]=='REVIEW_FUNCTIONAL_DIFFERENCE' for r in comparisons[j-1]) for j in (1,2)},
       'limit':'Source evidence only; no live schema or behavioral equivalence claim',
       'out':str(a.out),
     }
+    actual_provenance = {name: provenance(getattr(a, f'provenance_{name.lower()}')) for name in names}
+    actual_schema = {name: live_columns(getattr(a, f'schema_{name.lower()}')) for name in names}
+    expected_sha = sha(ROOT)
+    final_rows = []
+    for name, root in zip(names, roots):
+        build = actual_provenance[name]
+        columns = actual_schema[name]
+        profile = profiles[name.upper()]
+        build_status = 'UNKNOWN' if build.get('status') == 'UNKNOWN' else ('PARITY' if build['version'] == expected_sha and build['profile'] == name.upper() else 'DRIFT')
+        final_rows.append([name, 'build_sha_and_profile', build_status, json.dumps(build, ensure_ascii=False)])
+        manifest = root/'docs/SHARED_FEATURE_MANIFEST.md'
+        baseline_manifest = ROOT/'docs/SHARED_FEATURE_MANIFEST.md'
+        final_rows.append([name, 'shared_feature_manifest', 'PARITY' if manifest.is_file() and digest(manifest) == digest(baseline_manifest) else 'DRIFT' if manifest.is_file() else 'UNKNOWN', str(manifest)])
+        for kind in ('routes', 'api', 'migrations'):
+            baseline = inv[0][kind]
+            actual = inv[names.index(name)][kind]
+            missing = len(set(baseline)-set(actual))
+            final_rows.append([name, f'{kind}_source_inventory', 'PARITY' if not missing else 'DRIFT', f'{len(actual)} actual; {missing} shared-core paths missing'])
+        if columns is None:
+            final_rows.append([name, 'live_schema', 'UNKNOWN', 'No live column metadata supplied'])
+        else:
+            required = [('rfq_items', 'item_name'), ('purchase_order_items', 'item_name'), ('accounting_accounts', 'is_group')]
+            for table, column in required:
+                actual = columns.get((table, column))
+                status = 'PARITY' if actual and (column != 'item_name' or actual[0] == 'text') else 'DRIFT'
+                final_rows.append([name, f'{table}.{column}', status, str(actual or 'MISSING')])
+        final_rows.append([name, 'tenant_profile', 'INTENTIONAL_DIFFERENCE', json.dumps(profile, ensure_ascii=False, sort_keys=True)])
+    write_csv(a.out/'16_live_parity_status.csv', ['tenant','check','status','evidence'], final_rows)
+    summary['read_only_live_parity'] = {name: {
+      'build_status': next(r[2] for r in final_rows if r[0] == name and r[1] == 'build_sha_and_profile'),
+      'schema_status': 'UNKNOWN' if actual_schema[name] is None else 'PARITY' if all(r[2] == 'PARITY' for r in final_rows if r[0] == name and '.' in r[1]) else 'DRIFT'
+    } for name in names}
+    summary['limit'] = 'Source presence is structural only. Live schema and provenance are evaluated only when explicitly supplied.'
     (a.out/'15_parity_summary.json').write_text(json.dumps(summary,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(summary,indent=2))
 

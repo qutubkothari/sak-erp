@@ -1,8 +1,8 @@
 # Shared feature manifest
 
-Baseline: `clean-main` at `f66df2e8b3adadd39893e9c04ecf68ea5c9b298c`. This is a source inventory. PRESENT means listed source and migration files exist; behavior and live schema require focused verification.
+Baseline: current `origin/clean-main` at `d13a046742876759a518562ed08615bb13653d55`, plus the temporary shared convergence integration branch. Every row below is `SHARED_CORE` source. Deployment presence requires build and live schema verification.
 
-44 feature IDs are inventoried. API paths name implementation files; endpoint details are in the controller source and external API parity report. Tenant selection comes from tenant settings; code profiles are in `tenant/profiles.json`.
+46 feature IDs are inventoried. API paths name implementation files; endpoint details are in the controller source and external API parity report. Tenant selection comes from tenant settings; code profiles are in `tenant/profiles.json`.
 
 The profile file currently drives login branding. Its country and feature fields document intended deployment settings; runtime market and entitlements remain governed by each tenant's settings and must be verified before release.
 
@@ -52,6 +52,10 @@ The profile file currently drives login branding. Its country and feature fields
 | QUICK_SEARCH | Search | apps/web/src/components/CommandPalette.tsx | apps/api/src/dashboard/dashboard.controller.ts | ? | Yes |
 | ACTIVE_PLANNER | Intelligence | apps/web/src/app/dashboard/active-planner/page.tsx | apps/api/src/intelligence/active-planner.service.ts | ? | Yes |
 | AUTOHEAL_SUPPORT | Support | apps/web/src/app/dashboard/automation/page.tsx | apps/api/src/automation/automation.service.ts | ? | Yes |
+| ACCOUNT_GROUPS | Accounts | apps/web/src/app/dashboard/accounts/page.tsx | apps/api/src/accounting/accounting.service.ts | add-accounting-account-groups.sql | Yes |
+| EGYPT_ARABIC_PLANNER | Intelligence | apps/web/src/app/dashboard/active-planner/page.tsx | apps/api/src/intelligence/egypt-arabic-planner.ts | ? | Yes |
+
+Common rows are `ENABLED` for all tenants after release with required schema. `EGYPT_ARABIC_PLANNER` is `DISABLED_BY_PROFILE` for SaifSeas and Mizantra. Arwa is `ENABLED` only when its runtime tenant has `market_profile=EGYPT` and `settings.features.egyptArabicPlanner=true`. Country payroll and tax features are `NOT_APPLICABLE` outside their market. Account groups are common reporting nodes that cannot receive journal postings.
 
 ## Source of truth
 
@@ -59,4 +63,4 @@ Shared features enter `clean-main` first. Each tenant deployment consumes the sa
 
 ## Evidence limits
 
-The external audit contains route, controller, migration checksum, and source declaration matrices. Database row data was not inspected. A deployment SHA is unavailable for artifact-only Mizantra and unreachable SaifSeas.
+The external audit contains read-only live schema metadata for all three deployments. SaifSeas production Git HEAD equals current GitHub HEAD but three tracked source files differ. No business rows were inspected and no migration was applied. The new build endpoints expose SHA, build time and profile after release.

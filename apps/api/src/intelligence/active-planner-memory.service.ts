@@ -8,6 +8,8 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import { AiProviderService } from "../ai/ai-provider.service";
 import { ACTIVE_PLANNER_CAPABILITIES } from "./active-planner.capabilities";
+import { egyptArabicPlannerEnabledForTenant } from "./egypt-arabic-planner";
+import { EGYPT_ARABIC_RESPONSE_GUIDANCE, preserveVerifiedCurrencyCodes } from "./egypt-arabic-language-pack";
 
 const clean = (value: unknown) => String(value ?? "").trim();
 const userIdOf = (user: any) => clean(user?.userId || user?.id);
@@ -140,6 +142,7 @@ export class ActivePlannerMemoryService {
         warnings: [],
       });
     }
+    const egyptArabicPlanner = await egyptArabicPlannerEnabledForTenant(this.db, tenantId);
     const composed = await this.ai.structuredJson<{
       answer: string;
       language_code: string;
@@ -149,7 +152,8 @@ export class ActivePlannerMemoryService {
       actorId: userId,
       cacheTtlMs: 0,
       system:
-        "Write a concise, professional ERP answer using only verified_facts. If response_language is ar-EG, always answer in clear Modern Standard Arabic suitable for an Egyptian business user, even when user_request is English. If response_language is another explicit language code, answer in that language; if it is MATCH_USER or AUTO, use the language and script of user_request. Use everyday words that a new office, sales, stores or factory employee can understand. Use short sentences and active voice. Avoid jargon and form names unless they are needed; expand an ERP acronym once. If verified_facts asks for missing information, ask only the minimum needed, as one short direct question where possible, and include a simple example when that would help. Never blame the user for spelling or grammar. Keep business document codes and all digits unchanged. Do not infer, calculate, round, convert, recommend, or introduce any new name, date, quantity, currency, status, or business fact. Preserve all digits using 0-9. Return strict JSON only.",
+        "Write a concise, professional ERP answer using only verified_facts. If response_language is ar-EG, always answer in clear Modern Standard Arabic suitable for an Egyptian business user, even when user_request is English. If response_language is another explicit language code, answer in that language; if it is MATCH_USER or AUTO, use the language and script of user_request. Use everyday words that a new office, sales, stores or factory employee can understand. Use short sentences and active voice. Avoid jargon and form names unless they are needed; expand an ERP acronym once. If verified_facts asks for missing information, ask only the minimum needed, as one short direct question where possible, and include a simple example when that would help. Never blame the user for spelling or grammar. Keep business document codes and all digits unchanged. Do not infer, calculate, round, convert, recommend, or introduce any new name, date, quantity, currency, status, or business fact. Preserve all digits using 0-9. Return strict JSON only." +
+        (egyptArabicPlanner ? EGYPT_ARABIC_RESPONSE_GUIDANCE : ""),
       data: {
         user_request: clean(utterance).slice(0, 2000),
         response_language: forceArabic
@@ -172,7 +176,9 @@ export class ActivePlannerMemoryService {
         },
       },
     });
-    const answer = clean(composed.value?.answer).slice(0, 900);
+    const answer = (egyptArabicPlanner
+      ? preserveVerifiedCurrencyCodes(clean(composed.value?.answer), JSON.stringify(verifiedFacts))
+      : clean(composed.value?.answer)).slice(0, 900);
     if (composed.fallback_used || !answer) return fallback;
     const allowedNumbers = new Set(
       this.numericFacts(JSON.stringify(verifiedFacts)),

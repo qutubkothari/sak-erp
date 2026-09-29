@@ -42,6 +42,95 @@ const attendance = {
 };
 
 describe("HR attendance mobile idempotency", () => {
+  it.each([
+    [null, "2026-09-15T03:53:00.000Z"],
+    [attendance.check_in_time, attendance.check_in_time],
+    ["2026-09-15T14:30:32.011Z", "2026-09-15T03:53:00.000Z"],
+  ])(
+    "reads the recorded opening IN without replacing an existing summary (%s)",
+    async (summary, expected) => {
+      const { service, inserted } = createService();
+      const row = {
+        ...attendance,
+        check_in_time: summary,
+        check_out_time: "2026-09-15T11:35:00.000Z",
+      };
+      const punches = [
+        {
+          attendance_id: row.id,
+          punch_type: "IN",
+          punch_at: "2026-09-15T03:53:00.000Z",
+        },
+        {
+          attendance_id: row.id,
+          punch_type: "OUT",
+          punch_at: row.check_out_time,
+        },
+        {
+          attendance_id: row.id,
+          punch_type: "IN",
+          punch_at: "2026-09-15T14:30:32.960Z",
+        },
+      ];
+      const query = (result: any) => {
+        const builder: any = {};
+        for (const method of ["select", "eq", "gte", "lte", "in"]) {
+          builder[method] = jest.fn(() => builder);
+        }
+        builder.single = jest.fn().mockResolvedValue({ data: row });
+        builder.order = jest.fn().mockResolvedValue({ data: result });
+        return builder;
+      };
+      (service as any).supabase.from = jest.fn((table: string) =>
+        query(table === "attendance" ? [row] : punches),
+      );
+
+      const today = await service.getTodayAttendance("user-1");
+      expect(today.check_in_time).toBe(expected);
+      expect(today.check_out_time).toBe(row.check_out_time);
+      expect(today.punches).toEqual(punches.slice(0, 2));
+      expect(punches).toHaveLength(3); // The stored audit ledger is not mutated.
+      const history = await service.getMyAttendance("user-1", "2026-09");
+      expect(history[0].check_in_time).toBe(expected);
+      expect(history[0].punches).toEqual(punches.slice(0, 2));
+      await service.checkIn("tenant-1", "user-1", "employee-1", {
+        lat: 22.579128,
+        lng: 88.349857,
+      });
+      expect(inserted).toHaveLength(0);
+    },
+  );
+
+  it("blocks a new check-in on a completed day with no opening evidence", async () => {
+    const { service, inserted } = createService();
+    jest.spyOn(service, "getTodayAttendance").mockResolvedValue({
+      ...attendance,
+      check_in_time: null,
+      check_out_time: "2026-09-15T11:35:00.000Z",
+      punches: [],
+    } as any);
+    await expect(
+      service.checkIn("tenant-1", "user-1", "employee-1", {
+        lat: 22.579128,
+        lng: 88.349857,
+      }),
+    ).rejects.toThrow("Contact HR to correct attendance");
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("rejects checkout when no check-in exists", async () => {
+    const { service, inserted } = createService();
+    jest.spyOn(service, "getTodayAttendance").mockResolvedValue(null);
+    await expect(
+      service.checkOut("user-1", {
+        lat: 22.579128,
+        lng: 88.349857,
+        endDay: true,
+      }),
+    ).rejects.toThrow("Not checked in yet");
+    expect(inserted).toHaveLength(0);
+  });
+
   it("rejects attendance punches without a valid current GPS position", async () => {
     const { service } = createService();
     await expect(
@@ -102,7 +191,9 @@ describe("HR attendance mobile idempotency", () => {
       check_in_time: "2026-09-26T02:46:00.000Z",
       punches: [{ punch_type: "IN", punch_at: "2026-09-26T02:46:00.000Z" }],
     };
-    jest.spyOn(service, "getTodayAttendance").mockResolvedValue(original as any);
+    jest
+      .spyOn(service, "getTodayAttendance")
+      .mockResolvedValue(original as any);
 
     await expect(
       service.checkIn("tenant-1", "user-1", "employee-1", {

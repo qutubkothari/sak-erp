@@ -6,6 +6,7 @@
     "prebuild": "node ../../scripts/guard-live-build.cjs",
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node ../../scripts/write-provenance.cjs web",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit"

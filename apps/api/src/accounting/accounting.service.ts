@@ -115,12 +115,14 @@ export class AccountingService {
     const accountIds = [...new Set(lines.map((line) => String(line.account_id || '')).filter(Boolean))];
     const { data: accounts, error } = await this.supabase
       .from('accounting_accounts')
-      .select('id, account_code, account_name, is_active')
+      .select('id, account_code, account_name, is_active, is_group')
       .eq('tenant_id', tenantId)
       .in('id', accountIds);
     if (error) throw new BadRequestException(error.message);
     if ((accounts || []).length !== accountIds.length) throw new BadRequestException('Every journal line must use a ledger account from this company.');
     const inactive = (accounts || []).find((account: any) => !account.is_active);
+    const group = (accounts || []).find((account: any) => account.is_group);
+    if (group) throw new BadRequestException(`Account group ${group.account_code} cannot be used in a journal.`);
     if (inactive) throw new BadRequestException(`Ledger ${inactive.account_code} — ${inactive.account_name} is inactive and cannot be used in a journal.`);
   }
 
@@ -428,7 +430,10 @@ export class AccountingService {
     const openingDebit = Number(body.opening_debit || 0);
     const openingCredit = Number(body.opening_credit || 0);
     if (openingDebit < 0 || openingCredit < 0 || (openingDebit > 0 && openingCredit > 0)) throw new BadRequestException('Enter either an opening debit or an opening credit, not both.');
-    const { data, error } = await this.supabase.from('accounting_accounts').insert({ tenant_id: tenantId, account_code: code, account_name: name, account_type: type, account_subtype: body.account_subtype || null, parent_id: body.parent_id || null, is_control_account: Boolean(body.is_control_account), is_suspense_account: Boolean(body.is_suspense_account), currency_code: body.currency_code || 'INR', opening_debit: openingDebit, opening_credit: openingCredit, created_by: userId }).select().single();
+    const isGroup = body.is_group === true;
+    if (isGroup && (openingDebit || openingCredit || body.is_control_account || body.is_suspense_account)) throw new BadRequestException('Account groups cannot hold opening balances or be control or suspense accounts.');
+    await this.assertGroupParent(tenantId, body.parent_id, type);
+    const { data, error } = await this.supabase.from('accounting_accounts').insert({ tenant_id: tenantId, account_code: code, account_name: name, account_type: type, account_subtype: body.account_subtype || null, parent_id: body.parent_id || null, is_group: isGroup, is_control_account: Boolean(body.is_control_account), is_suspense_account: Boolean(body.is_suspense_account), currency_code: body.currency_code || 'INR', opening_debit: openingDebit, opening_credit: openingCredit, created_by: userId }).select().single();
     if (error || !data) throw new BadRequestException(error?.code === '23505' ? 'Account code already exists.' : error?.message || 'Account could not be created');
     return data;
   }
@@ -459,6 +464,13 @@ export class AccountingService {
   }
 
   async updateAccount(tenantId: string, id: string, body: any) {
+    const { data: existing, error: existingError } = await this.supabase.from('accounting_accounts').select('id, account_type, is_group').eq('tenant_id', tenantId).eq('id', id).maybeSingle();
+    if (existingError) throw new BadRequestException(existingError.message);
+    if (!existing) throw new NotFoundException('Account not found');
+    if (body.is_group !== undefined && body.is_group !== existing.is_group) throw new BadRequestException('Account group status cannot be changed after creation.');
+    if (body.parent_id === id) throw new BadRequestException('An account cannot be its own parent.');
+    if (body.parent_id !== undefined) await this.assertGroupParent(tenantId, body.parent_id, existing.account_type, id);
+    if (existing.is_group && body.is_suspense_account) throw new BadRequestException('Account groups cannot be suspense accounts.');
     const payload: any = { updated_at: new Date().toISOString() };
     if (body.account_name !== undefined) payload.account_name = String(body.account_name).trim();
     if (body.parent_id !== undefined) payload.parent_id = body.parent_id || null;
@@ -469,6 +481,20 @@ export class AccountingService {
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('Account not found');
     return data;
+  }
+
+  private async assertGroupParent(tenantId: string, parentId: unknown, accountType: string, accountId?: string) {
+    if (!parentId) return;
+    const seen = new Set<string>();
+    let current = String(parentId);
+    while (current) {
+      if (current === accountId || seen.has(current)) throw new BadRequestException('Account hierarchy cannot contain a cycle.');
+      seen.add(current);
+      const { data: parent, error } = await this.supabase.from('accounting_accounts').select('id, account_type, is_group, parent_id').eq('tenant_id', tenantId).eq('id', current).maybeSingle();
+      if (error) throw new BadRequestException(error.message);
+      if (!parent?.is_group || parent.account_type !== accountType) throw new BadRequestException('Parent must be an account group of the same account type in this company.');
+      current = parent.parent_id || '';
+    }
   }
 
   async listPeriods(tenantId: string) {

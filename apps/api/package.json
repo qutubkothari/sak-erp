@@ -5,6 +5,7 @@
   "scripts": {
     "prebuild": "node ../../scripts/guard-live-build.cjs",
     "build": "nest build",
+    "postbuild": "node ../../scripts/write-provenance.cjs api",
     "dev": "node scripts/start-dev.js",
     "start": "nest start",
     "start:dev": "node scripts/start-dev.js",

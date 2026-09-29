@@ -25,9 +25,21 @@ async function resolveBuildId(): Promise<string> {
 
 export async function GET() {
   const buildId = await resolveBuildId();
+  let provenance: Record<string, string> = {};
+  for (const candidate of [
+    path.join(process.cwd(), '.next', 'build-provenance.json'),
+    path.join(process.cwd(), 'apps', 'web', '.next', 'build-provenance.json'),
+  ]) {
+    try {
+      provenance = JSON.parse(await fs.readFile(candidate, 'utf8'));
+      break;
+    } catch {
+      provenance = { status: 'UNKNOWN' };
+    }
+  }
 
   return NextResponse.json(
-    { buildId },
+    { buildId, ...provenance },
     {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
