@@ -10,6 +10,7 @@ import { SupportAutofixEvents } from './support-events';
 import { IncidentInput } from './support-autofix.types';
 import { incidentStatusLabel } from './incident-status';
 import { resolveSupportRoute } from './support-route';
+import { IncidentLifecycle } from './incident-lifecycle';
 
 @Injectable()
 export class SupportAutofixService {
@@ -44,9 +45,35 @@ export class SupportAutofixService {
     };
   }
 
-  async listMine(user: any) {
-    const rows = await this.store.listMine(String(user.tenantId || user.tenant_id), String(user.userId || user.id || user.sub));
-    return rows.map((row: any) => ({ ...row, status: String(row.status), friendly_status: incidentStatusLabel(String(row.status)) }));
+  async listMine(user: any, requestedLifecycle: unknown = 'ACTIVE') {
+    const lifecycle: IncidentLifecycle = ['ACTIVE', 'RESOLVED', 'ARCHIVED'].includes(String(requestedLifecycle).toUpperCase()) ? String(requestedLifecycle).toUpperCase() as IncidentLifecycle : 'ACTIVE';
+    const tenantId = this.userTenantId(user);
+    const reporterId = String(user?.userId || user?.id || user?.sub || '');
+    const [rows, counts] = await Promise.all([this.store.listMine(tenantId, reporterId, lifecycle), this.store.countMine(tenantId, reporterId)]);
+    return { issues: rows.map((row: any) => ({ ...row, status: String(row.status), friendly_status: incidentStatusLabel(String(row.status)) })), counts, lifecycle };
+  }
+
+  async archiveMine(user: any, incidentId: string, archived: boolean) {
+    const actorId = String(user?.userId || user?.id || user?.sub || '');
+    const centralAdmin = hasSuperAdminBypass(user);
+    const tenantId = centralAdmin ? await this.adminTenantId(user, incidentId) : this.userTenantId(user);
+    const result = await this.store.setIncidentArchived(tenantId, incidentId, centralAdmin ? null : actorId, actorId, archived);
+    if (!result) throw new NotFoundException('Support incident not found or no longer in that lifecycle state.');
+    const eventType = archived ? 'incident.archived' : 'incident.restored';
+    await this.store.writeEvent({ type: eventType, tenantId, incidentId, at: new Date().toISOString(), details: { lifecycle: archived ? 'ARCHIVED' : 'RESTORED' } }, actorId);
+    await this.audit.logActivity({ tenantId, userId: actorId, action: archived ? 'SUPPORT_INCIDENT_ARCHIVED' : 'SUPPORT_INCIDENT_RESTORED', resourceType: 'support_incident', resourceId: incidentId, resourceName: result.title, metadata: { previous_status: result.status } });
+    return { id: result.id, status: result.status, archived_at: result.archived_at, archived_by: result.archived_by };
+  }
+
+  async archiveResolvedMine(user: any) {
+    const tenantId = this.userTenantId(user);
+    const actorId = String(user?.userId || user?.id || user?.sub || '');
+    const rows = await this.store.archiveResolvedMine(tenantId, actorId, actorId);
+    for (const row of rows) {
+      await this.store.writeEvent({ type: 'incident.archived', tenantId, incidentId: row.id, at: new Date().toISOString(), details: { lifecycle: 'ARCHIVED', source: 'archive-resolved' } }, actorId);
+      await this.audit.logActivity({ tenantId, userId: actorId, action: 'SUPPORT_INCIDENT_ARCHIVED', resourceType: 'support_incident', resourceId: row.id, resourceName: row.title, metadata: { previous_status: 'RESOLVED', bulk: true } });
+    }
+    return { archivedCount: rows.length };
   }
 
   async listAdmin(tenantId: string | null, query: any) {

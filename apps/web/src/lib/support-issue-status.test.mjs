@@ -7,6 +7,8 @@ import {
   isImportantIssueTransition,
   issueNotification,
   issueUpdateMessage,
+  emptySupportIssueCounts,
+  uniqueLatestStatusFeed,
 } from "./support-issue-status.ts";
 
 const issue = (id, status, friendly_status) => ({
@@ -26,6 +28,17 @@ test("active badge counts open issues and excludes resolved history", () => {
     2,
   );
   assert.equal(countActiveIssues([issue("1", "RESOLVED")]), 0);
+  assert.equal(countActiveIssues([{ ...issue("2", "ESCALATED"), archived_at: "2026-09-29T10:00:00Z" }]), 0);
+});
+
+test("lifecycle UI uses backend counts and keeps only the newest feed item per incident", () => {
+  assert.deepEqual(emptySupportIssueCounts(), { ACTIVE: 0, RESOLVED: 0, ARCHIVED: 0 });
+  const feed = uniqueLatestStatusFeed([
+    { id: "incident-a", message: "Engineering review required" },
+    { id: "incident-a:ESCALATED", message: "Earlier update" },
+    { id: "incident-b", message: "Issue received" },
+  ]);
+  assert.deepEqual(feed.map((entry) => entry.id), ["incident-a", "incident-b"]);
 });
 
 test("known engineering states have user-friendly labels", () => {

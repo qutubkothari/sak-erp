@@ -56,8 +56,26 @@ export class SupportAutofixController {
 
   @Get('incidents/mine')
   @UseGuards(JwtAuthGuard)
-  listMine(@Request() req: any) {
-    return this.service.listMine(req.user);
+  listMine(@Request() req: any, @Query('lifecycle') lifecycle: string) {
+    return this.service.listMine(req.user, lifecycle);
+  }
+
+  @Post('incidents/:id/archive')
+  @UseGuards(JwtAuthGuard)
+  archiveMine(@Request() req: any, @Param('id') id: string) {
+    return this.service.archiveMine(req.user, id, true);
+  }
+
+  @Post('incidents/:id/restore')
+  @UseGuards(JwtAuthGuard)
+  restoreMine(@Request() req: any, @Param('id') id: string) {
+    return this.service.archiveMine(req.user, id, false);
+  }
+
+  @Post('incidents/archive-resolved')
+  @UseGuards(JwtAuthGuard)
+  archiveResolvedMine(@Request() req: any) {
+    return this.service.archiveResolvedMine(req.user);
   }
 
   @Get('admin/configuration')

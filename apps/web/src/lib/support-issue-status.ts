@@ -6,7 +6,13 @@ export type SupportIssue = {
   friendly_status: string;
   created_at: string;
   updated_at?: string;
+  archived_at?: string | null;
+  occurrence_count?: number;
 };
+
+export type SupportLifecycle = "ACTIVE" | "RESOLVED" | "ARCHIVED";
+export type SupportIssueCounts = Record<SupportLifecycle, number>;
+export type SupportIssueList = { issues: SupportIssue[]; counts: SupportIssueCounts; lifecycle: SupportLifecycle };
 
 const terminalStatuses = new Set(["RESOLVED"]);
 const rawStatuses = new Set([
@@ -24,7 +30,21 @@ const rawStatuses = new Set([
 ]);
 
 export function countActiveIssues(issues: SupportIssue[]) {
-  return issues.filter((issue) => !terminalStatuses.has(issue.status)).length;
+  return issues.filter((issue) => !issue.archived_at && !terminalStatuses.has(issue.status)).length;
+}
+
+export function emptySupportIssueCounts(): SupportIssueCounts {
+  return { ACTIVE: 0, RESOLVED: 0, ARCHIVED: 0 };
+}
+
+export function uniqueLatestStatusFeed<T extends { id: string }>(entries: T[]): T[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const incidentId = entry.id.split(":", 1)[0];
+    if (seen.has(incidentId)) return false;
+    seen.add(incidentId);
+    return true;
+  });
 }
 
 export function friendlyIssueStatus(friendlyStatus?: string) {

@@ -133,7 +133,7 @@ describe("Mizantra support intake", () => {
     }));
   });
   it("returns only safe status fields for authenticated recent incidents", async () => {
-    const listMine = jest.fn().mockResolvedValue([
+    const listMine = jest.fn().mockResolvedValue({ issues: [
       {
         id: "INC-1",
         status: "ESCALATED",
@@ -141,19 +141,19 @@ describe("Mizantra support intake", () => {
         title: "/secret/path",
         risk_reason: "internal",
       },
-    ]);
+    ], counts: { ACTIVE: 1, RESOLVED: 0, ARCHIVED: 0 } });
     const service = new PlannerSupportService({ listMine } as any, {} as any);
     const response = await service.route(user, {
       message: "what happened to my issue?",
     });
-    expect(listMine).toHaveBeenCalledWith(user);
+    expect(listMine).toHaveBeenCalledWith(user, "ACTIVE");
     expect(response.support_incidents).toEqual([
       { id: "INC-1", status: "Engineering review required" },
     ]);
     expect(JSON.stringify(response)).not.toMatch(/secret|internal/);
   });
   it("finds a reported problem by topic without disclosing its free text", async () => {
-    const listMine = jest.fn().mockResolvedValue([
+    const listMine = jest.fn().mockResolvedValue({ issues: [
       {
         id: "INC-1",
         title: "PO search not working",
@@ -164,7 +164,7 @@ describe("Mizantra support intake", () => {
         title: "Invoice not opening",
         status: "Checking the problem.",
       },
-    ]);
+    ], counts: { ACTIVE: 2, RESOLVED: 0, ARCHIVED: 0 } });
     const service = new PlannerSupportService({ listMine } as any, {} as any);
     const response = await service.route(user, {
       message: "status of the PO search problem",

@@ -1,71 +1,51 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiClient } from "../../../../lib/api-client";
-import { friendlyIssueStatus } from "../../../lib/support-issue-status";
-
-type SupportRequest = {
-  id: string;
-  title: string;
-  module?: string | null;
-  status: string;
-  friendly_status: string;
-  created_at: string;
-  updated_at?: string;
-};
+import { emptySupportIssueCounts, type SupportIssue, type SupportIssueCounts, type SupportLifecycle } from "../../../lib/support-issue-status";
 
 export default function SupportPage() {
-  const [requests, setRequests] = useState<SupportRequest[]>([]);
+  const [requests, setRequests] = useState<SupportIssue[]>([]);
+  const [counts, setCounts] = useState<SupportIssueCounts>(emptySupportIssueCounts());
+  const [lifecycle, setLifecycle] = useState<SupportLifecycle>("ACTIVE");
   const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    try {
+      const result = await apiClient.get<{ issues: SupportIssue[]; counts: SupportIssueCounts }>(`/support/incidents/mine?lifecycle=${lifecycle}`);
+      setRequests(result.issues || []);
+      setCounts(result.counts || emptySupportIssueCounts());
+      setError("");
+    } catch {
+      setError("Support history could not be loaded. Please try again.");
+    }
+  }, [lifecycle]);
   useEffect(() => {
-    const load = () =>
-      apiClient
-        .get<SupportRequest[]>("/support/incidents/mine")
-        .then((data) => {
-          setRequests(data);
-          setError("");
-        })
-        .catch(() =>
-          setError("Support history could not be loaded. Please try again."),
-        );
     void load();
     const timer = window.setInterval(() => void load(), 30000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [load]);
+
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-4 md:p-8">
       <header className="rounded-2xl border bg-white p-6">
         <h1 className="text-2xl font-semibold">Your support history</h1>
-        <p className="mt-2 text-sm text-stone-600">
-          Report ERP problems and ask for updates in Ask Mizantra.
-        </p>
-        <Link
-          href="/dashboard/active-planner?report=1"
-          className="mt-4 inline-block rounded-lg bg-amber-800 px-4 py-2 text-white"
-        >
-          Ask Mizantra - report a problem
-        </Link>
+        <p className="mt-2 text-sm text-stone-600">Report ERP problems and ask for updates in Ask Mizantra.</p>
+        <Link href="/dashboard/active-planner?report=1" className="mt-4 inline-block rounded-lg bg-amber-800 px-4 py-2 text-white">Ask Mizantra - report a problem</Link>
       </header>
       <section className="rounded-2xl border bg-white p-6">
+        <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Support issue lifecycle">
+          {(["ACTIVE", "RESOLVED", "ARCHIVED"] as const).map((tab) => <button key={tab} type="button" role="tab" aria-selected={lifecycle === tab} onClick={() => setLifecycle(tab)} className={`rounded-lg px-4 py-2 text-sm ${lifecycle === tab ? "bg-amber-800 text-white" : "bg-stone-100 text-stone-700"}`}>{tab === "ACTIVE" ? "Active" : tab === "RESOLVED" ? "Resolved" : "Archived"} ({counts[tab]})</button>)}
+        </div>
+        {lifecycle === "RESOLVED" && counts.RESOLVED > 0 && <button type="button" onClick={async () => { await apiClient.post("/support/incidents/archive-resolved", {}); await load(); }} className="mb-3 rounded border px-3 py-1.5 text-sm text-amber-900">Archive all resolved</button>}
         {error && <p role="alert">{error}</p>}
-        {requests.map((request) => (
-          <article key={request.id} className="border-b py-3">
-            <p className="font-medium">{request.title}</p>
-            {request.module && (
-              <p className="text-sm text-stone-500">{request.module}</p>
-            )}
-            <p className="text-sm">Incident: {request.id}</p>
-            <p className="text-sm text-stone-600">
-              {friendlyIssueStatus(request.friendly_status)}
-            </p>
-          </article>
-        ))}
-        {!requests.length && !error && <p>No support requests yet.</p>}
+        {requests.map((request) => <article key={request.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3">
+          <div><p className="font-medium">{request.title}</p>{request.module && <p className="text-sm text-stone-500">{request.module}</p>}<p className="text-sm text-stone-600">{request.friendly_status}</p>{request.occurrence_count && request.occurrence_count > 1 && <p className="text-xs text-stone-500">Similar issue reported {request.occurrence_count} times</p>}</div>
+          <button type="button" onClick={async () => { await apiClient.post(`/support/incidents/${request.id}/${lifecycle === "ARCHIVED" ? "restore" : "archive"}`, {}); await load(); }} className="rounded border px-3 py-1.5 text-sm text-amber-900">{lifecycle === "ARCHIVED" ? "Restore" : "Archive"}</button>
+        </article>)}
+        {!requests.length && !error && <p>No {lifecycle.toLowerCase()} support requests.</p>}
       </section>
-      <Link href="/dashboard/support/admin" className="text-xs underline">
-        Support control center - admin access
-      </Link>
+      <Link href="/dashboard/support/admin" className="text-xs underline">Support control center - admin access</Link>
     </main>
   );
 }

@@ -6,11 +6,14 @@ import { ChevronDown, LifeBuoy } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "../../lib/api-client";
 import {
-  countActiveIssues,
   friendlyIssueStatus,
   isImportantIssueTransition,
   issueNotification,
   issueUpdateMessage,
+  emptySupportIssueCounts,
+  uniqueLatestStatusFeed,
+  type SupportLifecycle,
+  type SupportIssueCounts,
   type SupportIssue,
 } from "../lib/support-issue-status";
 
@@ -33,15 +36,18 @@ export default function SupportIssueStatus({
   collapsed: boolean;
 }) {
   const [issues, setIssues] = useState<SupportIssue[]>([]);
+  const [counts, setCounts] = useState<SupportIssueCounts>(emptySupportIssueCounts());
+  const [lifecycle, setLifecycle] = useState<SupportLifecycle>("ACTIVE");
   const [open, setOpen] = useState(false);
   const refresh = useCallback(async () => {
     if (!userKey || !localStorage.getItem("accessToken")) return;
     try {
-      const rows = await apiClient.get<SupportIssue[]>(
-        "/support/incidents/mine",
+      const result = await apiClient.get<{ issues: SupportIssue[]; counts: SupportIssueCounts }>(
+        `/support/incidents/mine?lifecycle=${lifecycle}`,
       );
-      const safeRows = Array.isArray(rows) ? rows.slice(0, 100) : [];
+      const safeRows = Array.isArray(result.issues) ? result.issues.slice(0, 100) : [];
       setIssues(safeRows);
+      setCounts(result.counts || emptySupportIssueCounts());
 
       const previous = readMap(snapshotKey(userKey));
       const next: Record<string, string> = {};
@@ -55,7 +61,7 @@ export default function SupportIssueStatus({
         }
       })();
       const newMessages: string[] = [];
-      for (const issue of safeRows) {
+      for (const issue of lifecycle === "ACTIVE" ? safeRows : []) {
         next[issue.id] = issue.status;
         if (
           !previous[issue.id] ||
@@ -64,19 +70,21 @@ export default function SupportIssueStatus({
           continue;
         const message = issueUpdateMessage(issue);
         toast.info(issueNotification(issue), { duration: 9000 });
-        feed.unshift({
-          id: `${issue.id}:${issue.status}`,
+        const feedEntry = {
+          id: issue.id,
           message,
           at: new Date().toISOString(),
-        });
+        };
+        const incidentFeed = uniqueLatestStatusFeed([feedEntry, ...feed]);
+        feed.splice(0, feed.length, ...incidentFeed);
         newMessages.push(message);
       }
-      localStorage.setItem(snapshotKey(userKey), JSON.stringify(next));
-      if (feed.length)
-        localStorage.setItem(
-          feedKey(userKey),
-          JSON.stringify(feed.slice(0, 10)),
-        );
+      if (lifecycle === "ACTIVE") localStorage.setItem(snapshotKey(userKey), JSON.stringify(next));
+      const activeIds = new Set(safeRows.map((issue) => issue.id));
+      const conciseFeed = lifecycle === "ACTIVE"
+        ? uniqueLatestStatusFeed(feed.filter((entry) => activeIds.has(entry.id.split(":", 1)[0]))).slice(0, 10)
+        : uniqueLatestStatusFeed(feed).slice(0, 10);
+      localStorage.setItem(feedKey(userKey), JSON.stringify(conciseFeed));
       for (const message of newMessages)
         window.dispatchEvent(
           new CustomEvent("mizantra:support-update", { detail: { message } }),
@@ -84,7 +92,7 @@ export default function SupportIssueStatus({
     } catch {
       // Keep the last successful view and try again on the next scheduled refresh.
     }
-  }, [userKey]);
+  }, [userKey, lifecycle]);
 
   useEffect(() => {
     let timer = 0;
@@ -96,7 +104,7 @@ export default function SupportIssueStatus({
           await refresh();
           schedule();
         },
-        countActiveIssues(issues) > 0 ? 45_000 : 180_000,
+        counts.ACTIVE > 0 ? 45_000 : 180_000,
       );
     };
     void refresh();
@@ -105,9 +113,9 @@ export default function SupportIssueStatus({
       disposed = true;
       window.clearTimeout(timer);
     };
-  }, [issues, refresh]);
+  }, [counts.ACTIVE, refresh]);
 
-  const activeCount = countActiveIssues(issues);
+  const activeCount = counts.ACTIVE;
   const recent = issues.slice(0, 5);
   return (
     <div
@@ -147,6 +155,13 @@ export default function SupportIssueStatus({
               ×
             </button>
           </header>
+          <div className="flex gap-1 py-2" role="tablist" aria-label="Support issue lifecycle">
+            {(["ACTIVE", "RESOLVED", "ARCHIVED"] as const).map((tab) => (
+              <button key={tab} type="button" role="tab" aria-selected={lifecycle === tab} onClick={() => setLifecycle(tab)} className={`rounded-md px-2 py-1 text-[11px] ${lifecycle === tab ? "bg-[#8B6F47] text-white" : "bg-stone-100 text-stone-700"}`}>
+                {tab === "ACTIVE" ? "Active" : tab === "RESOLVED" ? "Resolved" : "Archived"} ({counts[tab]})
+              </button>
+            ))}
+          </div>
           <div className="max-h-[55vh] divide-y divide-[#EEE4D5] overflow-y-auto">
             {recent.map((issue) => (
               <article key={issue.id} className="space-y-1 py-3">
@@ -169,6 +184,10 @@ export default function SupportIssueStatus({
                     issue.updated_at || issue.created_at,
                   ).toLocaleString()}
                 </p>
+                {issue.occurrence_count && issue.occurrence_count > 1 && <p className="text-[11px] text-stone-500">Similar issue reported {issue.occurrence_count} times</p>}
+                <button type="button" onClick={async () => { await apiClient.post(`/support/incidents/${issue.id}/${lifecycle === "ARCHIVED" ? "restore" : "archive"}`, {}); await refresh(); }} className="text-xs font-medium text-amber-800 underline">
+                  {lifecycle === "ARCHIVED" ? "Restore" : "Archive"}
+                </button>
               </article>
             ))}
             {!recent.length && (

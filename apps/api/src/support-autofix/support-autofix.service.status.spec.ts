@@ -13,19 +13,18 @@ describe("SupportAutofixService.listMine status contract", () => {
           updated_at: "2026-09-29T07:21:50.000Z",
         },
       ]),
+      countMine: jest.fn().mockResolvedValue({ ACTIVE: 1, RESOLVED: 0, ARCHIVED: 0 }),
     };
     const service = Object.create(SupportAutofixService.prototype) as any;
     service.store = store;
 
     await expect(
       service.listMine({ tenantId: "tenant-a", userId: "reporter-a" }),
-    ).resolves.toMatchObject([
-      {
-        id: "existing-incident",
-        status: "ESCALATED",
-        friendly_status: "Engineering review required",
-      },
-    ]);
-    expect(store.listMine).toHaveBeenCalledWith("tenant-a", "reporter-a");
+    ).resolves.toMatchObject({
+      issues: [{ id: "existing-incident", status: "ESCALATED", friendly_status: "Engineering review required" }],
+      counts: { ACTIVE: 1, RESOLVED: 0, ARCHIVED: 0 },
+      lifecycle: "ACTIVE",
+    });
+    expect(store.listMine).toHaveBeenCalledWith("tenant-a", "reporter-a", "ACTIVE");
   });
 });

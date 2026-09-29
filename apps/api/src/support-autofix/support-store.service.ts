@@ -5,6 +5,7 @@ import { SupportAutofixEvents } from './support-events';
 import { IncidentInput, RiskDecision, SupportEvent } from './support-autofix.types';
 import { assertIncidentTransition } from './incident-state';
 import { isInfrastructureFailure } from './risk-policy';
+import { ACTIVE_INCIDENT_STATUSES, IncidentLifecycle } from './incident-lifecycle';
 
 const REDACTED = '[redacted]';
 const MAX_TEXT = 2_000;
@@ -121,8 +122,48 @@ export class SupportStoreService {
     return { incident: data, deduplicated: false };
   }
 
-  async listMine(tenantId: string, reporterId: string) {
-    const { data, error } = await this.supabase.from('support_incidents').select('id,title,module,status,created_at,updated_at,occurrence_count').eq('tenant_id', tenantId).eq('reported_by', reporterId).order('created_at', { ascending: false }).limit(100);
+  async listMine(tenantId: string, reporterId: string, lifecycle: IncidentLifecycle = 'ACTIVE') {
+    let request = this.supabase.from('support_incidents').select('id,title,module,status,created_at,updated_at,occurrence_count,archived_at,archived_by').eq('tenant_id', tenantId).eq('reported_by', reporterId);
+    request = this.applyLifecycle(request, lifecycle);
+    const { data, error } = await request.order('created_at', { ascending: false }).limit(100);
+    if (error) throw error;
+    return data || [];
+  }
+
+  async countMine(tenantId: string, reporterId: string): Promise<{ ACTIVE: number; RESOLVED: number; ARCHIVED: number }> {
+    const countFor = async (lifecycle: IncidentLifecycle) => {
+      let request = this.supabase.from('support_incidents').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('reported_by', reporterId);
+      request = this.applyLifecycle(request, lifecycle);
+      const { count, error } = await request;
+      if (error) throw error;
+      return Number(count) || 0;
+    };
+    const [ACTIVE, RESOLVED, ARCHIVED] = await Promise.all([countFor('ACTIVE'), countFor('RESOLVED'), countFor('ARCHIVED')]);
+    return { ACTIVE, RESOLVED, ARCHIVED };
+  }
+
+  private applyLifecycle(request: any, lifecycle: IncidentLifecycle) {
+    if (lifecycle === 'ARCHIVED') return request.not('archived_at', 'is', null);
+    request = request.is('archived_at', null);
+    if (lifecycle === 'RESOLVED') return request.eq('status', 'RESOLVED');
+    return request.in('status', [...ACTIVE_INCIDENT_STATUSES]);
+  }
+
+  async setIncidentArchived(tenantId: string, incidentId: string, reporterId: string | null, actorId: string, archived: boolean) {
+    let request = this.supabase.from('support_incidents').update({ archived_at: archived ? new Date().toISOString() : null, archived_by: archived ? actorId : null, updated_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', incidentId);
+    if (reporterId) request = request.eq('reported_by', reporterId);
+    request = archived ? request.is('archived_at', null) : request.not('archived_at', 'is', null);
+    const { data, error } = await request.select('id,tenant_id,reported_by,title,status,archived_at,archived_by').maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
+
+  async archiveResolvedMine(tenantId: string, reporterId: string, actorId: string) {
+    const now = new Date().toISOString();
+    const { data, error } = await this.supabase.from('support_incidents')
+      .update({ archived_at: now, archived_by: actorId, updated_at: now })
+      .eq('tenant_id', tenantId).eq('reported_by', reporterId).eq('status', 'RESOLVED').is('archived_at', null)
+      .select('id,title,status');
     if (error) throw error;
     return data || [];
   }

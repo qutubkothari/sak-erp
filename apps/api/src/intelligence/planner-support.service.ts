@@ -124,11 +124,12 @@ export class PlannerSupportService {
   }
 
   async history(user: any, message = "") {
-    const rows = await this.autoheal.listMine(user).catch(() => {
+    const result = await this.autoheal.listMine(user, 'ACTIVE').catch(() => {
       throw new ServiceUnavailableException(
         "Support updates are temporarily unavailable. Please try again.",
       );
     });
+    const rows = result.issues;
     const topic = message
       .toLowerCase()
       .match(/status of (.+)/)?.[1]
@@ -145,19 +146,23 @@ export class PlannerSupportService {
         )
       : rows;
     // Do not echo free-text titles, paths, engineering fields, or raw incident records.
-    const incidents = matching
-      .slice(0, 10)
-      .map((row: any) => ({ id: row.id, status: row.friendly_status || row.status }));
+    const incidents = matching.slice(0, 10).map((row: any) => ({ id: row.id, status: row.friendly_status || row.status }));
+    const summaries = matching.slice(0, 10).map((row: any) => {
+      const title = sanitizeSupportText(row.title, 160);
+      const safeTitle = /^(?:\/|https?:\/\/)/i.test(title) ? 'Reported support issue' : title;
+      return `${safeTitle || 'Reported support issue'}\n${row.friendly_status || row.status}`;
+    });
     return {
       ...this.reply(
         "SUPPORT_STATUS",
         incidents.length
-          ? `Your recent support issues:\n${incidents.map((row) => `Incident: ${row.id}\n${row.status}`).join("\n\n")}`
+          ? `${result.counts.ACTIVE} active support issue${result.counts.ACTIVE === 1 ? '' : 's'}:\n${summaries.join("\n\n")}`
           : words.length
             ? "I could not find a matching issue in your recent reports. Ask for my issues to see your recent support history."
             : "You have no recorded support issues.",
       ),
       support_incidents: incidents,
+      support_counts: result.counts,
     };
   }
 
