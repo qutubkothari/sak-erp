@@ -8,9 +8,10 @@ import { SupportAutofixEvents } from './support-events';
 import { DeploymentTargetRegistry, SshDeploymentTargetAdapter } from './deployment';
 import { AutoHealWorkerGuard } from './worker-auth.guard';
 import { CommandRunner } from './command-runner';
+import { AUTOHEAL_PATCH_QUEUE, patchRedisOptions } from './patch-queue';
 
 @Module({
-  imports: [AuditModule, BullModule.registerQueue({ name: 'autoheal-patch' }), BullModule.registerQueue({ name: 'support-autofix-deployment' })],
+  imports: [AuditModule, BullModule.registerQueueAsync({ name: AUTOHEAL_PATCH_QUEUE, useFactory: () => ({ redis: patchRedisOptions() }) }), BullModule.registerQueue({ name: 'support-autofix-deployment' })],
   controllers: [SupportAutofixController],
   providers: [
     DeploymentTargetRegistry,

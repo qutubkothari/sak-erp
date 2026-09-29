@@ -12,6 +12,7 @@ import { ValidationResults } from './support-autofix.types';
 import { AUTO_FIX_AGENT } from './worker-tokens';
 import { CodexSandboxPreflightService, SANDBOX_BLOCKED_HEARTBEAT, VALIDATION_TOOLS_BLOCKED_HEARTBEAT, isCodexSandboxInfrastructureFailure } from './sandbox-preflight.service';
 import { basename } from 'path';
+import { AUTOHEAL_PATCH_QUEUE } from './patch-queue';
 
 export function worktreeMatchesIncident(workspace: { branchName: string; path: string }, incidentId: string, attemptNumber: number): boolean {
   const identity = `${incidentId}-attempt-${attemptNumber}`.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 48);
@@ -20,7 +21,7 @@ export function worktreeMatchesIncident(workspace: { branchName: string; path: s
     && basename(workspace.path).startsWith(`${identity}-`);
 }
 
-@Processor('autoheal-patch')
+@Processor(AUTOHEAL_PATCH_QUEUE)
 @Injectable()
 export class AutoHealWorkerProcessor {
   private currentIncident: string | null = null;
@@ -34,7 +35,7 @@ export class AutoHealWorkerProcessor {
     private readonly worktrees: GitWorktreeService,
     private readonly validation: ValidationEngine,
     @Inject(AUTO_FIX_AGENT) private readonly agent: AutoFixAgentProvider,
-    @InjectQueue('autoheal-patch') private readonly queue: Queue,
+    @InjectQueue(AUTOHEAL_PATCH_QUEUE) private readonly queue: Queue,
     private readonly sandboxPreflight: CodexSandboxPreflightService,
   ) {}
 
@@ -123,7 +124,7 @@ export class AutoHealWorkerProcessor {
       const diff = await this.worktrees.stagedDiff(workspace.path);
       validationStage = 'validation';
       const validation: ValidationResults = diff.paths.every((path) => path.replace(/\\/g, '/').startsWith('apps/web/'))
-        ? await this.validation.runWeb(workspace.path, diff.paths, incident.route || '/', false)
+        ? await this.validation.runWeb(workspace.path, diff.paths, incident.route || '/', true)
         : failedValidation('Only web-only diffs are eligible for automated approval.');
       const gate = classifyDiff({ initialRisk: 'LOW', module: incident.module, category: incident.category, changedPaths: diff.paths, diff: diff.diff, linesChanged: diff.linesChanged, validation, limits: autoHealDiffLimits() });
       if (!gate.allowed) {
@@ -142,7 +143,7 @@ export class AutoHealWorkerProcessor {
         filesChanged: diff.paths, diff: diff.diff, linesAdded: countLines(diff.diff, '+'), linesRemoved: countLines(diff.diff, '-'),
         testResult: { focusedTest: validation.focusedTest, typeCheck: validation.typeCheck, diffCheck: validation.diffCheck, smoke: validation.smoke },
         buildResult: validation.build, riskAfterDiff: gate.risk, commitSha,
-        rootCause: 'A scoped web-only patch passed validation. Review the changed files before any separate approval decision.',
+        rootCause: agentResult.summary || 'A scoped web-only patch passed validation. Review the changed files before any separate approval decision.',
         agentDiagnostics: this.agentDiagnostics(agentResult, diff.paths.length > 0, validationStage),
       });
     } catch (error: any) {

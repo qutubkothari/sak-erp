@@ -33,14 +33,14 @@ describe('AutoHeal service safety controls', () => {
     expect(service.configuration().mode).toBe('AUTO');
   });
 
-  it('enqueues a dedicated patch job for a LOW incident only', async () => {
+  it('routes LOW incident capture through the audited queue handoff', async () => {
     process.env.AUTOHEAL_ENABLED = 'true';
-    const queue = { add: jest.fn().mockResolvedValue(undefined) };
     const store = { captureIncident: jest.fn().mockResolvedValue({ deduplicated: false, incident: { id: 'incident-low', status: 'NEW', risk_level: 'LOW', occurrence_count: 1 } }) };
     const service = Object.create(SupportAutofixService.prototype) as any;
-    service.queue = queue; service.store = store;
+    service.store = store;
+    service.queueInitialIncident = jest.fn().mockResolvedValue({ state: 'QUEUED', status: 'TRIAGING' });
     await service.captureIncident({ tenantId: 'tenant-a', userId: 'user-a' }, { title: 'Date display', description: 'Weekday label missing' });
-    expect(queue.add).toHaveBeenCalledWith('incident', { tenantId: 'tenant-a', incidentId: 'incident-low' }, expect.objectContaining({ attempts: 2 }));
+    expect(service.queueInitialIncident).toHaveBeenCalledWith('tenant-a', 'incident-low', 'user-a');
   });
 
   it('never queues HIGH-risk reports', async () => {

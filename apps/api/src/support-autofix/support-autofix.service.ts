@@ -11,6 +11,7 @@ import { IncidentInput } from './support-autofix.types';
 import { incidentStatusLabel } from './incident-status';
 import { resolveSupportRoute } from './support-route';
 import { IncidentLifecycle } from './incident-lifecycle';
+import { AUTOHEAL_PATCH_QUEUE } from './patch-queue';
 
 @Injectable()
 export class SupportAutofixService {
@@ -20,7 +21,7 @@ export class SupportAutofixService {
     private readonly registry: DeploymentTargetRegistry,
     private readonly deployer: SshDeploymentTargetAdapter,
     private readonly events: SupportAutofixEvents,
-    @InjectQueue('autoheal-patch') private readonly queue: Queue,
+    @InjectQueue(AUTOHEAL_PATCH_QUEUE) private readonly queue: Queue,
     @InjectQueue('support-autofix-deployment') private readonly deploymentQueue: Queue,
   ) {}
 
@@ -33,16 +34,59 @@ export class SupportAutofixService {
     const fingerprint = makeIncidentFingerprint({ tenantId, route: input.route || input.page_url, endpoint, status: input.http_status, error: input.error_message || input.description, buildSha: input.build_sha });
     const employeeId = String(user?.employeeId || user?.employee_id || '');
     const result = await this.store.captureIncident(tenantId, reporterId, input, decision, fingerprint, employeeId);
-    if (this.enabled() && result.incident.risk_level === 'LOW' && (!result.deduplicated || result.incident.status === 'NEW')) {
-      await this.queue.add('incident', { tenantId, incidentId: result.incident.id }, { jobId: `incident-${result.incident.id}`, attempts: 2, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: false });
-    }
+    const automation = this.enabled() && result.incident.risk_level === 'LOW'
+      ? await this.queueInitialIncident(tenantId, result.incident.id, reporterId)
+      : { state: 'DISABLED_OR_INELIGIBLE', status: result.incident.status };
     return {
       id: result.incident.id,
-      status: this.clientStatus(result.incident.status),
+      status: automation.state === 'UNAVAILABLE' ? 'Support automation temporarily unavailable; engineering review required.' : this.clientStatus(automation.status),
+      automationState: automation.state,
       riskLevel: result.incident.risk_level,
       deduplicated: result.deduplicated,
       occurrenceCount: result.incident.occurrence_count,
     };
+  }
+
+  /** Audited, idempotent reconciliation of an existing incident; never creates a report. */
+  async queueInitialIncident(tenantId: string, incidentId: string, actorId?: string) {
+    const incident = await this.requireIncident(tenantId, incidentId);
+    if (!this.enabled()) return { state: 'DISABLED', status: incident.status };
+    const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
+    if (decision.risk !== 'LOW' || incident.risk_level !== 'LOW' || !['NEW', 'TRIAGING'].includes(incident.status)) return { state: 'INELIGIBLE', status: incident.status };
+    if (await this.store.countHistoricalAttempts(incidentId)) return { state: 'ALREADY_ATTEMPTED', status: incident.status };
+    const jobId = `incident-${incidentId}`;
+    try {
+      // Readiness is bounded even when Redis is reconnecting; no blind second add.
+      let timer: NodeJS.Timeout;
+      try {
+        await Promise.race([
+          this.queue.isReady().then(() => this.queue.client.ping()),
+          new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Patch queue readiness timed out.')), 5_000); }),
+        ]);
+      } finally { clearTimeout(timer!); }
+      const existing = await this.queue.getJob(jobId);
+      const state = existing ? await existing.getState() : null;
+      if (state && !['waiting', 'paused', 'delayed', 'active'].includes(state)) return { state: 'ALREADY_ATTEMPTED', status: incident.status };
+      // Persist before add: a fast consumer must never be moved back from PATCHING.
+      if (incident.status === 'NEW') await this.store.markInitialIncidentQueued(tenantId, incidentId);
+      const health = await this.getWorkerHealth();
+      const paused = await this.queue.isPaused();
+      if (!existing) await this.queue.add('incident', { tenantId, incidentId }, {
+        jobId, attempts: 1, removeOnComplete: false, removeOnFail: false,
+      });
+      const unavailable = health.status !== 'ONLINE' || paused;
+      await this.store.writeEvent({ type: 'autofix.queued', tenantId, incidentId, at: new Date().toISOString(), details: {
+        jobId, queue: AUTOHEAL_PATCH_QUEUE, existingJob: Boolean(existing), workerStatus: health.status, paused,
+        state: unavailable ? 'UNAVAILABLE' : 'QUEUED',
+      } }, actorId);
+      return { state: unavailable ? 'UNAVAILABLE' : 'QUEUED', status: 'TRIAGING', jobId };
+    } catch (error: any) {
+      const reason = `Support automation temporarily unavailable: ${sanitizeSupportText(error?.message || 'Patch queue error', 300)}`;
+      await this.store.writeEvent({ type: 'autofix.queue-failed', tenantId, incidentId, at: new Date().toISOString(), details: { jobId, reason } }, actorId);
+      const current = await this.requireIncident(tenantId, incidentId);
+      if (['NEW', 'TRIAGING'].includes(current.status)) await this.store.updateIncident(tenantId, incidentId, { status: 'FAILED', risk_reason: reason });
+      return { state: 'UNAVAILABLE', status: current.status === 'NEW' || current.status === 'TRIAGING' ? 'FAILED' : current.status, jobId };
+    }
   }
 
   async listMine(user: any, requestedLifecycle: unknown = 'ACTIVE') {
@@ -74,6 +118,7 @@ export class SupportAutofixService {
       await this.audit.logActivity({ tenantId, userId: actorId, action: 'SUPPORT_INCIDENT_ARCHIVED', resourceType: 'support_incident', resourceId: row.id, resourceName: row.title, metadata: { previous_status: 'RESOLVED', bulk: true } });
     }
     return { archivedCount: rows.length };
+
   }
 
   async listAdmin(tenantId: string | null, query: any) {
@@ -260,6 +305,7 @@ export class SupportAutofixService {
   async retryAnalysis(tenantId: string, incidentId: string, actorId: string) {
     if (!this.enabled()) throw new ConflictException('AutoHeal is disabled by the emergency kill switch.');
     const incident = await this.requireIncident(tenantId, incidentId);
+    if (!['FAILED', 'ESCALATED'].includes(String(incident.status))) throw new ConflictException('Only a failed or escalated incident can request another patch attempt.');
     const attempts = await this.store.countAttempts(incidentId);
     const latest = await this.store.latestAttempt(incidentId);
     if (isInfrastructureFailure(latest)) throw new ConflictException('Use the audited infrastructure recovery action for this failed worker attempt.');

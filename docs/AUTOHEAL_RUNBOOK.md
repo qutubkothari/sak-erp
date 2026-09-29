@@ -114,3 +114,28 @@ git diff --check
 ```
 
 For browser acceptance, run the local web server on `127.0.0.1:3217`, then `node scripts/qa/mizantra-support-intake-local.cjs`. The script refuses remote server addresses and intercepts all API calls with fixtures; it never submits production incidents or invokes deployment.
+
+## Queued incidents and offline tooling recovery
+
+SHADOW and APPROVAL both generate LOW-risk patches; SHADOW never deploys them.
+The API does not require worker enablement or Codex credentials. API and worker
+resolve `autoheal-patch` through the shared Redis resolver (`REDIS_URL`, otherwise
+`REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`). Initial jobs retain their deterministic
+ID after completion and have one execution attempt. Infrastructure recovery is a
+separate audited action.
+
+Intake records TRIAGING before queue insertion and emits `autofix.queued` with
+job ID, worker state and queue pause state. Unavailable automation is explicit in
+the intake response; insertion/readiness failures emit `autofix.queue-failed`
+and move unstarted incidents to FAILED. To reconcile an existing NEW report,
+use `SupportAutofixService.queueInitialIncident` with its existing tenant/incident
+identity and actor. It preserves an existing paused/waiting job without adding one.
+Never create a replacement incident or bypass the sandbox preflight.
+
+For `VALIDATION_TOOLS_BLOCKED`, inspect the disposable preflight result. An
+`ERR_PNPM_NO_OFFLINE_TARBALL` requires provisioning the current frozen lockfile
+into the worker account's pnpm store from a clean disposable worktree, then
+rerunning the offline preflight. Installing over an already populated checkout
+may skip the missing cache entries. Keep the worker stopped during provisioning;
+restart it only after validation and deployment are complete. Do not change
+package versions or give the worker database credentials.

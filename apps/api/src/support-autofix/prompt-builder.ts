@@ -23,6 +23,9 @@ export function buildScopedAutoFixPrompt(incident: ScopedPromptIncident): string
       'Purchase Order search scope:',
       '- Inspect only the Purchase Order register search/filter UI and directly related read/query logic.',
       '- Preserve the intended search fields: PO number, supplier, PR reference, item code, item name and description, according to existing UI behavior.',
+      '- Search the full register, including results outside the initial page; preserve supplier and status/Open PO filters and identical Excel export semantics.',
+      '- Prefer debounced server-side search with pagination reset if the existing read API supports all required fields; otherwise use a safe complete read-only dataset approach.',
+      '- Add executable behavioral tests (not source-pattern checks) for PO number, supplier, PR reference, item code/name/description, matches beyond page one, combined filters, page reset, bounded requests/no loops, and export parity.',
       '- Do not investigate unrelated repository areas.',
       '',
     ] : []),
@@ -43,6 +46,7 @@ export function buildScopedAutoFixPrompt(incident: ScopedPromptIncident): string
     '- git diff --check.',
     '',
     'Stop without editing and report the blocker if the fix cannot stay within the permitted UI scope.',
+    'In your final response, lead with the concrete root cause, then summarize the behavioral validation results.',
     'Do not commit changes.',
   ].join('\n');
 }

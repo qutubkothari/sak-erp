@@ -66,6 +66,8 @@ export interface SafetyGateResult {
 export interface SupportEvent {
   type:
     | 'incident.created'
+    | 'autofix.queued'
+    | 'autofix.queue-failed'
     | 'autofix.succeeded'
     | 'autofix.infrastructure-retry-requested'
     | 'autofix.infrastructure-failure'

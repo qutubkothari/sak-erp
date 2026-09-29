@@ -50,6 +50,7 @@ describe('isolated AutoHeal coding worker', () => {
     await result.processor.process({ data: { tenantId: 't1', incidentId: 'i1' } } as any);
     expect(result.api.startAttempt).toHaveBeenCalledTimes(1);
     expect(result.agent.run).toHaveBeenCalledTimes(1);
+    expect(result.checks.runWeb).toHaveBeenCalledWith(expect.any(String), expect.any(Array), '/dashboard/example', true);
     result.processor.onModuleDestroy();
   });
 

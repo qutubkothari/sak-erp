@@ -207,6 +207,13 @@ export class SupportStoreService {
     return data;
   }
 
+  async markInitialIncidentQueued(tenantId: string, incidentId: string) {
+    const { error } = await this.supabase.from('support_incidents')
+      .update({ status: 'TRIAGING', updated_at: new Date().toISOString() })
+      .eq('tenant_id', tenantId).eq('id', incidentId).eq('status', 'NEW');
+    if (error) throw error;
+  }
+
   async createAttempt(values: Record<string, unknown>) {
     const { data, error } = await this.supabase.from('support_fix_attempts').insert(values).select('*').single();
     if (error) throw error;
