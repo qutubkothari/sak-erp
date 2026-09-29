@@ -4,6 +4,8 @@ Baseline: `clean-main` at `f66df2e8b3adadd39893e9c04ecf68ea5c9b298c`. This is a 
 
 44 feature IDs are inventoried. API paths name implementation files; endpoint details are in the controller source and external API parity report. Tenant selection comes from tenant settings; code profiles are in `tenant/profiles.json`.
 
+The profile file currently drives login branding. Its country and feature fields document intended deployment settings; runtime market and entitlements remain governed by each tenant's settings and must be verified before release.
+
 | ID | Module | Web source | API source | Migration | Shared |
 |---|---|---|---|---|---|
 | AUTH | Auth | apps/web/src/app/login/page.tsx | apps/api/src/auth/auth.controller.ts | ? | Yes |
