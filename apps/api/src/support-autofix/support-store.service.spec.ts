@@ -41,11 +41,13 @@ describe('AutoHeal incident privacy and deduplication', () => {
     expect(upsert).toHaveBeenCalledWith(expect.not.objectContaining({ hostname: expect.anything(), host: expect.anything() }), { onConflict: 'worker_id' });
   });
 
-  it('does not count sandbox infrastructure failures toward the two patch-attempt limit', async () => {
+  it('excludes explicit and strong legacy infrastructure failures while counting generic no-change attempts', async () => {
     const eq = jest.fn().mockResolvedValue({ data: [
-      { status: 'FAILED', test_result: { agent_diagnostics: { failure_class: 'INFRASTRUCTURE_FAILURE' } } },
-      { status: 'FAILED', test_result: { agent_diagnostics: {} } },
-      { status: 'READY_FOR_APPROVAL', test_result: {} },
+      { status: 'FAILED', files_changed: [], commit_sha: null, test_result: { agent_diagnostics: { failure_class: 'INFRASTRUCTURE_FAILURE' } } },
+      { status: 'FAILED', files_changed: [], commit_sha: null, test_result: { agent_diagnostics: { summary: 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted' } } },
+      { status: 'FAILED', files_changed: [], commit_sha: null, test_result: { agent_diagnostics: { stderr_summary: 'EWADDR: Operation not permitted' } } },
+      { status: 'FAILED', files_changed: [], commit_sha: null, test_result: { agent_diagnostics: { summary: 'No files changed.' } } },
+      { status: 'FAILED', files_changed: ['apps/web/example.tsx'], commit_sha: null, test_result: { agent_diagnostics: { summary: 'A focused test failed.' } } },
     ], error: null });
     const service = Object.create(SupportStoreService.prototype) as any;
     service.supabase = { from: jest.fn(() => ({ select: jest.fn(() => ({ eq })) })) };

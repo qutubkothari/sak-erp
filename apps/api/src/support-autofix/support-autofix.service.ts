@@ -2,8 +2,9 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException } 
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { AuditService } from '../audit/audit.service';
+import { hasSuperAdminBypass } from '../auth/utils/permission-utils';
 import { canDeployFix, deployWithRollback, DeploymentTargetRegistry, SshDeploymentTargetAdapter } from './deployment';
-import { autoHealDiffLimits, canAttemptAutoFix, classifyDiff, classifyIncident, isRecognizedCodexInfrastructureFailure, makeIncidentFingerprint, safeAutoHealMode } from './risk-policy';
+import { autoHealDiffLimits, canAttemptAutoFix, classifyDiff, classifyIncident, isInfrastructureFailure, isRecognizedCodexInfrastructureFailure, makeIncidentFingerprint, safeAutoHealMode } from './risk-policy';
 import { sanitizeSupportText, SupportStoreService } from './support-store.service';
 import { SupportAutofixEvents } from './support-events';
 import { IncidentInput } from './support-autofix.types';
@@ -48,7 +49,7 @@ export class SupportAutofixService {
     return rows.map((row: any) => ({ ...row, status: String(row.status), friendly_status: incidentStatusLabel(String(row.status)) }));
   }
 
-  async listAdmin(tenantId: string, query: any) {
+  async listAdmin(tenantId: string | null, query: any) {
     return this.store.listIncidents(tenantId, query);
   }
 
@@ -59,18 +60,83 @@ export class SupportAutofixService {
     return { ...incident, attempts, deployments };
   }
 
+  async listAdminForUser(user: any, query: any) {
+    return this.listAdmin(hasSuperAdminBypass(user) ? null : this.userTenantId(user), query);
+  }
+
+  async adminTenantId(user: any, incidentId: string): Promise<string> {
+    if (!hasSuperAdminBypass(user)) return this.userTenantId(user);
+    const incident = await this.store.getIncidentById(incidentId);
+    if (!incident?.tenant_id) throw new NotFoundException('Support incident not found.');
+    return String(incident.tenant_id);
+  }
+
+  async getAdminIncidentForUser(user: any, incidentId: string) {
+    const tenantId = await this.adminTenantId(user, incidentId);
+    const detail: any = await this.getAdminIncident(tenantId, incidentId);
+    const [genuineAttemptCount, totalAttemptCount, retryAlreadyUsed, workerHealth, hasReadyFix] = await Promise.all([
+      this.store.countAttempts(incidentId),
+      this.store.countHistoricalAttempts(incidentId),
+      this.store.hasInfrastructureRetryRequest(incidentId),
+      this.getWorkerHealth(),
+      this.store.hasReadyAttempt(incidentId),
+    ]);
+    const attempts = detail.attempts.map((attempt: any, index: number) => {
+      const infrastructureFailure = isInfrastructureFailure(attempt);
+      return {
+        ...attempt,
+        attempt_number: totalAttemptCount - index,
+        failure_class: infrastructureFailure ? 'INFRASTRUCTURE_FAILURE' : null,
+        display_risk_after_diff: infrastructureFailure ? null : attempt.risk_after_diff,
+      };
+    });
+    const latest = detail.attempts[0];
+    const recoveryEligible = ['FAILED', 'ESCALATED'].includes(String(detail.status))
+      && detail.risk_level === 'LOW'
+      && canAttemptAutoFix(genuineAttemptCount)
+      && isInfrastructureFailure(latest)
+      && !retryAlreadyUsed
+      && !hasReadyFix
+      && workerHealth.status === 'ONLINE'
+      && this.enabled();
+    return {
+      ...detail,
+      attempts,
+      recovery: { eligible: recoveryEligible, genuineAttempts: genuineAttemptCount, remainingAttempts: Math.max(0, 2 - genuineAttemptCount), workerReady: workerHealth.status === 'ONLINE' },
+      isCentralSupportAdmin: hasSuperAdminBypass(user),
+    };
+  }
+
+  adminConfiguration(user: any) {
+    const central = hasSuperAdminBypass(user);
+    const tenantId = central ? '' : this.userTenantId(user);
+    const deploymentTargets = central
+      ? this.registry.list().map(({ id, domain, tenantId: targetTenantId }) => ({ id, domain, tenantId: targetTenantId }))
+      : this.registry.forTenant(tenantId).map(({ id, domain, tenantId: targetTenantId }) => ({ id, domain, tenantId: targetTenantId }));
+    return { ...this.configuration(), isCentralSupportAdmin: central, deploymentTargets };
+  }
+
+  private userTenantId(user: any): string {
+    const tenantId = String(user?.tenantId || user?.tenant_id || '');
+    if (!tenantId) throw new ForbiddenException('Authenticated tenant context is required.');
+    return tenantId;
+  }
+
   async startWorkerAttempt(tenantId: string, incidentId: string, input: any) {
     if (!this.enabled()) throw new ConflictException('AutoHeal is disabled.');
     const incident = await this.requireIncident(tenantId, incidentId);
     const routeContext = this.resolveIncidentRoute(incident);
     const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
     const count = await this.store.countAttempts(incidentId);
+    const latest = await this.store.latestAttempt(incidentId);
+    const authorizedRecovery = await this.hasAuthorizedInfrastructureRetry(incidentId, count);
     if (!['NEW', 'TRIAGING'].includes(String(incident.status))) throw new ConflictException('This incident is already being processed or is not eligible for a patch attempt.');
     if (decision.risk !== 'LOW' || incident.risk_level !== 'LOW') {
       await this.store.updateIncident(tenantId, incidentId, { status: 'ESCALATED', risk_level: decision.risk, risk_reason: decision.reason });
       throw new ConflictException('Only LOW risk incidents can be processed by the coding worker.');
     }
-    if (!canAttemptAutoFix(count) && !(await this.hasAuthorizedInfrastructureRetry(incidentId, count))) {
+    if (isInfrastructureFailure(latest) && !authorizedRecovery) throw new ConflictException('An audited infrastructure recovery is required before another patch attempt.');
+    if (!canAttemptAutoFix(count) && !authorizedRecovery) {
       await this.store.updateIncident(tenantId, incidentId, { status: 'ESCALATED', risk_reason: 'The maximum of two automatic patch attempts was reached.' });
       throw new ConflictException('The automatic attempt limit has been reached.');
     }
@@ -80,7 +146,8 @@ export class SupportAutofixService {
     await this.store.updateIncident(tenantId, incidentId, { status: 'TRIAGING', risk_level: 'LOW', risk_reason: decision.reason, ...(routeContext.route ? { route: routeContext.route, page_url: routeContext.route } : {}), ...(routeContext.module ? { module: routeContext.module } : {}) });
     const attempt = await this.store.createAttempt({ incident_id: incidentId, branch_name: branchName, base_sha: baseSha, agent_provider: 'codex-cli', agent_model: 'gpt-6-luna', prompt_summary: `Low-risk ${decision.category} UI repair for ${routeContext.route || 'reported route'}.`, risk_after_diff: 'LOW', status: 'RUNNING', worktree_ref: 'isolated-worker-worktree' });
     await this.store.updateIncident(tenantId, incidentId, { status: 'PATCHING' });
-    return { incident: { id: incident.id, title: incident.title, description: incident.description, route: routeContext.route, module: routeContext.module || incident.module, error: incident.error_message, riskLevel: decision.risk, category: decision.category }, attemptId: attempt.id, attemptNumber: count + 1 };
+    const attemptNumber = await this.store.countHistoricalAttempts(incidentId);
+    return { incident: { id: incident.id, title: incident.title, description: incident.description, route: routeContext.route, module: routeContext.module || incident.module, error: incident.error_message, riskLevel: decision.risk, category: decision.category }, attemptId: attempt.id, attemptNumber };
   }
 
   async getWorkerIncident(tenantId: string, incidentId: string) {
@@ -94,11 +161,15 @@ export class SupportAutofixService {
       throw new ConflictException('Only LOW risk incidents can be processed by the coding worker.');
     }
     const attemptCount = await this.store.countAttempts(incidentId);
-    if (!canAttemptAutoFix(attemptCount) && !(await this.hasAuthorizedInfrastructureRetry(incidentId, attemptCount))) {
+    const latest = await this.store.latestAttempt(incidentId);
+    const authorizedRecovery = await this.hasAuthorizedInfrastructureRetry(incidentId, attemptCount);
+    if (isInfrastructureFailure(latest) && !authorizedRecovery) throw new ConflictException('An audited infrastructure recovery is required before another patch attempt.');
+    if (!canAttemptAutoFix(attemptCount) && !authorizedRecovery) {
       await this.store.updateIncident(tenantId, incidentId, { status: 'ESCALATED', risk_reason: 'The maximum of two automatic patch attempts was reached.' });
       throw new ConflictException('The automatic attempt limit has been reached.');
     }
-    return { incident: { id: incident.id, title: incident.title, description: incident.description, route: routeContext.route, module: routeContext.module || incident.module, error: incident.error_message, riskLevel: decision.risk, category: decision.category }, attemptNumber: attemptCount + 1 };
+    const attemptNumber = await this.store.countHistoricalAttempts(incidentId) + 1;
+    return { incident: { id: incident.id, title: incident.title, description: incident.description, route: routeContext.route, module: routeContext.module || incident.module, error: incident.error_message, riskLevel: decision.risk, category: decision.category }, attemptNumber };
   }
 
   async finishWorkerAttempt(tenantId: string, incidentId: string, input: any) {
@@ -157,6 +228,8 @@ export class SupportAutofixService {
     if (!this.enabled()) throw new ConflictException('AutoHeal is disabled by the emergency kill switch.');
     const incident = await this.requireIncident(tenantId, incidentId);
     const attempts = await this.store.countAttempts(incidentId);
+    const latest = await this.store.latestAttempt(incidentId);
+    if (isInfrastructureFailure(latest)) throw new ConflictException('Use the audited infrastructure recovery action for this failed worker attempt.');
     if (!canAttemptAutoFix(attempts)) {
       await this.store.updateIncident(tenantId, incidentId, { status: 'ESCALATED', risk_reason: 'The maximum of two automatic patch attempts was reached.' });
       throw new ConflictException('The automatic attempt limit has been reached; engineering review is required.');
@@ -176,27 +249,34 @@ export class SupportAutofixService {
     if (!this.enabled()) throw new ConflictException('AutoHeal is disabled by the emergency kill switch.');
     const incident = await this.requireIncident(tenantId, incidentId);
     const attempts = await this.store.countAttempts(incidentId);
-    if (attempts !== 2 || !['FAILED', 'ESCALATED'].includes(String(incident.status)) || incident.risk_level !== 'LOW') {
-      throw new ConflictException('Infrastructure recovery is available only after two failed attempts on a LOW risk incident.');
-    }
-    const [latest, alreadyUsed] = await Promise.all([
+    const [latest, alreadyUsed, workerHealth, hasReadyFix, priorAttemptCount] = await Promise.all([
       this.store.latestAttempt(incidentId),
       this.store.hasInfrastructureRetryRequest(incidentId),
+      this.getWorkerHealth(),
+      this.store.hasReadyAttempt(incidentId),
+      this.store.countHistoricalAttempts(incidentId),
     ]);
-    if (!isRecognizedCodexInfrastructureFailure(latest)) throw new ConflictException('The latest attempt is not a recognized no-change Codex infrastructure failure.');
+    if (!['FAILED', 'ESCALATED'].includes(String(incident.status)) || incident.risk_level !== 'LOW') {
+      throw new ConflictException('Infrastructure recovery requires a failed or escalated LOW risk incident.');
+    }
+    if (!canAttemptAutoFix(attempts)) throw new ConflictException('No genuine coding attempts remain under the two-attempt limit.');
+    if (hasReadyFix) throw new ConflictException('A fix is already awaiting approval.');
+    if (!isInfrastructureFailure(latest)) throw new ConflictException('The latest attempt is not a recognized no-change Codex infrastructure failure.');
     if (alreadyUsed) throw new ConflictException('The one-time infrastructure recovery retry was already used.');
+    if (workerHealth.status !== 'ONLINE') throw new ConflictException('Infrastructure recovery requires a current healthy worker sandbox preflight.');
     const decision = classifyIncident({ title: incident.title, description: incident.description, module: incident.module, route: incident.route, error: incident.error_message });
     if (decision.risk !== 'LOW') throw new ConflictException('Only LOW risk incidents can use infrastructure recovery.');
     const routeContext = this.resolveIncidentRoute(incident);
+    const attemptNumber = priorAttemptCount + 1;
     await this.store.updateIncident(tenantId, incidentId, { status: 'TRIAGING', risk_level: 'LOW', risk_reason: decision.reason, ...(routeContext.route ? { route: routeContext.route, page_url: routeContext.route } : {}), ...(routeContext.module ? { module: routeContext.module } : {}) });
     await this.audit.logActivity({ tenantId, userId: actorId, action: 'SUPPORT_AUTOFIX_INFRASTRUCTURE_RETRY_REQUESTED', resourceType: 'support_incident', resourceId: incidentId });
-    await this.store.writeEvent({ type: 'autofix.infrastructure-retry-requested', tenantId, incidentId, at: new Date().toISOString(), details: { action: 'retry-after-infrastructure-failure', attemptNumber: 3, priorAttempts: 2 } }, actorId);
-    await this.queue.add('incident', { tenantId, incidentId }, { jobId: `infrastructure-retry-${incidentId}-attempt-3`, attempts: 2, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: false });
-    return { queued: true, attemptNumber: 3 };
+    await this.store.writeEvent({ type: 'autofix.infrastructure-retry-requested', tenantId, incidentId, at: new Date().toISOString(), details: { action: 'retry-after-infrastructure-failure', attemptNumber, priorAttempts: priorAttemptCount, genuineAttempts: attempts } }, actorId);
+    await this.queue.add('incident', { tenantId, incidentId }, { jobId: `infrastructure-retry-${incidentId}-attempt-${attemptNumber}`, attempts: 2, backoff: { type: 'exponential', delay: 5_000 }, removeOnComplete: true, removeOnFail: false });
+    return { queued: true, attemptNumber };
   }
 
   private async hasAuthorizedInfrastructureRetry(incidentId: string, attemptCount: number) {
-    if (attemptCount !== 2) return false;
+    if (!canAttemptAutoFix(attemptCount)) return false;
     const [latest, authorized] = await Promise.all([
       this.store.latestAttempt(incidentId),
       this.store.hasInfrastructureRetryRequest(incidentId),

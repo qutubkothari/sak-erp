@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { SupportAutofixEvents } from './support-events';
 import { IncidentInput, RiskDecision, SupportEvent } from './support-autofix.types';
 import { assertIncidentTransition } from './incident-state';
+import { isInfrastructureFailure } from './risk-policy';
 
 const REDACTED = '[redacted]';
 const MAX_TEXT = 2_000;
@@ -126,9 +127,11 @@ export class SupportStoreService {
     return data || [];
   }
 
-  async listIncidents(tenantId: string, query: { status?: string; risk?: string; limit?: unknown }) {
+  async listIncidents(tenantId: string | null, query: { status?: string; risk?: string; limit?: unknown }) {
     const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);
-    let request = this.supabase.from('support_incidents').select('*').eq('tenant_id', tenantId).order('updated_at', { ascending: false }).limit(limit);
+    let request = this.supabase.from('support_incidents').select('*');
+    if (tenantId) request = request.eq('tenant_id', tenantId);
+    request = request.order('updated_at', { ascending: false }).limit(limit);
     if (query.status && ['NEW','TRIAGING','PATCHING','TESTING','READY_FOR_APPROVAL','DEPLOYING','VERIFYING','RESOLVED','ROLLED_BACK','ESCALATED','FAILED'].includes(query.status)) request = request.eq('status', query.status);
     if (query.risk && ['LOW','MEDIUM','HIGH','BLOCKED'].includes(query.risk)) request = request.eq('risk_level', query.risk);
     const { data, error } = await request;
@@ -138,6 +141,12 @@ export class SupportStoreService {
 
   async getIncident(tenantId: string, incidentId: string) {
     const { data, error } = await this.supabase.from('support_incidents').select('*').eq('tenant_id', tenantId).eq('id', incidentId).maybeSingle();
+    if (error) throw error;
+    return data || null;
+  }
+
+  async getIncidentById(incidentId: string) {
+    const { data, error } = await this.supabase.from('support_incidents').select('*').eq('id', incidentId).maybeSingle();
     if (error) throw error;
     return data || null;
   }
@@ -170,9 +179,21 @@ export class SupportStoreService {
   }
 
   async countAttempts(incidentId: string): Promise<number> {
-    const { data, error } = await this.supabase.from('support_fix_attempts').select('status,test_result').eq('incident_id', incidentId);
+    const { data, error } = await this.supabase.from('support_fix_attempts').select('status,test_result,files_changed,commit_sha').eq('incident_id', incidentId);
     if (error) throw error;
-    return (data || []).filter((attempt: any) => attempt.test_result?.agent_diagnostics?.failure_class !== 'INFRASTRUCTURE_FAILURE').length;
+    return (data || []).filter((attempt: any) => !isInfrastructureFailure(attempt)).length;
+  }
+
+  async countHistoricalAttempts(incidentId: string): Promise<number> {
+    const { count, error } = await this.supabase.from('support_fix_attempts').select('id', { count: 'exact', head: true }).eq('incident_id', incidentId);
+    if (error) throw error;
+    return Number(count) || 0;
+  }
+
+  async hasReadyAttempt(incidentId: string): Promise<boolean> {
+    const { count, error } = await this.supabase.from('support_fix_attempts').select('id', { count: 'exact', head: true }).eq('incident_id', incidentId).eq('status', 'READY_FOR_APPROVAL');
+    if (error) throw error;
+    return Number(count) > 0;
   }
 
   async latestAttempt(incidentId: string) {

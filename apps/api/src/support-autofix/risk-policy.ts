@@ -96,11 +96,39 @@ export function canAttemptAutoFix(attemptCount: number, maximum = 2): boolean {
   return Number.isInteger(attemptCount) && attemptCount >= 0 && attemptCount < maximum;
 }
 
+export function isInfrastructureFailure(attempt: any): boolean {
+  if (!attempt || !['FAILED', 'INFRASTRUCTURE_FAILURE'].includes(String(attempt.status || ''))) return false;
+  if ((Array.isArray(attempt.files_changed) && attempt.files_changed.length > 0) || attempt.commit_sha) return false;
+
+  const diagnostics = attempt.test_result?.agent_diagnostics || attempt.agent_diagnostics || {};
+  const classification = String(diagnostics.failure_class || diagnostics.failureClass || '').toUpperCase();
+  if (classification === 'INFRASTRUCTURE_FAILURE') return true;
+
+  const evidence = [
+    diagnostics.summary,
+    diagnostics.stderr_summary,
+    diagnostics.stderrSummary,
+    diagnostics.command_summary,
+    diagnostics.commandSummary,
+    diagnostics.error,
+    diagnostics.detail,
+  ].filter(Boolean).join('\n');
+  if (!evidence.trim()) return false;
+
+  return /\b(?:bwrap|bubblewrap)\b/i.test(evidence)
+    || /\bRTM_NEWADDR\b|\bEWADDR\b/i.test(evidence)
+    || /sandbox (?:initialization|preflight|startup) (?:failed|failure|error|blocked|unavailable)/i.test(evidence)
+    || /permission[- ]profile.{0,80}(?:startup|initializ|load|unavailable|operation not permitted)/i.test(evidence)
+    || /blocked before (?:repository )?inspection.{0,160}(?:bwrap|RTM_NEWADDR|EWADDR|sandbox|permission|operation not permitted|exec_command)/i.test(evidence)
+    || /(?:could not|couldn't|unable to|failed to) (?:execute|run|start) (?:the )?(?:repository )?inspection.{0,120}(?:sandbox|bwrap|codex|permission|operation not permitted)/i.test(evidence);
+}
+
 export function isRecognizedCodexInfrastructureFailure(attempt: any): boolean {
-  if (!attempt || attempt.status !== 'FAILED' || (Array.isArray(attempt.files_changed) && attempt.files_changed.length > 0) || attempt.commit_sha) return false;
-  const diagnostics = attempt.test_result?.agent_diagnostics || {};
-  const failureText = `${diagnostics.summary || ''}\n${diagnostics.stderr_summary || ''}`;
-  return /\bEWADDR\b/i.test(failureText) && /operation not permitted/i.test(failureText);
+  return isInfrastructureFailure(attempt);
+}
+
+export function countGenuineCodingAttempts(attempts: any[]): number {
+  return (Array.isArray(attempts) ? attempts : []).filter((attempt) => !isInfrastructureFailure(attempt)).length;
 }
 
 export function autoHealDiffLimits(env: NodeJS.ProcessEnv = process.env): { files: number; lines: number } {

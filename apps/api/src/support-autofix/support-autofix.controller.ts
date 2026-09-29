@@ -64,57 +64,62 @@ export class SupportAutofixController {
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:read')
   configuration(@Request() req: any) {
-    return { ...this.service.configuration(), deploymentTargets: this.service.deploymentTargets(req.user.tenantId) };
+    return this.service.adminConfiguration(req.user);
   }
 
   @Get('admin/incidents')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:read')
   list(@Request() req: any, @Query() query: any) {
-    return this.service.listAdmin(req.user.tenantId, query);
+    return this.service.listAdminForUser(req.user, query);
   }
 
   @Get('admin/incidents/:id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:read')
   get(@Request() req: any, @Param('id') id: string) {
-    return this.service.getAdminIncident(req.user.tenantId, id);
+    return this.service.getAdminIncidentForUser(req.user, id);
   }
 
   @Post('admin/incidents/:id/retry')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:manage')
-  retry(@Request() req: any, @Param('id') id: string) {
-    return this.service.retryAnalysis(req.user.tenantId, id, req.user.userId || req.user.id);
+  async retry(@Request() req: any, @Param('id') id: string) {
+    const tenantId = await this.service.adminTenantId(req.user, id);
+    return this.service.retryAnalysis(tenantId, id, req.user.userId || req.user.id);
   }
 
   @Post('admin/incidents/:id/retry-infrastructure')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:manage')
-  retryInfrastructure(@Request() req: any, @Param('id') id: string) {
-    return this.service.retryAfterInfrastructureFailure(req.user.tenantId, id, req.user.userId || req.user.id);
+  async retryInfrastructure(@Request() req: any, @Param('id') id: string) {
+    const tenantId = await this.service.adminTenantId(req.user, id);
+    return this.service.retryAfterInfrastructureFailure(tenantId, id, req.user.userId || req.user.id);
   }
 
   @Post('admin/incidents/:id/approve-deployment')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:approve')
-  approve(@Request() req: any, @Param('id') id: string, @Body() body: { targetId?: string }) {
-    const targets = this.service.deploymentTargets(req.user.tenantId);
+  async approve(@Request() req: any, @Param('id') id: string, @Body() body: { targetId?: string }) {
+    const tenantId = await this.service.adminTenantId(req.user, id);
+    const targets = this.service.deploymentTargets(tenantId);
     const targetId = String(body?.targetId || (targets.length === 1 ? targets[0].id : ''));
-    return this.service.approveDeployment(req.user.tenantId, id, req.user.userId || req.user.id, targetId);
+    return this.service.approveDeployment(tenantId, id, req.user.userId || req.user.id, targetId);
   }
 
   @Post('admin/incidents/:id/reject-fix')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:approve')
-  reject(@Request() req: any, @Param('id') id: string, @Body() body: { reason?: string }) {
-    return this.service.rejectFix(req.user.tenantId, id, req.user.userId || req.user.id, body?.reason);
+  async reject(@Request() req: any, @Param('id') id: string, @Body() body: { reason?: string }) {
+    const tenantId = await this.service.adminTenantId(req.user, id);
+    return this.service.rejectFix(tenantId, id, req.user.userId || req.user.id, body?.reason);
   }
 
   @Post('admin/incidents/:id/rollback')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:approve')
-  rollback(@Request() req: any, @Param('id') id: string) {
-    return this.service.requestRollback(req.user.tenantId, id, req.user.userId || req.user.id);
+  async rollback(@Request() req: any, @Param('id') id: string) {
+    const tenantId = await this.service.adminTenantId(req.user, id);
+    return this.service.requestRollback(tenantId, id, req.user.userId || req.user.id);
   }
 }

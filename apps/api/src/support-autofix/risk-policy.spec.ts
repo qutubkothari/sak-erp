@@ -1,4 +1,4 @@
-import { autoHealDiffLimits, canAttemptAutoFix, classifyDiff, classifyIncident, isRecognizedCodexInfrastructureFailure, makeIncidentFingerprint, safeAutoHealMode } from './risk-policy';
+import { autoHealDiffLimits, canAttemptAutoFix, classifyDiff, classifyIncident, countGenuineCodingAttempts, isInfrastructureFailure, isRecognizedCodexInfrastructureFailure, makeIncidentFingerprint, safeAutoHealMode } from './risk-policy';
 import { SafetyGateInput } from './support-autofix.types';
 
 const passed = { passed: true, detail: 'passed' };
@@ -12,6 +12,20 @@ const validGate = (overrides: Partial<SafetyGateInput> = {}): SafetyGateInput =>
 });
 
 describe('AutoHeal deterministic risk policy', () => {
+  it('recognizes explicit and legacy sandbox failures but not generic no-change or coding failures', () => {
+    const attempt = (summary: string, extras: any = {}) => ({ status: 'FAILED', files_changed: [], commit_sha: null, test_result: { agent_diagnostics: { summary, ...extras } } });
+    expect(isInfrastructureFailure(attempt('old error', { failure_class: 'INFRASTRUCTURE_FAILURE' }))).toBe(true);
+    expect(isInfrastructureFailure(attempt('Blocked before inspection: bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted'))).toBe(true);
+    expect(isInfrastructureFailure(attempt('EWADDR: Operation not permitted while starting sandbox'))).toBe(true);
+    expect(isInfrastructureFailure(attempt('No changes produced after tests failed'))).toBe(false);
+    expect(isInfrastructureFailure(attempt('Blocked before inspection because the reported module and route were incorrect'))).toBe(false);
+    expect(isInfrastructureFailure({ ...attempt('Codex failed a focused test'), files_changed: ['apps/web/a.tsx'] })).toBe(false);
+    const attempts = [attempt('wrong module context only'), attempt('EWADDR: Operation not permitted'), attempt('bwrap failed RTM_NEWADDR')];
+    expect(countGenuineCodingAttempts(attempts)).toBe(1);
+    expect(canAttemptAutoFix(countGenuineCodingAttempts(attempts))).toBe(true);
+    expect(canAttemptAutoFix(2)).toBe(false);
+  });
+
   it('classifies a date/weekday display defect as LOW', () => {
     expect(classifyIncident({ title: 'Attendance Date column weekday formatting', description: 'Display the weekday under the date', route: '/dashboard/hr/management?tab=attendance' }).risk).toBe('LOW');
   });

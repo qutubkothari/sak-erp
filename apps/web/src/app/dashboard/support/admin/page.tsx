@@ -5,30 +5,16 @@ import { Loader2, RefreshCw, RotateCcw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "../../../../../lib/api-client";
 
-type Incident = { id: string; tenant_id?: string; title: string; module?: string; route?: string; status: string; risk_level: string; risk_reason?: string; created_at: string; occurrence_count: number };
-type Target = { id: string; domain: string };
-type Detail = Incident & { screenshot_ref?: string; reported_by?: string; reported_employee_id?: string; description?: string; error_message?: string; http_status?: number; request_id?: string; build_sha?: string; browser_info?: string; root_cause?: string; attempts: any[]; deployments: any[] };
-type Configuration = { enabled: boolean; mode: string; deploymentTargets: Target[] };
+type Incident = { id: string; tenant_id?: string; reported_by?: string; title: string; module?: string; route?: string; status: string; risk_level: string; risk_reason?: string; created_at: string; occurrence_count: number };
+type Target = { id: string; domain: string; tenantId?: string };
+type Detail = Incident & { screenshot_ref?: string; reported_by?: string; reported_employee_id?: string; description?: string; error_message?: string; http_status?: number; request_id?: string; build_sha?: string; browser_info?: string; root_cause?: string; attempts: any[]; deployments: any[]; recovery?: { eligible: boolean; genuineAttempts: number; remainingAttempts: number; workerReady: boolean }; isCentralSupportAdmin?: boolean };
+type Configuration = { enabled: boolean; mode: string; isCentralSupportAdmin?: boolean; deploymentTargets: Target[] };
 type WorkerHealth = { status: "ONLINE" | "OFFLINE" | "DEGRADED"; stateCode?: string | null; stateMessage?: string | null; lastHeartbeat: string | null; queueDepth: number; currentIncident: string | null };
 
 function pretty(value: unknown) {
   if (value === undefined || value === null || value === "") return "Not available";
   if (typeof value === "string") return value;
   return JSON.stringify(value, null, 2);
-}
-
-function hasInfrastructureRetryAvailable(incident: Detail) {
-  const latest = incident.attempts?.[0];
-  const diagnostics = latest?.test_result?.agent_diagnostics || {};
-  const failure = `${diagnostics.summary || ''}\n${diagnostics.stderr_summary || ''}`;
-  return incident.risk_level === 'LOW'
-    && ['FAILED', 'ESCALATED'].includes(incident.status)
-    && incident.attempts?.length === 2
-    && latest?.status === 'FAILED'
-    && !(latest.files_changed || []).length
-    && !latest.commit_sha
-    && /\bEWADDR\b/i.test(failure)
-    && /operation not permitted/i.test(failure);
 }
 
 export default function SupportAutoHealAdminPage() {
@@ -76,6 +62,11 @@ export default function SupportAutoHealAdminPage() {
 
   useEffect(() => { void refresh(); }, []);
 
+  const availableTargets = (config?.deploymentTargets ?? []).filter((target) => !target.tenantId || !selected?.tenant_id || target.tenantId === selected.tenant_id);
+  useEffect(() => {
+    if (!availableTargets.some((target) => target.id === targetId)) setTargetId(availableTargets[0]?.id || '');
+  }, [selected?.tenant_id, config?.deploymentTargets, targetId]);
+
   const act = async (action: string, confirmText: string) => {
     if (!selected || !window.confirm(confirmText)) return;
     setBusy(true);
@@ -107,25 +98,25 @@ export default function SupportAutoHealAdminPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(18rem,0.75fr)_minmax(0,1.5fr)]">
         <section className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
           <div className="border-b border-stone-200 px-5 py-4"><h2 className="font-semibold text-stone-900">Incidents</h2><p className="mt-1 text-xs text-stone-500">{incidents.length} recent records</p></div>
-          <div className="max-h-[70vh] overflow-y-auto">{incidents.map((incident) => <button key={incident.id} onClick={() => void loadDetail(incident.id)} className={`block w-full border-b border-stone-100 px-5 py-4 text-left hover:bg-stone-50 ${selected?.id === incident.id ? "bg-amber-50" : ""}`}><div className="flex items-start justify-between gap-3"><span className="font-medium text-stone-900">{incident.title}</span><span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-700">{incident.risk_level}</span></div><p className="mt-1 text-xs text-stone-500">{incident.module || "General"} · {incident.route || "Route unavailable"}</p><div className="mt-2 flex gap-2 text-[11px] text-stone-500"><span>{incident.status.replaceAll("_", " ")}</span><span>·</span><time>{new Date(incident.created_at).toLocaleString()}</time></div></button>)}{!incidents.length && !error && <p className="p-5 text-sm text-stone-500">No incidents to review.</p>}</div>
+          <div className="max-h-[70vh] overflow-y-auto">{incidents.map((incident) => <button key={incident.id} onClick={() => void loadDetail(incident.id)} className={`block w-full border-b border-stone-100 px-5 py-4 text-left hover:bg-stone-50 ${selected?.id === incident.id ? "bg-amber-50" : ""}`}><div className="flex items-start justify-between gap-3"><span className="font-medium text-stone-900">{incident.title}</span><span className="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-700">{incident.risk_level}</span></div><p className="mt-1 text-xs text-stone-500">{incident.module || "General"} · {incident.route || "Route unavailable"}</p><p className="mt-1 text-[11px] text-stone-500">Tenant {incident.tenant_id || "current tenant"} · Reporter {incident.reported_by || "Not available"}</p><div className="mt-2 flex gap-2 text-[11px] text-stone-500"><span>{incident.status.replaceAll("_", " ")}</span><span>·</span><time>{new Date(incident.created_at).toLocaleString()}</time></div></button>)}{!incidents.length && !error && <p className="p-5 text-sm text-stone-500">No incidents to review.</p>}</div>
         </section>
 
         <section className="min-w-0 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
           {!selected ? <div className="grid min-h-64 place-items-center text-sm text-stone-500">Select an incident to review its diagnostics.</div> : <div className="space-y-5">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-100 pb-4"><div><p className="text-xs uppercase tracking-wide text-stone-500">{selected.module || "General"} · {selected.route || "Route unavailable"}</p><h2 className="mt-1 text-xl font-semibold text-stone-900">{selected.title}</h2><p className="mt-2 text-sm text-stone-600">Tenant {selected.tenant_id || "current tenant"} · {selected.occurrence_count} occurrence(s)</p></div><div className="flex gap-2"><span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold">{selected.status}</span><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">{selected.risk_level}</span></div></div>
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-100 pb-4"><div><p className="text-xs uppercase tracking-wide text-stone-500">{selected.module || "General"} · {selected.route || "Route unavailable"}</p><h2 className="mt-1 text-xl font-semibold text-stone-900">{selected.title}</h2><p className="mt-2 text-sm text-stone-600">Tenant {selected.tenant_id || "current tenant"} · Reporter {selected.reported_by || "Not available"} · {selected.occurrence_count} occurrence(s)</p></div><div className="flex gap-2"><span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold">{selected.status}</span><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">{selected.risk_level}</span></div></div>
             <div className="grid gap-4 md:grid-cols-2"><Info title="Risk decision" value={selected.risk_reason} /><Info title="Root cause" value={selected.root_cause} /><Info title="Client description" value={selected.description} /><Info title="Visible error" value={selected.error_message} /><Info title="Reported by user" value={selected.reported_by} /><Info title="Employee reference" value={selected.reported_employee_id} /><Info title="HTTP status" value={selected.http_status} /><Info title="Build SHA" value={selected.build_sha} /><Info title="Request ID" value={selected.request_id} /><Info title="Browser/device" value={selected.browser_info} /></div>
 
             {/^[0-9a-f-]{36}$/i.test(selected.screenshot_ref || '') && <button type="button" onClick={() => void downloadScreenshot(selected.screenshot_ref || '')} className="rounded-lg border px-3 py-2 text-sm">Download reported screenshot</button>}
-            <div><h3 className="font-semibold text-stone-900">Fix attempts</h3>{selected.attempts?.length ? <div className="mt-2 space-y-3">{selected.attempts.map((attempt) => <article key={attempt.id} className="rounded-xl border border-stone-200 p-4"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{attempt.test_result?.agent_diagnostics?.failure_class || attempt.status} · {attempt.agent_provider}/{attempt.agent_model}</strong><span className="text-xs text-stone-500">Risk after diff: {attempt.risk_after_diff}</span></div><p className="mt-2 break-all text-xs text-stone-600">Branch: {attempt.branch_name} · Base: {attempt.base_sha}</p><p className="mt-1 break-all text-xs text-stone-600">Files: {(attempt.files_changed || []).join(", ") || "None"}</p><p className="mt-1 text-xs text-stone-600">Lines: +{attempt.lines_added || 0} / -{attempt.lines_removed || 0}</p><p className="mt-1 break-all text-xs text-stone-600">Commit: {attempt.commit_sha || "Not created"}</p><div className="mt-3 grid gap-3 md:grid-cols-2"><Info title="Tests and smoke" value={attempt.test_result} /><Info title="Agent diagnostics" value={attempt.test_result?.agent_diagnostics} /><Info title="Build" value={attempt.build_result} /></div>{attempt.safety_reasons?.length > 0 && <p className="mt-2 text-xs text-red-700">Safety gate: {attempt.safety_reasons.join("; ")}</p>}</article>)}</div> : <p className="mt-2 text-sm text-stone-500">No patch attempts recorded.</p>}</div>
+            <div><h3 className="font-semibold text-stone-900">Fix attempts</h3>{selected.attempts?.length ? <div className="mt-2 space-y-3">{selected.attempts.map((attempt) => { const infrastructureFailure = attempt.failure_class === 'INFRASTRUCTURE_FAILURE'; return <article key={attempt.id} className="rounded-xl border border-stone-200 p-4"><div className="flex flex-wrap justify-between gap-2"><strong className="text-sm">{infrastructureFailure ? 'INFRASTRUCTURE FAILURE' : attempt.status} · {attempt.agent_provider}/{attempt.agent_model}</strong><span className="text-xs text-stone-500">Post-diff risk: {infrastructureFailure || attempt.display_risk_after_diff == null ? 'Not assessed' : attempt.display_risk_after_diff}</span></div><p className="mt-2 break-all text-xs text-stone-600">Branch: {attempt.branch_name} · Base: {attempt.base_sha}</p><p className="mt-1 break-all text-xs text-stone-600">Files: {(attempt.files_changed || []).join(", ") || "None"}</p><p className="mt-1 text-xs text-stone-600">Lines: +{attempt.lines_added || 0} / -{attempt.lines_removed || 0}</p><p className="mt-1 break-all text-xs text-stone-600">Commit: {attempt.commit_sha || "Not created"}</p><div className="mt-3 grid gap-3 md:grid-cols-2"><Info title="Tests and smoke" value={attempt.test_result} /><Info title="Agent diagnostics" value={attempt.test_result?.agent_diagnostics} /><Info title="Build" value={attempt.build_result} /></div>{attempt.safety_reasons?.length > 0 && <p className="mt-2 text-xs text-red-700">Safety gate: {attempt.safety_reasons.join("; ")}</p>}</article>; })}</div> : <p className="mt-2 text-sm text-stone-500">No patch attempts recorded.</p>}</div>
 
             <div><h3 className="font-semibold text-stone-900">Deployments and rollback</h3>{selected.deployments?.length ? <div className="mt-2 space-y-2">{selected.deployments.map((deployment) => <article key={deployment.id} className="rounded-xl border border-stone-200 p-4 text-sm"><p className="font-medium">{deployment.target} · {deployment.deployment_status}</p><p className="mt-1 break-all text-xs text-stone-600">Previous {deployment.previous_sha} → New {deployment.new_sha}</p><p className="mt-1 text-xs text-stone-600">Smoke: {pretty(deployment.smoke_result)} · Rollback: {deployment.rollback_status}</p></article>)}</div> : <p className="mt-2 text-sm text-stone-500">No deployment attempts recorded.</p>}</div>
 
             <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 pt-4">
-              {(config?.deploymentTargets?.length ?? 0) > 1 && <select value={targetId} onChange={(event) => setTargetId(event.target.value)} className="rounded-lg border border-stone-300 px-3 py-2 text-sm">{(config?.deploymentTargets ?? []).map((target) => <option key={target.id} value={target.id}>{target.domain}</option>)}</select>}
+              {availableTargets.length > 1 && <select value={targetId} onChange={(event) => setTargetId(event.target.value)} className="rounded-lg border border-stone-300 px-3 py-2 text-sm">{availableTargets.map((target) => <option key={target.id} value={target.id}>{target.domain}</option>)}</select>}
               {selected.status === "READY_FOR_APPROVAL" && config?.mode === "APPROVAL" && <button disabled={busy || !targetId} onClick={() => void act("approve-deployment", "Approve this verified low-risk web fix for deployment?")} className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Approve deployment</button>}
               {!["RESOLVED", "ROLLED_BACK"].includes(selected.status) && <button disabled={busy} onClick={() => void act("reject-fix", "Reject this fix and escalate it for engineering review?")} className="rounded-lg border border-stone-300 px-3 py-2 text-sm">Reject fix</button>}
               {selected.status === "FAILED" && <button disabled={busy} onClick={() => void act("retry", "Retry analysis? The incident is limited to two automatic patch attempts.")} className="rounded-lg border border-stone-300 px-3 py-2 text-sm">Retry analysis</button>}
-              {hasInfrastructureRetryAvailable(selected) && <button disabled={busy} onClick={() => void act("retry-infrastructure", "Use the one-time administrator recovery attempt after this verified worker infrastructure failure?")} className="rounded-lg border border-amber-300 px-3 py-2 text-sm text-amber-900">Retry after worker fix</button>}
+              {config?.isCentralSupportAdmin && selected.isCentralSupportAdmin && selected.recovery?.eligible && selected.recovery.workerReady && worker?.status === "ONLINE" && <button disabled={busy} onClick={() => void act("retry-infrastructure", "Use the one-time administrator recovery attempt after this verified worker infrastructure failure?")} className="rounded-lg border border-amber-300 px-3 py-2 text-sm text-amber-900">Retry after infrastructure failure</button>}
               {selected.status === "RESOLVED" && <button disabled={busy} onClick={() => void act("rollback", "Roll back the deployed web fix to its previous verified SHA?")} className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm text-red-800"><RotateCcw size={15} />Rollback</button>}
               {busy && <Loader2 className="animate-spin text-stone-500" size={18} />}
             </div>
