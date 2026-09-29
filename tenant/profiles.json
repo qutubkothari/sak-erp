@@ -30,6 +30,6 @@
     "currency": "EGP",
     "locale": "ar-EG",
     "timezone": "Africa/Cairo",
-    "features": { "activePlanner": true, "egyptArabicPlanner": true }
+    "features": { "activePlanner": true, "egyptArabicPlanner": false }
   }
 }
