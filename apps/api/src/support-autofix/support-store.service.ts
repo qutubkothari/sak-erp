@@ -121,7 +121,7 @@ export class SupportStoreService {
   }
 
   async listMine(tenantId: string, reporterId: string) {
-    const { data, error } = await this.supabase.from('support_incidents').select('id,title,status,created_at,updated_at,occurrence_count').eq('tenant_id', tenantId).eq('reported_by', reporterId).order('created_at', { ascending: false }).limit(100);
+    const { data, error } = await this.supabase.from('support_incidents').select('id,title,module,status,created_at,updated_at,occurrence_count').eq('tenant_id', tenantId).eq('reported_by', reporterId).order('created_at', { ascending: false }).limit(100);
     if (error) throw error;
     return data || [];
   }

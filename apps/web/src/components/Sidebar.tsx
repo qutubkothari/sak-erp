@@ -45,6 +45,7 @@ import { isPathAllowedForUser } from "@/lib/rbac";
 import { SCREEN_DEFINITIONS } from "@/lib/permission-config";
 import { useLocale } from "@/lib/locale";
 import LanguageSwitch from "@/components/LanguageSwitch";
+import SupportIssueStatus from "@/components/SupportIssueStatus";
 import {
   fsmIdentityFromStorage,
   purgeFsmOfflineIdentity,
@@ -1379,6 +1380,16 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </div>
         </div>
       </aside>
+      <SupportIssueStatus
+        userKey={String(
+          (currentUser as any)?.userId ||
+            (currentUser as any)?.id ||
+            (currentUser as any)?.email ||
+            (currentUser as any)?.username ||
+            "current-user",
+        )}
+        collapsed={collapsed}
+      />
 
       {!hideGlobalMobileNavigation && (
         <nav

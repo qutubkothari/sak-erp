@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiClient } from "../../../../lib/api-client";
+import { friendlyIssueStatus } from "../../../lib/support-issue-status";
 
 type SupportRequest = {
   id: string;
   title: string;
+  module?: string | null;
   status: string;
   created_at: string;
+  updated_at?: string;
 };
 
 export default function SupportPage() {
@@ -48,8 +51,13 @@ export default function SupportPage() {
         {requests.map((request) => (
           <article key={request.id} className="border-b py-3">
             <p className="font-medium">{request.title}</p>
+            {request.module && (
+              <p className="text-sm text-stone-500">{request.module}</p>
+            )}
             <p className="text-sm">Incident: {request.id}</p>
-            <p className="text-sm text-stone-600">{request.status}</p>
+            <p className="text-sm text-stone-600">
+              {friendlyIssueStatus(request.status)}
+            </p>
           </article>
         ))}
         {!requests.length && !error && <p>No support requests yet.</p>}

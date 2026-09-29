@@ -97,6 +97,23 @@ type AnalyticsAnswer = {
   sections?: AnalyticsAnswer[];
 };
 type Turn = { role: "user" | "planner"; text: string };
+
+function consumePendingSupportUpdates() {
+  try {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const userKey = String(
+      user.userId || user.id || user.email || user.username || "current-user",
+    );
+    const key = `mizantra-support-updates:${userKey}`;
+    const feed = JSON.parse(localStorage.getItem(key) || "[]") as Array<{
+      message?: string;
+    }>;
+    localStorage.removeItem(key);
+    return feed.map((item) => String(item.message || "")).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
 type Attachment = { url: string; name: string; type: string; size: number };
 type ConversationSummary = {
   id: string;
@@ -541,6 +558,12 @@ export default function ActivePlannerPage() {
           : "/active-planner/conversations",
       );
       applyHistory(data);
+      const updates = consumePendingSupportUpdates();
+      if (updates.length)
+        setTurns((current) => [
+          ...current,
+          ...updates.map((text) => ({ role: "planner" as const, text })),
+        ]);
     } catch (x: any) {
       setError(
         x?.message || "Saved planner conversations could not be loaded.",
@@ -553,6 +576,17 @@ export default function ActivePlannerPage() {
     void loadHistory();
     // The latest tenant/user conversation is restored once on entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const onSupportUpdate = (event: Event) => {
+      const message = (event as CustomEvent<{ message?: string }>).detail
+        ?.message;
+      if (message)
+        setTurns((current) => [...current, { role: "planner", text: message }]);
+    };
+    window.addEventListener("mizantra:support-update", onSupportUpdate);
+    return () =>
+      window.removeEventListener("mizantra:support-update", onSupportUpdate);
   }, []);
   useEffect(
     () => () => {
