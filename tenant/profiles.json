@@ -1,0 +1,29 @@
+{
+  "SAIFSEAS": {
+    "brand": "SaifSeas",
+    "country": "IN",
+    "marketProfile": "INDIA",
+    "currency": "INR",
+    "locale": "en-IN",
+    "timezone": "Asia/Kolkata",
+    "features": {}
+  },
+  "MIZANTRA": {
+    "brand": "Mizantra",
+    "country": "IN",
+    "marketProfile": "INDIA",
+    "currency": "INR",
+    "locale": "en-IN",
+    "timezone": "Asia/Kolkata",
+    "features": { "activePlanner": true }
+  },
+  "ARWA": {
+    "brand": "Arwa",
+    "country": "EG",
+    "marketProfile": "EGYPT",
+    "currency": "EGP",
+    "locale": "ar-EG",
+    "timezone": "Africa/Cairo",
+    "features": { "activePlanner": true, "egyptArabicPlanner": true }
+  }
+}

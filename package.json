@@ -14,6 +14,7 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "vendor:audit": "node verify-vendors-import-audit.js",
+    "qa:feature-parity": "python scripts/qa/feature-parity.py",
     "qa:ai:release-gate": "node scripts/qa/active-planner-deep-language-context-live.cjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "turbo run clean && rm -rf node_modules",
