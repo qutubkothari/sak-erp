@@ -151,6 +151,18 @@ def main():
       ['Database schema','No live schema introspection performed','Obtain read-only schema metadata per tenant']])
     (a.out/'10_deployment_sha_matrix.txt').write_text('\n'.join(f'{n}: {sha(r)}' for n,r in zip(names,roots))+'\n',encoding='utf-8')
     (a.out/'11_convergence_plan.txt').write_text('Shared feature -> clean-main first -> build immutable release with SHA -> deploy same artifact to each tenant with external environment and tenant settings. Tenant extensions require a scoped flag and tests. Compare source and migration checksums before each rollout. No migration or deployment was run by this checker.\n',encoding='utf-8')
-    print(json.dumps({'features':len(FEATURES),'structural_presence':{n:sum(row[6+j]=='PRESENT' for row in rows) for j,n in enumerate(names)},'sha':{n:sha(r) for n,r in zip(names,roots)},'out':str(a.out)},indent=2))
+    summary={
+      'features':len(FEATURES),
+      'structural_presence':{n:sum(row[6+j]=='PRESENT' for row in rows) for j,n in enumerate(names)},
+      'sha':{n:sha(r) for n,r in zip(names,roots)},
+      'saifseas_ahead_of_mizantra': [r[0] for r in comparisons[0] if r[2]=='SAIFSEAS_NEWER'],
+      'mizantra_ahead_of_arwa': [r[0] for r in comparisons[1] if r[2]=='MIZANTRA_NEWER'],
+      'intentional_tenant_overrides': ['SAIFSEAS India/INR', 'MIZANTRA India/INR with Active Planner', 'ARWA Egypt/EGP/ar-EG with Arabic planner held off'],
+      'unreviewed_drift': {names[j]:sum(r[2]=='REVIEW_FUNCTIONAL_DIFFERENCE' for r in comparisons[j-1]) for j in (1,2)},
+      'limit':'Source evidence only; no live schema or behavioral equivalence claim',
+      'out':str(a.out),
+    }
+    (a.out/'15_parity_summary.json').write_text(json.dumps(summary,indent=2)+'\n',encoding='utf-8')
+    print(json.dumps(summary,indent=2))
 
 if __name__=='__main__': main()
