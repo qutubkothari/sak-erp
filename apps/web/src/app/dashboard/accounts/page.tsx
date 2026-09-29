@@ -5495,6 +5495,7 @@ function AccountingForm({
         payload[key] = Number(payload[key]);
     });
     if (kind === "account") {
+      payload.is_group = initialAccount ? Boolean(initialAccount.is_group) : source.get("is_group") === "on";
       payload.is_control_account = source.get("is_control_account") === "on";
       payload.is_suspense_account = source.get("is_suspense_account") === "on";
     }
@@ -5580,6 +5581,15 @@ function AccountingForm({
               placeholder="Bank, inventory, sales..."
               defaultValue={initialAccount?.account_subtype}
             />
+            <label className="block text-sm text-gray-700">
+              <span className="block mb-1">Parent account group</span>
+              <select name="parent_id" defaultValue={initialAccount?.parent_id || ""} className="w-full border rounded-lg px-3 py-2">
+                <option value="">No parent</option>
+                {(data.accounts || []).filter((account: any) => account.is_group && account.id !== initialAccount?.id && (!initialAccount || account.account_type === initialAccount.account_type)).map((account: any) => (
+                  <option key={account.id} value={account.id}>{account.account_code} — {account.account_name}</option>
+                ))}
+              </select>
+            </label>
             <Field
               name="currency_code"
               label="Currency"
@@ -5601,6 +5611,10 @@ function AccountingForm({
               disabled={Boolean(initialAccount)}
             />
             <div className="space-y-2 pt-6">
+              <label className="block text-sm">
+                <input type="checkbox" name="is_group" defaultChecked={Boolean(initialAccount?.is_group)} disabled={Boolean(initialAccount)} />{" "}
+                Account group (reporting only)
+              </label>
               <label className="block text-sm">
                 <input
                   type="checkbox"

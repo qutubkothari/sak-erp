@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import compression from 'compression';
 import { static as serveStatic } from 'express';
-import { existsSync, mkdirSync, statSync } from 'fs';
+import { existsSync, mkdirSync, statSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
@@ -97,6 +97,15 @@ async function bootstrap() {
 
   // API prefix
   app.setGlobalPrefix('api/v1');
+  app.getHttpAdapter().get('/api/v1/build-provenance', (_req: any, res: any) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const metadata = JSON.parse(readFileSync(resolve(__dirname, 'build-provenance.json'), 'utf8'));
+      res.json(metadata);
+    } catch {
+      res.status(503).json({ status: 'UNKNOWN', reason: 'Build provenance is unavailable' });
+    }
+  });
 
   // Swagger documentation
   const config = new DocumentBuilder()

@@ -7921,7 +7921,11 @@ function HrPageContent() {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={handleCheckIn}
-                  disabled={checkingIn || !!todayAttendance?.check_in_time}
+                  disabled={
+                    checkingIn ||
+                    !!todayAttendance?.check_in_time ||
+                    !!todayAttendance?.check_out_time
+                  }
                   className="flex min-h-16 w-full items-center justify-center rounded-2xl bg-[#027A48] px-4 py-4 text-lg font-bold text-white shadow-sm transition-transform hover:bg-[#05603A] active:scale-95 disabled:cursor-not-allowed disabled:bg-[#D6D0C4] disabled:text-[#7A6555]"
                 >
                   {checkingIn ? "Please wait..." : "Check In"}

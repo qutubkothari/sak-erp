@@ -1,9 +1,9 @@
-export type MarketProfile = 'INDIA' | 'UAE';
+export type MarketProfile = 'INDIA' | 'UAE' | 'EGYPT';
 
 export type RegionalProfile = {
   marketProfile: MarketProfile;
-  currency: 'INR' | 'AED';
-  taxRegime: 'GST' | 'UAE_VAT';
+  currency: 'INR' | 'AED' | 'EGP';
+  taxRegime: 'GST' | 'UAE_VAT' | 'EGYPT_VAT';
   defaultTaxRate: number;
   locale: string;
   timezone: string;
@@ -33,9 +33,20 @@ export const UAE_PROFILE: RegionalProfile = {
   taxRegistrationLabel: 'TRN / Tax ID',
 };
 
+export const EGYPT_PROFILE: RegionalProfile = {
+  marketProfile: 'EGYPT',
+  currency: 'EGP',
+  taxRegime: 'EGYPT_VAT',
+  defaultTaxRate: 14,
+  locale: 'ar-EG',
+  timezone: 'Africa/Cairo',
+  taxLabel: 'VAT',
+  taxRegistrationLabel: 'Tax Registration Number',
+};
+
 export function resolveRegionalProfile(value?: Partial<RegionalProfile> | string | null): RegionalProfile {
-  if (typeof value === 'string') return value.toUpperCase() === 'UAE' ? UAE_PROFILE : INDIA_PROFILE;
-  return value?.marketProfile === 'UAE' ? UAE_PROFILE : INDIA_PROFILE;
+  const market = typeof value === 'string' ? value.toUpperCase() : value?.marketProfile;
+  return market === 'EGYPT' ? EGYPT_PROFILE : market === 'UAE' ? UAE_PROFILE : INDIA_PROFILE;
 }
 
 export function formatRegionalCurrency(amount: number | null | undefined, profile?: Partial<RegionalProfile> | string | null): string {

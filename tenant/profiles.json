@@ -1,0 +1,35 @@
+{
+  "SAIFSEAS": {
+    "brand": "SaifSeas",
+    "loginHostContains": "saifseas",
+    "loginLogo": "/branding/saif-seas-logo.png",
+    "country": "IN",
+    "marketProfile": "INDIA",
+    "currency": "INR",
+    "locale": "en-IN",
+    "timezone": "Asia/Kolkata",
+    "features": {}
+  },
+  "MIZANTRA": {
+    "brand": "Mizantra",
+    "loginHostContains": "mizantra.saksolution.com",
+    "loginLogo": "/branding/sak-solutions-mark.png",
+    "country": "IN",
+    "marketProfile": "INDIA",
+    "currency": "INR",
+    "locale": "en-IN",
+    "timezone": "Asia/Kolkata",
+    "features": { "activePlanner": true }
+  },
+  "ARWA": {
+    "brand": "Arwa",
+    "loginHostContains": "arwa.mizantra.ae",
+    "loginLogo": "/branding/arwa-logo.png",
+    "country": "EG",
+    "marketProfile": "EGYPT",
+    "currency": "EGP",
+    "locale": "ar-EG",
+    "timezone": "Africa/Cairo",
+    "features": { "activePlanner": true, "egyptArabicPlanner": true }
+  }
+}

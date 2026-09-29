@@ -33,7 +33,15 @@ export function useRegionalProfile(): {
     apiClient
       .get<TenantRegionalSettings>('/tenant/current')
       .then((tenant) => {
-        if (active) setProfile(resolveRegionalProfile(tenant?.market_profile));
+        if (active) {
+          const regional = resolveRegionalProfile(tenant?.market_profile);
+          setProfile({
+            ...regional,
+            currency: (tenant?.default_currency || regional.currency) as RegionalProfile['currency'],
+            locale: tenant?.locale || regional.locale,
+            timezone: tenant?.timezone || regional.timezone,
+          });
+        }
       })
       .catch(() => {
         if (active) setProfile(INDIA_PROFILE);

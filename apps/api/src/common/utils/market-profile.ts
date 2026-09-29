@@ -1,9 +1,9 @@
-export type MarketProfile = 'INDIA' | 'UAE';
+export type MarketProfile = 'INDIA' | 'UAE' | 'EGYPT';
 
 export type RegionalDefaults = {
   marketProfile: MarketProfile;
-  currency: 'INR' | 'AED';
-  taxRegime: 'GST' | 'UAE_VAT';
+  currency: 'INR' | 'AED' | 'EGP';
+  taxRegime: 'GST' | 'UAE_VAT' | 'EGYPT_VAT';
   defaultTaxRate: number;
   locale: string;
   timezone: string;
@@ -27,6 +27,16 @@ export const UAE_DEFAULTS: RegionalDefaults = {
   timezone: 'Asia/Dubai',
 };
 
+export const EGYPT_DEFAULTS: RegionalDefaults = {
+  marketProfile: 'EGYPT',
+  currency: 'EGP',
+  taxRegime: 'EGYPT_VAT',
+  defaultTaxRate: 14,
+  locale: 'ar-EG',
+  timezone: 'Africa/Cairo',
+};
+
 export function regionalDefaults(value?: unknown): RegionalDefaults {
-  return String(value || '').trim().toUpperCase() === 'UAE' ? UAE_DEFAULTS : INDIA_DEFAULTS;
+  const market = String(value || '').trim().toUpperCase();
+  return market === 'EGYPT' ? EGYPT_DEFAULTS : market === 'UAE' ? UAE_DEFAULTS : INDIA_DEFAULTS;
 }
