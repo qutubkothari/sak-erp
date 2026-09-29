@@ -161,7 +161,7 @@ export default function SupportIssueStatus({
                   {new Date(issue.created_at).toLocaleString()}
                 </p>
                 <p className="text-xs font-medium text-[#75552D]">
-                  {friendlyIssueStatus(issue.status)}
+                  {friendlyIssueStatus(issue.friendly_status)}
                 </p>
                 <p className="text-[11px] text-stone-500">
                   Last update:{" "}

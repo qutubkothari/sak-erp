@@ -122,7 +122,8 @@ describe("Mizantra support intake", () => {
     const listMine = jest.fn().mockResolvedValue([
       {
         id: "INC-1",
-        status: "Checking the problem.",
+        status: "ESCALATED",
+        friendly_status: "Engineering review required",
         title: "/secret/path",
         risk_reason: "internal",
       },
@@ -133,7 +134,7 @@ describe("Mizantra support intake", () => {
     });
     expect(listMine).toHaveBeenCalledWith(user);
     expect(response.support_incidents).toEqual([
-      { id: "INC-1", status: "Checking the problem." },
+      { id: "INC-1", status: "Engineering review required" },
     ]);
     expect(JSON.stringify(response)).not.toMatch(/secret|internal/);
   });
@@ -214,25 +215,20 @@ describe("Mizantra support intake", () => {
     expect(supportRoute("//host/private")).toBe("/dashboard");
   });
   it.each([
-    ["NEW", "Checking the problem."],
-    ["TRIAGING", "Checking the problem."],
-    ["PATCHING", "A safe fix is being tested."],
-    ["TESTING", "A safe fix is being tested."],
-    ["VERIFYING", "A safe fix is being tested."],
-    ["DEPLOYING", "A safe fix is being tested."],
-    [
-      "READY_FOR_APPROVAL",
-      "The fix has passed checks and is awaiting engineering approval.",
-    ],
-    ["RESOLVED", "The issue has been fixed."],
+    ["NEW", "Issue received"],
+    ["TRIAGING", "Checking the problem"],
+    ["PATCHING", "Preparing a safe fix"],
+    ["TESTING", "A safe fix is being tested"],
+    ["VERIFYING", "Verifying the fix"],
+    ["DEPLOYING", "Applying the fix"],
+    ["READY_FOR_APPROVAL", "Fix tested and awaiting approval"],
+    ["RESOLVED", "Fixed"],
     [
       "ROLLED_BACK",
-      "The attempted change was reversed safely and engineering is reviewing it.",
+      "The attempted change was safely reversed; engineering is reviewing it",
     ],
-    [
-      "ESCALATED",
-      "This needs engineering review. Your issue is recorded and has not been lost.",
-    ],
+    ["ESCALATED", "Engineering review required"],
+    ["FAILED", "Engineering is reviewing the issue"],
   ])("maps %s without premature resolution", (status, expected) => {
     const service = Object.create(SupportAutofixService.prototype) as any;
     expect(service.clientStatus(status)).toBe(expected);

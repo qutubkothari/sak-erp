@@ -147,7 +147,7 @@ export class PlannerSupportService {
     // Do not echo free-text titles, paths, engineering fields, or raw incident records.
     const incidents = matching
       .slice(0, 10)
-      .map((row: any) => ({ id: row.id, status: row.status }));
+      .map((row: any) => ({ id: row.id, status: row.friendly_status || row.status }));
     return {
       ...this.reply(
         "SUPPORT_STATUS",

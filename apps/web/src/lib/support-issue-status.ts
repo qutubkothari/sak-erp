@@ -3,35 +3,41 @@ export type SupportIssue = {
   title: string;
   module?: string | null;
   status: string;
+  friendly_status: string;
   created_at: string;
   updated_at?: string;
 };
 
 const terminalStatuses = new Set(["RESOLVED"]);
+const rawStatuses = new Set([
+  "NEW",
+  "TRIAGING",
+  "PATCHING",
+  "TESTING",
+  "READY_FOR_APPROVAL",
+  "DEPLOYING",
+  "VERIFYING",
+  "RESOLVED",
+  "ESCALATED",
+  "FAILED",
+  "ROLLED_BACK",
+]);
 
 export function countActiveIssues(issues: SupportIssue[]) {
   return issues.filter((issue) => !terminalStatuses.has(issue.status)).length;
 }
 
-export function friendlyIssueStatus(status: string) {
-  const labels: Record<string, string> = {
-    NEW: "Issue received",
-    TRIAGING: "Checking the problem",
-    PATCHING: "Preparing a safe fix",
-    TESTING: "A safe fix is being tested",
-    READY_FOR_APPROVAL: "Fix tested and awaiting approval",
-    DEPLOYING: "Applying the fix",
-    VERIFYING: "Verifying the fix",
-    RESOLVED: "Fixed",
-    ESCALATED: "Engineering review required",
-    FAILED: "Engineering is reviewing the issue",
-    ROLLED_BACK:
-      "The attempted change was safely reversed; engineering is reviewing it",
-  };
-  return labels[status] || "Issue received";
+export function friendlyIssueStatus(friendlyStatus?: string) {
+  return friendlyStatus || "Issue status update available";
+}
+
+export function isRawIncidentStatus(status: string) {
+  return rawStatuses.has(status);
 }
 
 export function isImportantIssueTransition(previous: string, current: string) {
+  if (!isRawIncidentStatus(previous) || !isRawIncidentStatus(current))
+    return false;
   if (previous === current) return false;
   return (
     (previous === "NEW" && current === "TRIAGING") ||
@@ -43,7 +49,7 @@ export function isImportantIssueTransition(previous: string, current: string) {
 export function issueUpdateMessage(issue: SupportIssue) {
   if (issue.status === "RESOLVED")
     return `Your reported issue “${issue.title}” has been fixed.`;
-  return `Update on your reported issue:\n${issue.title} — ${friendlyIssueStatus(issue.status)}.`;
+  return `Update on your reported issue:\n${issue.title} — ${friendlyIssueStatus(issue.friendly_status)}.`;
 }
 
 export function issueNotification(issue: SupportIssue) {

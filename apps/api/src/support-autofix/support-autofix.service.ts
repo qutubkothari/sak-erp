@@ -7,6 +7,7 @@ import { autoHealDiffLimits, canAttemptAutoFix, classifyDiff, classifyIncident, 
 import { sanitizeSupportText, SupportStoreService } from './support-store.service';
 import { SupportAutofixEvents } from './support-events';
 import { IncidentInput } from './support-autofix.types';
+import { incidentStatusLabel } from './incident-status';
 
 @Injectable()
 export class SupportAutofixService {
@@ -43,7 +44,7 @@ export class SupportAutofixService {
 
   async listMine(user: any) {
     const rows = await this.store.listMine(String(user.tenantId || user.tenant_id), String(user.userId || user.id || user.sub));
-    return rows.map((row: any) => ({ ...row, status: this.clientStatus(row.status) }));
+    return rows.map((row: any) => ({ ...row, status: String(row.status), friendly_status: incidentStatusLabel(String(row.status)) }));
   }
 
   async listAdmin(tenantId: string, query: any) {
@@ -263,12 +264,7 @@ export class SupportAutofixService {
   private enabled() { return String(process.env.AUTOHEAL_ENABLED || 'false').toLowerCase() === 'true'; }
 
   private clientStatus(value: string) {
-    if (['PATCHING', 'TESTING', 'DEPLOYING', 'VERIFYING'].includes(value)) return 'A safe fix is being tested.';
-    if (value === 'RESOLVED') return 'The issue has been fixed.';
-    if (['NEW', 'TRIAGING'].includes(value)) return 'Checking the problem.';
-    if (value === 'READY_FOR_APPROVAL') return 'The fix has passed checks and is awaiting engineering approval.';
-    if (value === 'ROLLED_BACK') return 'The attempted change was reversed safely and engineering is reviewing it.';
-    return 'This needs engineering review. Your issue is recorded and has not been lost.';
+    return incidentStatusLabel(value);
   }
 
   private attemptPassedSafetyGate(attempt: any): boolean {

@@ -10,6 +10,7 @@ type SupportRequest = {
   title: string;
   module?: string | null;
   status: string;
+  friendly_status: string;
   created_at: string;
   updated_at?: string;
 };
@@ -56,7 +57,7 @@ export default function SupportPage() {
             )}
             <p className="text-sm">Incident: {request.id}</p>
             <p className="text-sm text-stone-600">
-              {friendlyIssueStatus(request.status)}
+              {friendlyIssueStatus(request.friendly_status)}
             </p>
           </article>
         ))}
