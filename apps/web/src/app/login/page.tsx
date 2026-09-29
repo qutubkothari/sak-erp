@@ -1,14 +1,8 @@
 import { headers } from 'next/headers';
 import LoginForm, { LoginBrand } from './LoginForm';
+import profiles from '../../../../../tenant/profiles.json';
 
 export const dynamic = 'force-dynamic';
-
-const SAIF_SEAS_BRAND: LoginBrand = {
-  logoSrc: '/branding/saif-seas-logo.png',
-  logoAlt: 'SaifSeas logo',
-  companyName: 'SaifSeas',
-  systemLabel: 'Mizantra ERP',
-};
 
 const SAK_SOLUTIONS_BRAND: LoginBrand = {
   logoSrc: '/branding/sak-solutions-mark.png',
@@ -19,8 +13,15 @@ const SAK_SOLUTIONS_BRAND: LoginBrand = {
 
 function resolveBrandForHost(host: string): LoginBrand {
   const normalizedHost = host.toLowerCase();
-  if (normalizedHost.includes('saifseas')) {
-    return SAIF_SEAS_BRAND;
+  for (const profile of Object.values(profiles)) {
+    if (normalizedHost.includes(profile.loginHostContains)) {
+      return {
+        logoSrc: profile.loginLogo,
+        logoAlt: `${profile.brand} logo`,
+        companyName: profile.brand,
+        systemLabel: 'Mizantra ERP',
+      };
+    }
   }
   return SAK_SOLUTIONS_BRAND;
 }

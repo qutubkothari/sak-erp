@@ -1,6 +1,8 @@
 {
   "SAIFSEAS": {
     "brand": "SaifSeas",
+    "loginHostContains": "saifseas",
+    "loginLogo": "/branding/saif-seas-logo.png",
     "country": "IN",
     "marketProfile": "INDIA",
     "currency": "INR",
@@ -10,6 +12,8 @@
   },
   "MIZANTRA": {
     "brand": "Mizantra",
+    "loginHostContains": "mizantra.saksolution.com",
+    "loginLogo": "/branding/sak-solutions-mark.png",
     "country": "IN",
     "marketProfile": "INDIA",
     "currency": "INR",
@@ -19,6 +23,8 @@
   },
   "ARWA": {
     "brand": "Arwa",
+    "loginHostContains": "arwa.mizantra.ae",
+    "loginLogo": "/branding/arwa-logo.png",
     "country": "EG",
     "marketProfile": "EGYPT",
     "currency": "EGP",
