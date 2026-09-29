@@ -68,6 +68,7 @@ export interface SupportEvent {
     | 'incident.created'
     | 'autofix.succeeded'
     | 'autofix.infrastructure-retry-requested'
+    | 'autofix.infrastructure-failure'
     | 'approval.required'
     | 'deployment.succeeded'
     | 'deployment.failed'

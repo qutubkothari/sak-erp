@@ -107,6 +107,18 @@ export class SupportAutofixService {
     const incident = await this.requireIncident(tenantId, incidentId);
     const currentAttempt = await this.store.latestAttempt(incidentId);
     if (!currentAttempt || currentAttempt.id !== attemptId || currentAttempt.status !== 'RUNNING') throw new ConflictException('The worker attempt does not belong to the active incident attempt.');
+    if (input.status === 'INFRASTRUCTURE_FAILURE') {
+      const diagnostics = this.sanitizeAgentDiagnostics({ ...(input.agentDiagnostics || {}), failureClass: 'INFRASTRUCTURE_FAILURE', validationStage: 'sandbox-preflight' }, false);
+      await this.store.updateAttempt(attemptId, {
+        files_changed: [], lines_added: 0, lines_removed: 0,
+        test_result: { agent_diagnostics: diagnostics }, build_result: {},
+        risk_after_diff: incident.risk_level, safety_reasons: ['Codex sandbox infrastructure failure; no patch validation was run.'],
+        commit_sha: null, status: 'FAILED', completed_at: new Date().toISOString(),
+      });
+      if (incident.status === 'PATCHING') await this.store.updateIncident(tenantId, incidentId, { status: 'TRIAGING' });
+      await this.store.writeEvent({ type: 'autofix.infrastructure-failure', tenantId, incidentId, at: new Date().toISOString(), details: { failureClass: 'INFRASTRUCTURE_FAILURE', attemptCounted: false } });
+      return { status: incident.status === 'PATCHING' ? 'TRIAGING' : incident.status, attemptStatus: 'INFRASTRUCTURE_FAILURE' };
+    }
     const files = Array.isArray(input.filesChanged) ? input.filesChanged.filter((path: unknown) => typeof path === 'string').slice(0, 20) : [];
     const safeDetails = (value: any) => ({ passed: value?.passed === true, detail: sanitizeSupportText(value?.detail || '', 500) });
     const tests: Record<string, any> = { focusedTest: safeDetails(input.testResult?.focusedTest), typeCheck: safeDetails(input.testResult?.typeCheck), diffCheck: safeDetails(input.testResult?.diffCheck), smoke: safeDetails(input.testResult?.smoke) };
@@ -137,7 +149,8 @@ export class SupportAutofixService {
     const heartbeat: any = await this.store.getWorkerHeartbeat();
     if (!heartbeat) return { status: 'OFFLINE', lastHeartbeat: null, queueDepth: 0, currentIncident: null };
     const recent = Date.now() - Date.parse(heartbeat.updated_at) < 90_000;
-    return { status: recent ? 'ONLINE' : 'OFFLINE', lastHeartbeat: heartbeat.updated_at, queueDepth: heartbeat.queue_depth, currentIncident: heartbeat.current_incident };
+    const sandboxBlocked = recent && heartbeat.current_incident === 'SANDBOX_BLOCKED';
+    return { status: recent ? sandboxBlocked ? 'DEGRADED' : 'ONLINE' : 'OFFLINE', stateCode: sandboxBlocked ? 'SANDBOX_BLOCKED' : null, stateMessage: sandboxBlocked ? 'Worker sandbox unavailable' : null, lastHeartbeat: heartbeat.updated_at, queueDepth: heartbeat.queue_depth, currentIncident: sandboxBlocked ? null : heartbeat.current_incident };
   }
 
   async retryAnalysis(tenantId: string, incidentId: string, actorId: string) {
@@ -324,7 +337,7 @@ export class SupportAutofixService {
   }
 
   private sanitizeAgentDiagnostics(value: any, filesChanged: boolean) {
-    const allowedStages = new Set(['setup', 'agent', 'diff', 'validation', 'commit', 'push', 'complete']);
+    const allowedStages = new Set(['setup', 'sandbox-preflight', 'agent', 'diff', 'validation', 'commit', 'push', 'complete']);
     const exitCode = Number.isInteger(value?.exitCode) ? Math.max(-255, Math.min(255, value.exitCode)) : null;
     const durationMs = Number.isFinite(Number(value?.durationMs)) ? Math.max(0, Math.min(3_600_000, Math.floor(Number(value.durationMs)))) : null;
     return {
@@ -337,6 +350,7 @@ export class SupportAutofixService {
       cwd: sanitizeSupportText(value?.cwd || '', 500),
       sandbox_mode: value?.sandboxMode === 'workspace-write' ? 'workspace-write' : 'unknown',
       command_summary: sanitizeSupportText(value?.commandSummary || '', 700),
+      failure_class: value?.failureClass === 'INFRASTRUCTURE_FAILURE' ? 'INFRASTRUCTURE_FAILURE' : null,
     };
   }
 

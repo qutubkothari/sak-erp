@@ -14,6 +14,8 @@ describe('AutoHealWorkerModule dependency wiring', () => {
   const previousProvider = process.env.AUTOHEAL_AGENT_PROVIDER;
   const queue = {
     close: jest.fn().mockResolvedValue(undefined),
+    pause: jest.fn().mockResolvedValue(undefined),
+    resume: jest.fn().mockResolvedValue(undefined),
     getWaitingCount: jest.fn().mockResolvedValue(0),
     getActiveCount: jest.fn().mockResolvedValue(0),
     getDelayedCount: jest.fn().mockResolvedValue(0),

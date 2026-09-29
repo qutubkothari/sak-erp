@@ -1,4 +1,4 @@
-import { Process, Processor } from '@nestjs/bull';
+import { OnQueueFailed, Process, Processor } from '@nestjs/bull';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
@@ -10,12 +10,16 @@ import { ValidationEngine } from './validation-engine';
 import { AutoHealWorkerApiClient } from './worker-api-client';
 import { ValidationResults } from './support-autofix.types';
 import { AUTO_FIX_AGENT } from './worker-tokens';
+import { CodexSandboxPreflightService, SANDBOX_BLOCKED_HEARTBEAT, isCodexSandboxInfrastructureFailure } from './sandbox-preflight.service';
 
 @Processor('autoheal-patch')
 @Injectable()
 export class AutoHealWorkerProcessor {
   private currentIncident: string | null = null;
   private timer?: NodeJS.Timeout;
+  private sandboxReady = false;
+  private sandboxFailure = '';
+  private preflightRunning = false;
 
   constructor(
     private readonly api: AutoHealWorkerApiClient,
@@ -23,18 +27,36 @@ export class AutoHealWorkerProcessor {
     private readonly validation: ValidationEngine,
     @Inject(AUTO_FIX_AGENT) private readonly agent: AutoFixAgentProvider,
     @InjectQueue('autoheal-patch') private readonly queue: Queue,
+    private readonly sandboxPreflight: CodexSandboxPreflightService,
   ) {}
 
-  onModuleInit() {
-    this.timer = setInterval(() => void this.sendHeartbeat(), 30_000);
+  async onModuleInit() {
+    await this.queue.pause();
+    await this.refreshSandboxPreflight();
+    this.timer = setInterval(() => {
+      if (!this.sandboxReady) void this.refreshSandboxPreflight();
+      else void this.sendHeartbeat();
+    }, 30_000);
     this.timer.unref?.();
-    void this.sendHeartbeat();
   }
 
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
 
   @Process({ name: 'incident', concurrency: 1 })
   async process(job: Job<{ tenantId: string; incidentId: string }>) {
+    if (!this.sandboxReady) {
+      await this.queue.pause();
+      await this.sendHeartbeat();
+      throw new Error('AutoHeal sandbox unavailable; retain this job until the sandbox preflight passes.');
+    }
+    const preflight = await this.sandboxPreflight.run();
+    if (!preflight.passed) {
+      this.sandboxReady = false;
+      this.sandboxFailure = preflight.detail || 'Codex sandbox preflight failed.';
+      await this.queue.pause();
+      await this.sendHeartbeat();
+      throw new Error(`INFRASTRUCTURE_FAILURE: Codex sandbox preflight failed: ${this.sandboxFailure}`);
+    }
     if (!workerEnabled()) throw new Error('AutoHeal kill switch is off; retain this job for a later retry.');
     const { tenantId, incidentId } = job.data;
     this.currentIncident = incidentId;
@@ -53,7 +75,22 @@ export class AutoHealWorkerProcessor {
       if (!workerEnabled()) throw new Error('AutoHeal coding worker was disabled before agent execution.');
       validationStage = 'agent';
       agentResult = await this.agent.run({ prompt, worktreePath: workspace.path, risk: 'LOW' });
-      if (!agentResult.success) throw new Error(agentResult.detail || 'Coding agent failed.');
+      if (!agentResult.success) {
+        const detail = agentResult.detail || agentResult.stderrSummary || agentResult.summary || 'Coding agent failed.';
+        if (isCodexSandboxInfrastructureFailure(detail)) {
+          this.sandboxReady = false;
+          this.sandboxFailure = detail;
+          await this.queue.pause();
+          await this.sendHeartbeat();
+          await this.api.finishAttempt(tenantId, incidentId, {
+            attemptId, status: 'INFRASTRUCTURE_FAILURE', provider: agentResult.provider, model: agentResult.model,
+            filesChanged: [], riskAfterDiff: 'LOW', testResult: {}, buildResult: {},
+            agentDiagnostics: { ...this.agentDiagnostics(agentResult, false, 'sandbox-preflight'), failureClass: 'INFRASTRUCTURE_FAILURE', summary: safeError(detail) },
+          });
+          throw new Error(`INFRASTRUCTURE_FAILURE_RECORDED: ${safeError(detail)}`);
+        }
+        throw new Error(detail);
+      }
       validationStage = 'diff';
       changedFiles = await this.worktrees.changedFiles(workspace.path);
       if (!changedFiles.length) throw new Error('The coding agent produced no file changes.');
@@ -84,6 +121,20 @@ export class AutoHealWorkerProcessor {
         agentDiagnostics: this.agentDiagnostics(agentResult, diff.paths.length > 0, validationStage),
       });
     } catch (error: any) {
+      if (isCodexSandboxInfrastructureFailure(error)) {
+        this.sandboxReady = false;
+        this.sandboxFailure = safeError(error);
+        await this.queue.pause().catch(() => undefined);
+        if (attemptId && !String(error?.message || '').startsWith('INFRASTRUCTURE_FAILURE_RECORDED:')) {
+          await this.api.finishAttempt(tenantId, incidentId, {
+            attemptId, status: 'INFRASTRUCTURE_FAILURE', provider: agentResult?.provider || 'codex-cli', model: agentResult?.model || 'unknown',
+            filesChanged: [], riskAfterDiff: 'LOW', testResult: {}, buildResult: {},
+            agentDiagnostics: { ...this.agentDiagnostics(agentResult, false, 'sandbox-preflight', error), failureClass: 'INFRASTRUCTURE_FAILURE' },
+          }).catch(() => undefined);
+        }
+        await this.sendHeartbeat();
+        throw error;
+      }
       if (attemptId) await this.reportFailure(tenantId, incidentId, attemptId, agentResult?.provider || 'codex-cli', agentResult?.model || selectModelForRisk('LOW') || 'unknown', 'MEDIUM', [safeError(error)], changedFiles, '', 0, failedValidation(safeError(error)), this.agentDiagnostics(agentResult, changedFiles.length > 0, validationStage, error)).catch(() => undefined);
       else throw error;
     } finally {
@@ -107,8 +158,38 @@ export class AutoHealWorkerProcessor {
   private async sendHeartbeat() {
     try {
       const [waiting, active, delayed] = await Promise.all([this.queue.getWaitingCount(), this.queue.getActiveCount(), this.queue.getDelayedCount()]);
-      await this.api.heartbeat({ workerId: process.env.AUTOHEAL_WORKER_ID || 'autoheal-worker', currentIncident: this.currentIncident, queueDepth: waiting + active + delayed });
+      await this.api.heartbeat({ workerId: process.env.AUTOHEAL_WORKER_ID || 'autoheal-worker', currentIncident: this.sandboxReady ? this.currentIncident : SANDBOX_BLOCKED_HEARTBEAT, queueDepth: waiting + active + delayed });
     } catch { /* heartbeat failures are retried on the next interval */ }
+  }
+
+  private async refreshSandboxPreflight() {
+    if (this.preflightRunning) return;
+    this.preflightRunning = true;
+    try {
+      const result = await this.sandboxPreflight.run();
+      this.sandboxReady = result.passed;
+      this.sandboxFailure = result.passed ? '' : result.detail || 'Codex sandbox preflight failed.';
+      if (result.passed) await this.queue.resume();
+      else await this.queue.pause();
+      await this.sendHeartbeat();
+    } catch (error: any) {
+      this.sandboxReady = false;
+      this.sandboxFailure = safeError(error);
+      await this.queue.pause().catch(() => undefined);
+      await this.sendHeartbeat();
+    } finally {
+      this.preflightRunning = false;
+    }
+  }
+
+  @OnQueueFailed()
+  async retrySandboxInfrastructureJob(job: Job, error: Error) {
+    if (!isCodexSandboxInfrastructureFailure(error)) return;
+    this.sandboxReady = false;
+    this.sandboxFailure = safeError(error);
+    await this.queue.pause().catch(() => undefined);
+    await job.retry().catch(() => undefined);
+    await this.sendHeartbeat();
   }
 }
 

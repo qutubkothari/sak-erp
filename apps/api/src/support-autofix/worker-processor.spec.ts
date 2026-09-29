@@ -16,9 +16,51 @@ describe('isolated AutoHeal coding worker', () => {
     const worktrees: any = { create: jest.fn().mockResolvedValue({ branchName: 'autofix/i1-attempt-1-fix-ui-label', baseSha: 'a'.repeat(40), path: 'C:/isolated/i1' }), changedFiles: jest.fn().mockResolvedValue(diffPaths), stageAllInWorktree: jest.fn(), stagedDiff: jest.fn().mockResolvedValue({ paths: diffPaths, diff, linesChanged: 1 }), commit: jest.fn().mockResolvedValue('b'.repeat(40)), pushBranch: jest.fn() };
     const checks: any = { runWeb: jest.fn().mockResolvedValue(validation) };
     const agent: any = { run: jest.fn().mockResolvedValue({ success: true, provider: 'codex-cli', model: 'gpt-6-luna' }) };
-    const queue: any = { getWaitingCount: jest.fn().mockResolvedValue(0), getActiveCount: jest.fn().mockResolvedValue(1), getDelayedCount: jest.fn().mockResolvedValue(0) };
-    return { processor: new AutoHealWorkerProcessor(api, worktrees, checks, agent, queue), api, worktrees, checks, agent };
+    const queue: any = { getWaitingCount: jest.fn().mockResolvedValue(1), getActiveCount: jest.fn().mockResolvedValue(0), getDelayedCount: jest.fn().mockResolvedValue(0), pause: jest.fn().mockResolvedValue(undefined), resume: jest.fn().mockResolvedValue(undefined) };
+    const sandboxPreflight: any = { run: jest.fn().mockResolvedValue({ passed: true }) };
+    const processor = new AutoHealWorkerProcessor(api, worktrees, checks, agent, queue, sandboxPreflight);
+    (processor as any).sandboxReady = true;
+    return { processor, api, worktrees, checks, agent, queue, sandboxPreflight };
   }
+
+  it('pauses the queue on a failed startup sandbox preflight without touching incidents or invoking a model', async () => {
+    process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true';
+    const result = setup();
+    (result.processor as any).sandboxReady = false;
+    result.sandboxPreflight.run.mockResolvedValue({ passed: false, failureClass: 'INFRASTRUCTURE_FAILURE', detail: 'bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted' });
+    await result.processor.onModuleInit();
+    expect(result.queue.pause).toHaveBeenCalledTimes(2);
+    expect(result.queue.resume).not.toHaveBeenCalled();
+    expect(result.api.heartbeat).toHaveBeenLastCalledWith(expect.objectContaining({ currentIncident: 'SANDBOX_BLOCKED', queueDepth: 1 }));
+    await expect(result.processor.process({ data: { tenantId: 't1', incidentId: 'i1' } } as any)).rejects.toThrow('sandbox unavailable');
+    expect(result.api.getIncident).not.toHaveBeenCalled();
+    expect(result.api.startAttempt).not.toHaveBeenCalled();
+    expect(result.api.finishAttempt).not.toHaveBeenCalled();
+    expect(result.agent.run).not.toHaveBeenCalled();
+    result.processor.onModuleDestroy();
+  });
+
+  it('resumes the waiting queue after a successful sandbox preflight and permits normal processing', async () => {
+    process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'true'; process.env.AUTOHEAL_GIT_PUSH_ENABLED = 'true';
+    const result = setup();
+    (result.processor as any).sandboxReady = false;
+    await result.processor.onModuleInit();
+    expect(result.queue.pause).toHaveBeenCalledTimes(1);
+    expect(result.queue.resume).toHaveBeenCalledTimes(1);
+    await result.processor.process({ data: { tenantId: 't1', incidentId: 'i1' } } as any);
+    expect(result.api.startAttempt).toHaveBeenCalledTimes(1);
+    expect(result.agent.run).toHaveBeenCalledTimes(1);
+    result.processor.onModuleDestroy();
+  });
+
+  it('pauses the queue and safely retries a job classified as sandbox infrastructure failure', async () => {
+    const result = setup();
+    const job: any = { retry: jest.fn().mockResolvedValue(undefined) };
+    await result.processor.retrySandboxInfrastructureJob(job, new Error('bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted'));
+    expect(result.queue.pause).toHaveBeenCalledTimes(1);
+    expect(job.retry).toHaveBeenCalledTimes(1);
+    expect(result.api.heartbeat).toHaveBeenLastCalledWith(expect.objectContaining({ currentIncident: 'SANDBOX_BLOCKED' }));
+  });
 
   it('leaves queued jobs idle when either kill switch is off', async () => {
     process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'false';

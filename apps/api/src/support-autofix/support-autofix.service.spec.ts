@@ -97,6 +97,31 @@ describe('AutoHeal service safety controls', () => {
     expect(store.updateIncident).toHaveBeenCalledWith('t', 'i', expect.objectContaining({ status: 'FAILED', risk_level: 'LOW' }));
   });
 
+  it('records sandbox startup failures as infrastructure only without changing risk or fabricating validation failures', async () => {
+    const store = {
+      getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'PATCHING', risk_level: 'LOW', risk_reason: 'Recognized low-risk UI category: search-filter-ui.' }),
+      latestAttempt: jest.fn().mockResolvedValue({ id: 'a', status: 'RUNNING', base_sha: 'a'.repeat(40) }),
+      updateAttempt: jest.fn(), updateIncident: jest.fn(), writeEvent: jest.fn(),
+    };
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    service.store = store;
+    const result = await service.finishWorkerAttempt('t', 'i', {
+      attemptId: 'a', status: 'INFRASTRUCTURE_FAILURE', provider: 'codex-cli', model: 'gpt-6-luna', riskAfterDiff: 'LOW',
+      testResult: {}, buildResult: {}, agentDiagnostics: { failureClass: 'INFRASTRUCTURE_FAILURE', summary: 'bwrap: Failed RTM_NEWADDR' },
+    });
+    expect(result).toEqual({ status: 'TRIAGING', attemptStatus: 'INFRASTRUCTURE_FAILURE' });
+    expect(store.updateAttempt).toHaveBeenCalledWith('a', expect.objectContaining({ status: 'FAILED', risk_after_diff: 'LOW', test_result: expect.objectContaining({ agent_diagnostics: expect.objectContaining({ failure_class: 'INFRASTRUCTURE_FAILURE' }) }) }));
+    expect(store.updateAttempt.mock.calls[0][1].test_result).not.toHaveProperty('focusedTest');
+    expect(store.updateIncident).toHaveBeenCalledWith('t', 'i', { status: 'TRIAGING' });
+    expect(store.writeEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'autofix.infrastructure-failure', details: expect.objectContaining({ attemptCounted: false }) }));
+  });
+
+  it('reports a live sandbox block distinctly from online and offline worker states', async () => {
+    const service = Object.create(SupportAutofixService.prototype) as any;
+    service.store = { getWorkerHeartbeat: jest.fn().mockResolvedValue({ worker_id: 'worker-a', current_incident: 'SANDBOX_BLOCKED', queue_depth: 3, updated_at: new Date().toISOString() }) };
+    await expect(service.getWorkerHealth()).resolves.toMatchObject({ status: 'DEGRADED', stateCode: 'SANDBOX_BLOCKED', stateMessage: 'Worker sandbox unavailable', queueDepth: 3, currentIncident: null });
+  });
+
   it('restores LOW risk only for a recognized failed-attempt reason and normalizes route before retry', async () => {
     process.env.AUTOHEAL_ENABLED = 'true';
     const store = {

@@ -7,6 +7,7 @@ import { ValidationEngine } from './validation-engine';
 import { AutoHealWorkerApiClient } from './worker-api-client';
 import { AutoHealWorkerProcessor } from './worker-processor';
 import { AUTO_FIX_AGENT } from './worker-tokens';
+import { CodexSandboxPreflightService } from './sandbox-preflight.service';
 
 
 function redisOptions() {
@@ -20,6 +21,6 @@ function redisOptions() {
 
 @Module({
   imports: [BullModule.forRoot({ redis: redisOptions() }), BullModule.registerQueue({ name: 'autoheal-patch' })],
-  providers: [CommandRunner, GitWorktreeService, ValidationEngine, AutoHealWorkerApiClient, AutoHealWorkerProcessor, { provide: AUTO_FIX_AGENT, useFactory: () => createConfiguredAutoFixAgent() }],
+  providers: [CommandRunner, GitWorktreeService, ValidationEngine, AutoHealWorkerApiClient, CodexSandboxPreflightService, AutoHealWorkerProcessor, { provide: AUTO_FIX_AGENT, useFactory: () => createConfiguredAutoFixAgent() }],
 })
 export class AutoHealWorkerModule {}

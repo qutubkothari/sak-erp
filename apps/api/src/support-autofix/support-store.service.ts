@@ -170,9 +170,9 @@ export class SupportStoreService {
   }
 
   async countAttempts(incidentId: string): Promise<number> {
-    const { count, error } = await this.supabase.from('support_fix_attempts').select('id', { count: 'exact', head: true }).eq('incident_id', incidentId);
+    const { data, error } = await this.supabase.from('support_fix_attempts').select('status,test_result').eq('incident_id', incidentId);
     if (error) throw error;
-    return count || 0;
+    return (data || []).filter((attempt: any) => attempt.test_result?.agent_diagnostics?.failure_class !== 'INFRASTRUCTURE_FAILURE').length;
   }
 
   async latestAttempt(incidentId: string) {

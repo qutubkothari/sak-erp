@@ -40,4 +40,16 @@ describe('AutoHeal incident privacy and deduplication', () => {
     expect(result).toEqual({ worker_id: 'worker-a', current_incident: 'incident-a', queue_depth: 2, updated_at: '2026-09-28T00:00:00Z' });
     expect(upsert).toHaveBeenCalledWith(expect.not.objectContaining({ hostname: expect.anything(), host: expect.anything() }), { onConflict: 'worker_id' });
   });
+
+  it('does not count sandbox infrastructure failures toward the two patch-attempt limit', async () => {
+    const eq = jest.fn().mockResolvedValue({ data: [
+      { status: 'FAILED', test_result: { agent_diagnostics: { failure_class: 'INFRASTRUCTURE_FAILURE' } } },
+      { status: 'FAILED', test_result: { agent_diagnostics: {} } },
+      { status: 'READY_FOR_APPROVAL', test_result: {} },
+    ], error: null });
+    const service = Object.create(SupportStoreService.prototype) as any;
+    service.supabase = { from: jest.fn(() => ({ select: jest.fn(() => ({ eq })) })) };
+    await expect(service.countAttempts('incident-a')).resolves.toBe(2);
+    expect(eq).toHaveBeenCalledWith('incident_id', 'incident-a');
+  });
 });
