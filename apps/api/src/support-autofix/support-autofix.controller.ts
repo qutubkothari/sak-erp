@@ -107,6 +107,14 @@ export class SupportAutofixController {
     return this.service.retryAnalysis(tenantId, id, req.user.userId || req.user.id);
   }
 
+  @Post('admin/incidents/:id/resolve')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('support_autofix:manage')
+  async resolve(@Request() req: any, @Param('id') id: string, @Body() body: { summary?: string; verified?: boolean }) {
+    const tenantId = await this.service.adminTenantId(req.user, id);
+    return this.service.resolveVerifiedIncident(tenantId, id, req.user.userId || req.user.id, body);
+  }
+
   @Post('admin/incidents/:id/retry-infrastructure')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:manage')

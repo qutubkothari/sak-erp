@@ -80,3 +80,27 @@ describe('PO register server search and Excel parity', () => {
     expect(workbook.worksheets[0].rowCount - 1).toBe(518);
   });
 });
+
+
+describe('PO paged API contract', () => {
+  it('pages only after full search and returns the filtered total', async () => {
+    const { service } = fixture();
+    const result = await service.findPage('t1', { search: 'Macfos', page: '2', pageSize: '10' });
+    expect(result).toMatchObject({ total: 520, page: 2, pageSize: 10 });
+    expect(result.rows.map(po => po.id)).toEqual(Array.from({length: 10}, (_, i) => `po-${i + 11}`));
+    const late = await service.findPage('t1', { search: 'PR-SPECIAL-24', page: 1, pageSize: 10 });
+    expect(late.total).toBe(1); expect(late.rows[0].id).toBe('po-520');
+  });
+  it('returns an empty out-of-range page without losing the filtered total', async () => {
+    const { service } = fixture();
+    expect(await service.findPage('t1', { search: 'PR-SPECIAL-24', page: 2, pageSize: 10 })).toMatchObject({ total: 1, rows: [] });
+  });
+  it.each([{page:0}, {page:1.5}, {pageSize:0}, {pageSize:1001}, {page:'invalid'}])('rejects invalid paging %j', async filters => {
+    await expect(fixture().service.findPage('t1', filters)).rejects.toThrow('positive integer');
+  });
+  it('ignores page limits for Excel export', async () => {
+    const { service } = fixture(); const w = new ExcelJS.Workbook();
+    await w.xlsx.load(await service.exportRegister('t1', {search:'Macfos', page:2, pageSize:10}));
+    expect(w.worksheets[0].rowCount - 1).toBe(520);
+  });
+});

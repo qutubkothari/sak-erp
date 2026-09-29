@@ -46,10 +46,15 @@ export default function SupportIssueStatus({
         `/support/incidents/mine?lifecycle=${lifecycle}`,
       );
       const safeRows = Array.isArray(result.issues) ? result.issues.slice(0, 100) : [];
-      setIssues(safeRows);
-      setCounts(result.counts || emptySupportIssueCounts());
 
       const previous = readMap(snapshotKey(userKey));
+      // Resolved incidents leave the active list; fetch that lifecycle when a
+      // previously active ID disappears so the normal resolved toast still fires.
+      let transitionRows = safeRows;
+      if (lifecycle === "ACTIVE" && Object.keys(previous).some((id) => previous[id] !== "RESOLVED" && !safeRows.some((issue) => issue.id === id))) {
+        const resolved = await apiClient.get<{ issues: SupportIssue[] }>("/support/incidents/mine?lifecycle=RESOLVED");
+        transitionRows = [...safeRows, ...(resolved.issues || []).filter((issue) => previous[issue.id])];
+      }
       const next: Record<string, string> = {};
       const feed = (() => {
         try {
@@ -61,7 +66,7 @@ export default function SupportIssueStatus({
         }
       })();
       const newMessages: string[] = [];
-      for (const issue of lifecycle === "ACTIVE" ? safeRows : []) {
+      for (const issue of lifecycle === "ACTIVE" ? transitionRows : []) {
         next[issue.id] = issue.status;
         if (
           !previous[issue.id] ||
@@ -80,11 +85,13 @@ export default function SupportIssueStatus({
         newMessages.push(message);
       }
       if (lifecycle === "ACTIVE") localStorage.setItem(snapshotKey(userKey), JSON.stringify(next));
-      const activeIds = new Set(safeRows.map((issue) => issue.id));
+      const activeIds = new Set(transitionRows.map((issue) => issue.id));
       const conciseFeed = lifecycle === "ACTIVE"
         ? uniqueLatestStatusFeed(feed.filter((entry) => activeIds.has(entry.id.split(":", 1)[0]))).slice(0, 10)
         : uniqueLatestStatusFeed(feed).slice(0, 10);
       localStorage.setItem(feedKey(userKey), JSON.stringify(conciseFeed));
+      setIssues(safeRows);
+      setCounts(result.counts || emptySupportIssueCounts());
       for (const message of newMessages)
         window.dispatchEvent(
           new CustomEvent("mizantra:support-update", { detail: { message } }),

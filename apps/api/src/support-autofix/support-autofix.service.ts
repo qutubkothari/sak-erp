@@ -363,6 +363,18 @@ export class SupportAutofixService {
     return authorized && isRecognizedCodexInfrastructureFailure(latest);
   }
 
+  async resolveVerifiedIncident(tenantId: string, incidentId: string, actorId: string, input: { summary?: string; verified?: boolean }) {
+    const current = await this.requireIncident(tenantId, incidentId);
+    const summary = sanitizeSupportText(input?.summary, 1000);
+    if (input?.verified !== true || summary.length < 20) throw new ConflictException('Confirm production verification and provide a resolution summary.');
+    if (current.status === 'RESOLVED') return current;
+    if (current.archived_at || !['FAILED', 'ESCALATED'].includes(current.status)) throw new ConflictException('Only inactive failed or escalated incidents can be manually resolved.');
+    const incident = await this.store.updateIncident(tenantId, incidentId, { status: 'RESOLVED', resolved_at: new Date().toISOString(), risk_reason: summary }, current.status);
+    await this.store.writeEvent({ type: 'incident.resolved', tenantId, incidentId, at: new Date().toISOString(), details: { method: 'manual', previous_status: current.status, summary, production_verified: true } }, actorId);
+    await this.audit.logActivity({ tenantId, userId: actorId, action: 'SUPPORT_INCIDENT_RESOLVED', resourceType: 'support_incident', resourceId: incidentId, metadata: { method: 'manual', summary, production_verified: true } });
+    return incident;
+  }
+
   async rejectFix(tenantId: string, incidentId: string, actorId: string, reason?: string) {
     await this.requireIncident(tenantId, incidentId);
     const safeReason = sanitizeSupportText(reason || 'Rejected by support administrator.', 500);

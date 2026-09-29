@@ -134,6 +134,7 @@ export class PurchaseOrdersController {
 
   @Get()
   async findAll(@Request() req: any, @Query() query: any) {
+    if (query.page !== undefined || query.pageSize !== undefined) return this.poService.findPage(req.user.tenantId, query);
     return this.poService.findAll(req.user.tenantId, query);
   }
 

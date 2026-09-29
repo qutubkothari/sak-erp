@@ -11,8 +11,8 @@ const TRANSITIONS: Record<IncidentStatus, IncidentStatus[]> = {
   VERIFYING: ['RESOLVED', 'ROLLED_BACK', 'FAILED', 'ESCALATED'],
   RESOLVED: ['DEPLOYING'],
   ROLLED_BACK: ['TRIAGING', 'ESCALATED'],
-  ESCALATED: ['TRIAGING'],
-  FAILED: ['TRIAGING', 'READY_FOR_APPROVAL', 'ESCALATED'],
+  ESCALATED: ['TRIAGING', 'RESOLVED'],
+  FAILED: ['TRIAGING', 'READY_FOR_APPROVAL', 'ESCALATED', 'RESOLVED'],
 };
 
 export function canTransitionIncident(from: IncidentStatus, to: IncidentStatus): boolean {

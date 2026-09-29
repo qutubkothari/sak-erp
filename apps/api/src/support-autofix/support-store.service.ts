@@ -192,12 +192,13 @@ export class SupportStoreService {
     return data || null;
   }
 
-  async updateIncident(tenantId: string, incidentId: string, updates: Record<string, unknown>) {
+  async updateIncident(tenantId: string, incidentId: string, updates: Record<string, unknown>, expectedStatus?: string) {
     let request = this.supabase.from('support_incidents').update({ ...updates, updated_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', incidentId);
     if (typeof updates.status === 'string') {
       const { data: current, error: readError } = await this.supabase.from('support_incidents').select('status').eq('tenant_id', tenantId).eq('id', incidentId).maybeSingle();
       if (readError) throw readError;
       if (!current) throw new ConflictException('Support incident no longer exists.');
+      if (expectedStatus && current.status !== expectedStatus) throw new ConflictException('Support incident status changed; refresh and try again.');
       assertIncidentTransition(current.status, updates.status as any);
       request = request.eq('status', current.status);
     }

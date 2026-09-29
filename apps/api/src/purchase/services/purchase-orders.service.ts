@@ -1695,6 +1695,16 @@ export class PurchaseOrdersService {
     return this.findOne(tenantId, po.id);
   }
 
+  async findPage(tenantId: string, filters: any = {}) {
+    const page = Number(filters.page ?? 1);
+    const pageSize = Number(filters.pageSize ?? 10);
+    if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 1000) {
+      throw new BadRequestException('page must be a positive integer and pageSize must be between 1 and 1000.');
+    }
+    const matching = await this.findAll(tenantId, filters);
+    return { rows: matching.slice((page - 1) * pageSize, page * pageSize), total: matching.length, page, pageSize };
+  }
+
   async findAll(tenantId: string, filters?: any) {
     // Page through the database cap; the existing HTTP contract remains an array
     // of all matching register rows, shared by the screen and Excel export.

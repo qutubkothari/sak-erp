@@ -26,6 +26,9 @@ export default function SupportAutoHealAdminPage() {
   const [targetId, setTargetId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [resolutionSummary, setResolutionSummary] = useState("");
+  const [productionVerified, setProductionVerified] = useState(false);
+  useEffect(() => { setResolutionSummary(""); setProductionVerified(false); }, [selected?.id]);
 
   const downloadScreenshot = async (ref: string) => {
     try {
@@ -72,8 +75,8 @@ export default function SupportAutoHealAdminPage() {
     if (!selected || !window.confirm(confirmText)) return;
     setBusy(true);
     try {
-      await apiClient.post(`/support/admin/incidents/${selected.id}/${action}`, action === "approve-deployment" ? { targetId } : {});
-      toast.success("Request queued.");
+      await apiClient.post(`/support/admin/incidents/${selected.id}/${action}`, action === "resolve" ? { summary: resolutionSummary, verified: productionVerified } : action === "approve-deployment" ? { targetId } : {});
+      toast.success(action === "resolve" ? "Incident resolved." : "Request queued.");
       await refresh();
       await loadDetail(selected.id);
     } catch (cause: any) { toast.error(cause?.message || "The action could not be completed."); }
@@ -112,6 +115,12 @@ export default function SupportAutoHealAdminPage() {
 
             <div><h3 className="font-semibold text-stone-900">Deployments and rollback</h3>{selected.deployments?.length ? <div className="mt-2 space-y-2">{selected.deployments.map((deployment) => <article key={deployment.id} className="rounded-xl border border-stone-200 p-4 text-sm"><p className="font-medium">{deployment.target} · {deployment.deployment_status}</p><p className="mt-1 break-all text-xs text-stone-600">Previous {deployment.previous_sha} → New {deployment.new_sha}</p><p className="mt-1 text-xs text-stone-600">Smoke: {pretty(deployment.smoke_result)} · Rollback: {deployment.rollback_status}</p></article>)}</div> : <p className="mt-2 text-sm text-stone-500">No deployment attempts recorded.</p>}</div>
 
+            {["FAILED", "ESCALATED"].includes(selected.status) && <section className="space-y-2 rounded-lg border p-3" aria-label="Resolve verified incident">
+              <label className="block text-sm">Resolution summary<textarea aria-label="Resolution summary" value={resolutionSummary} onChange={(event) => setResolutionSummary(event.target.value)} maxLength={1000} className="mt-1 w-full rounded border p-2" /></label>
+              <label className="flex gap-2 text-sm"><input type="checkbox" checked={productionVerified} onChange={(event) => setProductionVerified(event.target.checked)} />I verified the fix in production.</label>
+              <button disabled={busy || !productionVerified || resolutionSummary.trim().length < 20} onClick={() => void act("resolve", "Mark this incident resolved using the verified production fix and recorded summary?")} className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Resolve incident</button>
+            </section>}
+            {selected.status === "RESOLVED" && <Info title="Resolution summary" value={selected.risk_reason} />}
             <div className="flex flex-wrap items-center gap-2 border-t border-stone-100 pt-4">
               {availableTargets.length > 1 && <select value={targetId} onChange={(event) => setTargetId(event.target.value)} className="rounded-lg border border-stone-300 px-3 py-2 text-sm">{availableTargets.map((target) => <option key={target.id} value={target.id}>{target.domain}</option>)}</select>}
               {selected.status === "READY_FOR_APPROVAL" && config?.mode === "APPROVAL" && <button disabled={busy || !targetId} onClick={() => void act("approve-deployment", "Approve this verified low-risk web fix for deployment?")} className="rounded-lg bg-amber-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Approve deployment</button>}
@@ -119,7 +128,7 @@ export default function SupportAutoHealAdminPage() {
               {selected.status === "FAILED" && <button disabled={busy} onClick={() => void act("retry", "Retry analysis? The incident is limited to two automatic patch attempts.")} className="rounded-lg border border-stone-300 px-3 py-2 text-sm">Retry analysis</button>}
               {config?.isCentralSupportAdmin && selected.recovery?.eligible === false && selected.recovery.reason && <span className="text-xs text-stone-600">Infrastructure recovery unavailable: {selected.recovery.reason}</span>}
               {canRenderInfrastructureRecoveryAction(config?.isCentralSupportAdmin, selected.recovery) && <><button disabled={busy} onClick={() => void act("retry-infrastructure", "Use the one-time administrator recovery attempt after this verified worker infrastructure failure?")} className="rounded-lg border border-amber-300 px-3 py-2 text-sm text-amber-900">Retry after infrastructure failure</button><span className="text-xs text-stone-600">{selected.recovery?.remainingAttempts} genuine fix attempt{selected.recovery?.remainingAttempts === 1 ? "" : "s"} remaining</span></>}
-              {selected.status === "RESOLVED" && <button disabled={busy} onClick={() => void act("rollback", "Roll back the deployed web fix to its previous verified SHA?")} className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm text-red-800"><RotateCcw size={15} />Rollback</button>}
+              {selected.status === "RESOLVED" && selected.deployments?.some((deployment) => deployment.deployment_status === "SUCCEEDED") && <button disabled={busy} onClick={() => void act("rollback", "Roll back the deployed web fix to its previous verified SHA?")} className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm text-red-800"><RotateCcw size={15} />Rollback</button>}
               {busy && <Loader2 className="animate-spin text-stone-500" size={18} />}
             </div>
           </div>}
