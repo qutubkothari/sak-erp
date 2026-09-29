@@ -81,6 +81,20 @@ def inventory(root):
         'migrations':'migrations/*.sql',
     }.items()}
 
+def endpoints(controllers):
+    found={}
+    for path,source in controllers.items():
+        code=source.read_text(encoding='utf-8',errors='replace')
+        controller=re.search(r'@Controller\s*\(\s*[\'\"]([^\'\"]*)',code)
+        prefix=controller.group(1).strip('/') if controller else '?'
+        methods=list(re.finditer(r'@(Get|Post|Put|Patch|Delete|Options|Head)\s*\(\s*(?:[\'\"]([^\'\"]*)[\'\"])?',code))
+        for method in methods:
+            suffix=(method.group(2) or '').strip('/')
+            endpoint='/'+'/'.join(x for x in (prefix,suffix) if x)
+            found[f'{method.group(1).upper()} {endpoint} [{path}]']=source
+        if not methods: found[f'UNPARSED [{path}]']=source
+    return found
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--saifseas', type=Path, default=ROOT)
@@ -111,12 +125,17 @@ def main():
     write_csv(a.out/'01_shared_feature_matrix.csv',['feature_id','module','frontend','api_service','migration','scope',*names,'evidence'],rows)
     write_csv(a.out/'02_mizantra_vs_saifseas.csv',['feature_id','module','classification','evidence','limit'],comparisons[0])
     write_csv(a.out/'03_arwa_vs_mizantra.csv',['feature_id','module','classification','evidence','limit'],comparisons[1])
-    for kind,index in [('routes',4),('api',5)]:
+    for kind,index in [('routes',4)]:
         all_paths=sorted(set().union(*(i[kind] for i in inv)))
         write_csv(a.out/f'{index:02d}_{"route" if kind=="routes" else "api"}_parity.csv',
           ['path',*names,'classification'],
           [[p,*('SAME_AS_BASE' if j and p in inv[0][kind] and p in inv[j][kind] and digest(inv[0][kind][p])==digest(inv[j][kind][p]) else 'PRESENT' if p in inv[j][kind] else 'MISSING' for j in range(3)),
             'SHARED' if all(p in i[kind] for i in inv) else 'DRIFT'] for p in all_paths])
+    ep=[endpoints(i['api']) for i in inv]
+    all_ep=sorted(set().union(*(e.keys() for e in ep)))
+    write_csv(a.out/'05_api_parity.csv',['endpoint_and_controller',*names,'classification'],[
+      [key,*('PRESENT' if key in e else 'MISSING' for e in ep),
+       'SHARED' if all(key in e for e in ep) else 'DRIFT'] for key in all_ep])
     all_m=sorted(set().union(*(i['migrations'] for i in inv)))
     schema_rows=[[p,*((digest(inv[j]['migrations'][p]) if p in inv[j]['migrations'] else 'MISSING') for j in range(3)),
         'YES' if p in inv[0]['migrations'] else 'REVIEW',
