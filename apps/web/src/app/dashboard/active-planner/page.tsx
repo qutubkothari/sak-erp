@@ -766,18 +766,20 @@ export default function ActivePlannerPage() {
   };
   const uploadAttachment = async (file?: File) => {
     if (!file || busy || uploading) return;
-    if (file.size > 10 * 1024 * 1024) {
-      setError("Attachment must be 10 MB or smaller.");
+    const spreadsheet = !supportMode && /\.(xlsx|csv)$/i.test(file.name);
+    const maximum = spreadsheet ? 15 : 10;
+    if (file.size > maximum * 1024 * 1024) {
+      setError(`Attachment must be ${maximum} MB or smaller.`);
       return;
     }
     if (
-      !["application/pdf", "image/png", "image/jpeg"].includes(file.type) ||
+      (!spreadsheet && !["application/pdf", "image/png", "image/jpeg"].includes(file.type)) ||
       (supportMode && file.type === "application/pdf")
     ) {
       setError(
         supportMode
           ? "Choose a PNG or JPEG screenshot."
-          : "Choose a PDF, PNG or JPEG.",
+          : "Choose a PDF, PNG, JPEG, XLSX or CSV file.",
       );
       return;
     }
@@ -830,6 +832,20 @@ export default function ActivePlannerPage() {
         "/active-planner/support-intent",
         { message, support_mode },
       );
+      if (classification.intent === "SMART_IMPORT") {
+        if (!pendingFile) throw new Error("Attach an XLSX or CSV workbook to prepare the Smart Import preview.");
+        if (!/\.(xlsx|csv)$/i.test(pendingFile.name)) throw new Error("Smart Import accepts XLSX and CSV files only.");
+        setUploading(true);
+        const form = new FormData();
+        form.append("file", pendingFile);
+        form.append("instruction", message);
+        const staged = await apiClient.postForm<any>("/smart-imports", form);
+        setInput("");
+        setPendingFile(null);
+        setAttachments([]);
+        window.location.assign(`/dashboard/active-planner/smart-import?batch=${encodeURIComponent(staged.batch?.id || staged.id)}`);
+        return;
+      }
       if (classification.intent === "CLARIFY_CHANGE_REQUEST") {
         setClarifySupport(true);
         setTurns((x) => [
@@ -1649,7 +1665,7 @@ export default function ActivePlannerPage() {
                   accept={
                     supportMode
                       ? "image/png,image/jpeg"
-                      : "application/pdf,image/png,image/jpeg"
+                      : "application/pdf,image/png,image/jpeg,.xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
                   }
                   className="hidden"
                   disabled={busy || uploading}

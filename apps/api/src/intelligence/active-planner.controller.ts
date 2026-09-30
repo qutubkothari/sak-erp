@@ -21,6 +21,7 @@ import { SkipAutomaticAudit } from "../audit/skip-automatic-audit.decorator";
 import {
   PlannerSupportService,
   autoEngineerIntent,
+  askIntent,
 } from "./planner-support.service";
 import { PlannerSupportAttachmentsService } from "./planner-support-attachments.service";
 import { ActivePlannerService } from "./active-planner.service";
@@ -106,7 +107,7 @@ export class ActivePlannerController {
   @SkipAutomaticAudit()
   supportIntent(@Body() body: any) {
     return {
-      intent: autoEngineerIntent(String(body?.message || ""), body?.support_mode),
+      intent: askIntent(String(body?.message || ""), body?.support_mode),
     };
   }
   @Get("support-status")

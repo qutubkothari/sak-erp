@@ -116,6 +116,7 @@ export default function SupportAutoHealAdminPage() {
       <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">Support engineering</p><h1 className="mt-1 text-2xl font-semibold text-stone-900">Support &amp; Engineering Control Center</h1><p className="mt-2 text-sm text-stone-600">Review requests, risk decisions, validation results, deployments, and rollback history.</p></div>
         <Link href="/dashboard/support/admin/system-health" className="rounded-lg border border-indigo-300 px-3 py-2 text-sm font-semibold text-indigo-800">System Health / Auto QA</Link>
+        <Link href="/dashboard/support/admin/smart-imports" className="rounded-lg border border-emerald-300 px-3 py-2 text-sm font-semibold text-emerald-800">Smart Imports</Link>
         <div className="flex items-center gap-3"><span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${config?.enabled ? "bg-emerald-50 text-emerald-800" : "bg-stone-100 text-stone-700"}`}>{config?.enabled ? "Enabled" : "Kill switch off"} · {config?.mode || "SHADOW"}</span><button onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-lg border border-stone-300 px-3 py-2 text-sm"><RefreshCw size={15} />Refresh</button></div>
       </header>
 

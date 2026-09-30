@@ -65,6 +65,7 @@ import { CrmModule } from './crm/crm.module';
 import { FsmModule } from './fsm/fsm.module';
 import { SupportAutofixModule } from './support-autofix/support-autofix.module';
 import { AutoQaModule } from './autoqa/autoqa.module';
+import { SmartImportModule } from './smart-import/smart-import.module';
 
 const runtimeEnv = process.env.APP_ENV || process.env.NODE_ENV;
 const apiEnvFiles = runtimeEnv === 'test'
@@ -159,6 +160,7 @@ const apiEnvFiles = runtimeEnv === 'test'
     FsmModule,
     SupportAutofixModule,
     AutoQaModule,
+    SmartImportModule,
   ],
   controllers: [MigrationController],
   providers: [

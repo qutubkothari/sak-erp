@@ -13,6 +13,7 @@ import { PlannerSupportAttachmentsService } from "./planner-support-attachments.
 import { classifyAutoEngineerIntent, resolveAutoEngineerScope } from "../support-autofix/autoengineer-policy";
 import { hasSuperAdminBypass } from "../auth/utils/permission-utils";
 import { classifyIncident } from "../support-autofix/risk-policy";
+import { classifySmartImportIntent } from "../smart-import/smart-import.analysis";
 
 function legacySupportIntent(message: string, mode?: string) {
   if (mode === "support") return "SUPPORT_INCIDENT";
@@ -50,6 +51,12 @@ export function supportIntent(message: string, mode?: string) {
   return autoEngineerIntent(message, mode);
 }
 
+export function askIntent(message: string, mode?: string) {
+  const intent = autoEngineerIntent(message, mode);
+  if (intent === "NORMAL_ERP_REQUEST" && classifySmartImportIntent(message)) return "SMART_IMPORT";
+  return intent;
+}
+
 export function supportRoute(value: unknown): string {
   return normalizeSupportRoute(value) || "/dashboard";
 }
@@ -65,6 +72,9 @@ export class PlannerSupportService {
     const message = String(body?.message || "");
     const classification = classifyAutoEngineerIntent(message, body?.support_mode);
     const intent = classification.intent;
+    if (intent === "NORMAL_ERP_REQUEST" && classifySmartImportIntent(message)) {
+      return this.reply("SMART_IMPORT", "Attach the XLSX or CSV workbook and I’ll prepare a reviewable import preview. Nothing will be imported until an authorized admin approves it.");
+    }
     if (intent === "NORMAL_ERP_REQUEST") return null;
     if (intent === "CLARIFY_CHANGE_REQUEST")
       return this.reply(intent, "Are you asking me to perform ERP work, report a problem, or change/improve the ERP?");
