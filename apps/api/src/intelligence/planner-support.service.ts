@@ -10,8 +10,11 @@ import {
 } from "../support-autofix/support-store.service";
 import { normalizeSupportRoute, resolveSupportRoute } from "../support-autofix/support-route";
 import { PlannerSupportAttachmentsService } from "./planner-support-attachments.service";
+import { classifyAutoEngineerIntent, resolveAutoEngineerScope } from "../support-autofix/autoengineer-policy";
+import { hasSuperAdminBypass } from "../auth/utils/permission-utils";
+import { classifyIncident } from "../support-autofix/risk-policy";
 
-export function supportIntent(message: string, mode?: string) {
+function legacySupportIntent(message: string, mode?: string) {
   if (mode === "support") return "SUPPORT_INCIDENT";
   if (mode === "planner") return "NORMAL_PLANNER_REQUEST";
   const text = message.toLowerCase().replace(/[’']/g, "'");
@@ -39,6 +42,14 @@ export function supportIntent(message: string, mode?: string) {
   return "NORMAL_PLANNER_REQUEST";
 }
 
+export function autoEngineerIntent(message: string, mode?: string) {
+  return classifyAutoEngineerIntent(message, mode).intent;
+}
+
+export function supportIntent(message: string, mode?: string) {
+  return autoEngineerIntent(message, mode);
+}
+
 export function supportRoute(value: unknown): string {
   return normalizeSupportRoute(value) || "/dashboard";
 }
@@ -52,10 +63,11 @@ export class PlannerSupportService {
 
   async route(user: any, body: any) {
     const message = String(body?.message || "");
-    const intent = supportIntent(message, body?.support_mode);
-    if (intent === "NORMAL_PLANNER_REQUEST") return null;
-    if (intent === "CLARIFY_SUPPORT")
-      return this.reply(intent, "Are you reporting a problem with the ERP?");
+    const classification = classifyAutoEngineerIntent(message, body?.support_mode);
+    const intent = classification.intent;
+    if (intent === "NORMAL_ERP_REQUEST") return null;
+    if (intent === "CLARIFY_CHANGE_REQUEST")
+      return this.reply(intent, "Are you asking me to perform ERP work, report a problem, or change/improve the ERP?");
     if (intent === "SUPPORT_STATUS") return this.history(user, message);
     if (!message.trim() || message.length > 2000)
       throw new BadRequestException(
@@ -71,6 +83,42 @@ export class PlannerSupportService {
     const module = routeContext.module || "ERP";
     const screenshotRef = body?.support_screenshot_ref;
     if (screenshotRef) await this.attachments.assertOwned(user, screenshotRef);
+    const scope = resolveAutoEngineerScope({
+      isSuperAdmin: hasSuperAdminBypass(user),
+      currentProfile: process.env.ERP_TENANT_PROFILE,
+      requestedScope: body?.requested_scope,
+      targetProfiles: body?.target_profiles,
+    });
+    const requestRisk = classification.requestType === "BUG"
+      ? classifyIncident({ title: message, description: message, module, route }).risk
+      : classification.risk;
+    const effectiveRisk = scope.requestedScope === "UNKNOWN" ? "BLOCKED" : requestRisk || "BLOCKED";
+    const requestMetadata = {
+      request_type: classification.requestType,
+      change_kind: classification.changeKind,
+      risk: effectiveRisk,
+      risk_reason: effectiveRisk === "BLOCKED" ? scope.scopeReason : classification.reason,
+      requested_scope: scope.requestedScope,
+      target_profiles: scope.targetProfiles,
+      scope_reason: scope.scopeReason,
+      acceptance_criteria: classification.acceptanceCriteria,
+      implementation_plan: classification.implementationPlan,
+      change_summary: classification.changeSummary,
+      requires_migration: classification.requiresMigration,
+      requires_backend: classification.requiresBackend,
+      requires_business_logic: classification.requiresBusinessLogic,
+      requested_by_profile: scope.requestedByProfile,
+      build_approval_status: classification.requestType === "BUG"
+        ? "NOT_REQUIRED"
+        : effectiveRisk === "MEDIUM"
+        ? "AWAITING_BUILD_APPROVAL"
+        : effectiveRisk === "HIGH"
+          ? "AWAITING_ENGINEERING_APPROVAL"
+          : "NOT_REQUIRED",
+      prompt_scope: effectiveRisk === "LOW"
+        ? `LOW ${classification.changeKind} UI-only scope; use existing data, no migrations, business logic, or deployment.`
+        : `Plan only until privileged approval; requested scope: ${scope.requestedScope}.`,
+    };
     // Only this allowlist crosses the intake boundary. No deployment commands or model output.
     const incident = await this.autoheal
       .captureIncident(user, {
@@ -108,18 +156,28 @@ export class PlannerSupportService {
         )
           ? process.env.BUILD_SHA || process.env.GIT_SHA || body.build_sha
           : undefined,
-      })
+      }, requestMetadata)
       .catch(() => {
         throw new ServiceUnavailableException(
           "Your issue could not be logged. Your description is still here; please retry.",
         );
       });
+    const clientMessage = classification.requestType === "BUG"
+      ? `I've logged this issue.\n\n${module}\nIncident: ${incident.id}\n\n${incident.status}\nYou can ask me here for an update.`
+      : effectiveRisk === "LOW"
+        ? `Change request understood.\n${module}\nRisk: Low\nI'm preparing and testing the change. Deployment will still need separate approval.`
+      : effectiveRisk === "MEDIUM"
+          ? `Change request understood.\n${module}\nRisk: Medium\nI'm preparing an implementation plan. A privileged Admin must approve “Build this change” before coding begins.`
+      : effectiveRisk === "HIGH"
+            ? `Change request understood.\n${module}\nRisk: High\nI can prepare an impact analysis and acceptance tests. Engineering approval is required before coding.`
+            : `This request needs security or scope review before implementation can be considered.`;
     return {
-      ...this.reply(
-        intent,
-        `I've logged this issue.\n\n${module}\nIncident: ${incident.id}\n\n${incident.status}\nYou can ask me here for an update.`,
-      ),
+      ...this.reply(intent, clientMessage),
       support_incident: { id: incident.id, status: incident.status },
+      request_type: classification.requestType,
+      requested_scope: scope.requestedScope,
+      risk: effectiveRisk,
+      acceptance_criteria: classification.acceptanceCriteria,
     };
   }
 

@@ -5,7 +5,8 @@ import { Job, Queue } from 'bull';
 import { AutoFixAgentProvider, selectModelForRisk } from './agent-provider';
 import { GitWorktreeService } from './git-worktree.service';
 import { autoHealDiffLimits, classifyDiff } from './risk-policy';
-import { buildScopedAutoFixPrompt } from './prompt-builder';
+import { buildAutoEngineerPrompt } from './prompt-builder';
+import { classifyAutoEngineerDiff } from './autoengineer-policy';
 import { ValidationEngine } from './validation-engine';
 import { AutoHealWorkerApiClient } from './worker-api-client';
 import { ValidationResults } from './support-autofix.types';
@@ -77,13 +78,15 @@ export class AutoHealWorkerProcessor {
     try {
       const { incident, attemptNumber } = await this.api.getIncident(tenantId, incidentId) as any;
       if (String(incident?.id || '') !== incidentId) throw new Error('AUTOHEAL_INFRASTRUCTURE_FAILURE: queue incident ID does not match the worker incident response.');
-      if (incident.riskLevel !== 'LOW') return;
+      if (!['LOW', 'MEDIUM', 'HIGH'].includes(String(incident.riskLevel))) return;
       const workspace = await this.worktrees.create(`${incidentId}-attempt-${attemptNumber}`, incident.title);
       if (!worktreeMatchesIncident(workspace, incidentId, attemptNumber)) {
         await this.worktrees.remove(workspace.path).catch(() => undefined);
         throw new Error('AUTOHEAL_INFRASTRUCTURE_FAILURE: worktree branch/path identity does not match its incident attempt.');
       }
-      const tooling = await this.validation.prepareWebWorkspace(workspace.path);
+      const tooling = incident.requestType && incident.requestType !== 'BUG'
+        ? await this.validation.prepareAutoEngineerWorkspace(workspace.path)
+        : await this.validation.prepareWebWorkspace(workspace.path);
       if (!tooling.passed) {
         await this.worktrees.remove(workspace.path).catch(() => undefined);
         this.sandboxReady = false;
@@ -97,10 +100,10 @@ export class AutoHealWorkerProcessor {
         throw new Error('AUTOHEAL_INFRASTRUCTURE_FAILURE: persisted attempt identity does not match its queued incident and worktree.');
       }
       attemptId = started.attemptId;
-      const prompt = buildScopedAutoFixPrompt({ ...incident, category: incident.category });
+      const prompt = buildAutoEngineerPrompt({ ...incident, category: incident.category });
       if (!workerEnabled()) throw new Error('AutoHeal coding worker was disabled before agent execution.');
       validationStage = 'agent';
-      agentResult = await this.agent.run({ prompt, worktreePath: workspace.path, risk: 'LOW' });
+      agentResult = await this.agent.run({ prompt, worktreePath: workspace.path, risk: incident.riskLevel, engineeringApproved: incident.engineeringApproved === true });
       if (!agentResult.success) {
         const detail = agentResult.detail || agentResult.stderrSummary || agentResult.summary || 'Coding agent failed.';
         if (isCodexSandboxInfrastructureFailure(detail)) {
@@ -110,7 +113,7 @@ export class AutoHealWorkerProcessor {
           await this.sendHeartbeat();
           await this.api.finishAttempt(tenantId, incidentId, {
             attemptId, status: 'INFRASTRUCTURE_FAILURE', provider: agentResult.provider, model: agentResult.model,
-            filesChanged: [], riskAfterDiff: 'LOW', testResult: {}, buildResult: {},
+            filesChanged: [], riskAfterDiff: incident.riskLevel, testResult: {}, buildResult: {},
             agentDiagnostics: { ...this.agentDiagnostics(agentResult, false, 'sandbox-preflight'), failureClass: 'INFRASTRUCTURE_FAILURE', summary: safeError(detail) },
           });
           throw new Error(`INFRASTRUCTURE_FAILURE_RECORDED: ${safeError(detail)}`);
@@ -123,10 +126,15 @@ export class AutoHealWorkerProcessor {
       await this.worktrees.stageAllInWorktree(workspace.path);
       const diff = await this.worktrees.stagedDiff(workspace.path);
       validationStage = 'validation';
-      const validation: ValidationResults = diff.paths.every((path) => path.replace(/\\/g, '/').startsWith('apps/web/'))
-        ? await this.validation.runWeb(workspace.path, diff.paths, incident.route || '/', true)
-        : failedValidation('Only web-only diffs are eligible for automated approval.');
-      const gate = classifyDiff({ initialRisk: 'LOW', module: incident.module, category: incident.category, changedPaths: diff.paths, diff: diff.diff, linesChanged: diff.linesChanged, validation, limits: autoHealDiffLimits() });
+      const autoEngineerChange = incident.requestType && incident.requestType !== 'BUG';
+      const validation: ValidationResults = autoEngineerChange
+        ? await this.validation.runAutoEngineer(workspace.path, diff.paths, incident.route || '/')
+        : diff.paths.every((path) => path.replace(/\\/g, '/').startsWith('apps/web/'))
+          ? await this.validation.runWeb(workspace.path, diff.paths, incident.route || '/', true)
+          : failedValidation('Only web-only diffs are eligible for automatic bug-fix review.');
+      const gate = autoEngineerChange
+        ? classifyAutoEngineerDiff({ initialRisk: incident.riskLevel, risk: incident.riskLevel, module: incident.module, category: incident.changeKind || incident.category, changedPaths: diff.paths, diff: diff.diff, linesChanged: diff.linesChanged, validation, engineeringApproved: incident.engineeringApproved === true })
+        : classifyDiff({ initialRisk: 'LOW', module: incident.module, category: incident.category, changedPaths: diff.paths, diff: diff.diff, linesChanged: diff.linesChanged, validation, limits: autoHealDiffLimits() });
       if (!gate.allowed) {
         await this.reportFailure(tenantId, incidentId, attemptId, agentResult.provider, agentResult.model, gate.risk, gate.reasons, diff.paths, diff.diff, diff.linesChanged, validation, this.agentDiagnostics(agentResult, diff.paths.length > 0, validationStage));
         return;
@@ -154,14 +162,14 @@ export class AutoHealWorkerProcessor {
         if (attemptId && !String(error?.message || '').startsWith('INFRASTRUCTURE_FAILURE_RECORDED:')) {
           await this.api.finishAttempt(tenantId, incidentId, {
             attemptId, status: 'INFRASTRUCTURE_FAILURE', provider: agentResult?.provider || 'codex-cli', model: agentResult?.model || 'unknown',
-            filesChanged: [], riskAfterDiff: 'LOW', testResult: {}, buildResult: {},
+            filesChanged: [], riskAfterDiff: incident?.riskLevel || 'LOW', testResult: {}, buildResult: {},
             agentDiagnostics: { ...this.agentDiagnostics(agentResult, false, 'sandbox-preflight', error), failureClass: 'INFRASTRUCTURE_FAILURE' },
           }).catch(() => undefined);
         }
         await this.sendHeartbeat();
         throw error;
       }
-      if (attemptId) await this.reportFailure(tenantId, incidentId, attemptId, agentResult?.provider || 'codex-cli', agentResult?.model || selectModelForRisk('LOW') || 'unknown', 'MEDIUM', [safeError(error)], changedFiles, '', 0, failedValidation(safeError(error)), this.agentDiagnostics(agentResult, changedFiles.length > 0, validationStage, error)).catch(() => undefined);
+      if (attemptId) await this.reportFailure(tenantId, incidentId, attemptId, agentResult?.provider || 'codex-cli', agentResult?.model || 'unknown', 'MEDIUM', [safeError(error)], changedFiles, '', 0, failedValidation(safeError(error)), this.agentDiagnostics(agentResult, changedFiles.length > 0, validationStage, error)).catch(() => undefined);
       else throw error;
     } finally {
       this.currentIncident = null;

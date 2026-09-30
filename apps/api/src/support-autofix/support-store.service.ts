@@ -62,7 +62,7 @@ export class SupportStoreService {
     this.supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);
   }
 
-  async captureIncident(tenantId: string, reporterId: string, input: IncidentInput, decision: RiskDecision, fingerprint: string, employeeId?: string) {
+  async captureIncident(tenantId: string, reporterId: string, input: IncidentInput, decision: RiskDecision, fingerprint: string, employeeId?: string, requestMetadata?: IncidentInput) {
     const now = new Date();
     const dedupeSince = new Date(now.getTime() - 15 * 60 * 1000).toISOString();
     const { data: recent, error: lookupError } = await this.supabase
@@ -110,6 +110,20 @@ export class SupportStoreService {
       status: 'NEW',
       risk_level: decision.risk,
       risk_reason: decision.reason,
+      request_type: ['BUG', 'IMPROVEMENT', 'FEATURE_REQUEST'].includes(String(requestMetadata?.request_type)) ? requestMetadata?.request_type : 'BUG',
+      change_kind: ['PDF_LAYOUT_CHANGE', 'DISPLAY_EXISTING_FIELD', 'NEW_PERSISTED_FIELD', 'GENERAL'].includes(String(requestMetadata?.change_kind)) ? requestMetadata?.change_kind : 'GENERAL',
+      requested_scope: ['CURRENT_PROFILE', 'SELECTED_PROFILES', 'SHARED_CORE', 'UNKNOWN'].includes(String(requestMetadata?.requested_scope)) ? requestMetadata?.requested_scope : 'CURRENT_PROFILE',
+      target_profiles: Array.isArray(requestMetadata?.target_profiles) ? [...new Set(requestMetadata.target_profiles.map((profile) => String(profile).toUpperCase()).filter((profile) => ['SAIFSEAS', 'MIZANTRA', 'ARWA'].includes(profile)))].slice(0, 3) : [],
+      scope_reason: sanitizeSupportText(requestMetadata?.scope_reason || '', 500) || null,
+      acceptance_criteria: Array.isArray(requestMetadata?.acceptance_criteria) ? requestMetadata.acceptance_criteria.slice(0, 12).map((item) => sanitizeSupportText(item, 500)) : [],
+      change_summary: sanitizeSupportText(requestMetadata?.change_summary || input.description, 2000),
+      implementation_plan: Array.isArray(requestMetadata?.implementation_plan) ? requestMetadata.implementation_plan.slice(0, 12).map((item) => sanitizeSupportText(item, 500)) : [],
+      requires_migration: requestMetadata?.requires_migration === true,
+      requires_backend: requestMetadata?.requires_backend === true,
+      requires_business_logic: requestMetadata?.requires_business_logic === true,
+      requested_by_profile: ['SAIFSEAS', 'MIZANTRA', 'ARWA'].includes(String(requestMetadata?.requested_by_profile)) ? requestMetadata?.requested_by_profile : null,
+      build_approval_status: ['AWAITING_BUILD_APPROVAL', 'AWAITING_ENGINEERING_APPROVAL'].includes(String(requestMetadata?.build_approval_status)) ? requestMetadata?.build_approval_status : 'NOT_REQUIRED',
+      prompt_scope: sanitizeSupportText(requestMetadata?.prompt_scope || '', 1000) || null,
       fingerprint,
       occurrence_count: 1,
       last_seen_at: now.toISOString(),
@@ -123,7 +137,7 @@ export class SupportStoreService {
   }
 
   async listMine(tenantId: string, reporterId: string, lifecycle: IncidentLifecycle = 'ACTIVE') {
-    let request = this.supabase.from('support_incidents').select('id,title,module,status,created_at,updated_at,occurrence_count,archived_at,archived_by').eq('tenant_id', tenantId).eq('reported_by', reporterId);
+    let request = this.supabase.from('support_incidents').select('id,title,module,status,request_type,created_at,updated_at,occurrence_count,archived_at,archived_by').eq('tenant_id', tenantId).eq('reported_by', reporterId);
     request = this.applyLifecycle(request, lifecycle);
     const { data, error } = await request.order('created_at', { ascending: false }).limit(100);
     if (error) throw error;

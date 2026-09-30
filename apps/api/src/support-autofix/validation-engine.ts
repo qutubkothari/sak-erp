@@ -38,6 +38,27 @@ export class ValidationEngine {
     }
   }
 
+  async prepareAutoEngineerWorkspace(worktreePath: string): Promise<{ passed: boolean; detail: string }> {
+    const safeEnv: NodeJS.ProcessEnv = {
+      HOME: process.env.HOME || '/home/autoheal',
+      PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+      LANG: process.env.LANG || 'C.UTF-8',
+    };
+    try {
+      const before = await this.commands.run('git', ['status', '--porcelain', '--untracked-files=all'], worktreePath, 15_000);
+      if (before.code !== 0 || before.output.trim()) return { passed: false, detail: 'Validation worktree must be clean before dependency bootstrap.' };
+      const install = await this.commands.run('pnpm', ['install', '--offline', '--frozen-lockfile', '--filter', '@sak-erp/web...', '--filter', '@sak-erp/api...'], worktreePath, 600_000, safeEnv);
+      if (install.code !== 0) return { passed: false, detail: `Locked AutoEngineer dependencies are unavailable from the pnpm store: ${install.output.trim().slice(-350)}` };
+      const prisma = await this.commands.run('pnpm', ['--filter', '@sak-erp/database', 'generate'], worktreePath, 180_000, safeEnv);
+      if (prisma.code !== 0) return { passed: false, detail: `Prisma client generation failed: ${prisma.output.trim().slice(-350)}` };
+      const after = await this.commands.run('git', ['status', '--porcelain', '--untracked-files=all'], worktreePath, 15_000);
+      if (after.code !== 0 || after.output.trim()) return { passed: false, detail: 'Dependency bootstrap changed tracked or unignored worktree files.' };
+      return { passed: true, detail: 'API and web dependencies are present from the frozen offline lockfile; Prisma client generated; worktree is clean.' };
+    } catch (error: any) {
+      return { passed: false, detail: String(error?.message || error).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 500) };
+    }
+  }
+
   async runWeb(worktreePath: string, changedPaths: string[], affectedRoute: string, includeLocalSmoke = true): Promise<ValidationResults> {
     const webRoot = resolve(worktreePath, 'apps/web');
     const focusedFiles = this.findFocusedTests(worktreePath, changedPaths, 'apps/web/');
@@ -66,6 +87,30 @@ export class ValidationEngine {
     const testResult = tests.length ? await this.runFocusedTest(worktreePath, tests) : { passed: false, detail: 'No focused API test file exists.' };
     const build = await this.commands.run('pnpm', ['--filter', '@sak-erp/api', 'build'], worktreePath, 600_000);
     return { focusedTest: testResult.passed, build: build.code === 0, detail: `${testResult.detail}; ${this.resultDetail(build)}` };
+  }
+
+  async runAutoEngineer(worktreePath: string, changedPaths: string[], affectedRoute: string): Promise<ValidationResults> {
+    const apiPaths = changedPaths.filter((path) => path.replace(/\\/g, '/').startsWith('apps/api/'));
+    const webPaths = changedPaths.filter((path) => path.replace(/\\/g, '/').startsWith('apps/web/'));
+    const migrationOnly = changedPaths.every((path) => path.replace(/\\/g, '/').startsWith('migrations/'));
+    const api = apiPaths.length ? await this.runApi(worktreePath, apiPaths) : { focusedTest: true, build: true, detail: 'API unchanged.' };
+    const web = webPaths.length ? await this.runWeb(worktreePath, webPaths, affectedRoute, true) : {
+      focusedTest: { passed: true, detail: migrationOnly ? 'Migration review is performed by the independent diff gate.' : 'Web unchanged.' },
+      typeCheck: { passed: true, detail: 'Web unchanged.' },
+      build: { passed: true, detail: 'Web unchanged.' },
+      diffCheck: { passed: true, detail: 'Checked below.' },
+      smoke: { passed: true, detail: apiPaths.length ? 'API-only change; API build and focused tests are the relevant local check.' : 'Web unchanged.' },
+    };
+    const diff = await this.commands.run('git', ['diff', 'HEAD', '--check'], worktreePath);
+    const focusedTestPassed = api.focusedTest && web.focusedTest.passed;
+    const buildPassed = api.build && web.build.passed;
+    return {
+      focusedTest: { passed: focusedTestPassed, detail: [api.detail, web.focusedTest.detail].filter(Boolean).join('; ').slice(0, 500) },
+      typeCheck: web.typeCheck,
+      build: { passed: buildPassed, detail: [api.detail, web.build.detail].filter(Boolean).join('; ').slice(0, 500) },
+      diffCheck: { passed: diff.code === 0, detail: this.resultDetail(diff) },
+      smoke: { passed: web.smoke.passed && (!apiPaths.length || api.build), detail: web.smoke.detail },
+    };
   }
 
   private findFocusedTests(worktreePath: string, changedPaths: string[], expectedPrefix: string): string[] {

@@ -12,6 +12,7 @@ import {
   issueUpdateMessage,
   emptySupportIssueCounts,
   uniqueLatestStatusFeed,
+  requestTypeLabel,
   type SupportLifecycle,
   type SupportIssueCounts,
   type SupportIssue,
@@ -136,7 +137,7 @@ export default function SupportIssueStatus({
         className={`hidden w-full items-center gap-2 rounded-lg border border-[#8B6F47]/50 bg-[#4A3426] px-2.5 py-2 text-xs font-semibold text-[#FFFDF8] shadow-sm transition-colors hover:bg-[#6F4E37] md:flex ${collapsed ? "justify-center" : ""}`}
       >
         <LifeBuoy size={15} />
-        {!collapsed && <span className="flex-1 text-left">My issues</span>}
+        {!collapsed && <span className="flex-1 text-left">My requests</span>}
         <span className="rounded-full bg-[#D8C8AA] px-1.5 py-0.5 text-[10px] font-bold text-[#4A3426]">
           {activeCount}
         </span>
@@ -151,7 +152,7 @@ export default function SupportIssueStatus({
         >
           <header className="flex items-center justify-between border-b border-[#EEE4D5] pb-2">
             <div>
-              <h2 className="text-sm font-bold">My issues</h2>
+              <h2 className="text-sm font-bold">My requests</h2>
               <p className="text-xs text-stone-500">{activeCount} active</p>
             </div>
             <button
@@ -172,6 +173,7 @@ export default function SupportIssueStatus({
           <div className="max-h-[55vh] divide-y divide-[#EEE4D5] overflow-y-auto">
             {recent.map((issue) => (
               <article key={issue.id} className="space-y-1 py-3">
+                <span className="inline-block rounded bg-stone-100 px-2 py-0.5 text-[10px]">{requestTypeLabel(issue.request_type)}</span>
                 <p
                   className="truncate text-sm font-semibold"
                   title={issue.title}

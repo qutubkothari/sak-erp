@@ -28,6 +28,22 @@ export interface IncidentInput {
   request_id?: string;
   screenshot_ref?: string;
   timestamp?: string;
+  request_type?: 'BUG' | 'IMPROVEMENT' | 'FEATURE_REQUEST';
+  risk?: AutoHealRisk;
+  risk_reason?: string;
+  change_kind?: 'PDF_LAYOUT_CHANGE' | 'DISPLAY_EXISTING_FIELD' | 'NEW_PERSISTED_FIELD' | 'GENERAL';
+  requested_scope?: 'CURRENT_PROFILE' | 'SELECTED_PROFILES' | 'SHARED_CORE' | 'UNKNOWN';
+  target_profiles?: string[];
+  scope_reason?: string;
+  acceptance_criteria?: string[];
+  change_summary?: string;
+  implementation_plan?: string[];
+  requires_migration?: boolean;
+  requires_backend?: boolean;
+  requires_business_logic?: boolean;
+  requested_by_profile?: string;
+  build_approval_status?: string;
+  prompt_scope?: string;
 }
 
 export interface RiskDecision {

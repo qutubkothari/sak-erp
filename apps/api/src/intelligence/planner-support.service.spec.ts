@@ -17,6 +17,9 @@ const poMessage =
   "While trying to enter name in Search Bar of PO, there is some error, and unable to search.";
 
 describe("Mizantra support intake", () => {
+  const originalProfile = process.env.ERP_TENANT_PROFILE;
+  beforeAll(() => { process.env.ERP_TENANT_PROFILE = "MIZANTRA"; });
+  afterAll(() => { if (originalProfile === undefined) delete process.env.ERP_TENANT_PROFILE; else process.env.ERP_TENANT_PROFILE = originalProfile; });
   it.each([
     "this is not working",
     "getting error",
@@ -29,21 +32,21 @@ describe("Mizantra support intake", () => {
     "PO search not working",
     poMessage,
   ])("detects %s", (message) => {
-    expect(supportIntent(message)).toBe("SUPPORT_INCIDENT");
+    expect(supportIntent(message)).toBe("BUG");
   });
   it.each([
     "Create a PR for 50 bearings",
     "Show stock issue vouchers",
     "Create material issue voucher",
   ])("preserves planner request %s", (message) => {
-    expect(supportIntent(message)).toBe("NORMAL_PLANNER_REQUEST");
+    expect(supportIntent(message)).toBe("NORMAL_ERP_REQUEST");
   });
   it("forces only intake through explicit report mode", () => {
     expect(supportIntent("The supplier field", "support")).toBe(
-      "SUPPORT_INCIDENT",
+      "BUG",
     );
     expect(supportIntent("Help with a problem", "planner")).toBe(
-      "NORMAL_PLANNER_REQUEST",
+      "NORMAL_ERP_REQUEST",
     );
   });
   it.each(["what happened to my issue?", "status of the PO search problem"])(
@@ -63,8 +66,8 @@ describe("Mizantra support intake", () => {
         message: "There is a problem with my order",
       }),
     ).toMatchObject({
-      intent_type: "CLARIFY_SUPPORT",
-      assistant_message: "Are you reporting a problem with the ERP?",
+      intent_type: "CLARIFY_CHANGE_REQUEST",
+      assistant_message: "Are you asking me to perform ERP work, report a problem, or change/improve the ERP?",
     });
     expect(captureIncident).not.toHaveBeenCalled();
   });
@@ -107,12 +110,13 @@ describe("Mizantra support intake", () => {
         failed_endpoint: "/purchase/orders",
         http_status: 500,
       }),
+      expect.objectContaining({ request_type: "BUG", risk: "LOW", requested_scope: "CURRENT_PROFILE" }),
     );
     expect(JSON.stringify(captureIncident.mock.calls)).not.toMatch(
       /attacker|secret|AUTO|approve/,
     );
     expect(response).toMatchObject({
-      intent_type: "SUPPORT_INCIDENT",
+      intent_type: "BUG",
       support_incident: { id: "INC-1042" },
     });
     expect(response.assistant_message).toContain("INC-1042");
@@ -130,7 +134,7 @@ describe("Mizantra support intake", () => {
       module: "Procurement / Purchase Orders",
       route: "/dashboard/purchase/orders",
       page_url: "/dashboard/purchase/orders",
-    }));
+    }), expect.objectContaining({ request_type: "BUG" }));
   });
   it("returns only safe status fields for authenticated recent incidents", async () => {
     const listMine = jest.fn().mockResolvedValue({ issues: [

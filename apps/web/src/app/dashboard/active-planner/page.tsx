@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { apiClient, getLastFailedApiContext } from "../../../../lib/api-client";
 import { useLocale } from "@/lib/locale";
+import { hasSuperAdminRole } from "@/lib/rbac";
 
 type Capability = {
   intent: string;
@@ -418,6 +419,9 @@ const downloadAnalyticsDocument = async (
 export default function ActivePlannerPage() {
   const { language } = useLocale();
   const [input, setInput] = useState(""),
+    [isSuperAdmin, setIsSuperAdmin] = useState(false),
+    [requestScope, setRequestScope] = useState<"CURRENT_PROFILE" | "SELECTED_PROFILES" | "SHARED_CORE">("CURRENT_PROFILE"),
+    [targetProfiles, setTargetProfiles] = useState<string[]>([]),
     [context, setContext] = useState(""),
     [result, setResult] = useState<Result | null>(null),
     [capabilities, setCapabilities] = useState<Capability[]>([]),
@@ -477,6 +481,15 @@ export default function ActivePlannerPage() {
         ),
       ).slice(0, 8)
     : [];
+  const isChangeRequestDraft = /\b(feature request|new feature|new field|add\b.{0,70}\b(column|field|pdf|report)|improv|layout|move\b.{0,50}\b(pdf|above|below|before|after))\b/i.test(input);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiClient.getCurrentUser()
+      .then((user) => { if (!cancelled) setIsSuperAdmin(hasSuperAdminRole(user ?? null)); })
+      .catch(() => { if (!cancelled) setIsSuperAdmin(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const savedWidth = Number(
@@ -801,7 +814,7 @@ export default function ActivePlannerPage() {
 
   const submitMessage = async (
     rawMessage: string,
-    mode?: "support" | "planner" | "status",
+    mode?: "support" | "planner" | "status" | "improvement",
   ) => {
     const message = rawMessage.trim();
     if (!message || busy || uploading) return;
@@ -817,26 +830,26 @@ export default function ActivePlannerPage() {
         "/active-planner/support-intent",
         { message, support_mode },
       );
-      if (classification.intent === "CLARIFY_SUPPORT") {
+      if (classification.intent === "CLARIFY_CHANGE_REQUEST") {
         setClarifySupport(true);
         setTurns((x) => [
           ...x,
           {
             role: "planner",
-            text: "Are you reporting a problem with the ERP?",
+            text: "Are you asking me to perform ERP work, report a problem, or change/improve the ERP?",
           },
         ]);
         return;
       }
-      const isSupport = classification.intent === "SUPPORT_INCIDENT";
-      const isPlanner = classification.intent === "NORMAL_PLANNER_REQUEST";
+      const isSupport = ["BUG", "IMPROVEMENT", "FEATURE_REQUEST"].includes(classification.intent);
+      const isPlanner = classification.intent === "NORMAL_ERP_REQUEST";
       if (isSupport && attachments.length && !pendingFile)
         throw new Error(
           "Please attach the screenshot again, or remove it to report without one.",
         );
       let uploadedAttachments = attachments;
       let screenshotRef: string | undefined;
-      if (pendingFile && classification.intent !== "SUPPORT_STATUS") {
+      if (pendingFile && classification.intent !== "SUPPORT_STATUS" && (isSupport || isPlanner)) {
         if (
           isSupport &&
           !["image/png", "image/jpeg"].includes(pendingFile.type)
@@ -895,6 +908,7 @@ export default function ActivePlannerPage() {
         build_sha: process.env.NEXT_PUBLIC_APP_BUILD_SHA,
         browser_info: `${device}; ${browser}`,
         support_screenshot_ref: screenshotRef,
+        ...(isSuperAdmin ? { requested_scope: requestScope, target_profiles: targetProfiles } : {}),
         response_language:
           language === "ar"
             ? "ar-EG"
@@ -912,8 +926,7 @@ export default function ActivePlannerPage() {
       setClarifySupport(false);
       setTurns((x) => [...x, { role: "user", text: message }]);
       if (
-        data.intent_type.startsWith("SUPPORT_") ||
-        data.intent_type === "CLARIFY_SUPPORT"
+        ["SUPPORT_INCIDENT", "BUG", "IMPROVEMENT", "FEATURE_REQUEST", "SUPPORT_STATUS", "CLARIFY_CHANGE_REQUEST"].includes(data.intent_type)
       ) {
         setTurns((x) => [
           ...x,
@@ -1559,6 +1572,18 @@ export default function ActivePlannerPage() {
                   optional.
                 </span>
               )}
+              {isSuperAdmin && isChangeRequestDraft && !supportMode && (
+                <fieldset className="w-full rounded-lg border border-[#D8C8AA] p-2" aria-label="Change request profile scope">
+                  <legend className="px-1 font-semibold">Apply to</legend>
+                  <select value={requestScope} onChange={(event) => setRequestScope(event.target.value as typeof requestScope)} className="rounded border bg-white px-2 py-1" aria-label="Apply change request to">
+                    <option value="CURRENT_PROFILE">Current profile</option>
+                    <option value="SELECTED_PROFILES">Selected profiles</option>
+                    <option value="SHARED_CORE">Shared Core / all applicable profiles</option>
+                  </select>
+                  {requestScope === "SELECTED_PROFILES" && <div className="mt-2 flex flex-wrap gap-3">{[["SAIFSEAS", "SaifSeas"], ["MIZANTRA", "Mizantra"], ["ARWA", "Arwa"]].map(([value, label]) => <label key={value} className="inline-flex items-center gap-1"><input type="checkbox" checked={targetProfiles.includes(value)} onChange={(event) => setTargetProfiles((current) => event.target.checked ? [...new Set([...current, value])] : current.filter((profile) => profile !== value))} />{label}</label>)}</div>}
+                  <p className="mt-1 text-[11px] text-stone-600">Each profile release stays separate and requires its own approval.</p>
+                </fieldset>
+              )}
               {clarifySupport && (
                 <div
                   role="group"
@@ -1570,7 +1595,7 @@ export default function ActivePlannerPage() {
                     onClick={() => void submitMessage(input, "support")}
                     className="rounded border px-3 py-2"
                   >
-                    Yes, report a problem
+                    Report a problem
                   </button>
                   <button
                     type="button"
@@ -1578,7 +1603,15 @@ export default function ActivePlannerPage() {
                     onClick={() => void submitMessage(input, "planner")}
                     className="rounded border px-3 py-2"
                   >
-                    No, continue planning
+                    Perform ERP work
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void submitMessage(input, "improvement")}
+                    className="rounded border px-3 py-2"
+                  >
+                    Change or improve the ERP
                   </button>
                 </div>
               )}

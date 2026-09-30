@@ -8,7 +8,12 @@ export type SupportIssue = {
   updated_at?: string;
   archived_at?: string | null;
   occurrence_count?: number;
+  request_type?: "BUG" | "IMPROVEMENT" | "FEATURE_REQUEST";
 };
+
+export function requestTypeLabel(type?: SupportIssue["request_type"]) {
+  return type === "IMPROVEMENT" ? "Improvement" : type === "FEATURE_REQUEST" ? "Feature" : "Bug";
+}
 
 export type SupportLifecycle = "ACTIVE" | "RESOLVED" | "ARCHIVED";
 export type SupportIssueCounts = Record<SupportLifecycle, number>;

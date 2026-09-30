@@ -9,6 +9,7 @@ export interface AutoFixAgentRequest {
   prompt: string;
   worktreePath: string;
   risk: AutoHealRisk;
+  engineeringApproved?: boolean;
 }
 
 export interface AutoFixAgentResult {
@@ -56,7 +57,7 @@ export function buildCodexInvocation(request: AutoFixAgentRequest, env: NodeJS.P
     if (key !== 'CODEX_HOME' && env[key]) safeEnv[key] = env[key];
   }
   const executable = env.AUTOHEAL_CODEX_PATH || 'codex';
-  const model = selectModelForRisk(request.risk, env) || 'gpt-6-luna';
+  const model = selectModelForRisk(request.risk, env, request.engineeringApproved === true) || 'gpt-6-luna';
   const args = ['exec', '--cd', cwd, '--sandbox', 'workspace-write', '--ephemeral', '--model', model, request.prompt];
   return {
     executable,
@@ -68,9 +69,10 @@ export function buildCodexInvocation(request: AutoFixAgentRequest, env: NodeJS.P
   };
 }
 
-export function selectModelForRisk(risk: AutoHealRisk, env: NodeJS.ProcessEnv = process.env): string | null {
+export function selectModelForRisk(risk: AutoHealRisk, env: NodeJS.ProcessEnv = process.env, engineeringApproved = false): string | null {
   if (risk === 'LOW') return env.AUTOHEAL_CODEX_MODEL_LOW === 'gpt-6-luna' ? env.AUTOHEAL_CODEX_MODEL_LOW : 'gpt-6-luna';
   if (risk === 'MEDIUM') return env.AUTOHEAL_CODEX_MODEL_MEDIUM === 'gpt-6-sol' ? env.AUTOHEAL_CODEX_MODEL_MEDIUM : 'gpt-6-sol';
+  if (risk === 'HIGH' && engineeringApproved) return 'gpt-6-sol';
   return null;
 }
 
@@ -95,7 +97,7 @@ export class MockAutoFixAgentProvider implements AutoFixAgentProvider {
 export class CodexCliAutoFixAgentProvider implements AutoFixAgentProvider {
   async run(request: AutoFixAgentRequest): Promise<AutoFixAgentResult> {
     if (!codingWorkerEnabled()) return { provider: 'codex-cli', model: 'none', success: false, output: '', detail: 'AutoHeal coding worker is disabled.' };
-    const model = selectModelForRisk(request.risk);
+    const model = selectModelForRisk(request.risk, process.env, request.engineeringApproved === true);
     if (!model) {
       return { provider: 'codex-cli', model: 'none', success: false, output: '', detail: 'High or blocked risk is diagnosis-only.' };
     }

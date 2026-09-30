@@ -124,6 +124,22 @@ export class SupportAutofixController {
     return this.service.retryAfterInfrastructureFailure(tenantId, id, req.user.userId || req.user.id);
   }
 
+  @Post('admin/incidents/:id/approve-build')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
+  @RequirePermissions('support_autofix:manage')
+  async approveBuild(@Request() req: any, @Param('id') id: string) {
+    const tenantId = await this.service.adminTenantId(req.user, id);
+    return this.service.approveAutoEngineerBuild(tenantId, id, req.user, false);
+  }
+
+  @Post('admin/incidents/:id/approve-engineering-work')
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
+  @RequirePermissions('support_autofix:manage')
+  async approveEngineeringWork(@Request() req: any, @Param('id') id: string) {
+    const tenantId = await this.service.adminTenantId(req.user, id);
+    return this.service.approveAutoEngineerBuild(tenantId, id, req.user, true);
+  }
+
   @Post('admin/incidents/:id/approve-deployment')
   @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:approve')
