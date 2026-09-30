@@ -35,6 +35,6 @@ describe('Authenticated manual incident resolution', () => {
     const service:any={adminTenantId:jest.fn().mockResolvedValue('t'),resolveVerifiedIncident:jest.fn()};const c=new SupportAutofixController(service); await c.resolve({user:{userId:'admin'}},'current',input);
     expect(service.resolveVerifiedIncident).toHaveBeenCalledWith('t','current','admin',input);
     expect(Reflect.getMetadata('permissions',SupportAutofixController.prototype.resolve)).toEqual(['support_autofix:manage']);
-    expect(Reflect.getMetadata('__guards__',SupportAutofixController.prototype.resolve).map((guard:any)=>guard.name)).toEqual(['JwtAuthGuard','PermissionsGuard']);
+    expect(Reflect.getMetadata('__guards__',SupportAutofixController.prototype.resolve).map((guard:any)=>guard.name)).toEqual(['JwtAuthGuard','SuperAdminGuard','PermissionsGuard']);
   });
 });

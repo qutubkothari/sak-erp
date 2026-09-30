@@ -7,6 +7,7 @@ import { SkipAutomaticAudit } from '../audit/skip-automatic-audit.decorator';
 import { CaptureSupportIncidentDto } from './dto/capture-support-incident.dto';
 import { SupportAutofixService } from './support-autofix.service';
 import { AutoHealWorkerGuard } from './worker-auth.guard';
+import { SuperAdminGuard } from './super-admin.guard';
 
 @Controller('support')
 @SkipAutomaticAudit()
@@ -42,7 +43,7 @@ export class SupportAutofixController {
   }
 
   @Get('admin/worker-health')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:read')
   workerHealth() {
     return this.service.getWorkerHealth();
@@ -79,28 +80,28 @@ export class SupportAutofixController {
   }
 
   @Get('admin/configuration')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:read')
   configuration(@Request() req: any) {
     return this.service.adminConfiguration(req.user);
   }
 
   @Get('admin/incidents')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:read')
   list(@Request() req: any, @Query() query: any) {
     return this.service.listAdminForUser(req.user, query);
   }
 
   @Get('admin/incidents/:id')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:read')
   get(@Request() req: any, @Param('id') id: string) {
     return this.service.getAdminIncidentForUser(req.user, id);
   }
 
   @Post('admin/incidents/:id/retry')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:manage')
   async retry(@Request() req: any, @Param('id') id: string) {
     const tenantId = await this.service.adminTenantId(req.user, id);
@@ -108,7 +109,7 @@ export class SupportAutofixController {
   }
 
   @Post('admin/incidents/:id/resolve')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:manage')
   async resolve(@Request() req: any, @Param('id') id: string, @Body() body: { summary?: string; verified?: boolean }) {
     const tenantId = await this.service.adminTenantId(req.user, id);
@@ -116,7 +117,7 @@ export class SupportAutofixController {
   }
 
   @Post('admin/incidents/:id/retry-infrastructure')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:manage')
   async retryInfrastructure(@Request() req: any, @Param('id') id: string) {
     const tenantId = await this.service.adminTenantId(req.user, id);
@@ -124,7 +125,7 @@ export class SupportAutofixController {
   }
 
   @Post('admin/incidents/:id/approve-deployment')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:approve')
   async approve(@Request() req: any, @Param('id') id: string, @Body() body: { targetId?: string }) {
     const tenantId = await this.service.adminTenantId(req.user, id);
@@ -134,7 +135,7 @@ export class SupportAutofixController {
   }
 
   @Post('admin/incidents/:id/reject-fix')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:approve')
   async reject(@Request() req: any, @Param('id') id: string, @Body() body: { reason?: string }) {
     const tenantId = await this.service.adminTenantId(req.user, id);
@@ -142,7 +143,7 @@ export class SupportAutofixController {
   }
 
   @Post('admin/incidents/:id/rollback')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, SuperAdminGuard, PermissionsGuard)
   @RequirePermissions('support_autofix:approve')
   async rollback(@Request() req: any, @Param('id') id: string) {
     const tenantId = await this.service.adminTenantId(req.user, id);

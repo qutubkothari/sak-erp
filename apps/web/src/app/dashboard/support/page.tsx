@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiClient } from "../../../../lib/api-client";
 import { emptySupportIssueCounts, type SupportIssue, type SupportIssueCounts, type SupportLifecycle } from "../../../lib/support-issue-status";
+import { hasSuperAdminRole } from "../../../lib/rbac";
 
 export default function SupportPage() {
+  const [showAutoHeal, setShowAutoHeal] = useState(false);
   const [requests, setRequests] = useState<SupportIssue[]>([]);
   const [counts, setCounts] = useState<SupportIssueCounts>(emptySupportIssueCounts());
   const [lifecycle, setLifecycle] = useState<SupportLifecycle>("ACTIVE");
@@ -25,6 +27,13 @@ export default function SupportPage() {
     const timer = window.setInterval(() => void load(), 30000);
     return () => window.clearInterval(timer);
   }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    void apiClient.getCurrentUser()
+      .then((user) => { if (!cancelled) setShowAutoHeal(hasSuperAdminRole(user ?? null)); })
+      .catch(() => { if (!cancelled) setShowAutoHeal(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-4 md:p-8">
@@ -45,7 +54,7 @@ export default function SupportPage() {
         </article>)}
         {!requests.length && !error && <p>No {lifecycle.toLowerCase()} support requests.</p>}
       </section>
-      <Link href="/dashboard/support/admin" className="text-xs underline">Support control center - admin access</Link>
+      {showAutoHeal && <Link href="/dashboard/support/admin" className="text-xs underline">AutoHeal control center</Link>}
     </main>
   );
 }

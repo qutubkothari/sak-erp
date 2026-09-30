@@ -7,6 +7,7 @@ import { SupportStoreService } from './support-store.service';
 import { SupportAutofixEvents } from './support-events';
 import { DeploymentTargetRegistry, SshDeploymentTargetAdapter } from './deployment';
 import { AutoHealWorkerGuard } from './worker-auth.guard';
+import { SuperAdminGuard } from './super-admin.guard';
 import { CommandRunner } from './command-runner';
 import { AUTOHEAL_PATCH_QUEUE, patchRedisOptions } from './patch-queue';
 
@@ -21,7 +22,8 @@ import { AUTOHEAL_PATCH_QUEUE, patchRedisOptions } from './patch-queue';
     SupportStoreService,
     SupportAutofixService,
     AutoHealWorkerGuard,
+    SuperAdminGuard,
   ],
-  exports: [SupportAutofixService, SupportAutofixEvents],
+  exports: [SupportAutofixService, SupportAutofixEvents, SuperAdminGuard],
 })
 export class SupportAutofixModule {}

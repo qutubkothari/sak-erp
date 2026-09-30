@@ -98,6 +98,12 @@ export function getUserRoleNames(user: StoredUser | null): string[] {
   return names;
 }
 
+export function hasSuperAdminRole(user: StoredUser | null): boolean {
+  return getUserRoleNames(user).some((name) =>
+    name.trim().toUpperCase().replace(/[\s-]+/g, "_") === "SUPER_ADMIN",
+  );
+}
+
 export function isAdminLike(user: StoredUser | null): boolean {
   const roleNames = getUserRoleNames(user)
     .map((n) =>
@@ -593,6 +599,9 @@ export function isPathAllowedForUser(
   user: StoredUser | null,
   pathname: string,
 ): boolean {
+  if (pathname === "/dashboard/support/admin" || pathname.startsWith("/dashboard/support/admin/")) {
+    return hasSuperAdminRole(user);
+  }
   // Support is a tenant-scoped entry point available to signed-in users;
   // incident details and administrative actions remain protected by API guards.
   if (pathname === "/dashboard/support" || pathname.startsWith("/dashboard/support/")) return Boolean(user);

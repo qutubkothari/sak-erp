@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw, RotateCcw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { apiClient } from "../../../../../lib/api-client";
 import { canRenderInfrastructureRecoveryAction } from "../../../../../lib/support-autofix-recovery";
+import { hasSuperAdminRole } from "../../../../lib/rbac";
 
 type Incident = { id: string; tenant_id?: string; reported_by?: string; title: string; module?: string; route?: string; status: string; risk_level: string; risk_reason?: string; created_at: string; occurrence_count: number };
 type Target = { id: string; domain: string; tenantId?: string };
@@ -19,6 +21,8 @@ function pretty(value: unknown) {
 }
 
 export default function SupportAutoHealAdminPage() {
+  const router = useRouter();
+  const [serverAuthorized, setServerAuthorized] = useState(false);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selected, setSelected] = useState<Detail | null>(null);
   const [config, setConfig] = useState<Configuration | null>(null);
@@ -64,7 +68,18 @@ export default function SupportAutoHealAdminPage() {
     catch (cause: any) { toast.error(cause?.message || "Could not load incident details."); }
   };
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    void apiClient.getCurrentUser()
+      .then((user) => {
+        if (cancelled) return;
+        if (hasSuperAdminRole(user ?? null)) setServerAuthorized(true);
+        else router.replace("/dashboard/support");
+      })
+      .catch(() => { if (!cancelled) router.replace("/dashboard/support"); });
+    return () => { cancelled = true; };
+  }, [router]);
+  useEffect(() => { if (serverAuthorized) void refresh(); }, [serverAuthorized]);
 
   const availableTargets = (config?.deploymentTargets ?? []).filter((target) => !target.tenantId || !selected?.tenant_id || target.tenantId === selected.tenant_id);
   useEffect(() => {
@@ -84,6 +99,8 @@ export default function SupportAutoHealAdminPage() {
     } catch (cause: any) { toast.error(cause?.message || "The action could not be completed."); }
     finally { setBusy(false); }
   };
+
+  if (!serverAuthorized) return null;
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">

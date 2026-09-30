@@ -1,4 +1,5 @@
 import { PermissionsGuard } from "../auth/guards/permissions.guard";
+import { SuperAdminGuard } from "../support-autofix/super-admin.guard";
 import { RequirePermissions } from "../auth/decorators/permissions.decorator";
 import {
   Body,
@@ -85,7 +86,7 @@ export class ActivePlannerController {
     return this.memory.feedback(req.user.tenantId, req.user, body);
   }
   @Get("support-screenshots/:id")
-  @UseGuards(PermissionsGuard)
+  @UseGuards(SuperAdminGuard, PermissionsGuard)
   @RequirePermissions("support_autofix:read")
   async supportScreenshotForAdmin(
     @Req() req: any,
