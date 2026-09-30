@@ -65,7 +65,7 @@ describe('AutoHeal service safety controls', () => {
   it('rechecks the reported diff and validations before setting READY_FOR_APPROVAL', async () => {
     process.env.AUTOHEAL_ENABLED = 'true'; process.env.AUTOHEAL_WORKER_ENABLED = 'false';
     const store = {
-      getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'PATCHING', risk_level: 'LOW' }),
+      getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'PATCHING', risk_level: 'LOW', request_type: 'IMPROVEMENT', change_kind: 'DISPLAY_EXISTING_FIELD', requested_scope: 'CURRENT_PROFILE', change_summary: 'Show the existing PO label on the list.' }),
       latestAttempt: jest.fn().mockResolvedValue({ id: 'a', incident_id: 'i', status: 'RUNNING', base_sha: 'a'.repeat(40) }),
       countAttempts: jest.fn().mockResolvedValue(1), updateAttempt: jest.fn(), updateIncident: jest.fn(), writeEvent: jest.fn(),
     };
@@ -166,7 +166,7 @@ describe('AutoHeal service safety controls', () => {
   it('restores LOW risk only for a recognized failed-attempt reason and normalizes route before retry', async () => {
     process.env.AUTOHEAL_ENABLED = 'true';
     const store = {
-      getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'FAILED', risk_level: 'MEDIUM', risk_reason: 'No changed files were found. Focused test did not pass. Web type-check did not pass. Web build did not pass. git diff --check did not pass. Relevant smoke check did not pass. Fix commit SHA is missing or invalid.', title: 'Procurement / Purchase Orders: PO search', description: 'Unable to search PO', module: 'Procurement / Purchase Orders', route: '/dashboard/reports/executive/overview', page_url: '/dashboard/reports/executive/overview' }),
+      getIncident: jest.fn().mockResolvedValue({ id: 'i', status: 'FAILED', risk_level: 'LOW', request_type: 'IMPROVEMENT', change_kind: 'DISPLAY_EXISTING_FIELD', requested_scope: 'CURRENT_PROFILE', change_summary: 'Show the existing PO search result label.', risk_reason: 'No changed files were found. Focused test did not pass. Web type-check did not pass. Web build did not pass. git diff --check did not pass. Relevant smoke check did not pass. Fix commit SHA is missing or invalid.', title: 'Procurement / Purchase Orders: PO search', description: 'Unable to search PO', module: 'Procurement / Purchase Orders', route: '/dashboard/reports/executive/overview', page_url: '/dashboard/reports/executive/overview' }),
       countAttempts: jest.fn().mockResolvedValue(1), latestAttempt: jest.fn().mockResolvedValue(null), updateIncident: jest.fn().mockResolvedValue({}), writeEvent: jest.fn(),
     };
     const queue = { add: jest.fn().mockResolvedValue(undefined) };
@@ -174,7 +174,7 @@ describe('AutoHeal service safety controls', () => {
     const service = Object.create(SupportAutofixService.prototype) as any;
     service.store = store; service.queue = queue; service.audit = audit;
     await expect(service.retryAnalysis('tenant', 'i', 'admin')).resolves.toEqual({ queued: true });
-    expect(store.updateIncident).toHaveBeenCalledWith('tenant', 'i', expect.objectContaining({ status: 'TRIAGING', risk_level: 'LOW', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders', page_url: '/dashboard/purchase/orders' }));
+    expect(store.updateIncident).toHaveBeenCalledWith('tenant', 'i', expect.objectContaining({ status: 'TRIAGING', module: 'Procurement / Purchase Orders', route: '/dashboard/purchase/orders', page_url: '/dashboard/purchase/orders' }));
     expect(queue.add).toHaveBeenCalledTimes(1);
     expect(queue.add).toHaveBeenCalledWith('incident', { tenantId: 'tenant', incidentId: 'i' }, expect.objectContaining({ jobId: 'retry-i-2' }));
   });

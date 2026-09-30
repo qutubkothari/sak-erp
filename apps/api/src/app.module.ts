@@ -64,6 +64,7 @@ import { FeatureEntitlementGuard } from './feature-access/feature-entitlement.gu
 import { CrmModule } from './crm/crm.module';
 import { FsmModule } from './fsm/fsm.module';
 import { SupportAutofixModule } from './support-autofix/support-autofix.module';
+import { AutoQaModule } from './autoqa/autoqa.module';
 
 const runtimeEnv = process.env.APP_ENV || process.env.NODE_ENV;
 const apiEnvFiles = runtimeEnv === 'test'
@@ -157,6 +158,7 @@ const apiEnvFiles = runtimeEnv === 'test'
     CrmModule,
     FsmModule,
     SupportAutofixModule,
+    AutoQaModule,
   ],
   controllers: [MigrationController],
   providers: [

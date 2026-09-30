@@ -51,6 +51,13 @@ function uuidOrNull(value: unknown): string | null {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
 }
 
+function safeJsonRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const text = JSON.stringify(value);
+  if (text.length <= 4_000) return value as Record<string, unknown>;
+  return { truncated: true, preview: text.slice(0, 3_500) };
+}
+
 @Injectable()
 export class SupportStoreService {
   private readonly supabase: SupabaseClient;
@@ -93,7 +100,7 @@ export class SupportStoreService {
       tenant_id: tenantId,
       reported_by: uuidOrNull(reporterId),
       reported_employee_id: uuidOrNull(employeeId),
-      source: ['support_portal', 'admin'].includes(String(input.source)) ? input.source : 'client_ui',
+      source: ['support_portal', 'admin', 'AUTO_QA'].includes(String(input.source)) ? input.source : 'client_ui',
       title: sanitizeSupportText(input.title, 200) || 'Support request',
       description: sanitizeSupportText(input.description),
       page_url: pageUrl,
@@ -124,6 +131,9 @@ export class SupportStoreService {
       requested_by_profile: ['SAIFSEAS', 'MIZANTRA', 'ARWA'].includes(String(requestMetadata?.requested_by_profile)) ? requestMetadata?.requested_by_profile : null,
       build_approval_status: ['AWAITING_BUILD_APPROVAL', 'AWAITING_ENGINEERING_APPROVAL'].includes(String(requestMetadata?.build_approval_status)) ? requestMetadata?.build_approval_status : 'NOT_REQUIRED',
       prompt_scope: sanitizeSupportText(requestMetadata?.prompt_scope || '', 1000) || null,
+      autoqa_finding_id: uuidOrNull(requestMetadata?.autoqa_finding_id),
+      autoqa_check_key: /^[A-Z0-9_]{1,80}$/.test(String(requestMetadata?.autoqa_check_key || '')) ? requestMetadata?.autoqa_check_key : null,
+      autoqa_evidence: safeJsonRecord(requestMetadata?.autoqa_evidence),
       fingerprint,
       occurrence_count: 1,
       last_seen_at: now.toISOString(),

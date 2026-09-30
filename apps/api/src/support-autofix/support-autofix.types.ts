@@ -44,6 +44,9 @@ export interface IncidentInput {
   requested_by_profile?: string;
   build_approval_status?: string;
   prompt_scope?: string;
+  autoqa_finding_id?: string;
+  autoqa_check_key?: string;
+  autoqa_evidence?: Record<string, unknown>;
 }
 
 export interface RiskDecision {
