@@ -1,5 +1,6 @@
 'use client';
 import { useBrainRecord } from '@/hooks/useBrainRecord';
+import MizantraReview from '@/components/MizantraReview';
 
 import { useState, useEffect, Suspense, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -5260,6 +5261,7 @@ function PurchaseOrdersContent() {
             <div className="flex shrink-0 items-center justify-between border-b border-[#E8DCC4] bg-white px-5 py-3">
               <div>
                 <h2 className="text-xl font-bold text-[#4A3426]">Purchase Order</h2>
+                <MizantraReview entityType="purchase_order" document={selectedPO} />
                 <p className="text-sm font-medium text-[#7A6555]">{selectedPO.po_number?.startsWith('DRAFT-') ? 'Draft purchase order' : selectedPO.po_number}</p>
               </div>
               <button onClick={() => setShowViewModal(false)} className="text-gray-500 hover:text-gray-700">

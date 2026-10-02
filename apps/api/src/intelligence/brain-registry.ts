@@ -116,7 +116,19 @@ export const BRAIN_DIAGNOSTIC_RESOLVERS: Record<string, BrainResolver> = Object.
   ["doctor_punches", "attendance_punches", "id,tenant_id,employee_id,attendance_id,punch_type,punch_at", "HR_DIAGNOSTIC"],
   ["doctor_batch", "smart_import_batches", "id,tenant_id,profile,preview_checksum,approved_preview_checksum,status", "SMART_IMPORT"],
   ["doctor_import_rows", "smart_import_batch_rows", "id,tenant_id,batch_id,row_reference,decision,validation,match_candidates,depends_on", "SMART_IMPORT"],
+  ["approval_po", "purchase_orders", "id,tenant_id,po_number,status,pr_id,vendor_id,po_date,delivery_date,updated_at", "purchase_orders:read"],
+  ["approval_pr", "purchase_requisitions", "id,tenant_id,pr_number,status,required_date,updated_at", "purchase_requisitions:read"],
+  ["approval_grn", "grns", "id,tenant_id,grn_number,status,po_id,created_at", "grns:read"],
+  ["approval_vendor", "vendors", "id,tenant_id,code,name,is_active", "vendors:read"],
+  ["approval_po_prices", "purchase_orders", "id,tenant_id,po_number,status,vendor_id,po_date,terms_and_conditions", "APPROVAL_PRICE_HISTORY"],
 ].map(([type, table, columns, permission]) => [type, { table, columns, permission, label: "id", relations: [], profileScoped: type === "doctor_batch" }]));
+
+Object.assign(BRAIN_DIAGNOSTIC_RESOLVERS, {
+  approval_po_lines: { table: "purchase_order_items", columns: "id,po_id,pr_item_id,item_id,item_code,uom,ordered_qty,delivery_date", permission: "purchase_orders:read", label: "id", parent: { table: "purchase_orders", foreignKey: "po_id" }, relations: [] },
+  approval_pr_lines: { table: "purchase_requisition_items", columns: "id,pr_id,item_id,item_code,uom,requested_qty,required_date", permission: "purchase_requisitions:read", label: "id", parent: { table: "purchase_requisitions", foreignKey: "pr_id" }, relations: [] },
+  approval_price_lines: { table: "purchase_order_items", columns: "id,po_id,item_id,uom,rate", permission: "APPROVAL_PRICE_HISTORY", label: "id", parent: { table: "purchase_orders", foreignKey: "po_id" }, relations: [] },
+  approval_qa: { table: "autoqa_findings", columns: "id,tenant_id,profile,check_key,status,severity,entity_type,entity_id", permission: "AUTO_QA", label: "id", profileScoped: true, relations: [] },
+});
 
 export function brainEntitySummary(type: string, row: Record<string, any>) {
   const resolver = BRAIN_REGISTRY[type];

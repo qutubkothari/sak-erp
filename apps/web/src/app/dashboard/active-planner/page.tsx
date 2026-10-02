@@ -40,6 +40,7 @@ import { apiClient, getLastFailedApiContext } from "../../../../lib/api-client";
 import { useLocale } from "@/lib/locale";
 import { hasSuperAdminRole } from "@/lib/rbac";
 import { BRAIN_CONTEXT_KEY, buildBrainEnvelope, type BrainEnvelope } from "@/lib/brain-context";
+import { ReviewResults, type SmartApprovalReview } from "@/components/MizantraReview";
 
 type Capability = {
   intent: string;
@@ -51,6 +52,14 @@ type Capability = {
   examples: string[];
 };
 type Result = {
+  items?: SmartApprovalReview["items"];
+  review_version?: string;
+  reviewed_at?: string;
+  valid_until?: string;
+  previous_review_status?: string | null;
+  workflow_state?: string;
+  attention_points?: number;
+  checks_executed?: string[];
   diagnoses?: Array<{ diagnosis_key: string; severity: string; module: string; title: string; explanation: string; confidence: string; classification: string; expected_state: unknown; actual_state: unknown; likely_cause: string | null; recommended_action: string; evidence: { fact: Record<string, unknown>; inference: string | null; unknown: string[] } }>;
   brain_context?: BrainEnvelope;
   timeline?: Array<{ entity_type: string; entity_id: string; document_number: string; recorded_at: string | null; route?: string | null; issue_keys: string[] }>;
@@ -1524,6 +1533,10 @@ export default function ActivePlannerPage() {
               </li>)}</ul>
               {result.evidence?.filter(entry => entry.claim === "PO_RECEIPT_STATE").map((entry, index) => <dl key={index} className="mt-3 grid grid-cols-2 gap-2 text-xs">{Object.entries(entry.values || {}).filter(([key]) => key.endsWith("_qty")).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd className="font-semibold">{String(value)}</dd></div>)}</dl>)}
             </details>}
+            {result?.status === "SMART_APPROVAL_READ_ONLY" && result.items && result.review_version && <ReviewResults review={result as SmartApprovalReview} onRefresh={() => {
+              const current = result;
+              void apiClient.post<Result>("/active-planner/smart-approval/review", { brain_context: current.brain_context, previous_review_version: current.review_version }).then(next => setResult(previous => previous === current ? { ...current, ...next } : previous)).catch(() => setError("Review could not be refreshed."));
+            }} />}
             {result?.status === "DATA_DOCTOR_READ_ONLY" && <section aria-label="Data Doctor diagnoses" className="min-w-0 space-y-4 border-t border-stone-200 pt-3 text-sm">
               {result.evidence?.filter(entry => ["DIAGNOSTIC_COVERAGE", "PO_RECEIPT_STATE"].includes(entry.claim)).map(entry => <details key={entry.claim}><summary className="cursor-pointer font-medium">{entry.claim === "PO_RECEIPT_STATE" ? "Receipt state" : "Checks inspected"}</summary><pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(entry.values, null, 2)}</pre></details>)}
               {result.diagnoses?.map((diagnosis, index) => <article key={`${diagnosis.diagnosis_key}:${index}`} className="min-w-0 rounded-md border border-stone-200 bg-white p-3">

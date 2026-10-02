@@ -75,6 +75,12 @@ export class DataDoctorService {
     }
   }
 
+  async inspectEvidence(evidence: BrainDiagnosticEvidence) {
+    const snapshot = await this.snapshot(evidence);
+    const modules: DoctorModule[] = evidence.context.entity_type === "purchase_requisition" ? ["ITEM"] : supported[evidence.context.entity_type] || [];
+    return { snapshot, ...evaluateDoctor(snapshot, modules) };
+  }
+
   private async snapshot(evidence: BrainDiagnosticEvidence): Promise<DoctorSnapshot> {
     const root = evidence.nodes[0].row, type = evidence.context.entity_type;
     const datasets: DoctorSnapshot["datasets"] = {};
@@ -86,6 +92,10 @@ export class DataDoctorService {
       try { datasets[key] = await evidence.read(resolver, filters, options); } catch (error) { if (error instanceof ForbiddenException) throw error; datasets[key] = undefined; }
     };
     datasets.poLines = graphRows("purchase_order_item"); datasets.grnLines = graphRows("grn_item"); datasets.items = graphRows("item"); datasets.vendors = graphRows("supplier"); datasets.requisitions = graphRows("purchase_requisition");
+    if (type === "purchase_requisition") {
+      const itemIds = datasets.items?.map(item => String(item.id)) || [];
+      if (itemIds.length) await load("itemDetails", "doctor_item", { id: itemIds }); else if (datasets.items) datasets.itemDetails = [];
+    }
     if (type === "purchase_order") {
       datasets.poLines = datasets.poLines?.filter(line => line.po_id === root.id);
       const grnIds = new Set(evidence.nodes.filter(node => node.type === "grn" && node.row.po_id === root.id && !["REJECTED", "CANCELLED"].includes(String(node.row.status).toUpperCase())).map(node => node.row.id));

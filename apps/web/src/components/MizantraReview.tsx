@@ -1,0 +1,47 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import Link from "next/link";
+import { ClipboardList, Loader2, RefreshCw, X } from "lucide-react";
+import { apiClient } from "../../lib/api-client";
+import { buildBrainEnvelope } from "@/lib/brain-context";
+
+export type SmartApprovalReview = { status: string; brain_context: any; workflow_state: string; review_version: string; reviewed_at: string; valid_until: string; previous_review_status: string | null; attention_points: number; checks_executed: string[]; items: Array<{ check_key: string; category: string; title: string; business_explanation: string; severity: string; confidence: string; source: string; timestamp: string; outcome: string; evidence: Record<string, unknown>; related_entities: Array<{ entity_id: string; document_number: string; route: string | null }> }> };
+const outcomes: Record<string, string> = { NO_ISSUE_DETECTED: "No issue detected", INFORMATION: "Information", ATTENTION_REQUIRED: "Attention required", CRITICAL_DATA_INCONSISTENCY: "Critical data inconsistency" };
+
+export function ReviewResults({ review, onRefresh, busy = false }: { review: SmartApprovalReview; onRefresh: () => void; busy?: boolean }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
+  const stale = now >= Date.parse(review.valid_until);
+  return <section aria-label="Mizantra review evidence" className="min-w-0 space-y-4 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3"><div><p className="font-medium">{review.brain_context.document_number} <span className="ml-2 font-normal">{review.workflow_state}</span></p><p className="mt-1 text-xs text-stone-600">Reviewed <time>{new Date(review.reviewed_at).toLocaleString()}</time></p></div><button type="button" title="Refresh Review" disabled={busy} onClick={onRefresh} className="flex items-center gap-2 rounded-md border px-3 py-2 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />Refresh Review</button></div>
+    {stale ? <p role="status" className="border-l-2 border-amber-600 pl-3">REVIEW_STALE</p> : <><p className="text-xs text-stone-600">{review.attention_points} attention points · {review.checks_executed.length} checks</p>{review.previous_review_status === "REVIEW_STALE" && <p role="status" className="text-xs text-stone-600">REVIEW_STALE: replaced with a fresh review.</p>}{review.items.map((item, index) => <article key={`${item.check_key}:${index}`} className="min-w-0 border-b pb-4">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-600"><span>{outcomes[item.outcome] || "Information"}</span><span>{item.severity}</span><span>{item.category.replaceAll("_", " ")}</span></div><h3 className="mt-2 break-words font-semibold">{item.title}</h3><p className="mt-1 break-words">{item.business_explanation}</p><p className="mt-2 break-words text-xs text-stone-600">{item.confidence.replaceAll("_", " ")} · {item.source.replaceAll("_", " ")} · {new Date(item.timestamp).toLocaleTimeString()}</p>
+      <details className="mt-3"><summary className="cursor-pointer font-medium">View Evidence</summary><pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(item.evidence, null, 2)}</pre>{item.related_entities.filter(entity => entity.route).length > 0 && <ul className="mt-3 flex flex-wrap gap-3 text-xs">{item.related_entities.filter(entity => entity.route).map(entity => <li key={entity.entity_id}><Link href={entity.route!} className="break-all underline">{entity.document_number}</Link></li>)}</ul>}</details>
+    </article>)}</>}
+  </section>;
+}
+
+export default function MizantraReview({ entityType, document }: { entityType: "purchase_order" | "purchase_requisition" | "grn"; document: { id: string; status?: string; po_number?: string; pr_number?: string; grn_number?: string; updated_at?: string } }) {
+  const [enabled, setEnabled] = useState(false), [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [review, setReview] = useState<SmartApprovalReview | null>(null);
+  const generation = useRef(0), currentVersion = useRef<string | undefined>(), dialog = useRef<HTMLDivElement>(null);
+  useEffect(() => { let cancelled = false; void apiClient.get<{ enabled: boolean; supported_document_types: string[] }>("/active-planner/smart-approval/configuration").then(config => { if (!cancelled) setEnabled(config.enabled && config.supported_document_types.includes(entityType)); }).catch(() => { if (!cancelled) setEnabled(false); }); return () => { cancelled = true; }; }, [entityType]);
+  useEffect(() => { generation.current++; setReview(null); currentVersion.current = undefined; setOpen(false); setBusy(false); setError(""); }, [document.id, document.status, document.updated_at]);
+  useEffect(() => { if (!open) return; const previous = window.document.activeElement as HTMLElement | null; dialog.current?.focus(); const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setOpen(false); } if (event.key === "Tab") { const focusable = dialog.current?.querySelectorAll<HTMLElement>("button:not([disabled]),a,summary"); if (!focusable?.length) return; const first = focusable[0], last = focusable[focusable.length - 1]; if (event.shiftKey && (window.document.activeElement === first || window.document.activeElement === dialog.current)) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && window.document.activeElement === last) { event.preventDefault(); first.focus(); } } }; window.document.addEventListener("keydown", keydown, true); return () => { window.document.removeEventListener("keydown", keydown, true); generation.current++; setBusy(false); previous?.focus(); }; }, [open]);
+  async function refresh() {
+    const sequence = ++generation.current;
+    setBusy(true); setError(""); setReview(null);
+    try {
+      const configuration = await apiClient.get<{ profile: string; tenant_id: string; current_user_id: string }>("/active-planner/brain/configuration");
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      const envelope = buildBrainEnvelope({ entity_type: entityType, entity_id: document.id, document_number: document.po_number || document.pr_number || document.grn_number || document.id, current_route: window.location.pathname, tenant_id: configuration.tenant_id, current_user_id: configuration.current_user_id, captured_at: Date.now() }, configuration, String(user.role || ""), "en");
+      if (!envelope) throw new Error("Context unavailable");
+      const next = await apiClient.post<SmartApprovalReview>("/active-planner/smart-approval/review", { brain_context: envelope, previous_review_version: currentVersion.current });
+      if (sequence === generation.current) { currentVersion.current = next.review_version; setReview(next); }
+    } catch { if (sequence === generation.current) setError("Review unavailable. No workflow action was taken."); }
+    finally { if (sequence === generation.current) setBusy(false); }
+  }
+  if (!enabled) return null;
+  return <><button type="button" title="Mizantra Review" onClick={() => { setOpen(true); void refresh(); }} className="inline-flex shrink-0 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-800"><ClipboardList className="h-4 w-4" />Mizantra Review</button>{open && createPortal(<div className="fixed inset-0 z-[2000] flex justify-end bg-black/20" onClick={() => setOpen(false)}><div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="mizantra-review-title" className="h-full w-full max-w-xl overflow-y-auto bg-white p-4 shadow-xl sm:p-6" onClick={event => event.stopPropagation()}><header className="mb-5 flex items-center justify-between gap-3 border-b pb-3"><h2 id="mizantra-review-title" className="flex items-center gap-2 text-lg font-semibold"><ClipboardList className="h-5 w-5" />Mizantra Review</h2><button type="button" title="Close review" aria-label="Close review" className="rounded-md p-2" onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></header>{busy && <p role="status" className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" />Reviewing recorded evidence</p>}{error && <p role="alert" className="mb-3 text-sm text-red-700">{error}</p>}{review && <ReviewResults review={review} busy={busy} onRefresh={() => void refresh()} />}{error && <button type="button" className="mt-3 flex items-center gap-2 rounded-md border px-3 py-2 text-sm" onClick={() => void refresh()}><RefreshCw className="h-4 w-4" />Refresh Review</button>}</div></div>, window.document.body)}</>;
+}

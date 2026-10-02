@@ -43,6 +43,7 @@ import { CrmModule } from "../crm/crm.module";
 import { FsmModule } from "../fsm/fsm.module";
 import { BrainService } from "./brain.service";
 import { DataDoctorService } from "./data-doctor.service";
+import { SmartApprovalService } from "./smart-approval.service";
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { DataDoctorService } from "./data-doctor.service";
   ],
   controllers: [IntelligenceController, ActivePlannerController],
   providers: [
+    SmartApprovalService,
     DataDoctorService,
     BrainService,
     PlannerSupportService,

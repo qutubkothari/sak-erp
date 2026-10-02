@@ -44,6 +44,7 @@ export class BrainService {
   private allowed(scope: BrainScope, type: string): boolean {
     const permission = (BRAIN_REGISTRY[type] || BRAIN_DIAGNOSTIC_RESOLVERS[type])?.permission;
     if (permission === "HR_DIAGNOSTIC") return hasAdminBypass(scope.user) && hasPermission(scope.user, "hr:read");
+    if (permission === "APPROVAL_PRICE_HISTORY") return hasPermission(scope.user, "purchase_orders:read") && hasPermission(scope.user, "reports:read") && hasPermission(scope.user, "vendors:read");
     if (permission === "AUTO_QA" || permission === "SMART_IMPORT") return hasAdminBypass(scope.user);
     if (permission === "SUPPORT") return true;
     return !!permission && hasPermission(scope.user, permission);

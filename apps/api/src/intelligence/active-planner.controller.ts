@@ -30,6 +30,7 @@ import { ActivePlannerAudioService } from "./active-planner-audio.service";
 import { ActivePlannerMemoryService } from "./active-planner-memory.service";
 import { BrainService } from "./brain.service";
 import { DataDoctorService } from "./data-doctor.service";
+import { SmartApprovalService } from "./smart-approval.service";
 
 @Controller("active-planner")
 export class ActivePlannerController {
@@ -41,13 +42,20 @@ export class ActivePlannerController {
     private readonly screenshots: PlannerSupportAttachmentsService,
     private readonly brain: BrainService,
     private readonly doctor: DataDoctorService,
+    private readonly approval: SmartApprovalService,
   ) {}
   @Get("brain/configuration") brainConfiguration(@Req() req: any) {
     return this.brain.configuration(req.user);
   }
   @Get("brain/health") brainHealth(@Req() req: any) {
-    return { ...this.brain.health(req.user), data_doctor: this.doctor.health(req.user) };
+    return { ...this.brain.health(req.user), data_doctor: this.doctor.health(req.user), smart_approval: this.approval.health(req.user) };
   }
+
+  @Get("smart-approval/configuration") approvalConfiguration(@Req() req: any) { return this.approval.configuration(req.user); }
+
+  @Post("smart-approval/review")
+  @SkipAutomaticAudit()
+  reviewApproval(@Req() req: any, @Body() body: any) { return this.approval.review(req.user, body); }
 
   @Post("data-doctor/prepare-fix")
   @SkipAutomaticAudit()
@@ -154,6 +162,8 @@ export class ActivePlannerController {
   @Post("interpret")
   @SkipAutomaticAudit()
   async interpret(@Req() req: any, @Body() body: any) {
+    const review = await this.approval.interpret(req.user, body);
+    if (review) return review;
     const diagnosis = await this.doctor.interpret(req.user, body);
     if (diagnosis) return diagnosis;
     const brainReply = await this.brain.interpret(req.user, body);
@@ -184,6 +194,7 @@ export class ActivePlannerController {
     );
   }
   @Post("execute") execute(@Req() req: any, @Body() body: any) {
+    if (body?.intent_type === "SMART_APPROVAL_REVIEW" || body?.status === "SMART_APPROVAL_READ_ONLY" || body?.provider === "DETERMINISTIC_SMART_APPROVAL_V1") throw new ForbiddenException("Mizantra Review cannot execute approval or workflow changes.");
     if (body?.intent_type === "DATA_DOCTOR" || body?.status === "DATA_DOCTOR_READ_ONLY" || body?.provider === "DETERMINISTIC_DATA_DOCTOR_V1") throw new ForbiddenException("Data Doctor V1 cannot execute corrections.");
     if (body?.provider === "DETERMINISTIC_BRAIN_V1" || body?.intent_type === "BRAIN_QUERY" || body?.status === "BRAIN_READ_ONLY") throw new ForbiddenException("Execution is not enabled in Brain V1.");
     return this.planner.execute(req.user.tenantId, req.user, body, req);
@@ -192,6 +203,7 @@ export class ActivePlannerController {
     @Req() req: any,
     @Body() body: any,
   ) {
+    if (body?.intent_type === "SMART_APPROVAL_REVIEW" || body?.status === "SMART_APPROVAL_READ_ONLY" || body?.provider === "DETERMINISTIC_SMART_APPROVAL_V1") throw new ForbiddenException("Mizantra Review cannot request or execute approvals.");
     if (body?.intent_type === "DATA_DOCTOR" || body?.status === "DATA_DOCTOR_READ_ONLY" || body?.provider === "DETERMINISTIC_DATA_DOCTOR_V1") throw new ForbiddenException("Data Doctor V1 cannot approve corrections.");
     if (body?.provider === "DETERMINISTIC_BRAIN_V1" || body?.intent_type === "BRAIN_QUERY" || body?.status === "BRAIN_READ_ONLY") throw new ForbiddenException("Approvals are not enabled in Brain V1.");
     return this.planner.requestApproval(req.user.tenantId, req.user, body, req);

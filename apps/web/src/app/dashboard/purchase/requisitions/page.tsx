@@ -1,5 +1,6 @@
 'use client';
 import { useBrainRecord } from '@/hooks/useBrainRecord';
+import MizantraReview from '@/components/MizantraReview';
 
 import { Suspense, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -2964,6 +2965,7 @@ function PRContent() {
                           />
                         </div>
                         <p className="mt-1 text-sm font-medium text-[#7A6555]">{selectedPR.pr_number}</p>
+                        <MizantraReview entityType="purchase_requisition" document={selectedPR} />
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {(selectedPR.status === 'DRAFT' || selectedPR.status === 'SUBMITTED' || selectedPR.status === 'REJECTED') && canEditPR && (

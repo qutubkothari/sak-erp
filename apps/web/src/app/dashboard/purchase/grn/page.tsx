@@ -1,5 +1,6 @@
 "use client";
 import { useBrainRecord } from '@/hooks/useBrainRecord';
+import MizantraReview from '@/components/MizantraReview';
 
 import { useState, useEffect, Suspense, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -4032,6 +4033,7 @@ function GRNContent() {
                   <h2 className="truncate text-xl font-bold text-[#4A3426]">
                     {selectedGRN.grn_number}
                   </h2>
+                  <MizantraReview entityType="grn" document={selectedGRN} />
                 </div>
                 <button
                   onClick={closeGRNView}

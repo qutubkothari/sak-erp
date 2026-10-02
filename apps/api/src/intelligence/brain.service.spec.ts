@@ -118,7 +118,7 @@ describe("Brain validated context and graph", () => {
   });
   it("cannot execute or approve a Brain response", () => {
     const planner = { execute: jest.fn(), requestApproval: jest.fn() };
-    const controller = new ActivePlannerController(planner as any, {} as any, {} as any, {} as any, {} as any, subject, {} as any);
+    const controller = new ActivePlannerController(planner as any, {} as any, {} as any, {} as any, {} as any, subject, {} as any, {} as any);
     const result = { status: "BRAIN_READ_ONLY", intent_type: "BRAIN_QUERY" };
     expect(() => controller.execute({ user }, result)).toThrow("Execution is not enabled");
     expect(() => controller.requestApproval({ user }, result)).toThrow("Approvals are not enabled");

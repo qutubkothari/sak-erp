@@ -5,7 +5,7 @@ import { Brain, RefreshCw } from "lucide-react";
 import { apiClient } from "../../../../../../lib/api-client";
 import { isAdminLike } from "@/lib/rbac";
 
-type Health = { enabled: boolean; contextEnabled: boolean; graphEnabled: boolean; actionPlannerMode: string; profile: string; resolver_count: number; recent_query_count: number; average_resolution_ms: number; errors: number; data_doctor?: { enabled: boolean; rule_count: number; modules: string[]; recent_diagnostics: number; average_duration_ms: number; errors: number } };
+type Health = { enabled: boolean; contextEnabled: boolean; graphEnabled: boolean; actionPlannerMode: string; profile: string; resolver_count: number; recent_query_count: number; average_resolution_ms: number; errors: number; smart_approval?: { enabled: boolean; supported_document_types: string[]; check_count: number; review_count: number; average_execution_ms: number; errors: number }; data_doctor?: { enabled: boolean; rule_count: number; modules: string[]; recent_diagnostics: number; average_duration_ms: number; errors: number } };
 
 export default function BrainHealthPage() {
   const router = useRouter();
@@ -39,6 +39,9 @@ export default function BrainHealthPage() {
       ["Data Doctor", health.data_doctor?.enabled ? "Enabled" : "Off"], ["Diagnostic rules", health.data_doctor?.rule_count ?? 0],
       ["Diagnostic modules", health.data_doctor?.modules.join(", ") || "-"], ["Diagnostics since API restart", health.data_doctor?.recent_diagnostics ?? 0],
       ["Average diagnostic duration", `${health.data_doctor?.average_duration_ms ?? 0} ms`], ["Diagnostic errors", health.data_doctor?.errors ?? 0],
+      ["Smart Approval", health.smart_approval?.enabled ? "Enabled" : "Off"], ["Review document types", health.smart_approval?.supported_document_types.join(", ") || "-"],
+      ["Review checks", health.smart_approval?.check_count ?? 0], ["Reviews since API restart", health.smart_approval?.review_count ?? 0],
+      ["Average review duration", `${health.smart_approval?.average_execution_ms ?? 0} ms`], ["Review errors", health.smart_approval?.errors ?? 0],
     ].map(([label, value]) => <div key={String(label)} className="flex justify-between gap-4 border-b py-3 text-sm"><dt>{label}</dt><dd className="text-right font-medium">{String(value)}</dd></div>)}</dl>}
   </main>;
 }
