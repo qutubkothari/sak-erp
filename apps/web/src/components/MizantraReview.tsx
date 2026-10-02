@@ -6,13 +6,15 @@ import { ClipboardList, Loader2, RefreshCw, X } from "lucide-react";
 import { apiClient } from "../../lib/api-client";
 import { buildBrainEnvelope } from "@/lib/brain-context";
 
-export type SmartApprovalReview = { status: string; brain_context: any; workflow_state: string; review_version: string; reviewed_at: string; valid_until: string; previous_review_status: string | null; attention_points: number; checks_executed: string[]; items: Array<{ check_key: string; category: string; title: string; business_explanation: string; severity: string; confidence: string; source: string; timestamp: string; outcome: string; evidence: Record<string, unknown>; related_entities: Array<{ entity_id: string; document_number: string; route: string | null }> }> };
+export type SmartApprovalReview = { status: string; brain_context: any; workflow_state: string; review_version: string; reviewed_at: string; valid_until: string; remaining_validity_ms?: number; previous_review_status: string | null; attention_points: number; checks_executed: string[]; items: Array<{ check_key: string; category: string; title: string; business_explanation: string; severity: string; confidence: string; source: string; timestamp: string; outcome: string; evidence: Record<string, unknown>; related_entities: Array<{ entity_id: string; document_number: string; route: string | null }> }> };
 const outcomes: Record<string, string> = { NO_ISSUE_DETECTED: "No issue detected", INFORMATION: "Information", ATTENTION_REQUIRED: "Attention required", CRITICAL_DATA_INCONSISTENCY: "Critical data inconsistency" };
 
 export function ReviewResults({ review, onRefresh, busy = false }: { review: SmartApprovalReview; onRefresh: () => void; busy?: boolean }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
-  const stale = now >= Date.parse(review.valid_until);
+  const validity = Number.isFinite(review.remaining_validity_ms) ? Math.max(0, Math.min(30000, review.remaining_validity_ms!)) : Math.max(0, Math.min(30000, Date.parse(review.valid_until) - Date.parse(review.reviewed_at)));
+  const [now, setNow] = useState(performance.now()), [deadline, setDeadline] = useState(() => performance.now() + validity);
+  useEffect(() => { setDeadline(performance.now() + validity); }, [review.reviewed_at, review.review_version, validity]);
+  useEffect(() => { const timer = window.setInterval(() => setNow(performance.now()), 1000); return () => window.clearInterval(timer); }, []);
+  const stale = !Number.isFinite(deadline) || now >= deadline;
   return <section aria-label="Mizantra review evidence" className="min-w-0 space-y-4 text-sm">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3"><div><p className="font-medium">{review.brain_context.document_number} <span className="ml-2 font-normal">{review.workflow_state}</span></p><p className="mt-1 text-xs text-stone-600">Reviewed <time>{new Date(review.reviewed_at).toLocaleString()}</time></p></div><button type="button" title="Refresh Review" disabled={busy} onClick={onRefresh} className="flex items-center gap-2 rounded-md border px-3 py-2 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />Refresh Review</button></div>
     {stale ? <p role="status" className="border-l-2 border-amber-600 pl-3">REVIEW_STALE</p> : <><p className="text-xs text-stone-600">{review.attention_points} attention points · {review.checks_executed.length} checks</p>{review.previous_review_status === "REVIEW_STALE" && <p role="status" className="text-xs text-stone-600">REVIEW_STALE: replaced with a fresh review.</p>}{review.items.map((item, index) => <article key={`${item.check_key}:${index}`} className="min-w-0 border-b pb-4">

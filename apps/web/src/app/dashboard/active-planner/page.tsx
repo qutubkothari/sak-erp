@@ -56,6 +56,7 @@ type Result = {
   review_version?: string;
   reviewed_at?: string;
   valid_until?: string;
+  remaining_validity_ms?: number;
   previous_review_status?: string | null;
   workflow_state?: string;
   attention_points?: number;
