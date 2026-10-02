@@ -42,6 +42,7 @@ import { hasSuperAdminRole } from "@/lib/rbac";
 import { BRAIN_CONTEXT_KEY, buildBrainEnvelope, type BrainEnvelope } from "@/lib/brain-context";
 import { ReviewResults, type SmartApprovalReview } from "@/components/MizantraReview";
 import MizantraReporting, { type ReportingResult } from "@/components/MizantraReporting";
+import MizantraDocuments, { type DocumentComparison } from "@/components/MizantraDocuments";
 
 type Capability = {
   intent: string;
@@ -53,6 +54,8 @@ type Capability = {
   examples: string[];
 };
 type Result = {
+  document_comparison?: DocumentComparison;
+  document_quote_hint?: { document_ids: string[]; brain_context: BrainEnvelope; read_only: boolean; affects_review_verdict: boolean } | null;
   report?: ReportingResult;
   session_id?: string;
   items?: SmartApprovalReview["items"];
@@ -437,6 +440,9 @@ const downloadAnalyticsDocument = async (
 };
 
 export default function ActivePlannerPage() {
+  const [documentEnabled, setDocumentEnabled] = useState(false);
+  const [documentIds, setDocumentIds] = useState<string[]>([]);
+  const [documentRefresh, setDocumentRefresh] = useState(0);
   const { language } = useLocale();
   const [input, setInput] = useState(""),
     [isSuperAdmin, setIsSuperAdmin] = useState(false),
@@ -901,6 +907,7 @@ export default function ActivePlannerPage() {
         );
       let uploadedAttachments = attachments;
       let screenshotRef: string | undefined;
+      let selectedDocumentIds = documentIds;
       if (pendingFile && classification.intent !== "SUPPORT_STATUS" && (isSupport || isPlanner)) {
         if (
           isSupport &&
@@ -912,6 +919,15 @@ export default function ActivePlannerPage() {
         setUploading(true);
         const form = new FormData();
         form.append("file", pendingFile);
+        if (documentEnabled && isPlanner) {
+          if (/\.(xlsx|csv)$/i.test(pendingFile.name)) throw new Error("Use Smart Import for Excel/CSV files.");
+          form.append("instruction", message);
+          const uploaded = await apiClient.postForm<{ id: string }>("/active-planner/document-intelligence/uploads", form);
+          selectedDocumentIds = [...documentIds.slice(-2), uploaded.id];
+          setDocumentIds(selectedDocumentIds);
+          setDocumentRefresh(value => value + 1);
+          uploadedAttachments = [];
+        } else {
         const response = await fetch(
           isSupport
             ? "/api/v1/active-planner/support-screenshot"
@@ -939,6 +955,7 @@ export default function ActivePlannerPage() {
               size: pendingFile.size,
             },
           ];
+        }
       }
       const browser = /Edg\//.test(navigator.userAgent)
         ? "Edge"
@@ -952,6 +969,7 @@ export default function ActivePlannerPage() {
       const device = /Mobi/i.test(navigator.userAgent) ? "mobile" : "desktop";
       const data = await apiClient.post<Result>("/active-planner/interpret", {
         message: rawMessage,
+        ...(documentEnabled && isPlanner && selectedDocumentIds.length ? { document_ids: selectedDocumentIds } : {}),
         ...(result?.session_id ? { session_id: result.session_id } : {}),
         ...(brainContext ? { brain_context: brainContext } : {}),
         support_mode,
@@ -1539,6 +1557,7 @@ export default function ActivePlannerPage() {
               {result.evidence?.filter(entry => entry.claim === "PO_RECEIPT_STATE").map((entry, index) => <dl key={index} className="mt-3 grid grid-cols-2 gap-2 text-xs">{Object.entries(entry.values || {}).filter(([key]) => key.endsWith("_qty")).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd className="font-semibold">{String(value)}</dd></div>)}</dl>)}
             </details>}
             {result?.status === "REPORT_READY" && result.report && <MizantraReporting embedded initialReport={result.report} initialSessionId={result.session_id} />}
+            {result?.document_quote_hint && <button type="button" className="flex items-center gap-2 px-3 py-2 text-xs underline" onClick={() => { const hint = result.document_quote_hint!; void apiClient.post<DocumentComparison>("/active-planner/document-intelligence/compare", { document_ids: hint.document_ids, brain_context: hint.brain_context }).then(comparison => setResult(previous => previous ? { ...previous, document_comparison: comparison } : previous)).catch(() => setError("Quotation evidence is unavailable or requires a fresh comparison.")); }}><FileText className="h-4 w-4" />View Quotation Comparison</button>}
             {result?.status === "SMART_APPROVAL_READ_ONLY" && result.items && result.review_version && <ReviewResults review={result as SmartApprovalReview} onRefresh={() => {
               const current = result;
               void apiClient.post<Result>("/active-planner/smart-approval/review", { brain_context: current.brain_context, previous_review_version: current.review_version }).then(next => setResult(previous => previous === current ? { ...current, ...next } : previous)).catch(() => setError("Review could not be refreshed."));
@@ -1729,6 +1748,7 @@ export default function ActivePlannerPage() {
                     : "AI voice · audio not stored"}
               </span>
             </div>
+            <MizantraDocuments refreshSignal={documentRefresh} selectedIds={documentIds} onSelection={setDocumentIds} onEnabled={setDocumentEnabled} comparison={result?.document_comparison} onDiagnosis={context => { setBrainContext(context); setDocumentIds([]); setInput("Diagnose ERP data for this record"); }} />
             <form onSubmit={send} className="flex gap-2 p-3">
               <label className="self-end cursor-pointer rounded-xl border border-[#D8C8AA] p-3 text-[#65452B] sm:rounded-lg">
                 <Paperclip className="h-5 w-5" />

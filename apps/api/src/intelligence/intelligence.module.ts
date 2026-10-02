@@ -46,6 +46,8 @@ import { DataDoctorService } from "./data-doctor.service";
 import { SmartApprovalService } from "./smart-approval.service";
 import { ReportingService } from "./reporting.service";
 import { ReportingController } from "./reporting.controller";
+import { DocumentAnalysisService } from "./document-analysis.service";
+import { DocumentAnalysisController } from "./document-analysis.controller";
 
 @Module({
   imports: [
@@ -68,8 +70,9 @@ import { ReportingController } from "./reporting.controller";
     CrmModule,
     FsmModule,
   ],
-  controllers: [IntelligenceController, ActivePlannerController, ReportingController],
+  controllers: [IntelligenceController, ActivePlannerController, ReportingController, DocumentAnalysisController],
   providers: [
+    DocumentAnalysisService,
     ReportingService,
     SmartApprovalService,
     DataDoctorService,

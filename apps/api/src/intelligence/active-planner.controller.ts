@@ -34,6 +34,7 @@ import { DataDoctorService } from "./data-doctor.service";
 import { SmartApprovalService } from "./smart-approval.service";
 import { ReportingService } from "./reporting.service";
 import { reportIntent } from "./reporting.registry";
+import { DocumentAnalysisService } from "./document-analysis.service";
 
 @Controller("active-planner")
 export class ActivePlannerController {
@@ -47,6 +48,7 @@ export class ActivePlannerController {
     private readonly doctor: DataDoctorService,
     private readonly approval: SmartApprovalService,
     @Optional() private readonly reporting?: ReportingService,
+    @Optional() private readonly documents?: DocumentAnalysisService,
   ) {}
   @Get("brain/configuration") brainConfiguration(@Req() req: any) {
     return this.brain.configuration(req.user);
@@ -166,6 +168,13 @@ export class ActivePlannerController {
   @Post("interpret")
   @SkipAutomaticAudit()
   async interpret(@Req() req: any, @Body() body: any) {
+    if (body?.document_ids?.length && !["support", "improvement", "status"].includes(body?.support_mode)) {
+      if (!this.documents) throw new ForbiddenException("Document Intelligence is unavailable.");
+      const references = [...new Set((String(body?.message || "").match(/\b(?:RFQ|PO)[-/][A-Z0-9_/-]+/gi) || []).map(value => value.trim()))];
+      if (!body.brain_context && references.length > 1) return { status: "DOCUMENT_CONTEXT_REQUIRED", intent_type: "DOCUMENT_COMPARE", provider: "MIZANTRA_DOCUMENT_INTELLIGENCE_V1", extracted: {}, resolved: {}, questions: ["Choose one exact authorized RFQ or PO for comparison."], context_token: "", safety: { read_only: true, executable: false }, assistant_message: "Choose one exact authorized RFQ or PO for comparison." };
+      const comparison = await this.documents.compare(req.user, { ...body, reference: body?.reference || references[0] });
+      return { ...comparison, extracted: {}, resolved: {}, questions: [], context_token: "", document_comparison: comparison };
+    }
     const review = await this.approval.interpret(req.user, body);
     if (review) return review;
     const diagnosis = await this.doctor.interpret(req.user, body);
@@ -202,6 +211,7 @@ export class ActivePlannerController {
     );
   }
   @Post("execute") execute(@Req() req: any, @Body() body: any) {
+    if (body?.document_ids?.length || body?.intent_type === "DOCUMENT_COMPARE" || body?.provider === "MIZANTRA_DOCUMENT_INTELLIGENCE_V1" || String(body?.status || "").startsWith("DOCUMENT_")) throw new ForbiddenException("Document comparison cannot execute ERP business changes.");
     if (body?.intent_type === "REPORT_QUERY" || body?.provider === "DETERMINISTIC_REPORT_BUILDER_V1" || String(body?.status || "").startsWith("REPORT_")) throw new ForbiddenException("Reports cannot execute ERP business changes.");
     if (body?.intent_type === "SMART_APPROVAL_REVIEW" || body?.status === "SMART_APPROVAL_READ_ONLY" || body?.provider === "DETERMINISTIC_SMART_APPROVAL_V1") throw new ForbiddenException("Mizantra Review cannot execute approval or workflow changes.");
     if (body?.intent_type === "DATA_DOCTOR" || body?.status === "DATA_DOCTOR_READ_ONLY" || body?.provider === "DETERMINISTIC_DATA_DOCTOR_V1") throw new ForbiddenException("Data Doctor V1 cannot execute corrections.");
@@ -212,6 +222,7 @@ export class ActivePlannerController {
     @Req() req: any,
     @Body() body: any,
   ) {
+    if (body?.document_ids?.length || body?.intent_type === "DOCUMENT_COMPARE" || body?.provider === "MIZANTRA_DOCUMENT_INTELLIGENCE_V1" || String(body?.status || "").startsWith("DOCUMENT_")) throw new ForbiddenException("Document comparison cannot request approvals.");
     if (body?.intent_type === "REPORT_QUERY" || body?.provider === "DETERMINISTIC_REPORT_BUILDER_V1" || String(body?.status || "").startsWith("REPORT_")) throw new ForbiddenException("Reports cannot request workflow approvals.");
     if (body?.intent_type === "SMART_APPROVAL_REVIEW" || body?.status === "SMART_APPROVAL_READ_ONLY" || body?.provider === "DETERMINISTIC_SMART_APPROVAL_V1") throw new ForbiddenException("Mizantra Review cannot request or execute approvals.");
     if (body?.intent_type === "DATA_DOCTOR" || body?.status === "DATA_DOCTOR_READ_ONLY" || body?.provider === "DETERMINISTIC_DATA_DOCTOR_V1") throw new ForbiddenException("Data Doctor V1 cannot approve corrections.");

@@ -1,9 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, Optional } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { hasAdminBypass, hasPermission } from "../auth/utils/permission-utils";
 import { BrainDiagnosticEvidence, BrainService } from "./brain.service";
 import { brainEntitySummary } from "./brain-registry";
 import { DataDoctorService } from "./data-doctor.service";
+import { DocumentAnalysisService } from "./document-analysis.service";
 import { evaluateApproval, ReviewDocument, ReviewSnapshot, SMART_APPROVAL_CHECKS } from "./smart-approval.rules";
 const resources: Record<ReviewDocument, string> = { purchase_order: "purchase_orders", purchase_requisition: "purchase_requisitions", grn: "grns" };
 export function smartApprovalIntent(message: string) { return /\breview\b.*\b(?:approv|this|before)/i.test(message) || /what should I look at here/i.test(message) || /anything unusual.*\b(?:PO|PR|GRN)\b/i.test(message) || /^check this (?:GRN|PO|PR)[.!?]?$/i.test(message.trim()); }
@@ -17,7 +18,7 @@ function stable(value: any): any { if (Array.isArray(value)) return value.map(st
 export class SmartApprovalService {
   private readonly logger = new Logger(SmartApprovalService.name);
   private readonly metrics = new Map<string, { count: number; duration: number; errors: number }>();
-  constructor(private readonly brain: BrainService, private readonly doctor: DataDoctorService) {}
+  constructor(private readonly brain: BrainService, private readonly doctor: DataDoctorService, @Optional() private readonly documents?: DocumentAnalysisService) {}
   configuration(user: any) {
     const brain = this.brain.configuration(user);
     const supported_document_types = (Object.keys(resources) as ReviewDocument[]).filter(type => hasPermission(user, `${resources[type]}:approve`) && process.env[`MIZANTRA_SMART_APPROVAL_${type === "purchase_order" ? "PO" : type === "purchase_requisition" ? "PR" : "GRN"}`] !== "false");
@@ -36,7 +37,8 @@ export class SmartApprovalService {
       const version = createHash("sha256").update(JSON.stringify(stable({ context: { profile: context.profile, tenant_id: context.tenant_id, entity_type: type, entity_id: context.entity_id }, root: snapshot.root, datasets: snapshot.datasets, receipt: snapshot.receipt, doctor: snapshot.doctor, qa: snapshot.qa }))).digest("hex");
       const result = evaluateApproval(snapshot); checks = result.checks_executed; count = result.items.length;
       const changed = typeof body.previous_review_version === "string" && body.previous_review_version !== version;
-      return { status: "SMART_APPROVAL_READ_ONLY", intent_type: "SMART_APPROVAL_REVIEW", provider: "DETERMINISTIC_SMART_APPROVAL_V1", brain_context: evidence.context, workflow_state: snapshot.root.status, ...result, review_version: version, reviewed_at: snapshot.timestamp, valid_until: new Date(Date.parse(snapshot.timestamp) + 30000).toISOString(), remaining_validity_ms: Math.max(0, 30000 - (Date.now() - Date.parse(snapshot.timestamp))), previous_review_status: changed ? "REVIEW_STALE" : null, regenerated: true, safety: { read_only: true, executable: false, workflow_mutation: false }, attention_points: result.items.filter(item => ["ATTENTION_REQUIRED", "CRITICAL_DATA_INCONSISTENCY"].includes(item.outcome)).length };
+      const document_quote_hint = this.documents ? await this.documents.approvalHint(user, evidence.context).catch(() => null) : null;
+      return { status: "SMART_APPROVAL_READ_ONLY", intent_type: "SMART_APPROVAL_REVIEW", provider: "DETERMINISTIC_SMART_APPROVAL_V1", brain_context: evidence.context, document_quote_hint, workflow_state: snapshot.root.status, ...result, review_version: version, reviewed_at: snapshot.timestamp, valid_until: new Date(Date.parse(snapshot.timestamp) + 30000).toISOString(), remaining_validity_ms: Math.max(0, 30000 - (Date.now() - Date.parse(snapshot.timestamp))), previous_review_status: changed ? "REVIEW_STALE" : null, regenerated: true, safety: { read_only: true, executable: false, workflow_mutation: false }, attention_points: result.items.filter(item => ["ATTENTION_REQUIRED", "CRITICAL_DATA_INCONSISTENCY"].includes(item.outcome)).length };
     }); } catch (caught) { error = true; throw caught; } finally {
       const key = `${configuration.profile}:${configuration.tenant_id}`; const previous = this.metrics.get(key) || { count: 0, duration: 0, errors: 0 }; const duration = Date.now() - start; previous.count++; previous.duration += duration; previous.errors += Number(error); if (this.metrics.size >= 1000 && !this.metrics.has(key)) this.metrics.delete(this.metrics.keys().next().value!); this.metrics.set(key, previous);
       this.logger.log(JSON.stringify({ event: "SMART_APPROVAL_REVIEW", profile: configuration.profile, tenant: configuration.tenant_id, user: user.userId || user.id, entity_type: type, entity_id: context.entity_id || null, reviewed_at: new Date().toISOString(), checks_executed: checks, result_count: count, duration_ms: duration, error }));
