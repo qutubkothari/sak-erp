@@ -1,4 +1,5 @@
 'use client';
+import { useBrainRecord } from '@/hooks/useBrainRecord';
 
 import { Suspense, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -463,6 +464,7 @@ function PRContent() {
   const [filterVendor, setFilterVendor] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [selectedPR, setSelectedPR] = useState<PRDetail | null>(null);
+  useBrainRecord('purchase_requisition', selectedPR?.id, selectedPR?.pr_number);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);

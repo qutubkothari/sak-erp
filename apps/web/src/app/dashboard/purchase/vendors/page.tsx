@@ -1,4 +1,5 @@
 "use client";
+import { useBrainRecord } from '@/hooks/useBrainRecord';
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -494,6 +495,7 @@ export default function VendorsPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [verificationFilter, setVerificationFilter] = useState("ALL");
   const [viewingVendor, setViewingVendor] = useState<Vendor | null>(null);
+  useBrainRecord('supplier', viewingVendor?.id, viewingVendor?.name);
   const [vendorImportFiles, setVendorImportFiles] = useState<VendorImportFile[]>([]);
   const [vendorImportLoading, setVendorImportLoading] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);

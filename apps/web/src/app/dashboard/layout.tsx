@@ -16,6 +16,7 @@ import {
 } from "../../lib/rbac";
 import { apiClient } from "../../../lib/api-client";
 import GovernanceRequiredNotice from "../../components/GovernanceRequiredNotice";
+import { captureBrainRoute } from "@/lib/brain-context";
 
 // A module's overview can be disabled independently of its operational
 // workspaces.  Preserve the owner's feature controls, but do not strand a
@@ -53,6 +54,7 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (pathname && pathname !== "/dashboard/active-planner") {
+      captureBrainRoute(pathname);
       try {
         sessionStorage.setItem(
           "mizantra-source-route",

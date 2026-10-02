@@ -1,4 +1,5 @@
 "use client";
+import { useBrainRecord } from '@/hooks/useBrainRecord';
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -278,6 +279,7 @@ export default function ItemsPage() {
 
   // Item view modal
   const [viewingItem, setViewingItem] = useState<Item | null>(null);
+  useBrainRecord('item', viewingItem?.id, viewingItem?.code);
 
   // Stock trail drill-down
   const [stockTrail, setStockTrail] = useState<{

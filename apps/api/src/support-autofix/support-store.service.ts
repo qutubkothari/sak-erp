@@ -51,6 +51,13 @@ function uuidOrNull(value: unknown): string | null {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
 }
 
+export function safeBrainIncidentContext(value: IncidentInput['brain_context'], tenantId: string, reporterId: string) {
+  if (!value || value.tenant_id !== tenantId || value.current_user_id !== reporterId || value.profile !== process.env.ERP_TENANT_PROFILE) return null;
+  if (!['purchase_order', 'purchase_requisition', 'grn', 'item', 'supplier', 'smart_import_batch', 'autoqa_finding', 'support_incident'].includes(value.entity_type) || !uuidOrNull(value.entity_id)) return null;
+  if (!/^\/dashboard(?:\/[a-zA-Z0-9_-]+)*$/.test(value.current_route)) return null;
+  return { profile: value.profile, tenant_id: tenantId, current_route: value.current_route, module: value.entity_type.toUpperCase(), entity_type: value.entity_type, entity_id: value.entity_id };
+}
+
 function safeJsonRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const text = JSON.stringify(value);
@@ -96,6 +103,7 @@ export class SupportStoreService {
     const pageUrl = safeRouteOrUrl(input.page_url);
     const route = safeRouteOrUrl(input.route) || (pageUrl ? safeRouteOrUrl(pageUrl) : null);
     const reportedAt = input.timestamp && Number.isFinite(Date.parse(input.timestamp)) ? new Date(input.timestamp).toISOString() : null;
+    const brainContext = safeBrainIncidentContext(requestMetadata?.brain_context, tenantId, reporterId);
     const payload = {
       tenant_id: tenantId,
       reported_by: uuidOrNull(reporterId),
@@ -130,7 +138,7 @@ export class SupportStoreService {
       requires_business_logic: requestMetadata?.requires_business_logic === true,
       requested_by_profile: ['SAIFSEAS', 'MIZANTRA', 'ARWA'].includes(String(requestMetadata?.requested_by_profile)) ? requestMetadata?.requested_by_profile : null,
       build_approval_status: ['AWAITING_BUILD_APPROVAL', 'AWAITING_ENGINEERING_APPROVAL'].includes(String(requestMetadata?.build_approval_status)) ? requestMetadata?.build_approval_status : 'NOT_REQUIRED',
-      prompt_scope: sanitizeSupportText(requestMetadata?.prompt_scope || '', 1000) || null,
+      prompt_scope: sanitizeSupportText(`${requestMetadata?.prompt_scope || ''}${brainContext ? `\nValidated screen context: ${JSON.stringify(brainContext)}` : ''}`, 1000) || null,
       autoqa_finding_id: uuidOrNull(requestMetadata?.autoqa_finding_id),
       autoqa_check_key: /^[A-Z0-9_]{1,80}$/.test(String(requestMetadata?.autoqa_check_key || '')) ? requestMetadata?.autoqa_check_key : null,
       autoqa_evidence: safeJsonRecord(requestMetadata?.autoqa_evidence),
@@ -141,7 +149,7 @@ export class SupportStoreService {
     };
     const { data, error } = await this.supabase.from('support_incidents').insert(payload).select('*').single();
     if (error) throw error;
-    await this.writeEvent({ type: 'incident.created', tenantId, incidentId: data.id, at: now.toISOString(), details: { risk: decision.risk } }, reporterId);
+    await this.writeEvent({ type: 'incident.created', tenantId, incidentId: data.id, at: now.toISOString(), details: { risk: decision.risk, ...(brainContext ? { brain_context: brainContext } : {}) } }, reporterId);
     await this.auditService.logActivity({ tenantId, userId: reporterId, action: 'SUPPORT_INCIDENT_CREATED', resourceType: 'support_incident', resourceId: data.id, resourceName: payload.title, metadata: { risk: decision.risk } });
     return { incident: data, deduplicated: false };
   }

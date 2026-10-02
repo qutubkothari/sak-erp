@@ -41,6 +41,7 @@ import { ActivePlannerMemoryService } from "./active-planner-memory.service";
 import { SemanticErpQueryService } from "./semantic-erp-query.service";
 import { CrmModule } from "../crm/crm.module";
 import { FsmModule } from "../fsm/fsm.module";
+import { BrainService } from "./brain.service";
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { FsmModule } from "../fsm/fsm.module";
   ],
   controllers: [IntelligenceController, ActivePlannerController],
   providers: [
+    BrainService,
     PlannerSupportService,
     PlannerSupportAttachmentsService,
     IntelligenceService,

@@ -1,4 +1,5 @@
 'use client';
+import { useBrainRecord } from '@/hooks/useBrainRecord';
 
 import { useState, useEffect, Suspense, useMemo, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -387,6 +388,7 @@ function PurchaseOrdersContent() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [poViewSection, setPoViewSection] = useState('overview');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  useBrainRecord('purchase_order', selectedPO?.id, selectedPO?.po_number);
   const [showPOEmailPreview, setShowPOEmailPreview] = useState(false);
   const [poEmailPreviewLoading, setPoEmailPreviewLoading] = useState(false);
   const [poEmailSending, setPoEmailSending] = useState(false);

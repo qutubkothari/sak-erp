@@ -996,7 +996,7 @@ export class PurchaseOrdersService {
     );
   }
 
-  private async fetchReceiptLedgerForPurchaseOrders(tenantId: string, poIds: string[]) {
+  private async fetchReceiptLedgerForPurchaseOrders(tenantId: string, poIds: string[], strict = false, signal?: AbortSignal) {
     const normalizedPoIds = Array.from(
       new Set(poIds.map((poId) => String(poId || '').trim()).filter(Boolean)),
     );
@@ -1009,9 +1009,11 @@ export class PurchaseOrdersService {
       .from('grns')
       .select('id, po_id, status')
       .eq('tenant_id', tenantId)
-      .in('po_id', normalizedPoIds);
+      .in('po_id', normalizedPoIds)
+      .abortSignal(signal || new AbortController().signal);
 
     if (grnError) {
+      if (strict) throw new BadRequestException('Purchase receipt evidence is unavailable');
       console.error('[PO] Failed to batch-fetch GRNs for receipt summaries:', grnError);
       return { receivedByPoItem, receivedByPoId, receiptFactsByPoItem };
     }
@@ -1029,9 +1031,11 @@ export class PurchaseOrdersService {
     const { data: grnItems, error: grnItemsError } = await this.supabase
       .from('grn_items')
       .select('grn_id, po_item_id, received_qty, accepted_qty, rejected_qty, qc_status')
-      .in('grn_id', grnIds);
+      .in('grn_id', grnIds)
+      .abortSignal(signal || new AbortController().signal);
 
     if (grnItemsError) {
+      if (strict) throw new BadRequestException('Purchase receipt evidence is unavailable');
       console.error('[PO] Failed to batch-fetch GRN items for receipt summaries:', grnItemsError);
       return { receivedByPoItem, receivedByPoId, receiptFactsByPoItem };
     }
@@ -1190,6 +1194,12 @@ export class PurchaseOrdersService {
     if (receiptStatus === 'PARTIALLY_RECEIVED') return 'PARTIAL';
     if (receiptStatus === 'OPEN') return 'APPROVED';
     return currentStatus || 'APPROVED';
+  }
+
+  private isOpenPurchaseOrder(status: string, receipt: any): boolean {
+    return ['APPROVED', 'SENT', 'ACKNOWLEDGED', 'PARTIAL', 'COMPLETED', 'CLOSED'].includes(status)
+      && receipt.receipt_status !== 'FULLY_RECEIVED'
+      && this.toNumber(receipt.receipt_progress?.remaining_qty) > 0;
   }
 
   private async resolveVendorMap(tenantId: string, vendorIds: Array<string | null | undefined>) {
@@ -1822,7 +1832,6 @@ export class PurchaseOrdersService {
     }
 
     const result = [];
-    const openPoStatuses = new Set(['APPROVED', 'SENT', 'ACKNOWLEDGED', 'PARTIAL', 'COMPLETED', 'CLOSED']);
     for (const po of rows) {
       const poStatus = String(po?.status || '').trim().toUpperCase();
 
@@ -1840,7 +1849,7 @@ export class PurchaseOrdersService {
       const receiptAwarePoStatus = String(receiptAwareStatus || '').trim().toUpperCase();
       if (
         String(filters?.status || '').trim().toUpperCase() === 'OPEN_PO' &&
-        (!openPoStatuses.has(poStatus) || receipt.receipt_status === 'FULLY_RECEIVED' || this.toNumber(receipt.receipt_progress?.remaining_qty) <= 0)
+        !this.isOpenPurchaseOrder(poStatus, receipt)
       ) continue;
       if (filters?.pendingOnly && !['APPROVED', 'PARTIAL'].includes(receiptAwarePoStatus)) continue;
       
@@ -1864,7 +1873,7 @@ export class PurchaseOrdersService {
         payment_terms: this.resolvePoPaymentTermsDisplay(amountAwarePo, termsMetadata),
         ...receipt,
         status: receiptAwareStatus,
-        open_po: openPoStatuses.has(poStatus) && receipt.receipt_status !== 'FULLY_RECEIVED' && this.toNumber(receipt.receipt_progress?.remaining_qty) > 0,
+        open_po: this.isOpenPurchaseOrder(poStatus, receipt),
         vendor: po?.vendor_id ? vendorById.get(po.vendor_id) ?? null : null,
         pr: po?.pr_id ? prById.get(po.pr_id) ?? null : null,
         approved_by_name: approvedByName,
@@ -1914,6 +1923,29 @@ export class PurchaseOrdersService {
       sheet.getColumn(key).numFmt = '#,##0.00';
     }
     return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  async brainReceiptEvidence(tenantId: string, id: string, signal?: AbortSignal) {
+    const { data, error } = await this.supabase
+      .from('purchase_orders')
+      .select('id, po_number, status, purchase_order_items(id, ordered_qty)')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .abortSignal(signal || new AbortController().signal)
+      .maybeSingle();
+    if (error || !data) throw new NotFoundException('Purchase order evidence not found');
+    const ledger = await this.fetchReceiptLedgerForPurchaseOrders(tenantId, [id], true, signal);
+    const summary = await this.computeReceiptSummary(tenantId, data, ledger);
+    const facts = Array.from(ledger.receiptFactsByPoItem.values());
+    return {
+      document_number: data.po_number,
+      status: this.getReceiptAwarePoStatus(data, summary),
+      open_po: this.isOpenPurchaseOrder(String(data.status || '').trim().toUpperCase(), summary),
+      receipt_status: summary.receipt_status,
+      ...summary.receipt_progress,
+      physical_received_qty: facts.reduce((total, fact) => total + fact.received, 0),
+      qc_pending_qty: facts.reduce((total, fact) => total + fact.qcPending, 0),
+    };
   }
 
   async findOne(tenantId: string, id: string) {

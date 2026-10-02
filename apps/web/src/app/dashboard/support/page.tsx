@@ -1,4 +1,5 @@
 "use client";
+import { BrainAskLink } from '@/components/BrainAskLink';
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -50,6 +51,7 @@ export default function SupportPage() {
         {lifecycle === "RESOLVED" && counts.RESOLVED > 0 && <button type="button" onClick={async () => { await apiClient.post("/support/incidents/archive-resolved", {}); await load(); }} className="mb-3 rounded border px-3 py-1.5 text-sm text-amber-900">Archive all resolved</button>}
         {error && <p role="alert">{error}</p>}
         {requests.map((request) => <article key={request.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3">
+          <BrainAskLink entityType="support_incident" entityId={request.id} />
           <div><span className="mr-2 inline-block rounded bg-stone-100 px-2 py-0.5 text-xs">{requestTypeLabel(request.request_type)}</span><p className="inline font-medium">{request.title}</p>{request.module && <p className="text-sm text-stone-500">{request.module}</p>}<p className="text-sm text-stone-600">{request.friendly_status}</p>{request.occurrence_count && request.occurrence_count > 1 && <p className="text-xs text-stone-500">Similar issue reported {request.occurrence_count} times</p>}</div>
           <button type="button" onClick={async () => { await apiClient.post(`/support/incidents/${request.id}/${lifecycle === "ARCHIVED" ? "restore" : "archive"}`, {}); await load(); }} className="rounded border px-3 py-1.5 text-sm text-amber-900">{lifecycle === "ARCHIVED" ? "Restore" : "Archive"}</button>
         </article>)}
@@ -57,6 +59,7 @@ export default function SupportPage() {
       </section>
       {showAutoHeal && <Link href="/dashboard/support/admin" className="text-xs underline">AutoHeal control center</Link>}
       {showSystemHealth && <Link href="/dashboard/support/admin/system-health" className="text-xs font-semibold text-indigo-800 underline">System Health / Auto QA</Link>}
+      {showSystemHealth && <Link href="/dashboard/support/admin/brain" className="text-xs font-semibold underline">Mizantra Brain</Link>}
     </main>
   );
 }

@@ -84,7 +84,7 @@ export class PlannerSupportService {
         "Describe the problem in 1–2000 characters.",
       );
     const routeContext = resolveSupportRoute({
-      sourceRoute: body?.source_route,
+      sourceRoute: body?.brain_context?.current_route || body?.source_route,
       currentRoute: body?.current_route,
       title: message,
       description: message,
@@ -128,6 +128,15 @@ export class PlannerSupportService {
       prompt_scope: effectiveRisk === "LOW"
         ? `LOW ${classification.changeKind} UI-only scope; use existing data, no migrations, business logic, or deployment.`
         : `Plan only until privileged approval; requested scope: ${scope.requestedScope}.`,
+      ...(body?.brain_context ? { brain_context: {
+        profile: body.brain_context.profile,
+        tenant_id: body.brain_context.tenant_id,
+        current_route: body.brain_context.current_route,
+        module: body.brain_context.module,
+        entity_type: body.brain_context.entity_type,
+        entity_id: body.brain_context.entity_id,
+        current_user_id: body.brain_context.current_user_id,
+      } } : {}),
     };
     // Only this allowlist crosses the intake boundary. No deployment commands or model output.
     const incident = await this.autoheal

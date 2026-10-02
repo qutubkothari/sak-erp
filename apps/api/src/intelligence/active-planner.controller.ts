@@ -3,6 +3,7 @@ import { SuperAdminGuard } from "../support-autofix/super-admin.guard";
 import { RequirePermissions } from "../auth/decorators/permissions.decorator";
 import {
   Body,
+  ForbiddenException,
   Controller,
   Delete,
   Get,
@@ -27,6 +28,7 @@ import { PlannerSupportAttachmentsService } from "./planner-support-attachments.
 import { ActivePlannerService } from "./active-planner.service";
 import { ActivePlannerAudioService } from "./active-planner-audio.service";
 import { ActivePlannerMemoryService } from "./active-planner-memory.service";
+import { BrainService } from "./brain.service";
 
 @Controller("active-planner")
 export class ActivePlannerController {
@@ -36,7 +38,19 @@ export class ActivePlannerController {
     private readonly memory: ActivePlannerMemoryService,
     private readonly support: PlannerSupportService,
     private readonly screenshots: PlannerSupportAttachmentsService,
+    private readonly brain: BrainService,
   ) {}
+  @Get("brain/configuration") brainConfiguration(@Req() req: any) {
+    return this.brain.configuration(req.user);
+  }
+  @Get("brain/health") brainHealth(@Req() req: any) {
+    return this.brain.health(req.user);
+  }
+  @Post("brain/context")
+  @SkipAutomaticAudit()
+  brainContext(@Req() req: any, @Body() body: any) {
+    return this.brain.validateContext(req.user, body);
+  }
   @Get("audio/languages") audioLanguages() {
     return { languages: this.audio.languages(), recording_retained: false };
   }
@@ -131,6 +145,12 @@ export class ActivePlannerController {
   @Post("interpret")
   @SkipAutomaticAudit()
   async interpret(@Req() req: any, @Body() body: any) {
+    const brainReply = await this.brain.interpret(req.user, body);
+    if (brainReply) return brainReply;
+    if (body?.brain_context) {
+      const validated = await this.brain.validateContext(req.user, body.brain_context);
+      body = { ...body, brain_context: validated.context };
+    }
     const supportReply = await this.support.route(req.user, body);
     if (supportReply) return supportReply;
     const prepared = await this.memory.prepare(
@@ -153,12 +173,14 @@ export class ActivePlannerController {
     );
   }
   @Post("execute") execute(@Req() req: any, @Body() body: any) {
+    if (body?.provider === "DETERMINISTIC_BRAIN_V1" || body?.intent_type === "BRAIN_QUERY" || body?.status === "BRAIN_READ_ONLY") throw new ForbiddenException("Execution is not enabled in Brain V1.");
     return this.planner.execute(req.user.tenantId, req.user, body, req);
   }
   @Post("request-approval") requestApproval(
     @Req() req: any,
     @Body() body: any,
   ) {
+    if (body?.provider === "DETERMINISTIC_BRAIN_V1" || body?.intent_type === "BRAIN_QUERY" || body?.status === "BRAIN_READ_ONLY") throw new ForbiddenException("Approvals are not enabled in Brain V1.");
     return this.planner.requestApproval(req.user.tenantId, req.user, body, req);
   }
 }

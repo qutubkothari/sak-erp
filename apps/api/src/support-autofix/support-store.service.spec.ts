@@ -1,6 +1,16 @@
-import { sanitizeSupportText, safeRouteOrUrl, SupportStoreService } from './support-store.service';
+import { sanitizeSupportText, safeRouteOrUrl, safeBrainIncidentContext, SupportStoreService } from './support-store.service';
 
 describe('AutoHeal incident privacy and deduplication', () => {
+  it('retains only validated screen identifiers for Brain intake', () => {
+    const prior = process.env.ERP_TENANT_PROFILE;
+    process.env.ERP_TENANT_PROFILE = 'MIZANTRA';
+    const context = { profile: 'MIZANTRA', tenant_id: 'tenant', current_user_id: 'user', current_route: '/dashboard/purchase/orders', module: 'FORGED', entity_type: 'purchase_order', entity_id: '44444444-4444-4444-8444-444444444444', token: 'secret', record: { price: 999 } };
+    expect(safeBrainIncidentContext(context, 'tenant', 'user')).toEqual({ profile: 'MIZANTRA', tenant_id: 'tenant', current_route: '/dashboard/purchase/orders', module: 'PURCHASE_ORDER', entity_type: 'purchase_order', entity_id: context.entity_id });
+    expect(safeBrainIncidentContext(context, 'other-tenant', 'user')).toBeNull();
+    expect(safeBrainIncidentContext({ ...context, profile: 'ARWA' }, 'tenant', 'user')).toBeNull();
+    if (prior === undefined) delete process.env.ERP_TENANT_PROFILE;
+    else process.env.ERP_TENANT_PROFILE = prior;
+  });
   it('redacts labeled secrets and sensitive business values', () => {
     expect(sanitizeSupportText('Password: supersecret, salary is INR 80000, token=abc123')).toBe('Password [redacted], salary [redacted], token [redacted]');
     expect(sanitizeSupportText('bank account is 1234 5678, db url: postgres://user:pass@host/db')).toBe('bank account [redacted], db url [redacted]');

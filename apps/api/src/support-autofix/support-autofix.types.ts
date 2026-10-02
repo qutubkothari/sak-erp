@@ -47,6 +47,10 @@ export interface IncidentInput {
   autoqa_finding_id?: string;
   autoqa_check_key?: string;
   autoqa_evidence?: Record<string, unknown>;
+  brain_context?: {
+    profile: string; tenant_id: string; current_user_id: string;
+    current_route: string; module: string; entity_type: string; entity_id: string;
+  };
 }
 
 export interface RiskDecision {

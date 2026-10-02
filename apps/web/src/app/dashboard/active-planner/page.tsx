@@ -38,6 +38,7 @@ import {
 import { apiClient, getLastFailedApiContext } from "../../../../lib/api-client";
 import { useLocale } from "@/lib/locale";
 import { hasSuperAdminRole } from "@/lib/rbac";
+import { BRAIN_CONTEXT_KEY, buildBrainEnvelope, type BrainEnvelope } from "@/lib/brain-context";
 
 type Capability = {
   intent: string;
@@ -49,6 +50,8 @@ type Capability = {
   examples: string[];
 };
 type Result = {
+  evidence?: Array<{ claim: string; values?: Record<string, any> }>;
+  entities?: Array<{ entity_type: string; entity_id: string; document_number: string; status?: string; route?: string }>;
   support_incident?: { id: string; status: string };
   support_incidents?: Array<{ id: string; status: string }>;
   status: string;
@@ -443,6 +446,7 @@ export default function ActivePlannerPage() {
     [pendingFile, setPendingFile] = useState<File | null>(null),
     [supportMode, setSupportMode] = useState(false),
     [supportSourceRoute, setSupportSourceRoute] = useState<string | null>(null),
+    [brainContext, setBrainContext] = useState<BrainEnvelope | null>(null),
     [clarifySupport, setClarifySupport] = useState(false),
     [supportStatuses, setSupportStatuses] = useState<
       Array<{ id: string; status: string }>
@@ -482,6 +486,20 @@ export default function ActivePlannerPage() {
       ).slice(0, 8)
     : [];
   const isChangeRequestDraft = /\b(feature request|new feature|new field|add\b.{0,70}\b(column|field|pdf|report)|improv|layout|move\b.{0,50}\b(pdf|above|below|before|after))\b/i.test(input);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiClient.get<{ enabled: boolean; contextEnabled: boolean; profile: string; tenant_id: string; current_user_id: string }>("/active-planner/brain/configuration")
+      .then(async configuration => {
+        if (!configuration.enabled || !configuration.contextEnabled) return;
+        const stored = JSON.parse(sessionStorage.getItem(BRAIN_CONTEXT_KEY) || "null");
+        const envelope = buildBrainEnvelope(stored, configuration, "", language === "ar" ? "ar-EG" : "en");
+        if (!envelope) return;
+        const validated = await apiClient.post<{ context: BrainEnvelope | null }>("/active-planner/brain/context", envelope);
+        if (!cancelled) setBrainContext(validated.context);
+      }).catch(() => { if (!cancelled) setBrainContext(null); });
+    return () => { cancelled = true; };
+  }, [language]);
 
   useEffect(() => {
     let cancelled = false;
@@ -916,6 +934,7 @@ export default function ActivePlannerPage() {
       const device = /Mobi/i.test(navigator.userAgent) ? "mobile" : "desktop";
       const data = await apiClient.post<Result>("/active-planner/interpret", {
         message: rawMessage,
+        ...(brainContext ? { brain_context: brainContext } : {}),
         support_mode,
         ...(supportSourceRoute ? { source_route: supportSourceRoute } : {}),
         current_route: window.location.pathname,
@@ -1480,6 +1499,10 @@ export default function ActivePlannerPage() {
             aria-label="Conversation with Mizantra"
             className="min-h-0 flex-1 space-y-3 overflow-auto p-4"
           >
+            {brainContext && <div className="flex max-w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-xs">
+              <span className="min-w-0 break-words">Context: {brainContext.document_number}</span>
+              <button type="button" title="Remove context" aria-label="Remove context" className="ml-auto shrink-0 p-1" onClick={() => { setBrainContext(null); sessionStorage.removeItem(BRAIN_CONTEXT_KEY); }}><Trash2 className="h-4 w-4" /></button>
+            </div>}
             {turns.map((turn, i) => (
               <div
                 key={i}
@@ -1488,6 +1511,14 @@ export default function ActivePlannerPage() {
                 {turn.text}
               </div>
             ))}
+            {result?.status === "BRAIN_READ_ONLY" && !!result.entities?.length && <details className="border-t border-stone-200 pt-3 text-sm">
+              <summary className="cursor-pointer font-medium">View details</summary>
+              <ul className="mt-2 space-y-2">{result.entities.map(entity => <li key={`${entity.entity_type}:${entity.entity_id}`} className="break-words">
+                {entity.route ? <Link href={entity.route} className="underline">{entity.document_number}</Link> : entity.document_number}
+                {entity.status && <span className="ml-2 text-xs text-stone-600">{entity.status}</span>}
+              </li>)}</ul>
+              {result.evidence?.filter(entry => entry.claim === "PO_RECEIPT_STATE").map((entry, index) => <dl key={index} className="mt-3 grid grid-cols-2 gap-2 text-xs">{Object.entries(entry.values || {}).filter(([key]) => key.endsWith("_qty")).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd className="font-semibold">{String(value)}</dd></div>)}</dl>)}
+            </details>}
             {busy && (
               <div
                 role="status"

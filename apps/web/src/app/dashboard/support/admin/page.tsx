@@ -1,4 +1,5 @@
 "use client";
+import { useBrainRecord } from '@/hooks/useBrainRecord';
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -27,6 +28,7 @@ export default function SupportAutoHealAdminPage() {
   const [serverAuthorized, setServerAuthorized] = useState(false);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [selected, setSelected] = useState<Detail | null>(null);
+  useBrainRecord('support_incident', selected?.id);
   const [config, setConfig] = useState<Configuration | null>(null);
   const [worker, setWorker] = useState<WorkerHealth | null>(null);
   const [targetId, setTargetId] = useState("");

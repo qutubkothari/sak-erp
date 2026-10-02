@@ -1,4 +1,5 @@
 "use client";
+import { useBrainRecord } from '@/hooks/useBrainRecord';
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiClient } from "../../../../../lib/api-client";
@@ -9,6 +10,7 @@ type Row = { id: string; row_reference: string; sheet_name: string; source_row: 
 export default function SmartImportReviewPage() {
   const [id,setId]=useState<string|null>(null);
   const [batch,setBatch]=useState<Batch|null>(null); const [rows,setRows]=useState<Row[]>([]); const [busy,setBusy]=useState(false); const [error,setError]=useState("");
+  useBrainRecord('smart_import_batch', batch?.id, batch?.batch_number);
   const load=async()=>{if(!id)return;try{const data=await apiClient.get<any>(`/smart-imports/${encodeURIComponent(id)}`);setBatch(data.batch);setRows(data.rows||[]);}catch(e:any){setError(e.message||"Could not load this import.");}};
   useEffect(()=>{setId(new URLSearchParams(window.location.search).get("batch"));},[]);
   useEffect(()=>{if(id)void load();},[id]);
