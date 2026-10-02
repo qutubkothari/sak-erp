@@ -69,6 +69,19 @@ describe("Brain validated context and graph", () => {
     expect((await subject.validateContext(user, envelope())).context).toMatchObject({ document_number: "PO-312", tenant_id: tenant, current_user_id: actor });
   });
   it("rejects forged tenant", async () => { await expect(ask("Why is this open?", { ...envelope(), tenant_id: otherTenant })).rejects.toThrow("authenticated scope"); });
+  it("blocks forged diagnostic context before invoking a runner", async () => {
+    const inspect = jest.fn();
+    await expect(subject.withDiagnosticEvidence(user, { ...envelope(), tenant_id: otherTenant }, inspect)).rejects.toThrow("authenticated scope");
+    expect(inspect).not.toHaveBeenCalled();
+  });
+  it("provides only authorized read capabilities to diagnostic runners", async () => {
+    await subject.withDiagnosticEvidence(user, envelope(), async evidence => {
+      expect(evidence.nodes.some(node => node.type === "grn")).toBe(true);
+      expect(Object.keys(evidence).sort()).toEqual(["canRead", "context", "edges", "nodes", "read", "receipt", "expand"].sort());
+      await expect(evidence.read("purchase_order", { tenant_id: otherTenant })).rejects.toThrow("Unsupported diagnostic filter");
+      await expect(evidence.receipt(otherTenant)).rejects.toThrow("not authorized");
+    });
+  });
   it("rejects forged profile", async () => { await expect(ask("Why is this open?", { ...envelope(), profile: "ARWA" })).rejects.toThrow("authenticated scope"); });
   it("rejects forged user", async () => { await expect(ask("Why is this open?", { ...envelope(), current_user_id: otherTenant })).rejects.toThrow("authenticated scope"); });
   it("rejects missing authentication", async () => { await expect(subject.validateContext({}, envelope())).rejects.toThrow("Authenticated"); });
@@ -105,7 +118,7 @@ describe("Brain validated context and graph", () => {
   });
   it("cannot execute or approve a Brain response", () => {
     const planner = { execute: jest.fn(), requestApproval: jest.fn() };
-    const controller = new ActivePlannerController(planner as any, {} as any, {} as any, {} as any, {} as any, subject);
+    const controller = new ActivePlannerController(planner as any, {} as any, {} as any, {} as any, {} as any, subject, {} as any);
     const result = { status: "BRAIN_READ_ONLY", intent_type: "BRAIN_QUERY" };
     expect(() => controller.execute({ user }, result)).toThrow("Execution is not enabled");
     expect(() => controller.requestApproval({ user }, result)).toThrow("Approvals are not enabled");

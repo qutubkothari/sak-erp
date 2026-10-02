@@ -90,7 +90,33 @@ export const BRAIN_REGISTRY: Record<string, BrainResolver> = {
     table: "support_incidents", columns: "id,tenant_id,reported_by,status,module,route,build_sha",
     permission: "SUPPORT", label: "id", route: "/dashboard/support", relations: [],
   },
+  employee: {
+    table: "employees", columns: "id,tenant_id,employee_code,employee_name",
+    permission: "HR_DIAGNOSTIC", label: "employee_code", route: "/dashboard/hr", relations: [],
+  },
+  attendance: {
+    table: "attendance", columns: "id,tenant_id,employee_id,attendance_date,check_in_time,check_out_time,work_hours",
+    permission: "HR_DIAGNOSTIC", label: "attendance_date", route: "/dashboard/hr", relations: [],
+  },
+  item_drawing: {
+    table: "item_drawings", columns: "id,tenant_id,item_id,drawing_number,revision_code,version,file_role,revision_package_id,lifecycle_status",
+    permission: "items:read", label: "drawing_number", route: "/dashboard/inventory/items",
+    relations: [{ type: "item", foreignKey: "item_id", direction: "outgoing" }],
+  },
 };
+
+export const BRAIN_DIAGNOSTIC_RESOLVERS: Record<string, BrainResolver> = Object.fromEntries([
+  ["doctor_item", "items", "id,tenant_id,code,name,uom,category,item_type,is_active", "items:read"],
+  ["doctor_dimensions", "items", "id,tenant_id,length,width,thickness,dimension_uom", "items:read"],
+  ["doctor_oem", "items", "id,tenant_id,code,oem_name,oem_part_no", "items:read"],
+  ["doctor_stock", "inventory_stock", "id,tenant_id,item_id,warehouse_id,quantity,reserved_quantity,available_quantity", "inventory:read"],
+  ["doctor_movements", "stock_movements", "id,tenant_id,item_id,movement_type,quantity,from_warehouse_id,to_warehouse_id,reference_type,reference_id,movement_date", "inventory:read"],
+  ["doctor_links", "item_vendors", "id,tenant_id,item_id,vendor_id,is_active", "vendors:read"],
+  ["doctor_packages", "engineering_drawing_revision_packages", "id,tenant_id,owner_item_id,drawing_number,revision_code,lifecycle_status", "items:read"],
+  ["doctor_punches", "attendance_punches", "id,tenant_id,employee_id,attendance_id,punch_type,punch_at", "HR_DIAGNOSTIC"],
+  ["doctor_batch", "smart_import_batches", "id,tenant_id,profile,preview_checksum,approved_preview_checksum,status", "SMART_IMPORT"],
+  ["doctor_import_rows", "smart_import_batch_rows", "id,tenant_id,batch_id,row_reference,decision,validation,match_candidates,depends_on", "SMART_IMPORT"],
+].map(([type, table, columns, permission]) => [type, { table, columns, permission, label: "id", relations: [], profileScoped: type === "doctor_batch" }]));
 
 export function brainEntitySummary(type: string, row: Record<string, any>) {
   const resolver = BRAIN_REGISTRY[type];

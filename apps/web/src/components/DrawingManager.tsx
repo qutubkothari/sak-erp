@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { getUserRoleNames, readStoredUser } from "@/lib/rbac";
+import { captureBrainSelection } from "@/lib/brain-context";
 
 interface Drawing {
   id: string;
@@ -117,6 +118,7 @@ export default function DrawingManager({
   };
 
   const openDrawingInNewTab = async (drawing: Drawing) => {
+    captureBrainSelection("item_drawing", drawing.id, drawing.drawing_number || itemCode);
     try {
       if (!drawing?.file_url) return;
 

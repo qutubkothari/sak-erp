@@ -29,6 +29,7 @@ import { ActivePlannerService } from "./active-planner.service";
 import { ActivePlannerAudioService } from "./active-planner-audio.service";
 import { ActivePlannerMemoryService } from "./active-planner-memory.service";
 import { BrainService } from "./brain.service";
+import { DataDoctorService } from "./data-doctor.service";
 
 @Controller("active-planner")
 export class ActivePlannerController {
@@ -39,12 +40,20 @@ export class ActivePlannerController {
     private readonly support: PlannerSupportService,
     private readonly screenshots: PlannerSupportAttachmentsService,
     private readonly brain: BrainService,
+    private readonly doctor: DataDoctorService,
   ) {}
   @Get("brain/configuration") brainConfiguration(@Req() req: any) {
     return this.brain.configuration(req.user);
   }
   @Get("brain/health") brainHealth(@Req() req: any) {
-    return this.brain.health(req.user);
+    return { ...this.brain.health(req.user), data_doctor: this.doctor.health(req.user) };
+  }
+
+  @Post("data-doctor/prepare-fix")
+  @SkipAutomaticAudit()
+  async prepareDoctorFix(@Req() req: any, @Body() body: any) {
+    const evidence = await this.doctor.prepareFix(req.user, body);
+    return this.support.prepareDoctorFix(req.user, evidence);
   }
   @Post("brain/context")
   @SkipAutomaticAudit()
@@ -145,6 +154,8 @@ export class ActivePlannerController {
   @Post("interpret")
   @SkipAutomaticAudit()
   async interpret(@Req() req: any, @Body() body: any) {
+    const diagnosis = await this.doctor.interpret(req.user, body);
+    if (diagnosis) return diagnosis;
     const brainReply = await this.brain.interpret(req.user, body);
     if (brainReply) return brainReply;
     if (body?.brain_context) {
@@ -173,6 +184,7 @@ export class ActivePlannerController {
     );
   }
   @Post("execute") execute(@Req() req: any, @Body() body: any) {
+    if (body?.intent_type === "DATA_DOCTOR" || body?.status === "DATA_DOCTOR_READ_ONLY" || body?.provider === "DETERMINISTIC_DATA_DOCTOR_V1") throw new ForbiddenException("Data Doctor V1 cannot execute corrections.");
     if (body?.provider === "DETERMINISTIC_BRAIN_V1" || body?.intent_type === "BRAIN_QUERY" || body?.status === "BRAIN_READ_ONLY") throw new ForbiddenException("Execution is not enabled in Brain V1.");
     return this.planner.execute(req.user.tenantId, req.user, body, req);
   }
@@ -180,6 +192,7 @@ export class ActivePlannerController {
     @Req() req: any,
     @Body() body: any,
   ) {
+    if (body?.intent_type === "DATA_DOCTOR" || body?.status === "DATA_DOCTOR_READ_ONLY" || body?.provider === "DETERMINISTIC_DATA_DOCTOR_V1") throw new ForbiddenException("Data Doctor V1 cannot approve corrections.");
     if (body?.provider === "DETERMINISTIC_BRAIN_V1" || body?.intent_type === "BRAIN_QUERY" || body?.status === "BRAIN_READ_ONLY") throw new ForbiddenException("Approvals are not enabled in Brain V1.");
     return this.planner.requestApproval(req.user.tenantId, req.user, body, req);
   }

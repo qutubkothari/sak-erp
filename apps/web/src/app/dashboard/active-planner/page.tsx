@@ -34,6 +34,7 @@ import {
   ThumbsUp,
   Trash2,
   Volume2,
+  Wrench,
 } from "lucide-react";
 import { apiClient, getLastFailedApiContext } from "../../../../lib/api-client";
 import { useLocale } from "@/lib/locale";
@@ -50,6 +51,9 @@ type Capability = {
   examples: string[];
 };
 type Result = {
+  diagnoses?: Array<{ diagnosis_key: string; severity: string; module: string; title: string; explanation: string; confidence: string; classification: string; expected_state: unknown; actual_state: unknown; likely_cause: string | null; recommended_action: string; evidence: { fact: Record<string, unknown>; inference: string | null; unknown: string[] } }>;
+  brain_context?: BrainEnvelope;
+  timeline?: Array<{ entity_type: string; entity_id: string; document_number: string; recorded_at: string | null; route?: string | null; issue_keys: string[] }>;
   evidence?: Array<{ claim: string; values?: Record<string, any> }>;
   entities?: Array<{ entity_type: string; entity_id: string; document_number: string; status?: string; route?: string }>;
   support_incident?: { id: string; status: string };
@@ -447,6 +451,7 @@ export default function ActivePlannerPage() {
     [supportMode, setSupportMode] = useState(false),
     [supportSourceRoute, setSupportSourceRoute] = useState<string | null>(null),
     [brainContext, setBrainContext] = useState<BrainEnvelope | null>(null),
+    [doctorBusy, setDoctorBusy] = useState<string | null>(null),
     [clarifySupport, setClarifySupport] = useState(false),
     [supportStatuses, setSupportStatuses] = useState<
       Array<{ id: string; status: string }>
@@ -1519,6 +1524,23 @@ export default function ActivePlannerPage() {
               </li>)}</ul>
               {result.evidence?.filter(entry => entry.claim === "PO_RECEIPT_STATE").map((entry, index) => <dl key={index} className="mt-3 grid grid-cols-2 gap-2 text-xs">{Object.entries(entry.values || {}).filter(([key]) => key.endsWith("_qty")).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd className="font-semibold">{String(value)}</dd></div>)}</dl>)}
             </details>}
+            {result?.status === "DATA_DOCTOR_READ_ONLY" && <section aria-label="Data Doctor diagnoses" className="min-w-0 space-y-4 border-t border-stone-200 pt-3 text-sm">
+              {result.evidence?.filter(entry => ["DIAGNOSTIC_COVERAGE", "PO_RECEIPT_STATE"].includes(entry.claim)).map(entry => <details key={entry.claim}><summary className="cursor-pointer font-medium">{entry.claim === "PO_RECEIPT_STATE" ? "Receipt state" : "Checks inspected"}</summary><pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(entry.values, null, 2)}</pre></details>)}
+              {result.diagnoses?.map((diagnosis, index) => <article key={`${diagnosis.diagnosis_key}:${index}`} className="min-w-0 rounded-md border border-stone-200 bg-white p-3">
+                <div className="flex flex-wrap gap-2 text-xs font-semibold"><span className={diagnosis.severity === "CRITICAL" || diagnosis.severity === "HIGH" ? "text-red-700" : "text-stone-700"}>{diagnosis.severity}</span><span>{diagnosis.module}</span><span>{diagnosis.confidence.replaceAll("_", " ")}</span></div>
+                <h3 className="mt-2 break-words font-semibold">{diagnosis.title}</h3><p className="mt-1 break-words">{diagnosis.explanation}</p>
+                <dl className="mt-3 space-y-2 text-xs"><div><dt className="font-semibold">Expected</dt><dd className="break-words">{JSON.stringify(diagnosis.expected_state)}</dd></div><div><dt className="font-semibold">Actual</dt><dd className="break-words">{JSON.stringify(diagnosis.actual_state)}</dd></div></dl>
+                <details className="mt-3"><summary className="cursor-pointer text-xs font-medium">Evidence</summary><pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(diagnosis.evidence.fact, null, 2)}</pre>{diagnosis.evidence.inference && <p className="mt-2 text-xs">Inference: {diagnosis.evidence.inference}</p>}<p className="mt-2 break-words text-xs text-stone-600">Unknown: {diagnosis.evidence.unknown.join(" ")}</p></details>
+                {diagnosis.likely_cause && <p className="mt-3 text-xs">Evidenced condition: {diagnosis.likely_cause}</p>}<p className="mt-3 break-words text-xs">{diagnosis.recommended_action}</p>
+                {diagnosis.classification === "SOFTWARE_DEFECT_CANDIDATE" && diagnosis.confidence === "CONFIRMED" && <button type="button" disabled={doctorBusy !== null} onClick={async () => {
+                  setDoctorBusy(diagnosis.diagnosis_key); setError("");
+                  try { const prepared = await apiClient.post<Result>("/active-planner/data-doctor/prepare-fix", { action: "PREPARE_FIX_WITH_AUTOENGINEER", diagnosis_key: diagnosis.diagnosis_key, brain_context: result.brain_context || brainContext }); setTurns(previous => [...previous, { role: "planner", text: prepared.assistant_message || "Software defect prepared for review." }]); if (prepared.support_incident) setSupportStatuses(previous => [prepared.support_incident!, ...previous.filter(incident => incident.id !== prepared.support_incident!.id)]); }
+                  catch { setError("The fix could not be prepared. The server requires a freshly confirmed software defect."); } finally { setDoctorBusy(null); }
+                }} className="mt-3 flex max-w-full items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-xs disabled:opacity-50"><Wrench className="h-4 w-4 shrink-0" /><span className="break-words">Prepare Fix with AutoEngineer</span></button>}
+              </article>)}
+              {!!result.timeline?.length && <details><summary className="cursor-pointer font-medium">Trace timeline</summary><ol className="mt-2 space-y-2">{result.timeline.map((entity, index) => <li key={`${entity.entity_type}:${entity.entity_id}:${index}`} className="break-words text-xs">{entity.recorded_at && <time className="mr-2 text-stone-600">{entity.recorded_at}</time>}{entity.route ? <Link href={entity.route} className="underline">{entity.document_number}</Link> : entity.document_number}{entity.issue_keys.length > 0 && <span className="ml-2 text-red-700">{entity.issue_keys.join(", ")}</span>}</li>)}</ol></details>}
+              {!!result.entities?.length && <details><summary className="cursor-pointer font-medium">Related records</summary><ul className="mt-2 space-y-2">{result.entities.map(entity => <li key={`${entity.entity_type}:${entity.entity_id}`} className="break-words text-xs">{entity.route ? <Link href={entity.route} className="underline">{entity.document_number}</Link> : entity.document_number}</li>)}</ul></details>}
+            </section>}
             {busy && (
               <div
                 role="status"

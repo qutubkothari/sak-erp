@@ -14,6 +14,8 @@ import { classifyAutoEngineerIntent, resolveAutoEngineerScope } from "../support
 import { hasSuperAdminBypass } from "../auth/utils/permission-utils";
 import { classifyIncident } from "../support-autofix/risk-policy";
 import { classifySmartImportIntent } from "../smart-import/smart-import.analysis";
+import type { Diagnosis } from "./data-doctor.rules";
+import type { BrainContext } from "./brain.service";
 
 function legacySupportIntent(message: string, mode?: string) {
   if (mode === "support") return "SUPPORT_INCIDENT";
@@ -241,6 +243,24 @@ export class PlannerSupportService {
       support_incidents: incidents,
       support_counts: result.counts,
     };
+  }
+
+  async prepareDoctorFix(user: any, evidence: { diagnosis: Diagnosis; context: BrainContext; related_entities: any[] }) {
+    const { diagnosis, context } = evidence;
+    const description = sanitizeSupportText(JSON.stringify({ diagnosis_key: diagnosis.diagnosis_key, explanation: diagnosis.explanation, expected_state: diagnosis.expected_state, actual_state: diagnosis.actual_state, evidence: diagnosis.evidence, related_entities: evidence.related_entities.map(entity => ({ entity_type: entity.entity_type, entity_id: entity.entity_id })) }), 6000);
+    const incident = await this.autoheal.captureIncident(user, {
+      source: "client_ui", title: `Data Doctor software defect: ${diagnosis.diagnosis_key}`, description,
+      module: diagnosis.module, route: context.current_route, page_url: context.current_route,
+      build_sha: /^[a-f0-9]{7,40}$/i.test(String(process.env.BUILD_SHA || process.env.GIT_SHA || "")) ? process.env.BUILD_SHA || process.env.GIT_SHA : undefined,
+    }, {
+      request_type: "BUG", risk: "HIGH", risk_reason: "Confirmed deterministic software calculation contradiction; engineering review is required.",
+      requested_scope: "CURRENT_PROFILE", target_profiles: [context.profile], requested_by_profile: context.profile,
+      change_kind: "GENERAL", requires_migration: false, requires_backend: true, requires_business_logic: true,
+      build_approval_status: "AWAITING_ENGINEERING_APPROVAL", brain_context: context,
+      prompt_scope: "Data Doctor bridge: prepare an engineering review only. Do not change ERP records or deploy automatically.",
+      acceptance_criteria: [`Reproduce ${diagnosis.diagnosis_key} using the linked authorized evidence.`, "Keep Data Doctor read-only and preserve existing Brain behavior."],
+    });
+    return { intent_type: "DATA_DOCTOR", status: "DATA_DOCTOR_READ_ONLY", support_incident: { id: incident.id, status: incident.status }, assistant_message: `Software defect prepared for engineering review. Incident: ${incident.id}. No ERP correction or deployment was performed.` };
   }
 
   private reply(intent: string, message: string) {

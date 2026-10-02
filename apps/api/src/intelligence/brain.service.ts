@@ -5,7 +5,7 @@ import { PurchaseOrdersService } from "../purchase/services/purchase-orders.serv
 import { sanitizeSupportText } from "../support-autofix/support-store.service";
 import { classifyAutoEngineerIntent } from "../support-autofix/autoengineer-policy";
 import { brainActionPreview, brainDepth, brainFlags, BRAIN_MAX_RECORDS, BRAIN_TIMEOUT_MS } from "./brain-policy";
-import { BRAIN_REGISTRY, brainEntitySummary } from "./brain-registry";
+import { BRAIN_REGISTRY, BRAIN_DIAGNOSTIC_RESOLVERS, brainEntitySummary } from "./brain-registry";
 
 export type BrainContext = {
   profile: string; tenant_id: string; current_route: string; module: string;
@@ -14,6 +14,15 @@ export type BrainContext = {
 };
 type BrainScope = { tenantId: string; userId: string; profile: string; user: any };
 type BrainNode = { type: string; row: Record<string, any>; depth: number };
+export type BrainDiagnosticEvidence = {
+  context: BrainContext;
+  nodes: BrainNode[];
+  edges: { from: string; to: string; relationship: string }[];
+  canRead: (type: string) => boolean;
+  read: (type: string, filters: Record<string, string | string[]>, options?: { match?: { field: string; value: string }; since?: { field: string; value: string } }) => Promise<Record<string, any>[]>;
+  receipt: (id: string) => Promise<Record<string, any>>;
+  expand: (type: string, id: string) => Promise<Pick<BrainDiagnosticEvidence, "context" | "nodes" | "edges">>;
+};
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 @Injectable()
@@ -33,14 +42,15 @@ export class BrainService {
   }
 
   private allowed(scope: BrainScope, type: string): boolean {
-    const permission = BRAIN_REGISTRY[type]?.permission;
+    const permission = (BRAIN_REGISTRY[type] || BRAIN_DIAGNOSTIC_RESOLVERS[type])?.permission;
+    if (permission === "HR_DIAGNOSTIC") return hasAdminBypass(scope.user) && hasPermission(scope.user, "hr:read");
     if (permission === "AUTO_QA" || permission === "SMART_IMPORT") return hasAdminBypass(scope.user);
     if (permission === "SUPPORT") return true;
     return !!permission && hasPermission(scope.user, permission);
   }
 
   private query(scope: BrainScope, type: string, signal: AbortSignal) {
-    const resolver = BRAIN_REGISTRY[type];
+    const resolver = BRAIN_REGISTRY[type] || BRAIN_DIAGNOSTIC_RESOLVERS[type];
     if (!resolver || !this.allowed(scope, type)) throw new ForbiddenException("You cannot view this context.");
     const columns = resolver.parent ? `${resolver.columns},brain_parent:${resolver.parent.table}!inner(tenant_id)` : resolver.columns;
     let query: any = this.db.from(resolver.table).select(columns).eq(resolver.parent ? "brain_parent.tenant_id" : "tenant_id", scope.tenantId).abortSignal(signal);
@@ -92,6 +102,47 @@ export class BrainService {
   async validateContext(user: any, envelope: any) {
     if (!brainFlags().contextEnabled) return { enabled: false, context: null };
     return this.bounded(async signal => ({ enabled: true, context: (await this.validated(this.scope(user), envelope, signal)).context }));
+  }
+
+  async withDiagnosticEvidence<T>(user: any, envelope: any, inspect: (evidence: BrainDiagnosticEvidence) => Promise<T>): Promise<T> {
+    const flags = brainFlags();
+    if (!flags.enabled || !flags.contextEnabled || !flags.graphEnabled) throw new ForbiddenException("Brain diagnostic evidence is not enabled.");
+    return this.bounded(async signal => {
+      const scope = this.scope(user);
+      const { context, root } = await this.validated(scope, envelope, signal);
+      const graph = await this.graph(scope, root, 4, signal);
+      return inspect({ context, nodes: graph.nodes, edges: graph.edges,
+        canRead: type => this.allowed(scope, type),
+        read: async (type, filters, options) => {
+          let query = this.query(scope, type, signal);
+          const columns = (BRAIN_REGISTRY[type] || BRAIN_DIAGNOSTIC_RESOLVERS[type]).columns.split(",");
+          for (const [field, value] of Object.entries(filters)) {
+            if (!columns.includes(field) || ["tenant_id", "profile", "reported_by"].includes(field)) throw new BadRequestException("Unsupported diagnostic filter.");
+            query = Array.isArray(value) ? query.in(field, value) : query.eq(field, value);
+          }
+          if (options?.match) {
+            if (!["code", "po_number", "oem_part_no"].includes(options.match.field) || !columns.includes(options.match.field)) throw new BadRequestException("Unsupported diagnostic match.");
+            query = query.ilike(options.match.field, `%${options.match.value.replace(/[\\%_]/g, "\\$&")}%`);
+          }
+          if (options?.since) {
+            if (!["attendance_date", "punch_at"].includes(options.since.field) || !columns.includes(options.since.field) || !/^\d{4}-\d{2}-\d{2}/.test(options.since.value)) throw new BadRequestException("Unsupported diagnostic period.");
+            query = query.gte(options.since.field, options.since.value);
+          }
+          return this.rows(query);
+        },
+        receipt: async id => {
+          if (!uuid.test(id) || !this.allowed(scope, "grn")) throw new ForbiddenException("Receipt evidence is not authorized.");
+          const records = await this.rows(this.query(scope, "purchase_order", signal).eq("id", id));
+          if (!records.length) throw new ForbiddenException("Receipt evidence is not authorized.");
+          return this.orders.brainReceiptEvidence(scope.tenantId, id, signal);
+        },
+        expand: async (type, id) => {
+          const target = await this.validated(scope, { ...context, entity_type: type, entity_id: id }, signal);
+          const expanded = await this.graph(scope, target.root, 4, signal);
+          return { context: target.context, nodes: expanded.nodes, edges: expanded.edges };
+        },
+      });
+    });
   }
 
   private async graph(scope: BrainScope, root: BrainNode, depthRaw: unknown, signal: AbortSignal) {

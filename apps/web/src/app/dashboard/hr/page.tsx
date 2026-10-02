@@ -1,4 +1,5 @@
 "use client";
+import { captureBrainSelection } from "@/lib/brain-context";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
@@ -1547,6 +1548,11 @@ function HrPageContent() {
   const [showOwnTravelUpdate, setShowOwnTravelUpdate] = useState(false);
   const [selectedAttendance, setSelectedAttendance] =
     useState<AttendanceRecord | null>(null);
+
+  useEffect(() => {
+    if (showAttendanceDetails && selectedAttendance?.id) captureBrainSelection("attendance", selectedAttendance.id, String(selectedAttendance.attendance_date || ""));
+    else if (showEmployeeDetails && selectedEmployee?.id) captureBrainSelection("employee", selectedEmployee.id, selectedEmployee.employee_code);
+  }, [showAttendanceDetails, selectedAttendance?.id, showEmployeeDetails, selectedEmployee?.id]);
 
   const [showAttendanceImport, setShowAttendanceImport] = useState(false);
   const [attendanceImportText, setAttendanceImportText] = useState("");

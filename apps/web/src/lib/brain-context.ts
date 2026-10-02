@@ -2,7 +2,7 @@ export const BRAIN_CONTEXT_KEY = "mizantra-brain-context";
 export type BrainSelection = { entity_type: string; entity_id: string; document_number: string; current_route: string; tenant_id: string; current_user_id: string; captured_at: number };
 export type BrainEnvelope = Omit<BrainSelection, "captured_at"> & { profile: string; module: string; current_user_role: string; locale: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const supported = new Set(["purchase_order", "purchase_requisition", "grn", "item", "supplier", "smart_import_batch", "autoqa_finding", "support_incident"]);
+const supported = new Set(["purchase_order", "purchase_requisition", "grn", "item", "supplier", "smart_import_batch", "autoqa_finding", "support_incident", "employee", "attendance", "item_drawing"]);
 
 export function buildBrainEnvelope(selection: unknown, configuration: { profile: string; tenant_id: string; current_user_id: string }, role: string, locale: string, now = Date.now()): BrainEnvelope | null {
   if (!selection || typeof selection !== "object" || Array.isArray(selection)) return null;

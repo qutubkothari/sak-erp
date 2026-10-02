@@ -196,6 +196,7 @@ describe("Mizantra support intake", () => {
       support,
       {} as any,
       { interpret: jest.fn().mockResolvedValue(null) } as any,
+      { interpret: jest.fn().mockResolvedValue(null) } as any,
     );
     await expect(controller.interpret({ user }, body)).resolves.toMatchObject({
       status: "READY_TO_CREATE_DRAFT",
@@ -220,6 +221,7 @@ describe("Mizantra support intake", () => {
       memory as any,
       support,
       {} as any,
+      { interpret: jest.fn().mockResolvedValue(null) } as any,
       { interpret: jest.fn().mockResolvedValue(null) } as any,
     );
     await controller.interpret({ user }, { message: "PO search not working" });

@@ -42,6 +42,7 @@ import { SemanticErpQueryService } from "./semantic-erp-query.service";
 import { CrmModule } from "../crm/crm.module";
 import { FsmModule } from "../fsm/fsm.module";
 import { BrainService } from "./brain.service";
+import { DataDoctorService } from "./data-doctor.service";
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { BrainService } from "./brain.service";
   ],
   controllers: [IntelligenceController, ActivePlannerController],
   providers: [
+    DataDoctorService,
     BrainService,
     PlannerSupportService,
     PlannerSupportAttachmentsService,
