@@ -1925,6 +1925,30 @@ export class PurchaseOrdersService {
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
+  async reportingReceiptEvidence(tenantId: string, ids: string[], signal?: AbortSignal) {
+    if (!ids.length) return [];
+    if (ids.length > 100) throw new BadRequestException('Reporting receipt batches are limited to 100 orders');
+    const { data, error } = await this.supabase.from('purchase_orders')
+      .select('id,status,purchase_order_items(id,ordered_qty)')
+      .eq('tenant_id', tenantId).in('id', ids)
+      .abortSignal(signal || new AbortController().signal);
+    if (error || data?.length !== ids.length) throw new NotFoundException('Complete purchase order evidence is unavailable');
+    const ledger = await this.fetchReceiptLedgerForPurchaseOrders(tenantId, ids, true, signal);
+    return Promise.all(data.map(async po => {
+      const summary = await this.computeReceiptSummary(tenantId, po, ledger);
+      return {
+        id: po.id,
+        status: this.getReceiptAwarePoStatus(po, summary),
+        open_po: this.isOpenPurchaseOrder(String(po.status || '').trim().toUpperCase(), summary),
+        lines: summary.purchase_order_items.map((line: any) => ({
+          id: line.id, ordered_qty: line.ordered_qty, received_qty: line.received_qty,
+          accepted_qty: line.accepted_qty, rejected_qty: line.rejected_qty,
+          open_qty: Math.max(0, this.toNumber(line.ordered_qty) - this.toNumber(line.accepted_qty)),
+        })),
+      };
+    }));
+  }
+
   async brainReceiptEvidence(tenantId: string, id: string, signal?: AbortSignal) {
     const { data, error } = await this.supabase
       .from('purchase_orders')

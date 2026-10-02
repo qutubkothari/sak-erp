@@ -12,6 +12,7 @@ import {
   Req,
   Res,
   UploadedFile,
+  Optional,
   UseInterceptors,
   UseGuards,
 } from "@nestjs/common";
@@ -31,6 +32,8 @@ import { ActivePlannerMemoryService } from "./active-planner-memory.service";
 import { BrainService } from "./brain.service";
 import { DataDoctorService } from "./data-doctor.service";
 import { SmartApprovalService } from "./smart-approval.service";
+import { ReportingService } from "./reporting.service";
+import { reportIntent } from "./reporting.registry";
 
 @Controller("active-planner")
 export class ActivePlannerController {
@@ -43,6 +46,7 @@ export class ActivePlannerController {
     private readonly brain: BrainService,
     private readonly doctor: DataDoctorService,
     private readonly approval: SmartApprovalService,
+    @Optional() private readonly reporting?: ReportingService,
   ) {}
   @Get("brain/configuration") brainConfiguration(@Req() req: any) {
     return this.brain.configuration(req.user);
@@ -166,6 +170,10 @@ export class ActivePlannerController {
     if (review) return review;
     const diagnosis = await this.doctor.interpret(req.user, body);
     if (diagnosis) return diagnosis;
+    if (this.reporting && process.env.MIZANTRA_REPORT_BUILDER_ENABLED === "true" && reportIntent(String(body?.message || ""), !!body?.session_id)) {
+      const reply: any = await this.reporting.interpret(req.user, body);
+      return { intent_type: "REPORT_QUERY", provider: "DETERMINISTIC_REPORT_BUILDER_V1", extracted: {}, resolved: {}, questions: [], context_token: "", safety: { read_only: true, executable: false }, ...reply, assistant_message: reply.summary || reply.report?.plan.title || (reply.saved_report ? `${reply.saved_report.title} saved.` : reply.dashboard ? `${reply.dashboard.title} saved.` : reply.status === "REPORT_DISCOVERY" ? reply.categories.join(", ") : "Report ready.") };
+    }
     const brainReply = await this.brain.interpret(req.user, body);
     if (brainReply) return brainReply;
     if (body?.brain_context) {
@@ -194,6 +202,7 @@ export class ActivePlannerController {
     );
   }
   @Post("execute") execute(@Req() req: any, @Body() body: any) {
+    if (body?.intent_type === "REPORT_QUERY" || body?.provider === "DETERMINISTIC_REPORT_BUILDER_V1" || String(body?.status || "").startsWith("REPORT_")) throw new ForbiddenException("Reports cannot execute ERP business changes.");
     if (body?.intent_type === "SMART_APPROVAL_REVIEW" || body?.status === "SMART_APPROVAL_READ_ONLY" || body?.provider === "DETERMINISTIC_SMART_APPROVAL_V1") throw new ForbiddenException("Mizantra Review cannot execute approval or workflow changes.");
     if (body?.intent_type === "DATA_DOCTOR" || body?.status === "DATA_DOCTOR_READ_ONLY" || body?.provider === "DETERMINISTIC_DATA_DOCTOR_V1") throw new ForbiddenException("Data Doctor V1 cannot execute corrections.");
     if (body?.provider === "DETERMINISTIC_BRAIN_V1" || body?.intent_type === "BRAIN_QUERY" || body?.status === "BRAIN_READ_ONLY") throw new ForbiddenException("Execution is not enabled in Brain V1.");
@@ -203,6 +212,7 @@ export class ActivePlannerController {
     @Req() req: any,
     @Body() body: any,
   ) {
+    if (body?.intent_type === "REPORT_QUERY" || body?.provider === "DETERMINISTIC_REPORT_BUILDER_V1" || String(body?.status || "").startsWith("REPORT_")) throw new ForbiddenException("Reports cannot request workflow approvals.");
     if (body?.intent_type === "SMART_APPROVAL_REVIEW" || body?.status === "SMART_APPROVAL_READ_ONLY" || body?.provider === "DETERMINISTIC_SMART_APPROVAL_V1") throw new ForbiddenException("Mizantra Review cannot request or execute approvals.");
     if (body?.intent_type === "DATA_DOCTOR" || body?.status === "DATA_DOCTOR_READ_ONLY" || body?.provider === "DETERMINISTIC_DATA_DOCTOR_V1") throw new ForbiddenException("Data Doctor V1 cannot approve corrections.");
     if (body?.provider === "DETERMINISTIC_BRAIN_V1" || body?.intent_type === "BRAIN_QUERY" || body?.status === "BRAIN_READ_ONLY") throw new ForbiddenException("Approvals are not enabled in Brain V1.");

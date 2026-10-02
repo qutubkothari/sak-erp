@@ -46,6 +46,7 @@ import { SCREEN_DEFINITIONS } from "@/lib/permission-config";
 import { useLocale } from "@/lib/locale";
 import LanguageSwitch from "@/components/LanguageSwitch";
 import SupportIssueStatus from "@/components/SupportIssueStatus";
+import { apiClient } from "../../lib/api-client";
 import {
   fsmIdentityFromStorage,
   purgeFsmOfflineIdentity,
@@ -112,6 +113,8 @@ const navigation: NavigationItem[] = [
     href: "/dashboard/reports",
     icon: BarChart3,
     children: [
+      { name: "Report Builder", href: "/dashboard/reports/builder", group: "My Reports" },
+      { name: "My Dashboards", href: "/dashboard/reports/my-dashboards", group: "My Reports" },
       {
         name: "Business Pulse",
         href: "/dashboard/reports/executive/overview",
@@ -926,12 +929,19 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   >([]);
   const [darkMode, setDarkMode] = useState(false);
   const [showMobileMore, setShowMobileMore] = useState(false);
+  const [reportingFlags, setReportingFlags] = useState({ enabled: false, dashboard_enabled: false });
 
   // Use global auth store
   const { user: currentUser, hydrate, clearUser } = useAuthStore();
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (currentUser) void apiClient.get<{ enabled: boolean; dashboard_enabled: boolean }>("/active-planner/reports/configuration").then(flags => { if (!cancelled) setReportingFlags(flags); }).catch(() => { if (!cancelled) setReportingFlags({ enabled: false, dashboard_enabled: false }); });
+    return () => { cancelled = true; };
+  }, [currentUser]);
 
   useEffect(() => {
     setCurrentSearch(
@@ -1031,7 +1041,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       });
 
   const visibleNavigation = filterNavigationByRouteAccess(
-    baseNavigation,
+    baseNavigation.map(item => ({ ...item, children: item.children?.filter(child => child.href === "/dashboard/reports/builder" ? reportingFlags.enabled : child.href === "/dashboard/reports/my-dashboards" ? reportingFlags.enabled && reportingFlags.dashboard_enabled : true) })),
     currentUser,
     shouldEnforcePermissions,
   );

@@ -41,6 +41,7 @@ import { useLocale } from "@/lib/locale";
 import { hasSuperAdminRole } from "@/lib/rbac";
 import { BRAIN_CONTEXT_KEY, buildBrainEnvelope, type BrainEnvelope } from "@/lib/brain-context";
 import { ReviewResults, type SmartApprovalReview } from "@/components/MizantraReview";
+import MizantraReporting, { type ReportingResult } from "@/components/MizantraReporting";
 
 type Capability = {
   intent: string;
@@ -52,6 +53,8 @@ type Capability = {
   examples: string[];
 };
 type Result = {
+  report?: ReportingResult;
+  session_id?: string;
   items?: SmartApprovalReview["items"];
   review_version?: string;
   reviewed_at?: string;
@@ -949,6 +952,7 @@ export default function ActivePlannerPage() {
       const device = /Mobi/i.test(navigator.userAgent) ? "mobile" : "desktop";
       const data = await apiClient.post<Result>("/active-planner/interpret", {
         message: rawMessage,
+        ...(result?.session_id ? { session_id: result.session_id } : {}),
         ...(brainContext ? { brain_context: brainContext } : {}),
         support_mode,
         ...(supportSourceRoute ? { source_route: supportSourceRoute } : {}),
@@ -1534,6 +1538,7 @@ export default function ActivePlannerPage() {
               </li>)}</ul>
               {result.evidence?.filter(entry => entry.claim === "PO_RECEIPT_STATE").map((entry, index) => <dl key={index} className="mt-3 grid grid-cols-2 gap-2 text-xs">{Object.entries(entry.values || {}).filter(([key]) => key.endsWith("_qty")).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd className="font-semibold">{String(value)}</dd></div>)}</dl>)}
             </details>}
+            {result?.status === "REPORT_READY" && result.report && <MizantraReporting embedded initialReport={result.report} initialSessionId={result.session_id} />}
             {result?.status === "SMART_APPROVAL_READ_ONLY" && result.items && result.review_version && <ReviewResults review={result as SmartApprovalReview} onRefresh={() => {
               const current = result;
               void apiClient.post<Result>("/active-planner/smart-approval/review", { brain_context: current.brain_context, previous_review_version: current.review_version }).then(next => setResult(previous => previous === current ? { ...current, ...next } : previous)).catch(() => setError("Review could not be refreshed."));
