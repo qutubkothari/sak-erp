@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Download,
   Eye,
@@ -518,152 +519,135 @@ export default function MizantraDocuments({
           )}
         </details>
       )}
-      {review && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Review Extraction"
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-3"
-        >
-          <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-md bg-white p-4">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="min-w-0 break-words text-base font-semibold">
-                {review.filename}
-              </h3>
-              <button
-                type="button"
-                title="Close Review"
-                aria-label="Close Review"
-                onClick={() => setReview(null)}
-                className="p-2"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="my-3 flex flex-wrap items-center gap-3">
-              <select
-                aria-label="Document type"
-                className="max-w-full border border-stone-300 p-2"
-                value={review.extraction.type}
-                onChange={(event) => {
-                  setReview({
-                    ...review,
-                    extraction: {
-                      ...review.extraction,
-                      type: event.target.value,
-                    },
-                  });
-                  setConfirmedType(false);
-                }}
-              >
-                {types.map((type) => (
-                  <option key={type} value={type}>
-                    {labels(type)}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs">
-                {review.extraction.classification_confidence}
-              </span>
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={confirmedType}
-                  onChange={(event) => setConfirmedType(event.target.checked)}
-                />
-                Confirm document type
-              </label>
-              <label className="flex items-center gap-2 text-xs">
-                Page for manual values
-                <input
-                  aria-label="Page for manual values"
-                  type="number"
-                  min={1}
-                  max={50}
-                  className="w-16 border border-stone-300 p-2"
-                  value={manualPage}
+      {review &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Review Extraction"
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 p-3"
+          >
+            <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-md bg-white p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="min-w-0 break-words text-base font-semibold">
+                  {review.filename}
+                </h3>
+                <button
+                  type="button"
+                  title="Close Review"
+                  aria-label="Close Review"
+                  onClick={() => setReview(null)}
+                  className="p-2"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="my-3 flex flex-wrap items-center gap-3">
+                <select
+                  aria-label="Document type"
+                  className="max-w-full border border-stone-300 p-2"
+                  value={review.extraction.type}
                   onChange={(event) => {
-                    setManualPage(event.target.value);
-                    setConfirmed(false);
+                    setReview({
+                      ...review,
+                      extraction: {
+                        ...review.extraction,
+                        type: event.target.value,
+                      },
+                    });
+                    setConfirmedType(false);
                   }}
-                />
-              </label>
-              <button
-                type="button"
-                title="View original document"
-                onClick={() => void view(review)}
-                className="p-2"
-              >
-                <Eye className="h-4 w-4" />
-              </button>
-            </div>
-            {review.extraction.warnings.map((warning, index) => (
-              <p className="mb-2 text-xs text-amber-800" key={index}>
-                {warning}
-              </p>
-            ))}
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr>
-                  <th>Field</th>
-                  <th>Extracted Value</th>
-                  <th>Evidence</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(review.extraction.fields).map(
-                  ([field, fact]) => (
-                    <tr key={field} className="border-t border-stone-100">
-                      <td className="w-1/4 p-2">{labels(field)}</td>
-                      <td className="p-2">
-                        <input
-                          aria-label={labels(field)}
-                          maxLength={2000}
-                          className="w-full min-w-0 border border-stone-200 p-2"
-                          placeholder="Unknown"
-                          value={fact.value ?? ""}
-                          onChange={(event) =>
-                            change(field, event.target.value)
-                          }
-                        />
-                      </td>
-                      <td className="w-1/4 p-2">
-                        <details>
-                          <summary>
-                            Page {display(fact.page)} / {fact.confidence}
-                          </summary>
-                          <p className="max-w-48 break-words">
-                            {display(fact.snippet)}
-                          </p>
-                        </details>
-                      </td>
-                    </tr>
-                  ),
-                )}
-              </tbody>
-            </table>
-            <div className="mt-3 overflow-auto">
-              <table className="w-full min-w-[800px] text-left text-xs">
+                >
+                  {types.map((type) => (
+                    <option key={type} value={type}>
+                      {labels(type)}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs">
+                  {review.extraction.classification_confidence}
+                </span>
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={confirmedType}
+                    onChange={(event) => setConfirmedType(event.target.checked)}
+                  />
+                  Confirm document type
+                </label>
+                <label className="flex items-center gap-2 text-xs">
+                  Page for manual values
+                  <input
+                    aria-label="Page for manual values"
+                    type="number"
+                    min={1}
+                    max={50}
+                    className="w-16 border border-stone-300 p-2"
+                    value={manualPage}
+                    onChange={(event) => {
+                      setManualPage(event.target.value);
+                      setConfirmed(false);
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  title="View original document"
+                  onClick={() => void view(review)}
+                  className="p-2"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
+              </div>
+              {review.extraction.warnings.map((warning, index) => (
+                <p className="mb-2 text-xs text-amber-800" key={index}>
+                  {warning}
+                </p>
+              ))}
+              <table className="w-full text-left text-xs">
                 <thead>
                   <tr>
-                    {[
-                      "source_item_code",
-                      "source_description",
-                      "quantity",
-                      "uom",
-                      "unit_rate",
-                      "tax",
-                      "line_amount",
-                    ].map((field) => (
-                      <th className="p-2" key={field}>
-                        {labels(field)}
-                      </th>
-                    ))}
+                    <th>Field</th>
+                    <th>Extracted Value</th>
+                    <th>Evidence</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {review.extraction.lines.map((line, index) => (
-                    <tr key={index}>
+                  {Object.entries(review.extraction.fields).map(
+                    ([field, fact]) => (
+                      <tr key={field} className="border-t border-stone-100">
+                        <td className="w-1/4 p-2">{labels(field)}</td>
+                        <td className="p-2">
+                          <input
+                            aria-label={labels(field)}
+                            maxLength={2000}
+                            className="w-full min-w-0 border border-stone-200 p-2"
+                            placeholder="Unknown"
+                            value={fact.value ?? ""}
+                            onChange={(event) =>
+                              change(field, event.target.value)
+                            }
+                          />
+                        </td>
+                        <td className="w-1/4 p-2">
+                          <details>
+                            <summary>
+                              Page {display(fact.page)} / {fact.confidence}
+                            </summary>
+                            <p className="max-w-48 break-words">
+                              {display(fact.snippet)}
+                            </p>
+                          </details>
+                        </td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+              <div className="mt-3 overflow-auto">
+                <table className="w-full min-w-[800px] text-left text-xs">
+                  <thead>
+                    <tr>
                       {[
                         "source_item_code",
                         "source_description",
@@ -673,146 +657,167 @@ export default function MizantraDocuments({
                         "tax",
                         "line_amount",
                       ].map((field) => (
-                        <td className="p-1" key={field}>
-                          <input
-                            aria-label={`Line ${index + 1} ${labels(field)}`}
-                            maxLength={2000}
-                            className="w-full min-w-20 border border-stone-200 p-2"
-                            value={line[field]?.value ?? ""}
-                            placeholder="Unknown"
-                            onChange={(event) =>
-                              change(field, event.target.value, index)
-                            }
-                          />
-                          <details>
-                            <summary className="text-[10px]">
-                              {line[field]?.confidence || "LOW"} / p.
-                              {display(line[field]?.page)}
-                            </summary>
-                            <p className="max-w-32 break-words">
-                              {display(line[field]?.snippet)}
-                            </p>
-                          </details>
-                        </td>
+                        <th className="p-2" key={field}>
+                          {labels(field)}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                title="Add extracted line"
-                aria-label="Add extracted line"
-                disabled={addedLine || review.extraction.lines.length >= 200}
-                className="p-2"
-                onClick={() => {
-                  const line = Object.fromEntries(
-                    [
-                      "source_item_code",
-                      "source_description",
-                      "quantity",
-                      "uom",
-                      "unit_rate",
-                      "tax",
-                      "line_amount",
-                    ].map((field) => [
-                      field,
-                      {
-                        kind: "EXTRACTED_FACT",
-                        value: null,
-                        page: null,
-                        snippet: null,
-                        confidence: "LOW",
-                        method: "UNKNOWN",
-                      },
-                    ]),
-                  );
-                  setReview({
-                    ...review,
-                    extraction: {
-                      ...review.extraction,
-                      lines: [...review.extraction.lines, line],
-                    },
-                  });
-                  setAddedLine(true);
-                  setConfirmed(false);
-                }}
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={confirmed}
-                  onChange={(event) => setConfirmed(event.target.checked)}
-                />
-                I reviewed the extracted values
-              </label>
-              <button
-                type="button"
-                disabled={busy || !confirmed || !confirmedType}
-                onClick={() => void saveReview()}
-                className="ml-auto flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-xs"
-              >
-                <Save className="h-4 w-4" />
-                Save Extraction
-              </button>
-            </div>
-            {error && (
-              <p role="alert" className="mt-2 text-xs text-red-700">
-                {error}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-      {preview && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="View Document"
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-3"
-        >
-          <div className="flex h-[90vh] w-full max-w-5xl flex-col rounded-md bg-white">
-            <div className="flex items-center justify-between gap-2 p-3">
-              <h3 className="min-w-0 break-words text-sm font-semibold">
-                {preview.filename}
-              </h3>
-              <button
-                type="button"
-                aria-label="Close Document"
-                title="Close Document"
-                className="p-2"
-                onClick={() => {
-                  setPreview(null);
-                  if (previewRef.current)
-                    URL.revokeObjectURL(previewRef.current);
-                  previewRef.current = null;
-                }}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            {preview.mime === "application/pdf" ? (
-              <iframe
-                title={preview.filename}
-                className="min-h-0 w-full flex-1"
-                src={preview.url}
-              />
-            ) : (
-              <div className="min-h-0 flex-1 overflow-auto">
-                <img
-                  alt={preview.filename}
-                  src={preview.url}
-                  className="mx-auto max-h-full max-w-full object-contain"
-                />
+                  </thead>
+                  <tbody>
+                    {review.extraction.lines.map((line, index) => (
+                      <tr key={index}>
+                        {[
+                          "source_item_code",
+                          "source_description",
+                          "quantity",
+                          "uom",
+                          "unit_rate",
+                          "tax",
+                          "line_amount",
+                        ].map((field) => (
+                          <td className="p-1" key={field}>
+                            <input
+                              aria-label={`Line ${index + 1} ${labels(field)}`}
+                              maxLength={2000}
+                              className="w-full min-w-20 border border-stone-200 p-2"
+                              value={line[field]?.value ?? ""}
+                              placeholder="Unknown"
+                              onChange={(event) =>
+                                change(field, event.target.value, index)
+                              }
+                            />
+                            <details>
+                              <summary className="text-[10px]">
+                                {line[field]?.confidence || "LOW"} / p.
+                                {display(line[field]?.page)}
+                              </summary>
+                              <p className="max-w-32 break-words">
+                                {display(line[field]?.snippet)}
+                              </p>
+                            </details>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </div>
-        </div>
-      )}
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  title="Add extracted line"
+                  aria-label="Add extracted line"
+                  disabled={addedLine || review.extraction.lines.length >= 200}
+                  className="p-2"
+                  onClick={() => {
+                    const line = Object.fromEntries(
+                      [
+                        "source_item_code",
+                        "source_description",
+                        "quantity",
+                        "uom",
+                        "unit_rate",
+                        "tax",
+                        "line_amount",
+                      ].map((field) => [
+                        field,
+                        {
+                          kind: "EXTRACTED_FACT",
+                          value: null,
+                          page: null,
+                          snippet: null,
+                          confidence: "LOW",
+                          method: "UNKNOWN",
+                        },
+                      ]),
+                    );
+                    setReview({
+                      ...review,
+                      extraction: {
+                        ...review.extraction,
+                        lines: [...review.extraction.lines, line],
+                      },
+                    });
+                    setAddedLine(true);
+                    setConfirmed(false);
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={confirmed}
+                    onChange={(event) => setConfirmed(event.target.checked)}
+                  />
+                  I reviewed the extracted values
+                </label>
+                <button
+                  type="button"
+                  disabled={busy || !confirmed || !confirmedType}
+                  onClick={() => void saveReview()}
+                  className="ml-auto flex items-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-xs"
+                >
+                  <Save className="h-4 w-4" />
+                  Save Extraction
+                </button>
+              </div>
+              {error && (
+                <p role="alert" className="mt-2 text-xs text-red-700">
+                  {error}
+                </p>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
+      {preview &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="View Document"
+            className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/50 p-3"
+          >
+            <div className="flex h-[90vh] w-full max-w-5xl flex-col rounded-md bg-white">
+              <div className="flex items-center justify-between gap-2 p-3">
+                <h3 className="min-w-0 break-words text-sm font-semibold">
+                  {preview.filename}
+                </h3>
+                <button
+                  type="button"
+                  aria-label="Close Document"
+                  title="Close Document"
+                  className="p-2"
+                  onClick={() => {
+                    setPreview(null);
+                    if (previewRef.current)
+                      URL.revokeObjectURL(previewRef.current);
+                    previewRef.current = null;
+                  }}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              {preview.mime === "application/pdf" ? (
+                <iframe
+                  title={preview.filename}
+                  className="min-h-0 w-full flex-1"
+                  src={preview.url}
+                />
+              ) : (
+                <div className="min-h-0 flex-1 overflow-auto">
+                  <img
+                    alt={preview.filename}
+                    src={preview.url}
+                    className="mx-auto max-h-full max-w-full object-contain"
+                  />
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
     </section>
   );
 }
