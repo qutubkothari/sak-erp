@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EmailService } from '../../email/email.service';
 import { VendorsService } from './vendors.service';
@@ -414,7 +414,10 @@ export class PurchaseRequisitionsService {
     }
   }
 
-  async create(tenantId: string, userId: string, data: any) {
+  async create(tenantId: string, userId: string, data: any, operator?: { planId: string; checksum: string; profile: string; buildSha: string; revalidate?: () => Promise<void> }) {
+    if (operator && (data.status !== 'DRAFT' || !Array.isArray(data.items) || !data.items.length || data.items.some((item: any) => typeof item.requestedQty !== 'number' || !Number.isFinite(item.requestedQty) || item.requestedQty <= 0 || !item.uom || item.vendorId || item.vendor_id))) {
+      throw new BadRequestException('Operator requires complete draft-only PR lines without supplier selection.');
+    }
     await this.projectsService.ensureSchema();
     const department = normalizeDepartment(data.department);
     assertNoDuplicateRequisitionItems(data.items || []);
@@ -427,7 +430,7 @@ export class PurchaseRequisitionsService {
     );
 
     // Generate PR number
-    const prNumber = await this.generatePRNumber(tenantId);
+    const prNumber = await this.generatePRNumber(tenantId, !!operator);
 
     const requestedStatus = normalizeStatus(data.status || 'DRAFT');
     if (!['DRAFT', 'SUBMITTED'].includes(requestedStatus)) {
@@ -437,9 +440,7 @@ export class PurchaseRequisitionsService {
     const projectId = String(data.projectId ?? data.project_id ?? '').trim() || null;
     const projectName = String(data.projectName ?? data.project_name ?? '').trim() || null;
 
-    const { data: pr, error } = await this.supabase
-      .from('purchase_requisitions')
-      .insert({
+    const header = {
         tenant_id: tenantId,
         pr_number: prNumber,
         request_date: normalizeDateOnly(data.requestDate) || new Date().toISOString().split('T')[0],
@@ -453,7 +454,38 @@ export class PurchaseRequisitionsService {
         priority: normalizeStatus(data.priority || 'MEDIUM'),
         status: 'DRAFT',
         remarks: data.remarks,
-      })
+      };
+    const lineInputs = (Array.isArray(data.items) ? data.items : []).map((item: any) => ({
+      item_id: item.itemId ?? item.item_id ?? null,
+      item_code: item.itemCode,
+      item_name: item.itemName,
+      vendor_id: item.vendorId ?? item.vendor_id ?? null,
+      description: item.description,
+      uom: item.uom,
+      requested_qty: item.requestedQty,
+      estimated_rate: item.estimatedRate,
+      required_date: normalizeDateOnly(item.requiredDate),
+      payment_terms: item.paymentTerms ?? null,
+      delivery_terms: item.deliveryTerms ?? null,
+      remarks: item.remarks,
+    }));
+    if (operator) {
+      await operator.revalidate?.();
+      const { data: committed, error: commitError } = await this.supabase.rpc('mizantra_operator_commit_pr', {
+        p_id: operator.planId, p_tenant: tenantId, p_profile: operator.profile, p_user: userId,
+        p_checksum: operator.checksum, p_build: operator.buildSha, p_header: header, p_lines: lineInputs,
+      });
+      if (commitError) {
+        if (commitError.message?.includes('PLAN_CHANGED_REVIEW_REQUIRED')) throw new ConflictException('PLAN_CHANGED_REVIEW_REQUIRED');
+        if (['PGRST202', '42883', '42703', '42P01'].includes(String(commitError.code))) throw new InternalServerErrorException('Operator atomic draft creation is unavailable.');
+        throw new BadRequestException('Operator atomic draft creation failed validation.');
+      }
+      if (!committed?.pr_id || committed.status !== 'DRAFT' || committed.line_count !== lineInputs.length) throw new InternalServerErrorException('Operator draft verification failed.');
+      return this.findOne(tenantId, committed.pr_id);
+    }
+    const { data: pr, error } = await this.supabase
+      .from('purchase_requisitions')
+      .insert(header)
       .select()
       .single();
 
@@ -471,21 +503,7 @@ export class PurchaseRequisitionsService {
 
     // Insert items
     if (data.items && data.items.length > 0) {
-      const items = data.items.map((item: any) => ({
-        pr_id: pr.id,
-        item_id: item.itemId ?? item.item_id ?? null,
-        item_code: item.itemCode,
-        item_name: item.itemName,
-        vendor_id: item.vendorId ?? item.vendor_id ?? null,
-        description: item.description,
-        uom: item.uom,
-        requested_qty: item.requestedQty,
-        estimated_rate: item.estimatedRate,
-        required_date: normalizeDateOnly(item.requiredDate),
-        payment_terms: item.paymentTerms ?? null,
-        delivery_terms: item.deliveryTerms ?? null,
-        remarks: item.remarks,
-      }));
+      const items = lineInputs.map((item: any) => ({ ...item, pr_id: pr.id }));
 
       let { error: itemsError } = await this.supabase
         .from('purchase_requisition_items')
@@ -2615,18 +2633,19 @@ export class PurchaseRequisitionsService {
     });
   }
 
-  private async generatePRNumber(tenantId: string): Promise<string> {
+  private async generatePRNumber(tenantId: string, strict = false): Promise<string> {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const prefix = `PR-${year}-${month}`;
 
     // Fetch ALL PR numbers to find the global max sequence (never resets on month rollover)
-    const { data } = await this.supabase
+    const { data, error } = await this.supabase
       .from('purchase_requisitions')
       .select('pr_number')
       .eq('tenant_id', tenantId)
       .like('pr_number', 'PR-%');
+    if (strict && error) throw new InternalServerErrorException('Authoritative PR number generation is unavailable.');
 
     let maxSeq = 0;
     for (const row of (data || [])) {

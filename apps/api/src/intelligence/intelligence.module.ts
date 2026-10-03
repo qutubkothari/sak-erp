@@ -48,6 +48,8 @@ import { ReportingService } from "./reporting.service";
 import { ReportingController } from "./reporting.controller";
 import { DocumentAnalysisService } from "./document-analysis.service";
 import { DocumentAnalysisController } from "./document-analysis.controller";
+import { ActionOperatorService } from './action-operator.service';
+import { ActionOperatorController } from './action-operator.controller';
 
 @Module({
   imports: [
@@ -70,8 +72,9 @@ import { DocumentAnalysisController } from "./document-analysis.controller";
     CrmModule,
     FsmModule,
   ],
-  controllers: [IntelligenceController, ActivePlannerController, ReportingController, DocumentAnalysisController],
+  controllers: [IntelligenceController, ActivePlannerController, ReportingController, DocumentAnalysisController, ActionOperatorController],
   providers: [
+    ActionOperatorService,
     DocumentAnalysisService,
     ReportingService,
     SmartApprovalService,

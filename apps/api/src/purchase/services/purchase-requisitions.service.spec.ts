@@ -12,6 +12,51 @@ process.env.SUPABASE_KEY = process.env.SUPABASE_KEY || 'test-key';
 describe('PurchaseRequisitionsService controls', () => {
   const makeService = () => new PurchaseRequisitionsService({} as any, {} as any, {} as any, {} as any);
 
+  const operatorFixture = () => {
+    const subject = makeService();
+    (subject as any).projectsService = { ensureSchema: jest.fn().mockResolvedValue(undefined) };
+    jest.spyOn(subject as any, 'assertItemsVerified').mockResolvedValue(undefined);
+    jest.spyOn(subject as any, 'assertVendorsVerified').mockResolvedValue(undefined);
+    const number = jest.spyOn(subject as any, 'generatePRNumber').mockResolvedValue('PR-2099-01-001');
+    const rpc = jest.fn().mockResolvedValue({ data: { pr_id: 'pr-1', status: 'DRAFT', line_count: 1 }, error: null });
+    const separateInsert = jest.fn(() => { throw new Error('Separate header/line inserts are forbidden'); });
+    (subject as any).supabase = { rpc, from: separateInsert };
+    jest.spyOn(subject, 'findOne').mockResolvedValue({ id: 'pr-1', status: 'DRAFT' } as any);
+    const submit = jest.spyOn(subject, 'submit');
+    const data = { status: 'DRAFT', department: 'PRODUCTION', requiredDate: '2099-01-01', items: [{ itemId: 'item-1', itemCode: 'RM-1', itemName: 'Material', requestedQty: 3, uom: 'PCS' }] };
+    const control = { planId: 'plan-1', profile: 'MIZANTRA', checksum: 'b'.repeat(64), buildSha: 'a'.repeat(40), revalidate: jest.fn().mockResolvedValue(undefined) };
+    return { subject, number, rpc, separateInsert, submit, data, control };
+  };
+
+  it('uses existing numbering and validation, then only the bound atomic draft RPC', async () => {
+    const { subject, number, rpc, separateInsert, submit, data, control } = operatorFixture();
+    await expect(subject.create('tenant-1', 'user-1', data, control)).resolves.toMatchObject({ status: 'DRAFT' });
+    expect(number).toHaveBeenCalledWith('tenant-1', true);
+    expect(control.revalidate).toHaveBeenCalledTimes(1);
+    expect(control.revalidate.mock.invocationCallOrder[0]).toBeLessThan(rpc.mock.invocationCallOrder[0]);
+    expect(rpc).toHaveBeenCalledWith('mizantra_operator_commit_pr', expect.objectContaining({ p_id: 'plan-1', p_checksum: control.checksum, p_header: expect.objectContaining({ status: 'DRAFT', tenant_id: 'tenant-1', requested_by: 'user-1' }) }));
+    expect(separateInsert).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+  it('never writes when final evidence validation fails', async () => {
+    const { subject, rpc, data, control } = operatorFixture();
+    control.revalidate.mockRejectedValue(new BadRequestException('Stale evidence'));
+    await expect(subject.create('tenant-1', 'user-1', data, control)).rejects.toThrow('Stale evidence');
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it('never falls back to partial inserts when the atomic RPC is unavailable', async () => {
+    const { subject, rpc, separateInsert, data, control } = operatorFixture();
+    rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202' } } as any);
+    await expect(subject.create('tenant-1', 'user-1', data, control)).rejects.toThrow('atomic draft creation is unavailable');
+    expect(separateInsert).not.toHaveBeenCalled();
+  });
+  it('rejects operator submission before running the ERP creation path', async () => {
+    const { subject, rpc, number, data, control } = operatorFixture();
+    await expect(subject.create('tenant-1', 'user-1', { ...data, status: 'SUBMITTED' }, control)).rejects.toThrow('draft-only');
+    expect(number).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it.each([
     [undefined, 0],
     ['', 0],

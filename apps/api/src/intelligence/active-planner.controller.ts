@@ -35,6 +35,7 @@ import { SmartApprovalService } from "./smart-approval.service";
 import { ReportingService } from "./reporting.service";
 import { reportIntent } from "./reporting.registry";
 import { DocumentAnalysisService } from "./document-analysis.service";
+import { ActionOperatorService } from './action-operator.service';
 
 @Controller("active-planner")
 export class ActivePlannerController {
@@ -49,6 +50,7 @@ export class ActivePlannerController {
     private readonly approval: SmartApprovalService,
     @Optional() private readonly reporting?: ReportingService,
     @Optional() private readonly documents?: DocumentAnalysisService,
+    @Optional() private readonly operator?: ActionOperatorService,
   ) {}
   @Get("brain/configuration") brainConfiguration(@Req() req: any) {
     return this.brain.configuration(req.user);
@@ -168,6 +170,8 @@ export class ActivePlannerController {
   @Post("interpret")
   @SkipAutomaticAudit()
   async interpret(@Req() req: any, @Body() body: any) {
+    const actionPlan = this.operator && await this.operator.interpret(req.user, body);
+    if (actionPlan) return actionPlan;
     if (body?.document_ids?.length && !["support", "improvement", "status"].includes(body?.support_mode)) {
       if (!this.documents) throw new ForbiddenException("Document Intelligence is unavailable.");
       const references = [...new Set((String(body?.message || "").match(/\b(?:RFQ|PO)[-/][A-Z0-9_/-]+/gi) || []).map(value => value.trim()))];
@@ -211,6 +215,7 @@ export class ActivePlannerController {
     );
   }
   @Post("execute") execute(@Req() req: any, @Body() body: any) {
+    if (body?.action_operator_plan || body?.intent_type === 'ACTION_OPERATOR' || body?.provider === 'MIZANTRA_ACTION_OPERATOR_V1') throw new ForbiddenException('Use the scoped one-time Action Operator approval and execution endpoints.');
     if (body?.document_ids?.length || body?.intent_type === "DOCUMENT_COMPARE" || body?.provider === "MIZANTRA_DOCUMENT_INTELLIGENCE_V1" || String(body?.status || "").startsWith("DOCUMENT_")) throw new ForbiddenException("Document comparison cannot execute ERP business changes.");
     if (body?.intent_type === "REPORT_QUERY" || body?.provider === "DETERMINISTIC_REPORT_BUILDER_V1" || String(body?.status || "").startsWith("REPORT_")) throw new ForbiddenException("Reports cannot execute ERP business changes.");
     if (body?.intent_type === "SMART_APPROVAL_REVIEW" || body?.status === "SMART_APPROVAL_READ_ONLY" || body?.provider === "DETERMINISTIC_SMART_APPROVAL_V1") throw new ForbiddenException("Mizantra Review cannot execute approval or workflow changes.");
@@ -222,6 +227,7 @@ export class ActivePlannerController {
     @Req() req: any,
     @Body() body: any,
   ) {
+    if (body?.action_operator_plan || body?.intent_type === 'ACTION_OPERATOR' || body?.provider === 'MIZANTRA_ACTION_OPERATOR_V1') throw new ForbiddenException('Operator approval binds to one persisted plan, not generic future actions.');
     if (body?.document_ids?.length || body?.intent_type === "DOCUMENT_COMPARE" || body?.provider === "MIZANTRA_DOCUMENT_INTELLIGENCE_V1" || String(body?.status || "").startsWith("DOCUMENT_")) throw new ForbiddenException("Document comparison cannot request approvals.");
     if (body?.intent_type === "REPORT_QUERY" || body?.provider === "DETERMINISTIC_REPORT_BUILDER_V1" || String(body?.status || "").startsWith("REPORT_")) throw new ForbiddenException("Reports cannot request workflow approvals.");
     if (body?.intent_type === "SMART_APPROVAL_REVIEW" || body?.status === "SMART_APPROVAL_READ_ONLY" || body?.provider === "DETERMINISTIC_SMART_APPROVAL_V1") throw new ForbiddenException("Mizantra Review cannot request or execute approvals.");

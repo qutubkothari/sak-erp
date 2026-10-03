@@ -162,6 +162,29 @@ describe("report service isolation and metadata boundary", () => {
     expect(response.report!.matching_documents).toBe(119);
     expect(storage[0].owner_id).toBe(owner);
   });
+  it("requeries an owner-scoped item report for the Operator", async () => {
+    const itemId="33333333-3333-4333-8333-333333333333";
+    (service as any).sourceRows=jest.fn().mockResolvedValue([{item_id:itemId,item_code:"RM-1",item:"Material",uom:"PCS",below_reorder:true,item_type:"RAW_MATERIAL"}]);
+    const saved=await service.saveReport(user,{title:"Materials",plan:interpretReport("Show raw materials below reorder level").plan});
+    const result=await service.actionItems(user,{report_id:saved.id});
+    expect(result.item_ids).toEqual([itemId]);
+    expect(result.plan.columns).toEqual(expect.arrayContaining(["item_id","uom"]));
+    expect(queries).toContainEqual(expect.objectContaining({filters:expect.arrayContaining([["tenant_id",tenant],["profile","MIZANTRA"],["id",saved.id]])}));
+    await expect(service.actionItems({...user,userId:itemId},{report_id:saved.id})).rejects.toThrow();
+    expect(writes.every(table=>table.startsWith("mizantra_"))).toBe(true);
+  });
+  it("rejects non-item reports for PR planning", async () => {
+    const saved=await service.saveReport(user,{title:"Purchases",plan:interpretReport("Show open POs").plan});
+    await expect(service.actionItems(user,{report_id:saved.id})).rejects.toThrow("ungrouped item report");
+  });
+  it("rejects reports without unique authoritative item references", async () => {
+    (service as any).sourceRows=jest.fn().mockResolvedValue([{item_id:"not-an-id",below_reorder:true,item_type:"RAW_MATERIAL"}]);
+    await expect(service.actionItems(user,{below_reorder:true})).rejects.toThrow("authoritative item references");
+  });
+  it("does not silently truncate a report larger than 200 items", async () => {
+    (service as any).run=jest.fn().mockResolvedValue({result_rows:201,rows:[],version:"live"});
+    await expect(service.actionItems(user,{below_reorder:true})).rejects.toThrow("at most 200");
+  });
   it("refines the same session", async () => {
     const first = await service.interpret(user, { message: "Show open POs" });
     const next = await service.interpret(user, {

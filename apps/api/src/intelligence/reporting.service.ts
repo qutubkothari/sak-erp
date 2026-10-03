@@ -489,6 +489,24 @@ export class ReportingService {
       generated_at: new Date().toISOString(),
     };
   }
+  async actionItems(user: any, source: { report_id?: string; session_id?: string; below_reorder?: boolean }) {
+    const scope = this.scope(user);
+    const stored = source.report_id
+      ? (await this.definition(scope, source.report_id, 'REPORT')).definition
+      : source.session_id
+        ? (await this.definition(scope, source.session_id, 'SESSION')).definition
+        : source.below_reorder ? interpretReport('Show raw materials below reorder level').plan : null;
+    const original = this.plan(stored, scope);
+    if (original.dataset !== 'ITEMS' || original.grouping.length || original.aggregations.length)
+      throw new BadRequestException('Select an ungrouped item report for draft PR planning.');
+    const plan = this.plan({ ...original, columns: [...new Set([...original.columns, 'item_id', 'uom'])] }, scope);
+    const result = await this.run(scope, plan, 1, 100, true);
+    if (result.result_rows > 200) throw new BadRequestException('Narrow the report to at most 200 items before planning.');
+    const itemIds = result.rows.map(row => String(row.item_id || ''));
+    if (itemIds.some(id => !uuid.test(id)) || new Set(itemIds).size !== itemIds.length)
+      throw new BadRequestException('Report does not contain unique authoritative item references.');
+    return { item_ids: itemIds, version: result.version, plan };
+  }
   async export(user: any, body: any) {
     this.rejectScopeInput(body);
     const scope = this.scope(user);

@@ -43,6 +43,7 @@ import { BRAIN_CONTEXT_KEY, buildBrainEnvelope, type BrainEnvelope } from "@/lib
 import { ReviewResults, type SmartApprovalReview } from "@/components/MizantraReview";
 import MizantraReporting, { type ReportingResult } from "@/components/MizantraReporting";
 import MizantraDocuments, { type DocumentComparison } from "@/components/MizantraDocuments";
+import MizantraActionOperator, { OperatorPlanHistory, type OperatorPlan } from '@/components/MizantraActionOperator';
 
 type Capability = {
   intent: string;
@@ -54,6 +55,7 @@ type Capability = {
   examples: string[];
 };
 type Result = {
+  action_operator_plan?: OperatorPlan;
   document_comparison?: DocumentComparison;
   document_quote_hint?: { document_ids: string[]; brain_context: BrainEnvelope; read_only: boolean; affects_review_verdict: boolean } | null;
   report?: ReportingResult;
@@ -970,7 +972,7 @@ export default function ActivePlannerPage() {
       const data = await apiClient.post<Result>("/active-planner/interpret", {
         message: rawMessage,
         ...(documentEnabled && isPlanner && selectedDocumentIds.length ? { document_ids: selectedDocumentIds } : {}),
-        ...(result?.session_id ? { session_id: result.session_id } : {}),
+        ...((result?.session_id || result?.action_operator_plan?.payload.request.session_id) ? { session_id: result?.session_id || result?.action_operator_plan?.payload.request.session_id } : {}),
         ...(brainContext ? { brain_context: brainContext } : {}),
         support_mode,
         ...(supportSourceRoute ? { source_route: supportSourceRoute } : {}),
@@ -1026,7 +1028,7 @@ export default function ActivePlannerPage() {
       setCorrectionOpen(false);
       setCorrectionText("");
       setCorrectionSaved(false);
-      setMobilePanel(data.status.startsWith("READY") ? "review" : "chat");
+      setMobilePanel(data.action_operator_plan || data.status.startsWith("READY") ? "review" : "chat");
       const success =
         data.status === "READY_WITH_ANALYTICS"
           ? data.analytics?.headline ||
@@ -1837,7 +1839,8 @@ export default function ActivePlannerPage() {
                 {result?.status?.replaceAll("_", " ") || "WAITING FOR REQUEST"}
               </span>
             </div>
-            {result && !result.analytics ? (
+            <OperatorPlanHistory currentId={result?.action_operator_plan?.id} onSelect={plan => { setResult({ status: 'ACTION_OPERATOR_PLAN', intent_type: 'ACTION_OPERATOR', provider: 'MIZANTRA_ACTION_OPERATOR_V1', extracted: {}, resolved: {}, questions: plan.payload.warnings, context_token: '', safety: { executable: false, autonomous_execution: false }, action_operator_plan: plan }); setMobilePanel('review'); }} />
+            {result?.action_operator_plan ? <MizantraActionOperator key={result.action_operator_plan.id} plan={result.action_operator_plan} onUpdate={plan => setResult(previous => previous ? { ...previous, action_operator_plan: plan } : previous)} onReportFailure={plan => { setSupportMode(true); setMobilePanel('chat'); setInput(`Report Action Operator software failure for plan ${plan.id}, build ${plan.build_sha}. No software patch was attempted during business execution.`); }} /> : result && !result.analytics ? (
               <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                 <div>
                   <span className="text-xs text-[#7A6555]">Module</span>

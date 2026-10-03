@@ -1,3 +1,5 @@
+import { operatorFlags } from './action-operator.registry';
+
 export const BRAIN_MAX_DEPTH = 4;
 export const BRAIN_MAX_RECORDS = 100;
 export const BRAIN_TIMEOUT_MS = 5000;
@@ -8,7 +10,7 @@ export function brainFlags(settings: Record<string, unknown> = process.env) {
     enabled,
     contextEnabled: enabled && settings.MIZANTRA_CONTEXT_ENGINE_ENABLED === "true",
     graphEnabled: enabled && settings.MIZANTRA_BUSINESS_GRAPH_ENABLED === "true",
-    actionPlannerMode: "PREVIEW_ONLY" as const,
+    actionPlannerMode: operatorFlags(settings).enabled ? 'APPROVAL_REQUIRED' as const : 'PREVIEW_ONLY' as const,
   };
 }
 
