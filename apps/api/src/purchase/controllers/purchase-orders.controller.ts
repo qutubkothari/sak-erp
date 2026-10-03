@@ -318,6 +318,7 @@ export class PurchaseOrdersController {
           return {
             sl_no: index + 1,
             item_code: row.item_code || row.code || row?.item?.code || row?.item?.item_code || '',
+            oem_part_no: row.oem_part_no || row.oem_part_number || row?.item?.oem_part_no || row?.item?.oem_part_number || '',
             item_name:
               row.item_name ||
               row.name ||

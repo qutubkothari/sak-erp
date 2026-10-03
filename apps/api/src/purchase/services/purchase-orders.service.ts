@@ -1978,7 +1978,7 @@ export class PurchaseOrdersService {
       .select(`
         *,
         vendor:vendors(id, code, name, contact_person, email, phone, address, street, billing_line2, metadata, city, state, pincode, tax_id),
-        purchase_order_items(*, item:items(id, code, name, description, hsn_code, uom, category))
+        purchase_order_items(*, item:items(id, code, name, description, hsn_code, uom, category, oem_part_no))
       `)
       .eq('tenant_id', tenantId)
       .eq('id', id)
