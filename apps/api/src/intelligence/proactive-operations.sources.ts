@@ -114,9 +114,11 @@ export class ProactiveOperationsSources {
       for (const [type, table, number, resource] of [['PO', 'purchase_orders', 'po_number', 'purchase_orders'], ['PR', 'purchase_requisitions', 'pr_number', 'purchase_requisitions'], ['GRN', 'grns', 'grn_number', 'grns']]) {
         if (!can(resource + ':approve') || !can(resource + ':read')) continue;
         const columns = type === 'GRN' ? 'created_by,qc_completed,grn_items(qc_status)' : type === 'PO' ? 'created_by,updated_by' : 'requested_by,updated_by';
-        const documents = await this.read(scope, table, `id,tenant_id,${number},status,${columns}`, query => query.eq('status', type === 'PO' ? 'PENDING' : type === 'PR' ? 'SUBMITTED' : 'DRAFT'));
+        const projection = type === 'GRN' ? '*,grn_items(qc_status)' : `id,tenant_id,${number},status,${columns}`;
+        const documents = await this.read(scope, table, projection, query => query.eq('status', type === 'PO' ? 'PENDING' : type === 'PR' ? 'SUBMITTED' : 'DRAFT'));
         for (const document of documents) {
           const override = hasSuperAdminBypass(scope.user);
+          if (type === 'GRN' && !override && !document.created_by) continue;
           if (!override && (document.created_by === scope.owner || type !== 'GRN' && document.updated_by === scope.owner)) continue;
           if (type === 'PR' && !await this.requisitions.canReviewApproval(scope.tenant, document.id, scope.owner, override)) continue;
           if (type === 'GRN' && (!(document.grn_items || []).length || !document.qc_completed && !document.grn_items.every((line: any) => ['ACCEPTED', 'REJECTED', 'PARTIAL'].includes(line.qc_status)))) continue;
