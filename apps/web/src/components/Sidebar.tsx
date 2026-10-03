@@ -1024,7 +1024,10 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       })()
     : false;
 
-  const baseNavigation = shouldEnforcePermissions
+  // Admin route access is governed by tenant feature entitlements below.
+  // Their explicit role permissions may omit a module even while its screen
+  // is enabled, so do not remove the whole sidebar section prematurely.
+  const baseNavigation = shouldEnforcePermissions && !isAdminLike(currentUser)
     ? navigation.filter((item) => {
         // Filter out Manager Approvals if user is not a manager
         if ((item as any).requiresManagerRole && !isManager) {
