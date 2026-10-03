@@ -13,16 +13,19 @@ import GlobalSmartSelect from '@/components/GlobalSmartSelect';
 
 const inter = Inter({ subsets: ['latin'] });
 const appBranding = buildDocumentBranding(null);
+const isSaifSeas = process.env.ERP_TENANT_PROFILE === 'SAIFSEAS';
+const manifestPath = isSaifSeas ? '/saifseas.webmanifest' : '/manifest.webmanifest';
+const iconPath = isSaifSeas ? '/branding/saif-seas-icon.svg' : '/pwa-icon-192.png';
 
 export const metadata: Metadata = {
-  title: `Mizantra ERP | ${appBranding.companyName}`,
-  description: `Mizantra ERP by ${appBranding.companyName} with multi-tenant, multi-plant, and traceability support`,
-  manifest: '/manifest.webmanifest',
-  applicationName: 'Mizantra ERP',
+  title: isSaifSeas ? 'SaifSeas ERP' : `Mizantra ERP | ${appBranding.companyName}`,
+  description: isSaifSeas ? 'SaifSeas ERP' : `Mizantra ERP by ${appBranding.companyName} with multi-tenant, multi-plant, and traceability support`,
+  manifest: manifestPath,
+  applicationName: isSaifSeas ? 'SaifSeas ERP' : 'Mizantra ERP',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Mizantra ERP',
+    title: isSaifSeas ? 'SaifSeas ERP' : 'Mizantra ERP',
   },
   other: {
     'mobile-web-app-capable': 'yes',
@@ -31,8 +34,8 @@ export const metadata: Metadata = {
     telephone: false,
   },
   icons: {
-    icon: '/pwa-icon-192.png',
-    apple: '/pwa-icon-192.png',
+    icon: iconPath,
+    apple: isSaifSeas ? '/branding/saif-seas-icon-192.png' : '/pwa-icon-192.png',
   },
 };
 
@@ -50,9 +53,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en-GB" suppressHydrationWarning>
+    <html lang="en-GB" data-tenant-profile={isSaifSeas ? 'SAIFSEAS' : undefined} suppressHydrationWarning>
       <head>
-        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="manifest" href={manifestPath} />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
       </head>

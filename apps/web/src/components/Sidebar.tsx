@@ -1165,14 +1165,21 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         >
           {!collapsed && (
             <Link href={homeHref} className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-[#8B6F47] rounded-lg flex items-center justify-center shadow-md">
-                <span className="text-white font-bold text-sm">SAK</span>
-              </div>
-              <span
-                className="font-bold text-sm text-[#FFFDF8] truncate max-w-[132px]"
-                title={appBranding.companyName}
-              >
-                {appBranding.companyName}
+              <img
+                src="/branding/saif-seas-logo.png"
+                alt="SaifSeas"
+                className="sidebar-saifseas-brand hidden h-8 w-[150px] object-contain"
+              />
+              <span className="sidebar-default-brand flex items-center gap-2">
+                <span className="w-8 h-8 bg-[#8B6F47] rounded-lg flex items-center justify-center shadow-md">
+                  <span className="text-white font-bold text-sm">SAK</span>
+                </span>
+                <span
+                  className="font-bold text-sm text-[#FFFDF8] truncate max-w-[132px]"
+                  title={appBranding.companyName}
+                >
+                  {appBranding.companyName}
+                </span>
               </span>
             </Link>
           )}

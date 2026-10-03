@@ -421,3 +421,10 @@ html[dir="rtl"] [data-ltr] {
     margin-right: 0 !important;
   }
 }
+html[data-tenant-profile="SAIFSEAS"] .sidebar-default-brand {
+  display: none;
+}
+
+html[data-tenant-profile="SAIFSEAS"] .sidebar-saifseas-brand {
+  display: block;
+}
