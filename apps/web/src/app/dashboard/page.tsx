@@ -30,6 +30,7 @@ import {
 import { apiClient } from '../../../lib/api-client';
 import { getDefaultLandingPath, isAdminLike } from '@/lib/rbac';
 import { useAuthStore } from '@/stores/auth.store';
+import { MizantraBriefWidget } from '@/components/MizantraProactiveOperations';
 
 export const dynamic = 'force-dynamic';
 
@@ -216,6 +217,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4 text-[#2F241B]">
+      <MizantraBriefWidget />
       <section className="border border-[#E8DCC4] bg-white">
         <div className="flex flex-col gap-3 border-b border-[#E8DCC4] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>

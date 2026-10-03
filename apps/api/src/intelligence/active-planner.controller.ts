@@ -36,6 +36,7 @@ import { ReportingService } from "./reporting.service";
 import { reportIntent } from "./reporting.registry";
 import { DocumentAnalysisService } from "./document-analysis.service";
 import { ActionOperatorService } from './action-operator.service';
+import { ProactiveOperationsService } from './proactive-operations.service';
 
 @Controller("active-planner")
 export class ActivePlannerController {
@@ -51,6 +52,7 @@ export class ActivePlannerController {
     @Optional() private readonly reporting?: ReportingService,
     @Optional() private readonly documents?: DocumentAnalysisService,
     @Optional() private readonly operator?: ActionOperatorService,
+    @Optional() private readonly proactive?: ProactiveOperationsService,
   ) {}
   @Get("brain/configuration") brainConfiguration(@Req() req: any) {
     return this.brain.configuration(req.user);
@@ -170,6 +172,8 @@ export class ActivePlannerController {
   @Post("interpret")
   @SkipAutomaticAudit()
   async interpret(@Req() req: any, @Body() body: any) {
+    const brief = this.proactive && await this.proactive.interpret(req.user, body);
+    if (brief) return brief;
     const actionPlan = this.operator && await this.operator.interpret(req.user, body);
     if (actionPlan) return actionPlan;
     if (body?.document_ids?.length && !["support", "improvement", "status"].includes(body?.support_mode)) {

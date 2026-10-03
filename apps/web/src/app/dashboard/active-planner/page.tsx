@@ -44,6 +44,7 @@ import { ReviewResults, type SmartApprovalReview } from "@/components/MizantraRe
 import MizantraReporting, { type ReportingResult } from "@/components/MizantraReporting";
 import MizantraDocuments, { type DocumentComparison } from "@/components/MizantraDocuments";
 import MizantraActionOperator, { OperatorPlanHistory, type OperatorPlan } from '@/components/MizantraActionOperator';
+import { AttentionList, type ProactiveBrief } from '@/components/MizantraProactiveOperations';
 
 type Capability = {
   intent: string;
@@ -55,6 +56,8 @@ type Capability = {
   examples: string[];
 };
 type Result = {
+  proactive_brief?: ProactiveBrief;
+  attention_evidence?: { explanation: string; evidence: Record<string, unknown> };
   action_operator_plan?: OperatorPlan;
   document_comparison?: DocumentComparison;
   document_quote_hint?: { document_ids: string[]; brain_context: BrainEnvelope; read_only: boolean; affects_review_verdict: boolean } | null;
@@ -512,6 +515,35 @@ export default function ActivePlannerPage() {
       ).slice(0, 8)
     : [];
   const isChangeRequestDraft = /\b(feature request|new feature|new field|add\b.{0,70}\b(column|field|pdf|report)|improv|layout|move\b.{0,50}\b(pdf|above|below|before|after))\b/i.test(input);
+
+  useEffect(() => {
+    let active = true;
+    const query = new URLSearchParams(window.location.search);
+    const planId = query.get('attention_operator_plan');
+    const prompt = query.get('attention_prompt');
+    const entityId = query.get('attention_id');
+    const entityTypes: Record<string, string> = { PO: 'purchase_order', GRN: 'grn', ITEM: 'item', purchase_order: 'purchase_order', purchase_requisition: 'purchase_requisition', grn: 'grn', item: 'item', autoqa_finding: 'autoqa_finding' };
+    const entityType = entityTypes[query.get('attention_review') || query.get('attention_entity') || ''];
+    const validId = (value: string | null): value is string => !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+    const accept = (reply: Result) => { if (active) { setResult(reply); setMobilePanel('review'); setTurns(previous => [...previous, { role: 'planner', text: reply.assistant_message || 'System-checked preview ready.' }]); } };
+    void (async () => {
+      if (validId(planId)) {
+        const plan = await apiClient.get<OperatorPlan>(`/active-planner/action-operator/plans/${planId}`);
+        accept({ status: 'ACTION_OPERATOR_PLAN', intent_type: 'ACTION_OPERATOR', provider: 'MIZANTRA_ACTION_OPERATOR_V1', extracted: {}, resolved: {}, questions: plan.payload.warnings, context_token: '', safety: { executable: false }, action_operator_plan: plan });
+      } else if (prompt && /^(?:What needs my attention today\?|Show all overdue POs)$/i.test(prompt)) {
+        accept(await apiClient.post<Result>('/active-planner/interpret', { message: prompt }));
+      } else if (validId(entityId) && entityType) {
+        const configuration = await apiClient.get<{ profile: string; tenant_id: string; current_user_id: string }>('/active-planner/brain/configuration');
+        const envelope = { tenant_id: configuration.tenant_id, profile: configuration.profile, current_user_id: configuration.current_user_id, entity_type: entityType, entity_id: entityId, current_route: '/dashboard/active-planner', locale: 'en' };
+        accept(await apiClient.post<Result>('/active-planner/interpret', { message: query.has('attention_review') ? 'Review this document before approval' : 'Diagnose data issues for this record', brain_context: envelope }));
+      } else if (validId(query.get('attention_document'))) {
+        const id = query.get('attention_document')!;
+        await apiClient.get(`/active-planner/document-intelligence/uploads/${id}`);
+        if (active) { setDocumentIds([id]); setInput('Review the selected document extraction'); setDocumentRefresh(previous => previous + 1); }
+      }
+    })().catch((failure: any) => { if (active) setError(failure.message || 'Attention handoff is unavailable.'); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1022,6 +1054,7 @@ export default function ActivePlannerPage() {
       setPendingFile(null);
       setAttachments(uploadedAttachments);
       setResult(data);
+      if (data.proactive_brief || data.attention_evidence) setMobilePanel('review');
       setConversationId(data.conversation_id || conversationId);
       setContext(data.context_token);
       setFeedbackState("");
@@ -1840,7 +1873,7 @@ export default function ActivePlannerPage() {
               </span>
             </div>
             <OperatorPlanHistory currentId={result?.action_operator_plan?.id} onSelect={plan => { setResult({ status: 'ACTION_OPERATOR_PLAN', intent_type: 'ACTION_OPERATOR', provider: 'MIZANTRA_ACTION_OPERATOR_V1', extracted: {}, resolved: {}, questions: plan.payload.warnings, context_token: '', safety: { executable: false, autonomous_execution: false }, action_operator_plan: plan }); setMobilePanel('review'); }} />
-            {result?.action_operator_plan ? <MizantraActionOperator key={result.action_operator_plan.id} plan={result.action_operator_plan} onUpdate={plan => setResult(previous => previous ? { ...previous, action_operator_plan: plan } : previous)} onReportFailure={plan => { setSupportMode(true); setMobilePanel('chat'); setInput(`Report Action Operator software failure for plan ${plan.id}, build ${plan.build_sha}. No software patch was attempted during business execution.`); }} /> : result && !result.analytics ? (
+            {result?.proactive_brief ? <AttentionList brief={result.proactive_brief} onRefresh={async () => { const brief = await apiClient.get<ProactiveBrief>('/active-planner/proactive-operations/attention'); setResult(previous => previous ? { ...previous, proactive_brief: brief } : previous); }} /> : result?.attention_evidence ? <section aria-label="Attention evidence" className="py-4 text-sm"><p>{result.attention_evidence.explanation}</p><dl className="mt-3 space-y-2">{Object.entries(result.attention_evidence.evidence).map(([key, value]) => <div key={key}><dt className="text-stone-500">{key.replaceAll('_', ' ')}</dt><dd className="break-words [overflow-wrap:anywhere]">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl></section> : result?.action_operator_plan ? <MizantraActionOperator key={result.action_operator_plan.id} plan={result.action_operator_plan} onUpdate={plan => setResult(previous => previous ? { ...previous, action_operator_plan: plan } : previous)} onReportFailure={plan => { setSupportMode(true); setMobilePanel('chat'); setInput(`Report Action Operator software failure for plan ${plan.id}, build ${plan.build_sha}. No software patch was attempted during business execution.`); }} /> : result && !result.analytics ? (
               <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                 <div>
                   <span className="text-xs text-[#7A6555]">Module</span>

@@ -1683,6 +1683,27 @@ export class PurchaseRequisitionsService {
     return this.findOne(tenantId, id);
   }
 
+  async canReviewApproval(tenantId: string, id: string, userId: string, overrideMakerChecker = false): Promise<boolean> {
+    const requisition = await this.getRequisitionForTransition(tenantId, id);
+    if (normalizeStatus(requisition.status) !== 'SUBMITTED') return false;
+    if (overrideMakerChecker) return true;
+    if ([requisition.requested_by, requisition.updated_by].some(actor => String(actor || '') === userId)) return false;
+    const totalAmount = (requisition.purchase_requisition_items || []).reduce(
+      (total: number, item: any) => total + Number(item.requested_qty || 0) * Number(item.estimated_rate || 0), 0,
+    );
+    const rules = await this.getMatchingApprovalRules(tenantId, requisition.department, totalAmount);
+    const rule = rules[Number(requisition.current_approval_level || 0)];
+    if (rule?.approver_user_id && String(rule.approver_user_id) !== userId) return false;
+    try {
+      if (rule) await this.assertRuleApprover(userId, rule);
+      else if (!rules.length) await this.assertDefaultApprover(tenantId, userId);
+      return true;
+    } catch (error) {
+      if (error instanceof BadRequestException && !/Unable|Failed/i.test(error.message)) return false;
+      throw error;
+    }
+  }
+
   async approve(tenantId: string, id: string, userId: string, options: { overrideMakerChecker?: boolean } = {}) {
     const pr = await this.getRequisitionForTransition(tenantId, id);
     const fromStatus = normalizeStatus(pr.status);

@@ -50,9 +50,15 @@ import { DocumentAnalysisService } from "./document-analysis.service";
 import { DocumentAnalysisController } from "./document-analysis.controller";
 import { ActionOperatorService } from './action-operator.service';
 import { ActionOperatorController } from './action-operator.controller';
+import { AuthModule } from '../auth/auth.module';
+import { ProactiveOperationsService } from './proactive-operations.service';
+import { ProactiveOperationsSources } from './proactive-operations.sources';
+import { ProactiveOperationsController } from './proactive-operations.controller';
+import { ProactiveOperationsScheduler } from './proactive-operations.scheduler';
 
 @Module({
   imports: [
+    AuthModule,
     SupportAutofixModule,
     AuditModule,
     DashboardModule,
@@ -72,8 +78,11 @@ import { ActionOperatorController } from './action-operator.controller';
     CrmModule,
     FsmModule,
   ],
-  controllers: [IntelligenceController, ActivePlannerController, ReportingController, DocumentAnalysisController, ActionOperatorController],
+  controllers: [IntelligenceController, ActivePlannerController, ReportingController, DocumentAnalysisController, ActionOperatorController, ProactiveOperationsController],
   providers: [
+    ProactiveOperationsService,
+    ProactiveOperationsSources,
+    ProactiveOperationsScheduler,
     ActionOperatorService,
     DocumentAnalysisService,
     ReportingService,
