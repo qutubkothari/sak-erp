@@ -9,6 +9,18 @@ const tenant = "11111111-1111-4111-8111-111111111111",
   owner = "22222222-2222-4222-8222-222222222222";
 const user = { tenantId: tenant, userId: owner, role: "SUPER_ADMIN" };
 describe("report service isolation and metadata boundary", () => {
+  it('selects the oldest dated authorized PO using preserved filters and stable ties', async () => {
+    process.env.ERP_TENANT_PROFILE='MIZANTRA';process.env.MIZANTRA_REPORT_BUILDER_ENABLED='true';
+    const subject=new ReportingService({} as any,{} as any,{} as any);
+    const original=interpretReport('Show open POs').plan!;
+    const stored=jest.spyOn(subject as any,'definition').mockResolvedValue({definition:original});
+    const run=jest.spyOn(subject as any,'run').mockResolvedValue({rows:[{po_id:tenant,po_number:'PO-1',po_date:'2026-01-01'}]});
+    expect(await subject.oldestContext(user,owner)).toMatchObject({tenant_id:tenant,current_user_id:owner,entity_type:'purchase_order',entity_id:tenant});
+    expect(stored).toHaveBeenCalledWith(expect.objectContaining({tenant,owner}),owner,'SESSION');
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({tenant,owner}),expect.objectContaining({filters:original.filters,sort:[{field:'po_date',direction:'asc'},{field:'po_id',direction:'asc'}],limit:1}),1,1);
+    run.mockResolvedValue({rows:[]});
+    await expect(subject.oldestContext(user,owner)).rejects.toThrow('No dated authorized PO');
+  });
   it('binds purchase history to the recorded PO supplier', async () => {
     process.env.ERP_TENANT_PROFILE='MIZANTRA';process.env.MIZANTRA_REPORT_BUILDER_ENABLED='true';
     const brain={withDiagnosticEvidence:jest.fn(async (_user,_context,inspect)=>inspect({nodes:[{type:'purchase_order',row:{id:tenant,vendor_id:owner}}],canRead:()=>true}))};

@@ -75,10 +75,13 @@ export class AutoHealWorkerProcessor {
     let agentResult: any = null;
     let changedFiles: string[] = [];
     let validationStage = 'setup';
+    let incidentRisk: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
     try {
       const { incident, attemptNumber } = await this.api.getIncident(tenantId, incidentId) as any;
       if (String(incident?.id || '') !== incidentId) throw new Error('AUTOHEAL_INFRASTRUCTURE_FAILURE: queue incident ID does not match the worker incident response.');
       if (!['LOW', 'MEDIUM', 'HIGH'].includes(String(incident.riskLevel))) return;
+      incidentRisk = incident.riskLevel;
+      if (incident.riskLevel === 'HIGH') return;
       const workspace = await this.worktrees.create(`${incidentId}-attempt-${attemptNumber}`, incident.title);
       if (!worktreeMatchesIncident(workspace, incidentId, attemptNumber)) {
         await this.worktrees.remove(workspace.path).catch(() => undefined);
@@ -162,7 +165,7 @@ export class AutoHealWorkerProcessor {
         if (attemptId && !String(error?.message || '').startsWith('INFRASTRUCTURE_FAILURE_RECORDED:')) {
           await this.api.finishAttempt(tenantId, incidentId, {
             attemptId, status: 'INFRASTRUCTURE_FAILURE', provider: agentResult?.provider || 'codex-cli', model: agentResult?.model || 'unknown',
-            filesChanged: [], riskAfterDiff: incident?.riskLevel || 'LOW', testResult: {}, buildResult: {},
+            filesChanged: [], riskAfterDiff: incidentRisk, testResult: {}, buildResult: {},
             agentDiagnostics: { ...this.agentDiagnostics(agentResult, false, 'sandbox-preflight', error), failureClass: 'INFRASTRUCTURE_FAILURE' },
           }).catch(() => undefined);
         }

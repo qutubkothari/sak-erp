@@ -78,4 +78,12 @@ describe('Unified metadata PostgreSQL lifecycle', () => {
     expect(columns.some((column:string)=>/prompt|message|chat|payload|content/.test(column))).toBe(false);
     expect((await sql("SELECT relrowsecurity FROM pg_class WHERE relname IN ('mizantra_unified_sessions','mizantra_unified_telemetry')")).rows.every((row:any)=>row.relrowsecurity)).toBe(true);
   });
+  it('allows only nonnegative numeric allowlisted performance metadata', async () => {
+    const insert = (performance: Record<string, unknown>) => sql("INSERT INTO mizantra_unified_telemetry(id,tenant_id,profile,owner_id,confidence,routing_ms,response_ms,subsystem_ms,handoff_count,performance) VALUES($1::uuid,$2::uuid,'MIZANTRA',$3::uuid,'EXACT',1,2,1,0,$4::jsonb)", [session, tenant, owner, JSON.stringify(performance)]);
+    await expect(insert({ query_ms: 1, cache_hits: 2, model_calls: 0 })).resolves.toBeDefined();
+    await sql('TRUNCATE mizantra_unified_telemetry');
+    await expect(insert({ prompt: 'secret' })).rejects.toThrow('check constraint');
+    await expect(insert({ query_ms: -1 })).rejects.toThrow('check constraint');
+    await expect(insert({ model_calls: 'private-content' })).rejects.toThrow('check constraint');
+  });
 });

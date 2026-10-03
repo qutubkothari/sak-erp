@@ -282,7 +282,20 @@ export class ReportingService {
     const stored = await this.definition(scope, id, kind);
     return kind === 'DASHBOARD' ? { id: stored.id, kind } : { id: stored.id, kind, plan: this.plan(stored.definition, scope) };
   }
-  async contextualHistory(user: any, context: any) {
+  async oldestContext(user: any, sessionId: string) {
+    const scope = this.scope(user);
+    const stored = await this.definition(scope, sessionId, 'SESSION');
+    const original = this.plan(stored.definition, scope);
+    if (original.dataset !== 'PURCHASE_ORDERS' || original.grouping.length || original.aggregations.length)
+      throw new BadRequestException('Select an ungrouped PO report before opening a record.');
+    const plan = this.plan({ ...original, columns: ['po_id','po_number','po_date'], sort: [{field:'po_date',direction:'asc'},{field:'po_id',direction:'asc'}], limit:1 }, scope);
+    const result = await this.run(scope, plan, 1, 1);
+    const row = result.rows[0];
+    if (!row || !uuid.test(String(row.po_id || '')) || !Number.isFinite(Date.parse(String(row.po_date || ''))))
+      throw new BadRequestException('No dated authorized PO is available in this report. Select a record explicitly.');
+    return { profile:scope.profile,tenant_id:scope.tenant,current_user_id:scope.owner,entity_type:'purchase_order',entity_id:String(row.po_id),current_route:'/dashboard/purchase/orders',locale:'en' };
+  }
+  async contextualHistory(user: any, context: any, options: {openOnly?: boolean} = {}) {
     const scope = this.scope(user);
     const filter = await this.brain.withDiagnosticEvidence(user, context, async evidence => {
       const root = evidence.nodes[0];
@@ -295,7 +308,7 @@ export class ReportingService {
       return { field: 'item_id', operator: 'in' as const, value: ids };
     });
     const base = interpretReport('Show all POs').plan!;
-    const plan = this.plan({ ...base, filters: [filter], title: 'Related purchase history', columns: base.columns.filter(key => canSeeField(user, REPORT_DATASETS.PURCHASE_ORDERS.fields[key])) }, scope);
+    const plan = this.plan({ ...base, filters: [filter, ...(options.openOnly ? [{field:'open_state',operator:'eq' as const,value:'OPEN'}] : [])], title: options.openOnly ? 'Related open purchase orders' : 'Related purchase history', columns: base.columns.filter(key => canSeeField(user, REPORT_DATASETS.PURCHASE_ORDERS.fields[key])) }, scope);
     const result = await this.query(user, { plan, create_session: true });
     return { status: 'REPORT_READY', session_id: result.session_id, report: result, assistant_message: plan.title, safety: { read_only: true, executable: false } };
   }

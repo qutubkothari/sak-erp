@@ -1,4 +1,8 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
+jest.mock("./egypt-arabic-planner", () => ({
+  ...jest.requireActual("./egypt-arabic-planner"),
+  egyptArabicPlannerEnabledForTenant: jest.fn().mockResolvedValue(false),
+}));
 import {
   ACTIVE_PLANNER_EXTRACTION_SCHEMA,
   ActivePlannerService,

@@ -35,6 +35,7 @@ export type SemanticQueryPlan = {
     | "LATEST"
     | "RANK_TOP"
     | "SUMMARY"
+    | "OVERDUE"
     | "";
   entity_query: string;
   entity_is_named: boolean;

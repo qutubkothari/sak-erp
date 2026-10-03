@@ -13,6 +13,7 @@ import { PlannerSupportService } from './planner-support.service';
 import { ProactiveOperationsService } from './proactive-operations.service';
 import { UnifiedAiContextService, UnifiedSession, UnifiedWorkingRef, UnifiedTelemetry } from './unified-ai.context';
 import { selectUnifiedRoute, UnifiedResultType, UnifiedRoute, unifiedFlags } from './unified-ai.registry';
+import { aiPerformance, withAiPerformance } from './unified-ai.performance';
 
 const nextActions = {
   DIAGNOSE: { label: 'Diagnose', message: 'Diagnose this record' },
@@ -24,6 +25,10 @@ const nextActions = {
   REPORT_SOFTWARE_ISSUE: { label: 'Report software issue', message: 'Fix this software issue' },
 } as const;
 type NextActionKey = keyof typeof nextActions;
+export function customerAiMessage(message: string): string {
+  return /\b(?:resolver|GraphQL|PostgREST|PGRST\w*|schema|worker|Codex|database table|stack trace)\b/i.test(message)
+    ? 'Some information could not be checked. Review the available evidence or contact your administrator.' : message;
+}
 
 @Injectable()
 export class UnifiedAiService {
@@ -138,6 +143,9 @@ export class UnifiedAiService {
     return ({ BRAIN_QUERY: 'EVIDENCE', DATA_DOCTOR: 'DIAGNOSIS', DOCUMENT_INTELLIGENCE: 'DOCUMENT_COMPARISON', SMART_APPROVAL: 'APPROVAL_REVIEW', SMART_IMPORT: 'IMPORT_PREVIEW', AUTOENGINEER: 'ENGINEERING_REQUEST', PROACTIVE_OPERATIONS: 'ATTENTION_LIST' } as Partial<Record<UnifiedRoute, UnifiedResultType>>)[route!] || 'TEXT_ANSWER';
   }
   async interpret(user: any, body: any, erp: (body: any) => Promise<any>): Promise<any | null> {
+    return withAiPerformance(() => this.interpretScoped(user, body, erp));
+  }
+  private async interpretScoped(user: any, body: any, erp: (body: any) => Promise<any>): Promise<any | null> {
     if (!unifiedFlags().enabled || !unifiedFlags().router) return null;
     const started = Date.now(), configuration = await this.configuration(user);
     if (!body || ['tenant_id','tenantId','profile','owner_id','user_id','sql','table','where'].some(key => Object.prototype.hasOwnProperty.call(body, key))) throw new ForbiddenException('AI tenant, profile, and permissions are server-controlled.');
@@ -147,6 +155,7 @@ export class UnifiedAiService {
     const failures: Array<{ capability: UnifiedRoute | null; type: UnifiedTelemetry['failure_type']; message: string }> = [];
     let failureType: UnifiedTelemetry['failure_type'] = null, clarification = false, handoff = 0;
     let contextValidated = false, subsystemStarted: number | undefined;
+    let routingMs = -1;
     try {
       if (body.unified_session_id) {
         session = await this.contexts.get(user, body.unified_session_id);
@@ -168,13 +177,21 @@ export class UnifiedAiService {
       ({ ref, reportDataset, currentPlan, currentEngineering } = await this.validate(user, ref));
       contextValidated = true;
       let message = body.message;
+      if (ref.current_type === 'REPORT' && ref.report_session_id && /^(?:open|select|diagnose)(?: the)? oldest(?: one| PO)?[.!?]?$/i.test(message)) {
+        if (!configuration.capabilities.includes('REPORT_BUILDER') || !configuration.capabilities.includes('BRAIN_QUERY')) throw new ForbiddenException('Report record selection is not available.');
+        const context = await this.reporting.oldestContext(user, ref.report_session_id);
+        const validated = await this.brain.validateContext(user, context);
+        if (!validated.enabled || !validated.context) throw new ForbiddenException('The selected report record is unavailable.');
+        ref = {current_type:'ERP_ENTITY',entity:validated.context};
+        message = /^diagnose/i.test(message) ? 'Diagnose this PO' : 'What is this PO status?';
+      }
       if (body.next_action) {
         const action = this.actions(configuration, ref, reportDataset).find(action => action.key === body.next_action);
         if (!action) throw new ForbiddenException('This next action is not available in your current authorized context.');
         message = action.message;
       }
       decision = selectUnifiedRoute(message, { contextType: ref.current_type, entityType: ref.entity?.entity_type, profile:configuration.profile,attachmentKinds: ref.document_ids?.length ? ['DOCUMENT'] : ref.import_batch_id ? ['SPREADSHEET'] : [] });
-      const routingMs = Date.now() - started;
+      routingMs = Date.now() - started;
       if (decision.operation === 'BLOCKED') {
         failureType = 'AUTHORIZATION'; result = { ...this.clarification(decision.question!), status: 'UNIFIED_BLOCKED' };
       } else if (!decision.route) { clarification = true; result = this.clarification(decision.question!); }
@@ -206,8 +223,12 @@ export class UnifiedAiService {
             } else if (ref.current_type === 'DOCUMENT_ANALYSIS' && /\b(?:history|previous purchases)\b/i.test(message)) {
               const documents = await Promise.all((ref.document_ids || []).map(id => this.documents.get(user, id)));
               result = await this.reporting.documentHistory(user, documents);
-            } else if (ref.entity && /\b(?:related|similar|previous purchases|purchase history)\b/i.test(message)) result = await this.reporting.contextualHistory(user, ref.entity);
+            } else if (ref.entity && /\b(?:related|similar|previous purchases|purchase history)\b/i.test(message)) result = await this.reporting.contextualHistory(user, ref.entity, /\bopen\b/i.test(message) ? {openOnly:true} : undefined);
             else result = await this.reporting.interpret(user, input);
+            if (/^export\b/i.test(message) && decision.operation !== 'EXPORT' && result?.report) {
+              if (!configuration.can_export) throw new ForbiddenException('Report export is not permitted.');
+              result.export_request = {session_id:result.session_id,version:result.report.version};
+            }
             break;
           case 'DOCUMENT_INTELLIGENCE':
             const references = [...new Set((message.match(/\b(?:RFQ|PO)[-/][A-Z0-9_/-]+/gi) || []).map((value: string) => value.trim()))];
@@ -274,7 +295,7 @@ export class UnifiedAiService {
           unified:{...result.unified,type:'PARTIAL_RESULT',content_type:'EVIDENCE',partial:true,context:{type:ref.current_type,label:ref.entity.document_number || ref.entity.entity_type}} };
       }
     }
-    const event: UnifiedTelemetry = { route:decision.route,confidence:decision.confidence,routing_ms:Math.max(0,Date.now()-started-subsystemMs),response_ms:Date.now()-started,subsystem_ms:subsystemMs,handoff_count:handoff,failure_type:failureType || failures[0]?.type || null,partial_result:result.unified?.type === 'PARTIAL_RESULT',clarification,user_correction:body.user_correction === true };
+    const event: UnifiedTelemetry = { route:decision.route,confidence:decision.confidence,routing_ms:routingMs >= 0 ? routingMs : Math.max(0,Date.now()-started-subsystemMs),response_ms:Date.now()-started,subsystem_ms:subsystemMs,handoff_count:handoff,failure_type:failureType || failures[0]?.type || null,partial_result:result.unified?.type === 'PARTIAL_RESULT',clarification,user_correction:body.user_correction === true,performance:aiPerformance() };
     try { await this.contexts.telemetry(user, event); } catch { this.logger.warn('Unified AI health metadata is unavailable. No chat content was logged.');result.unified.telemetry_status='UNAVAILABLE'; }
     return result;
   }
@@ -287,12 +308,16 @@ export class UnifiedAiService {
     catch { session = undefined; failures.push({capability:null,type:'METADATA_UNAVAILABLE',message:'The answer is available, but its working context could not be saved. Start a fresh task before relying on follow-up references.'}); }
     const incomplete = result.proactive_brief?.incomplete_sources?.length || result.incomplete_sources?.length || result.items?.some((item: any) => item.confidence === 'INSUFFICIENT_EVIDENCE') || result.diagnoses?.some((item: any) => item.confidence === 'INSUFFICIENT_EVIDENCE');
     const partial = failures.length > 0 || !!incomplete;
-    const message = String(result.assistant_message || result.summary || result.report?.plan?.title || 'The authorized result is ready.');
+    const originalMessage = customerAiMessage(String(result.assistant_message || result.summary || result.report?.plan?.title || 'The authorized result is ready.'));
+    const partialMessages: Partial<Record<UnifiedRoute,string>> = {BRAIN_QUERY:'The selected record is available, but some related information could not be checked.',DATA_DOCTOR:'I found the selected record, but some diagnosis checks could not be completed.',REPORT_BUILDER:'Report data is available, but some values could not be verified.',DOCUMENT_INTELLIGENCE:'Document evidence is available, but some extracted values need review.',PROACTIVE_OPERATIONS:'Some attention checks are unavailable. The recorded findings are shown.'};
+    const message = incomplete && decision.route ? `${partialMessages[decision.route] || 'Some checks could not be completed.'} ${originalMessage}` : originalMessage;
     return { status:'UNIFIED_READY',intent_type:'UNIFIED_AI',provider:'MIZANTRA_UNIFIED_AI_V1',safety:{read_only:true,executable:false},extracted:{},resolved:{},questions:[],context_token:'',...result,assistant_message:message,unified:{version:1,type:partial ? 'PARTIAL_RESULT' : this.resultType(decision.route,result),content_type:this.resultType(decision.route,result),route:decision.route,confidence:decision.confidence,session_id:session?.id || null,session_version:session?.version || null,context:{type:ref.current_type || null,label:ref.entity?.document_number || (ref.current_type === 'REPORT' ? 'Current report' : ref.current_type?.replaceAll('_',' ').toLowerCase() || null)},next_actions:this.actions(configuration,ref,reportDataset),failures,partial,timing:{routing_ms:routingMs,subsystem_ms:subsystemMs},executable:false,autonomous_execution:false} };
   }
   async health(user: any) {
     const health = await this.contexts.health(user), configuration = await this.configuration(user);
-    return { ...health, enabled:configuration.enabled,router:configuration.router,capabilities:configuration.capabilities,modes:configuration.modes,status:!configuration.enabled ? 'DISABLED' : health.routing_failures ? 'DEGRADED' : 'AVAILABLE',specialist_links:hasAdminBypass(user) ? ['/dashboard/support/admin/brain','/dashboard/support/admin/autoqa','/dashboard/support/admin','/dashboard/support/admin/smart-imports'] : [] };
+    const extraction = this.documents.operationalHealth?.(user) || {ocr_fallback_rate:null,document_extraction_failure_rate:null};
+    const capability_status = Object.fromEntries(['UNIFIED_ROUTER','BRAIN_QUERY','DATA_DOCTOR','REPORT_BUILDER','DOCUMENT_INTELLIGENCE','SMART_APPROVAL','ACTION_PLANNER','PROACTIVE_OPERATIONS','SMART_IMPORT','AUTOENGINEER','AUTOQA'].map(capability => [capability, capability === 'UNIFIED_ROUTER' ? configuration.enabled && configuration.router ? 'AVAILABLE' : 'DISABLED' : capability === 'AUTOQA' ? process.env.AUTOQA_ENABLED === 'true' ? 'AVAILABLE' : 'DISABLED' : configuration.capabilities.includes(capability as UnifiedRoute) ? 'AVAILABLE' : 'DISABLED_OR_NOT_PERMITTED']));
+    return { ...health,...extraction, enabled:configuration.enabled,router:configuration.router,capabilities:configuration.capabilities,capability_status,health_kind:'OPERATIONAL_CONFIGURATION_AND_SCOPED_METRICS',release_sha:/^[a-f0-9]{40}$/i.test(process.env.BUILD_GIT_SHA || '') ? process.env.BUILD_GIT_SHA : null,modes:configuration.modes,status:!configuration.enabled ? 'DISABLED' : health.routing_failures ? 'DEGRADED' : 'AVAILABLE',specialist_links:hasAdminBypass(user) ? ['/dashboard/support/admin/brain','/dashboard/support/admin/autoqa','/dashboard/support/admin','/dashboard/support/admin/smart-imports'] : [] };
   }
   async correction(user: any, body: any) {
     if (!unifiedFlags().enabled || !unifiedFlags().router) throw new ForbiddenException('Unified AI is not enabled.');

@@ -38,7 +38,7 @@ describe("SupportStoreService.listMine", () => {
     ]);
     expect(query.in).toHaveBeenCalledWith("status", expect.arrayContaining(["FAILED", "ESCALATED", "ROLLED_BACK"]));
     expect(query.select).toHaveBeenCalledWith(
-      "id,title,module,status,created_at,updated_at,occurrence_count,archived_at,archived_by",
+      "id,title,module,status,request_type,created_at,updated_at,occurrence_count,archived_at,archived_by",
     );
     expect(result).toEqual([
       { id: "owned", title: "My issue", module: "Purchasing", status: "NEW" },

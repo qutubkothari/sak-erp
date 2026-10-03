@@ -1,57 +1,13 @@
 {
-  "version": 1,
-  "baseline_sha": "213d4c33288bbaf661541aaceddfd3a983610e11",
+  "version": 2,
+  "baseline_sha": "467fb3be12b292fe63d7eddf2884571ec30965ea",
+  "remediation_release": "mizantra-ai-hardening-v1",
   "temporary": true,
   "remediation_required": true,
   "policy": "No new failure identities, changed failure kinds, diagnostic signatures, or increased occurrence counts.",
-  "test_suites": 112,
-  "tests": 1484,
-  "failures": [
-    {
-      "identity": "src/intelligence/active-planner.service.spec.ts::Active Planner deterministic extraction gives the semantic router the full workflow catalogue and cross-module boundaries",
-      "signature": "TypeError: db.from(...).select(...).eq(...).maybeSingle is not a function"
-    },
-    {
-      "identity": "src/intelligence/active-planner.service.spec.ts::Active Planner deterministic extraction lets a valid semantic model decision override keyword fallback routing",
-      "signature": "TypeError: db.from(...).select(...).eq(...).maybeSingle is not a function"
-    },
-    {
-      "identity": "src/intelligence/active-planner.service.spec.ts::Active Planner deterministic extraction rejects a forbidden intent before querying tenant masters",
-      "signature": "Error: expect(received).rejects.toBeInstanceOf(expected)"
-    },
-    {
-      "identity": "src/intelligence/active-planner.service.spec.ts::Active Planner deterministic extraction returns a read-only analytical answer without querying transactional masters",
-      "signature": "TypeError: Cannot read properties of undefined (reading 'select')"
-    },
-    {
-      "identity": "src/intelligence/active-planner.service.spec.ts::Active Planner deterministic extraction uses multilingual AI classification when English keyword rules do not recognize the phrasing",
-      "signature": "TypeError: Cannot read properties of undefined (reading 'select')"
-    },
-    {
-      "identity": "src/items/services/items.service.spec.ts::ItemsService temporary R&D procurement items preserves long technical descriptions while keeping the display name within its database limit",
-      "signature": "Error: expect(jest.fn()).toHaveBeenCalledWith(...expected)"
-    },
-    {
-      "identity": "src/mrp/mrp.service.spec.ts::MrpService planner decisions consumes approved forecast with open sales orders in the same month",
-      "signature": "Error: expect(received).toEqual(expected) // deep equality"
-    },
-    {
-      "identity": "src/mrp/mrp.service.spec.ts::MrpService planner decisions consumes undated sales demand against the earliest forecast buckets once",
-      "signature": "Error: expect(received).toEqual(expected) // deep equality"
-    },
-    {
-      "identity": "src/mrp/mrp.service.spec.ts::MrpService planner decisions uses total open sales demand for forecast consumption even when production already covers it",
-      "signature": "Error: expect(received).toMatchObject(expected)"
-    },
-    {
-      "identity": "src/support-autofix/support-store.mine.spec.ts::SupportStoreService.listMine scopes issue details to both the authenticated tenant and reporter",
-      "signature": "Error: expect(jest.fn()).toHaveBeenCalledWith(...expected)"
-    },
-    {
-      "identity": "src/support-autofix/worker-processor.spec.ts::isolated AutoHeal coding worker never invokes Codex for a HIGH-risk incident",
-      "signature": "Error: AUTOHEAL_INFRASTRUCTURE_FAILURE: persisted attempt identity does not match its queued incident and worktree."
-    }
-  ],
+  "test_suites": 118,
+  "tests": 1625,
+  "failures": [],
   "diagnostics": [
     "src/accounting/accounting.service.ts(LOCATION): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.",
     "src/auth/auth.service.spec.ts(LOCATION): error TS2339: Property 'user' does not exist on type '{ requiresTenantSelection: boolean; message: string; tenants: LoginTenantOption[]; } | { accessToken: string; refreshToken: string; user: any; requiresTenantSelection?: undefined; message?: undefined; tenants?: undefined; }'.",
@@ -91,29 +47,6 @@
     "src/hr/services/hr.service.ts(LOCATION): error TS2393: Duplicate function implementation.",
     "src/intelligence/conversational-analytics.service.ts(LOCATION): error TS18047: 'left.weighted_average_rate' is possibly 'null'.",
     "src/intelligence/conversational-analytics.service.ts(LOCATION): error TS18047: 'right.weighted_average_rate' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS18047: 'result' is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS2339: Property 'brain_context' does not exist on type '{ status: string; intent_type: string; provider: string; assistant_message: string; message: string; summary: string; extracted: {}; resolved: {}; questions: never[]; context_token: string; safety: { ...; }; diagnoses: never[]; evidence: never[]; entities: never[]; }'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS2339: Property 'evidence' does not exist on type 'never'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS2339: Property 'execution_enabled' does not exist on type '{ status: string; intent_type: string; provider: string; assistant_message: string; message: string; summary: string; extracted: {}; resolved: {}; questions: never[]; context_token: string; safety: { ...; }; diagnoses: never[]; evidence: never[]; entities: never[]; }'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS2339: Property 'support_incident' does not exist on type '{ status: string; intent_type: string; provider: string; assistant_message: string; message: string; summary: string; extracted: {}; resolved: {}; questions: never[]; context_token: string; safety: { ...; }; diagnoses: never[]; evidence: never[]; entities: never[]; }'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS2531: Object is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS2531: Object is possibly 'null'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS2532: Object is possibly 'undefined'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS2532: Object is possibly 'undefined'.",
-    "src/intelligence/data-doctor.service.spec.ts(LOCATION): error TS2532: Object is possibly 'undefined'.",
-    "src/intelligence/data-doctor.service.ts(LOCATION): error TS2339: Property 'brain_context' does not exist on type '{ status: string; intent_type: string; provider: string; assistant_message: string; message: string; summary: string; extracted: {}; resolved: {}; questions: never[]; context_token: string; safety: { ...; }; diagnoses: never[]; evidence: never[]; entities: never[]; }'.",
-    "src/intelligence/data-doctor.service.ts(LOCATION): error TS2339: Property 'brain_context' does not exist on type '{ status: string; intent_type: string; provider: string; assistant_message: string; message: string; summary: string; extracted: {}; resolved: {}; questions: never[]; context_token: string; safety: { ...; }; diagnoses: never[]; evidence: never[]; entities: never[]; }'.",
     "src/intelligence/governed-action.service.spec.ts(LOCATION): error TS2554: Expected 12 arguments, but got 6.",
     "src/intelligence/governed-action.service.spec.ts(LOCATION): error TS2554: Expected 12 arguments, but got 6.",
     "src/intelligence/governed-action.service.spec.ts(LOCATION): error TS2554: Expected 12 arguments, but got 6.",
@@ -136,7 +69,6 @@
     "src/intelligence/planner-support.service.spec.ts(LOCATION): error TS7006: Parameter 'row' implicitly has an 'any' type.",
     "src/intelligence/planner-support.service.ts(LOCATION): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.",
     "src/intelligence/planner-support.service.ts(LOCATION): error TS2345: Argument of type '{ brain_context?: { profile: any; tenant_id: any; current_route: any; module: any; entity_type: any; entity_id: any; current_user_id: any; } | undefined; request_type: AutoEngineerRequestType | null; ... 14 more ...; prompt_scope: string; }' is not assignable to parameter of type 'IncidentInput'.",
-    "src/intelligence/semantic-erp-query.service.spec.ts(LOCATION): error TS2322: Type '\"OVERDUE\"' is not assignable to type '\"\" | \"COUNT\" | \"LATEST\" | \"RANK_TOP\" | \"LIST\" | \"STATUS_SUMMARY\" | \"SUMMARY\" | undefined'.",
     "src/inventory/services/inventory.service.spec.ts(LOCATION): error TS2554: Expected 4 arguments, but got 3.",
     "src/inventory/services/inventory.service.spec.ts(LOCATION): error TS2554: Expected 4 arguments, but got 3.",
     "src/inventory/services/inventory.service.spec.ts(LOCATION): error TS2554: Expected 4 arguments, but got 3.",
@@ -284,7 +216,12 @@
     "src/support-autofix/support-autofix.service.ts(LOCATION): error TS2345: Argument of type '{ risk: AutoHealRisk; engineeringApproved: boolean; module: any; category: any; changedPaths: any; diff: string; linesChanged: number; validation: { build: { passed: boolean; detail: string; }; smoke: any; }; initialRisk: AutoHealRisk; }' is not assignable to parameter of type 'SafetyGateInput & { risk: AutoHealRisk; engineeringApproved?: boolean | undefined; }'.",
     "src/support-autofix/support-store.mine.spec.ts(LOCATION): error TS2493: Tuple type '[]' of length '0' has no element at index '0'.",
     "src/support-autofix/support-store.mine.spec.ts(LOCATION): error TS2493: Tuple type '[]' of length '0' has no element at index '0'.",
-    "src/support-autofix/support-store.mine.spec.ts(LOCATION): error TS2493: Tuple type '[]' of length '0' has no element at index '0'.",
-    "src/support-autofix/worker-processor.ts(LOCATION): error TS2552: Cannot find name 'incident'. Did you mean 'incidentId'?"
+    "src/support-autofix/support-store.mine.spec.ts(LOCATION): error TS2493: Tuple type '[]' of length '0' has no element at index '0'."
+  ],
+  "known_limitations": [
+    "OCR fixture provider responses are mocked; production model accuracy remains document-dependent and uncertain facts require review.",
+    "Query timings cover instrumented Brain reads, not every native subsystem query.",
+    "Extraction operational rates are scoped since API start and reset on restart.",
+    "Saif Ask remains subject to the existing product entitlement gate."
   ]
 }

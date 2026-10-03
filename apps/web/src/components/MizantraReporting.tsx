@@ -1,5 +1,5 @@
 "use client";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { Component, FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDown,
@@ -103,6 +103,14 @@ const display = (value: unknown) =>
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Report unavailable.";
 
+class ReportChartBoundary extends Component<{children:ReactNode}, {failed:boolean}> {
+  state = {failed:false};
+  static getDerivedStateFromError() { return {failed:true}; }
+  render() {
+    return this.state.failed ? <p role="status" className="border-l-2 border-amber-500 pl-3 text-sm">Report data loaded, but the chart is unavailable. You can still view or export the table.</p> : this.props.children;
+  }
+}
+
 export function ReportingResultView({
   report,
   onPage,
@@ -113,7 +121,7 @@ export function ReportingResultView({
   const numeric = report.columns.filter((column) => column.type === "number");
   const groups = report.columns.filter((column) => column.type !== "number");
   const partitions = new Map<string, Record<string, any>[]>();
-  for (const row of report.chart_data || report.rows) {
+  for (const row of report.chart_data?.length ? report.chart_data : report.rows) {
     const key =
       [row.currency, row.uom].filter(Boolean).join(" / ") || "Recorded values";
     partitions.set(key, [
@@ -170,8 +178,8 @@ export function ReportingResultView({
           )}
         </dl>
       )}
-      {["BAR", "LINE", "DONUT"].includes(report.plan.visualization) &&
-        [...partitions].map(([unit, data]) => (
+      {["BAR", "LINE", "DONUT"].includes(report.plan.visualization) && <ReportChartBoundary key={report.version}>
+        {[...partitions].map(([unit, data]) => (
           <div key={unit} className="min-w-0">
             <h3 className="mb-2 text-sm font-medium">{unit}</h3>
             <div className="h-64 w-full min-w-0">
@@ -232,8 +240,12 @@ export function ReportingResultView({
               </ResponsiveContainer>
             </div>
           </div>
-        ))}
-      <div className="max-w-full overflow-x-auto border-y">
+        ))}</ReportChartBoundary>}
+      <div className="space-y-4 sm:hidden" aria-label="Report records">
+        {report.rows.map((row,index)=><dl key={index} className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-x-3 gap-y-2 border-b pb-4 text-sm">{report.columns.map(column=><div key={column.key} className="contents"><dt className="min-w-0 break-words text-gray-600">{column.label}</dt><dd className="min-w-0 break-words [overflow-wrap:anywhere]">{display(row[column.key])}</dd></div>)}</dl>)}
+        {!report.rows.length&&<p className="py-3 text-sm text-gray-600">No matching records</p>}
+      </div>
+      <div className="hidden max-w-full overflow-x-auto border-y sm:block">
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50">
             <tr>
@@ -274,7 +286,7 @@ export function ReportingResultView({
             aria-label="Previous page"
             disabled={report.page <= 1}
             onClick={() => onPage(report.page - 1)}
-            className="rounded-md border p-2 disabled:opacity-40"
+            className="flex h-11 w-11 items-center justify-center rounded-md border disabled:opacity-40"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -287,7 +299,7 @@ export function ReportingResultView({
             aria-label="Next page"
             disabled={report.page >= report.pages}
             onClick={() => onPage(report.page + 1)}
-            className="rounded-md border p-2 disabled:opacity-40"
+            className="flex h-11 w-11 items-center justify-center rounded-md border disabled:opacity-40"
           >
             <ChevronRight className="h-4 w-4" />
           </button>

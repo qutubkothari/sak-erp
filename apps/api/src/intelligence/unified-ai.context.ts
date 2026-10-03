@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { hasAdminBypass } from '../auth/utils/permission-utils';
 import type { BrainContext } from './brain.service';
 import { RouteDecision, UnifiedContextType, UNIFIED_ROUTES } from './unified-ai.registry';
+import { AiPerformance, AI_LATENCY_TARGETS } from './unified-ai.performance';
 
 export type UnifiedWorkingRef = {
   current_type?: UnifiedContextType;
@@ -24,6 +25,7 @@ export type UnifiedTelemetry = {
   routing_ms: number; response_ms: number; subsystem_ms: number; handoff_count: number;
   failure_type: 'AUTHORIZATION' | 'INVALID_INPUT' | 'UNAVAILABLE' | 'METADATA_UNAVAILABLE' | null;
   partial_result: boolean; clarification: boolean; user_correction: boolean;
+  performance?: AiPerformance;
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const types: UnifiedContextType[] = ['ERP_ENTITY','REPORT','DASHBOARD','DOCUMENT_ANALYSIS','IMPORT_BATCH','DIAGNOSIS','AUTOQA_FINDING','ENGINEERING_REQUEST','ACTION_PLAN','APPROVAL_REVIEW','ATTENTION_ITEM'];
@@ -89,18 +91,26 @@ export class UnifiedAiContextService {
   async telemetry(user: any, event: UnifiedTelemetry) {
     const scope = this.scope(user);
     if (event.route && !UNIFIED_ROUTES.includes(event.route)) throw new ForbiddenException('Unregistered capability.');
-    const { error } = await this.db.from('mizantra_unified_telemetry').insert({ id: randomUUID(), tenant_id: scope.tenant, profile: scope.profile, owner_id: scope.owner, ...event });
+    const performance = event.performance && Object.fromEntries(['query_ms','query_count','slow_query_count','cache_hits','model_calls'].map(key => [key, Math.max(0, Math.round(Number(event.performance?.[key as keyof AiPerformance]) || 0))]));
+    const { error } = await this.db.from('mizantra_unified_telemetry').insert({ id: randomUUID(), tenant_id: scope.tenant, profile: scope.profile, owner_id: scope.owner, ...event, ...(performance ? { performance } : {}) });
     if (error) throw new ServiceUnavailableException('AI routing health metadata could not be recorded.');
   }
   async health(user: any) {
     if (!hasAdminBypass(user)) throw new ForbiddenException('Admin authorization is required.');
     const scope = this.scope(user);
-    const { data, error } = await this.db.from('mizantra_unified_telemetry').select('route,confidence,routing_ms,response_ms,subsystem_ms,handoff_count,failure_type,partial_result,clarification,user_correction').eq('tenant_id', scope.tenant).eq('profile', scope.profile).gte('created_at', new Date(Date.now() - 86400000).toISOString()).order('created_at', { ascending: false }).limit(2001);
+    const { data, error } = await this.db.from('mizantra_unified_telemetry').select('route,confidence,routing_ms,response_ms,subsystem_ms,handoff_count,failure_type,partial_result,clarification,user_correction,performance').eq('tenant_id', scope.tenant).eq('profile', scope.profile).gte('created_at', new Date(Date.now() - 86400000).toISOString()).order('created_at', { ascending: false }).limit(2001);
     if (error) throw new ServiceUnavailableException('AI routing health is temporarily unavailable.');
     const rows = (data || []).slice(0, 2000), routes = UNIFIED_ROUTES.map(route => {
       const used = rows.filter(row => row.route === route);
       return { route, count: used.length, average_subsystem_ms: used.length ? Math.round(used.reduce((total, row) => total + row.subsystem_ms, 0) / used.length) : 0, failures: used.filter(row => row.failure_type).length };
     });
-    return { profile: scope.profile, scope: 'CURRENT_TENANT_PROFILE_LAST_24_HOURS', truncated: (data || []).length > 2000, request_count: rows.length, average_response_ms: rows.length ? Math.round(rows.reduce((total, row) => total + row.response_ms, 0) / rows.length) : 0, routing_failures: rows.filter(row => row.failure_type).length, handoff_failures: rows.filter(row => row.failure_type && row.handoff_count).length, partial_results: rows.filter(row => row.partial_result).length, clarifications: rows.filter(row => row.clarification).length, corrections: rows.filter(row => row.user_correction).length, routes };
+    const sampled = rows.filter(row => row.route && !row.user_correction);
+    const percentile = (field: 'routing_ms' | 'subsystem_ms', fraction: number) => {
+      const values = sampled.map(row => Number(row[field])).filter(Number.isFinite).sort((left, right) => left - right);
+      return values.length ? values[Math.max(0, Math.ceil(values.length * fraction) - 1)] : null;
+    };
+    const rate = (field: 'partial_result' | 'clarification') => sampled.length ? sampled.filter(row => row[field]).length / sampled.length : null;
+    const performance = { routing_p50_ms: percentile('routing_ms', .5), routing_p95_ms: percentile('routing_ms', .95), subsystem_p50_ms: percentile('subsystem_ms', .5), subsystem_p95_ms: percentile('subsystem_ms', .95), partial_failure_rate: rate('partial_result'), clarification_rate: rate('clarification'), slow_query_count: sampled.reduce((total, row) => total + Number(row.performance?.slow_query_count || 0), 0), deterministic_requests: sampled.filter(row => row.performance && row.performance.model_calls === 0).length, llm_requests: sampled.filter(row => row.performance?.model_calls > 0).length, query_metrics_coverage: 'INSTRUMENTED_BRAIN_READS_ONLY', target_violations: sampled.filter(row => row.routing_ms > AI_LATENCY_TARGETS.routing_ms || row.subsystem_ms > (AI_LATENCY_TARGETS[row.route as keyof typeof AI_LATENCY_TARGETS] || Infinity)).length, targets: AI_LATENCY_TARGETS };
+    return { ...performance, profile: scope.profile, scope: 'CURRENT_TENANT_PROFILE_LAST_24_HOURS', truncated: (data || []).length > 2000, request_count: rows.length, average_response_ms: rows.length ? Math.round(rows.reduce((total, row) => total + row.response_ms, 0) / rows.length) : 0, routing_failures: rows.filter(row => row.failure_type).length, handoff_failures: rows.filter(row => row.failure_type && row.handoff_count).length, partial_results: rows.filter(row => row.partial_result).length, clarifications: rows.filter(row => row.clarification).length, corrections: rows.filter(row => row.user_correction).length, routes };
   }
 }

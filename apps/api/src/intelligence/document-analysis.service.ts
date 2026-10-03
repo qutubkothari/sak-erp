@@ -43,6 +43,7 @@ export class DocumentAnalysisService {
     process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY!,
   );
   private readonly running = new Set<string>();
+  private readonly extractionMetrics = new Map<string, {attempts:number;fallbacks:number;failures:number}>();
   constructor(
     private readonly orders: PurchaseOrdersService,
     private readonly brain: BrainService,
@@ -231,6 +232,14 @@ export class DocumentAnalysisService {
       );
     await this.privateBucket();
     this.running.add(ownerKey);
+    const metricsKey = `${scope.tenant}:${scope.profile}`;
+    const metrics = this.extractionMetrics.get(metricsKey) || {attempts:0,fallbacks:0,failures:0};
+    metrics.attempts++;
+    if (this.extractionMetrics.size >= 1000 && !this.extractionMetrics.has(metricsKey)) {
+      const oldest = this.extractionMetrics.keys().next().value;
+      if (oldest) this.extractionMetrics.delete(oldest);
+    }
+    this.extractionMetrics.set(metricsKey,metrics);
     let path: string | undefined, insertedId: string | undefined;
     try {
       const validated = await safeDocumentFile(file),
@@ -239,6 +248,7 @@ export class DocumentAnalysisService {
           String(file.originalname).slice(0, 180),
           String(instruction).slice(0, 1000),
         );
+      metrics.fallbacks += Number(extraction.warnings.some(warning => /unavailable|manually/i.test(warning)));
       this.typeAccess(scope, extraction.type);
       const id = randomUUID(),
         extension =
@@ -294,6 +304,7 @@ export class DocumentAnalysisService {
       });
       return this.publicDocument(row);
     } catch (error) {
+      metrics.failures++;
       if (path) await this.db.storage.from(bucket).remove([path]);
       if (insertedId)
         await this.db
@@ -972,12 +983,19 @@ export class DocumentAnalysisService {
     }
     return { removed, erp_business_writes: 0 };
   }
+  operationalHealth(user: any) {
+    if (!hasAdminBypass(user)) throw new ForbiddenException('Administrator access is required.');
+    const scope = this.scope(user,false);
+    const metrics = this.extractionMetrics.get(`${scope.tenant}:${scope.profile}`) || {attempts:0,fallbacks:0,failures:0};
+    return {metrics_scope:'CURRENT_TENANT_PROFILE_SINCE_API_START',extraction_attempts:metrics.attempts,ocr_fallback_rate:metrics.attempts ? metrics.fallbacks / metrics.attempts : null,document_extraction_failure_rate:metrics.attempts ? metrics.failures / metrics.attempts : null};
+  }
   async health(user: any) {
     const scope = this.scope(user);
     if (!hasAdminBypass(user))
       throw new ForbiddenException("Administrator access is required.");
     await this.privateBucket();
     return {
+      ...this.operationalHealth(user),
       enabled: true,
       profile: scope.profile,
       storage: "PRIVATE_AUTHORIZED_PROXY",

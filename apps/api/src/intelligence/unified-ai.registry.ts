@@ -38,6 +38,7 @@ export function selectUnifiedRoute(message: string, input: RouteInput = {}): Rou
     ({ route, operation, confidence: contextual ? 'CONTEXTUAL' : 'EXACT' });
   const clarify = (question: string): RouteDecision => ({ route: null, operation: 'INTERPRET', confidence: 'CLARIFICATION', question });
   const profileRequest = text.match(/\b(?:show|use|read|access|from)\s+(?:the\s+)?(ARWA|SAIFSEAS|MIZANTRA)\b.*\b(?:records|data|tenant)\b/i);
+  if (/\bexecute\b.*\b(?:plan|approval token)\b/i.test(text)) return {route:null,operation:'BLOCKED',confidence:'EXACT',question:'Approval and execution require the native governed controls and a valid approval token.'};
   if (input.profile && profileRequest && profileRequest[1].toUpperCase() !== input.profile) return { route:null,operation:'BLOCKED',confidence:'EXACT',question:'I can only use records authorized in your current tenant and environment.' };
   if (/\b(?:ignore|bypass|override)\b.*\b(?:permissions?|security|tenant|restrictions?)\b|\b(?:another|different) tenant\b|\b(?:run|execute)\s+(?:raw\s+)?sql\b|\b(?:select\s+.+\s+from|drop\s+table|executeSQL|genericWrite|genericAPIAction)\b|\b(?:skip|bypass)\b.*\b(?:approval|confirmation)\b|\bapprove\b.*\b(?:automatically|then|also)\b|\b(?:then|and)\s+approve\b/i.test(text)) {
     return { route: null, operation: 'BLOCKED', confidence: 'EXACT', question: 'I cannot bypass permissions, change tenants, run SQL, or approve actions automatically.' };
@@ -55,6 +56,7 @@ export function selectUnifiedRoute(message: string, input: RouteInput = {}): Rou
   if (/\b(?:review|check)\b.*\b(?:before approval|approv|price|quotation)\b/i.test(text)) return choose('SMART_APPROVAL');
   if (/\b(?:broken|software issue|bug|search.*(?:wrong|fail)|field.*(?:wrong|fail))\b|\b(?:fix|repair)\b.*\b(?:search|software|screen|field|button|application)\b/i.test(text)) return choose('AUTOENGINEER', input.contextType === 'DIAGNOSIS' ? 'PREPARE_FIX' : 'INTERPRET');
   if (/\b(?:diagnos|reconcil|data issue|data problem|stock wrong|stock incorrect|inconsisten|duplicate|why.*wrong)\w*/i.test(text) || /^check (?:this|the) GRN\b/i.test(text)) return choose('DATA_DOCTOR', 'INTERPRET', !!input.contextType);
+  if (/^export\b.*\b(?:related|open|overdue)\b.*\b(?:POs|orders)\b/i.test(text)) return choose('REPORT_BUILDER', 'INTERPRET', !!input.contextType);
   if (/\bexport\b/i.test(text)) return input.contextType === 'REPORT' ? choose('REPORT_BUILDER', 'EXPORT', true) : clarify('Which authorized report would you like to export?');
   if (input.contextType === 'REPORT' && /^(?:only|filter|group|sort|limit|top|instead|the same supplier)\b/i.test(text)) return choose('REPORT_BUILDER', 'REFINE', true);
   if (/\b(?:show|list|report|chart|count|total)\b.*\b(?:overdue|open POs?|similar POs?|history|POs|items|suppliers|purchases|dashboard)\b/i.test(text) && !/\brelated GRNs\b/i.test(text)) return choose('REPORT_BUILDER');

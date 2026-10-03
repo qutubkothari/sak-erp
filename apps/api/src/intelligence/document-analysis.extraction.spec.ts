@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import { emptyExtraction } from './document-analysis.engine';
 import { extractDocument, safeDocumentFile } from './document-analysis.extraction';
+import { DOCUMENT_QUALITY_CASES, documentQualityFixture } from './document-quality.fixture';
 const mockCreateResponse = jest.fn();
 jest.mock('openai', () => ({ __esModule:true, default:jest.fn(() => ({ responses:{create:mockCreateResponse} })) }));
 describe('Bounded OCR preprocessing and fallback', () => {
@@ -65,4 +66,55 @@ describe('Bounded OCR preprocessing and fallback', () => {
     const result=await extractDocument({bytes:Buffer.from('fixture'),mime:'image/png',pages:[]},'document.png','');
     expect(result.warnings.join(' ')).toContain('manually');expect(result.fields.supplier.value).toBeNull();
   });
+  it('never upgrades provider LOW confidence', async () => {
+    const extraction = emptyExtraction();
+    extraction.fields.supplier = {kind:'EXTRACTED_FACT',value:'Unclear Supplier',page:1,snippet:'Unclear Supplier',confidence:'LOW',method:'VISION_OCR'};
+    mockCreateResponse.mockResolvedValue({output_text:JSON.stringify(extraction)});
+    const result = await extractDocument({bytes:Buffer.from('image fixture'),mime:'image/png',pages:[]},'quotation.png','');
+    expect(result.fields.supplier.confidence).toBe('LOW');
+    expect(mockCreateResponse).toHaveBeenCalledTimes(1);
+  });
+  it.each(DOCUMENT_QUALITY_CASES)('validates synthetic quality evidence and bounded fallback for %s', async kind => {
+    const fixture = await documentQualityFixture(kind);
+    const safe = await safeDocumentFile(fixture);
+    const drawing = kind === 'drawing-title-block', invoice = kind === 'rotated-invoice';
+    const extraction = emptyExtraction(drawing ? 'TECHNICAL_DRAWING' : invoice ? 'SUPPLIER_INVOICE' : 'SUPPLIER_QUOTATION');
+    extraction.classification_confidence = 'HIGH';
+    const field = drawing ? 'drawing_number' : invoice ? 'invoice_number' : 'quotation_number';
+    const value = drawing ? 'FIX-D-001' : invoice ? 'FIX-I-001' : 'FIX-Q-001';
+    extraction.fields[field] = {kind:'EXTRACTED_FACT',value,page:kind === 'mixed-raster-pdf' ? 2 : 1,snippet:value,confidence:kind === 'low-contrast' ? 'LOW' : 'HIGH',method:'VISION_OCR'};
+    mockCreateResponse.mockResolvedValue({output_text:JSON.stringify(extraction)});
+    const result = await extractDocument(safe,fixture.originalname,'');
+    expect(result.type).toBe(extraction.type);
+    expect(result.fields[field].value).toBe(value);
+    expect(result.fields[field].page).toBeGreaterThanOrEqual(1);
+    expect(['HIGH','MEDIUM','LOW']).toContain(result.fields[field].confidence);
+    if (kind === 'clean-quotation' || kind === 'mixed-raster-pdf') {
+      expect(result.lines[0].quantity.value).toBe(12);
+      expect(result.lines[0].quantity.confidence).toBe('HIGH');
+    } else expect(result.fields[field].confidence).toBe(kind === 'low-contrast' ? 'LOW' : 'MEDIUM');
+    expect(mockCreateResponse.mock.calls.length).toBeLessThanOrEqual(1);
+    mockCreateResponse.mockReset(); mockCreateResponse.mockRejectedValue(new Error('Unavailable'));
+    const fallback = await extractDocument(safe,fixture.originalname,'');
+    if (safe.mime !== 'application/pdf') expect(fallback.warnings.join(' ')).toContain('manually');
+    expect(mockCreateResponse.mock.calls.length).toBeLessThanOrEqual(1);
+  }, 30000);
+  it('extracts only raster pages with their original evidence map', async () => {
+    const { PDFDocument, StandardFonts } = await import('pdf-lib');
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    pdf.addPage().drawText('Supplier: Fixture Engineering', {font});
+    pdf.addPage();
+    const buffer = Buffer.from(await pdf.save());
+    const safe = await safeDocumentFile({buffer,size:buffer.length,mimetype:'application/pdf',originalname:'mixed.pdf'} as Express.Multer.File);
+    expect(safe.rasterPageNumbers).toEqual([2]);
+    if (!safe.rasterPdf) throw new Error('Expected selective raster PDF');
+    expect((await PDFDocument.load(safe.rasterPdf)).getPageCount()).toBe(1);
+    mockCreateResponse.mockResolvedValue({output_text:JSON.stringify(emptyExtraction())});
+    const result = await extractDocument(safe,'quotation.pdf','');
+    expect(result.fields.supplier.value).toBe('Fixture Engineering');
+    expect(result.fields.supplier.confidence).toBe('HIGH');
+    expect(mockCreateResponse.mock.calls[0][0].input[0].content.some((part: {text?:string}) => part.text?.includes('original_page'))).toBe(true);
+    expect(mockCreateResponse).toHaveBeenCalledTimes(1);
+  }, 30000);
 });

@@ -6,6 +6,7 @@ import { sanitizeSupportText } from "../support-autofix/support-store.service";
 import { classifyAutoEngineerIntent } from "../support-autofix/autoengineer-policy";
 import { brainActionPreview, brainDepth, brainFlags, BRAIN_MAX_RECORDS, BRAIN_TIMEOUT_MS } from "./brain-policy";
 import { BRAIN_REGISTRY, BRAIN_DIAGNOSTIC_RESOLVERS, brainEntitySummary } from "./brain-registry";
+import { observedBrainRead } from "./unified-ai.performance";
 
 export type BrainContext = {
   profile: string; tenant_id: string; current_route: string; module: string;
@@ -61,10 +62,12 @@ export class BrainService {
   }
 
   private async rows(query: any): Promise<Record<string, any>[]> {
+    return observedBrainRead(String(query.url || ''), async () => {
     const result = await query.limit(BRAIN_MAX_RECORDS + 1);
     if (result.error) throw new ServiceUnavailableException("Recorded evidence could not be loaded safely.");
     if ((result.data || []).length > BRAIN_MAX_RECORDS) throw new ServiceUnavailableException("There are too many related records for a complete Brain V1 answer. Narrow the context.");
     return result.data || [];
+    });
   }
 
   private async validated(scope: BrainScope, envelope: any, signal: AbortSignal) {

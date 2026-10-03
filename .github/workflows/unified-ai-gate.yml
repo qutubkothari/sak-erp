@@ -1,10 +1,14 @@
 name: Unified AI Regression Gate
 on:
+  workflow_dispatch:
+  push:
+    branches: ['clean-main', 'feature/mizantra-ai-hardening-v1']
   pull_request:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
       - 'packages/**'
+      - 'migrations/add-unified-ai.sql'
       - 'scripts/qa/unified-ai*'
       - 'scripts/qa/baselines/unified-ai-v1.json'
       - '.github/workflows/unified-ai-gate.yml'

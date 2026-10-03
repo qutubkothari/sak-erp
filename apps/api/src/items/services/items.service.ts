@@ -1215,13 +1215,13 @@ export class ItemsService {
     ).trim();
     const rawVendorId = String(body?.vendor_id ?? body?.vendorId ?? "").trim();
     const vendorId = rawVendorId || null;
-    const description =
-      String(
+    const rawDescription = String(
         body?.description ??
           body?.item_description ??
           body?.itemDescription ??
           "",
-      ).trim() || null;
+      );
+    const description = rawDescription.trim() ? rawDescription : null;
     const oemName = this.normalizeOptionalText(
       body?.oem_name ??
         body?.oemName ??

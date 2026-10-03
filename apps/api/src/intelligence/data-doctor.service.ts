@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { hasAdminBypass } from "../auth/utils/permission-utils";
-import { BrainDiagnosticEvidence, BrainService } from "./brain.service";
+import { BrainContext, BrainDiagnosticEvidence, BrainService } from "./brain.service";
 import { BRAIN_REGISTRY, brainEntitySummary } from "./brain-registry";
 import { DATA_DOCTOR_RULES, DoctorModule, DoctorSnapshot, evaluateDoctor } from "./data-doctor.rules";
 
@@ -13,13 +13,27 @@ const supported: Record<string, DoctorModule[]> = {
   supplier: ["ITEM"],
 };
 
+type DoctorReply = {
+  status: string; intent_type: string; provider: string;
+  assistant_message: string; message: string; summary: string;
+  extracted: Record<string, unknown>; resolved: Record<string, unknown>;
+  questions: string[]; context_token: string;
+  safety: { read_only: boolean; executable: boolean };
+  diagnoses: ReturnType<typeof evaluateDoctor>["diagnoses"];
+  evidence: Array<{ claim: string; values: Record<string, unknown> }>;
+  entities: DoctorSnapshot["related_entities"];
+  brain_context?: BrainContext; execution_enabled?: boolean;
+  rules_executed?: string[];
+  timeline?: Array<ReturnType<typeof brainEntitySummary> & { recorded_at: unknown; issue_keys: string[] }>;
+};
+
 @Injectable()
 export class DataDoctorService {
   private readonly logger = new Logger(DataDoctorService.name);
   private readonly metrics = new Map<string, { count: number; duration: number; errors: number }>();
   constructor(private readonly brain: BrainService) {}
 
-  private reply(message: string, extra: Record<string, any> = {}) {
+  private reply(message: string, extra: Partial<DoctorReply> = {}): DoctorReply {
     return { status: "DATA_DOCTOR_READ_ONLY", intent_type: "DATA_DOCTOR", provider: "DETERMINISTIC_DATA_DOCTOR_V1", assistant_message: message, message, summary: message,
       extracted: {}, resolved: {}, questions: [], context_token: "", safety: { read_only: true, executable: false }, diagnoses: [], evidence: [], entities: [], ...extra };
   }

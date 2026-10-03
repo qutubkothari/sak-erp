@@ -34,11 +34,16 @@ function counts(values) {
 function validateEvidence(result, typeLog, baselineMode = false) {
   if (!Array.isArray(result.testResults) || result.numTotalTestSuites < 112 || result.numTotalTests < 1484 || result.testResults.length !== result.numTotalTestSuites || /FATAL ERROR|heap out of memory|Cannot find module|Aborted/i.test(typeLog)) throw new Error('Incomplete regression evidence or failed compiler process.');
   if (!baselineMode) {
-    const required = ['unified-ai.registry','unified-ai.context','unified-ai.service','unified-ai.integration','document-analysis.extraction'];
+    const required = ['unified-ai.registry','unified-ai.context','unified-ai.service','unified-ai.integration','unified-ai.performance','document-analysis.extraction','brain.service','data-doctor.service','reporting.service','document-analysis.service','action-operator.service','smart-import.service','worker-processor'];
     for (const name of required) {
       const suite = result.testResults.find(suite => String(suite.name).replace(/\\/g,'/').endsWith('/' + name + '.spec.ts'));
       if (!suite || suite.status !== 'passed' || !suite.assertionResults?.length || suite.assertionResults.some(test => test.status !== 'passed')) throw new Error('Required feature suite did not pass completely: ' + name);
     }
+    const assertions = result.testResults.flatMap(suite => suite.assertionResults || []);
+    for (const scenario of ['A','B','C','D','E','F']) {
+      if (!assertions.some(test => test.status === 'passed' && test.fullName.includes('customer scenario ' + scenario + ' '))) throw new Error('Customer scenario pack is missing: ' + scenario);
+    }
+    if (assertions.filter(test => test.status === 'passed' && test.fullName.includes('security pack ')).length < 13) throw new Error('Security regression pack is incomplete.');
   }
 }
 function compare(baseline, current) {
@@ -78,6 +83,12 @@ function main() {
     console.log(JSON.stringify({baseline_sha:originalSha,registered_failures:11,registered_diagnostics:233,temporary:true}));return;
   }
   const comparison=compare(JSON.parse(fs.readFileSync(registerPath,'utf8')),current);
+  if (args.includes('--refresh-debt')) {
+    assert(comparison.passed, 'Debt refresh must not exempt new or worsened diagnostics');
+    assert.equal(current.failures.length, 0, 'All registered test failures must be fixed before debt refresh');
+    const register = {version:2,baseline_sha:'467fb3be12b292fe63d7eddf2884571ec30965ea',remediation_release:'mizantra-ai-hardening-v1',temporary:true,remediation_required:current.diagnostics.length > 0,policy:'No new failure identities, changed failure kinds, diagnostic signatures, or increased occurrence counts.',test_suites:testResult.numTotalTestSuites,tests:testResult.numTotalTests,failures:[],diagnostics:current.diagnostics,known_limitations:['OCR fixture provider responses are mocked; production model accuracy remains document-dependent and uncertain facts require review.','Query timings cover instrumented Brain reads, not every native subsystem query.','Extraction operational rates are scoped since API start and reset on restart.','Saif Ask remains subject to the existing product entitlement gate.']};
+    fs.writeFileSync(registerPath,JSON.stringify(register,null,2)+'\n');
+  }
   console.log(JSON.stringify(comparison));if(!comparison.passed)process.exitCode=1;
 }
 module.exports={normalize,testsFrom,typesFrom,compare,validateEvidence};

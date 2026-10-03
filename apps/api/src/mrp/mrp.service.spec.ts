@@ -508,6 +508,7 @@ describe("MrpService planner decisions", () => {
         },
       ],
       { id: "cycle-1", cycle_name: "S&OP 2026-08" },
+      "2026-09-01",
     );
 
     expect(demands).toEqual([
@@ -541,6 +542,7 @@ describe("MrpService planner decisions", () => {
         },
       ],
       { id: "cycle-1" },
+      "2026-09-01",
     );
 
     expect(demands[0]).toMatchObject({
@@ -570,6 +572,7 @@ describe("MrpService planner decisions", () => {
         },
       ],
       { id: "cycle-1" },
+      "2026-09-01",
     );
 
     expect(demands.map((demand: any) => demand.forecast_month)).toEqual([

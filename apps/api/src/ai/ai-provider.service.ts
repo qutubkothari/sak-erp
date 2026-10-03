@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import OpenAI, { toFile } from "openai";
 import { createHash } from "crypto";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { aiModelCall } from '../intelligence/unified-ai.performance';
 
 export type StructuredAiRequest<T> = {
   capability: string;
@@ -374,6 +375,7 @@ export class AiProviderService {
             .digest("hex")
             .slice(0, 64)
         : undefined;
+      aiModelCall();
       const response = await this.client.responses.create({
         model,
         store: false,

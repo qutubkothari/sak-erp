@@ -34,3 +34,8 @@ CREATE INDEX IF NOT EXISTS mizantra_unified_telemetry_scope ON public.mizantra_u
 ALTER TABLE public.mizantra_unified_telemetry ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.mizantra_unified_telemetry FROM PUBLIC,anon,authenticated;
 GRANT SELECT,INSERT,DELETE ON public.mizantra_unified_telemetry TO service_role;
+
+ALTER TABLE public.mizantra_unified_telemetry ADD COLUMN IF NOT EXISTS performance jsonb NOT NULL DEFAULT '{}'::jsonb
+  CHECK (jsonb_typeof(performance) = 'object' AND octet_length(performance::text) <= 1024
+    AND performance - ARRAY['query_ms','query_count','slow_query_count','cache_hits','model_calls']::text[] = '{}'::jsonb
+    AND NOT jsonb_path_exists(performance, '$.* ? (@.type() != "number" || @ < 0)'));
