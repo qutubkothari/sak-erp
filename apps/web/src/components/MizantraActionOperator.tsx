@@ -406,7 +406,6 @@ export default function MizantraActionOperator({
                       }));
                       setConfirmed(false);
                     }}
-                    placeholder="Unknown"
                     className="w-full min-w-0 border border-stone-300 p-2"
                   />
                 </td>
