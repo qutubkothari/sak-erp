@@ -9,6 +9,24 @@ const tenant = "11111111-1111-4111-8111-111111111111",
   owner = "22222222-2222-4222-8222-222222222222";
 const user = { tenantId: tenant, userId: owner, role: "SUPER_ADMIN" };
 describe("report service isolation and metadata boundary", () => {
+  it('binds purchase history to the recorded PO supplier', async () => {
+    process.env.ERP_TENANT_PROFILE='MIZANTRA';process.env.MIZANTRA_REPORT_BUILDER_ENABLED='true';
+    const brain={withDiagnosticEvidence:jest.fn(async (_user,_context,inspect)=>inspect({nodes:[{type:'purchase_order',row:{id:tenant,vendor_id:owner}}],canRead:()=>true}))};
+    const subject=new ReportingService({} as any,brain as any,{} as any);
+    subject.query=jest.fn().mockResolvedValue({session_id:tenant});
+    await subject.contextualHistory(user,{entity_type:'purchase_order',entity_id:tenant});
+    expect(subject.query).toHaveBeenCalledWith(user,expect.objectContaining({plan:expect.objectContaining({filters:[{field:'supplier_id',operator:'eq',value:owner}]})}));
+  });
+  it('requires reviewed exact item masters for document history', async () => {
+    process.env.ERP_TENANT_PROFILE='MIZANTRA';process.env.MIZANTRA_REPORT_BUILDER_ENABLED='true';
+    const subject=new ReportingService({} as any,{} as any,{} as any);
+    (subject as any).read=jest.fn().mockResolvedValue([{id:owner,code:'ITEM-1'}]);subject.query=jest.fn().mockResolvedValue({session_id:tenant});
+    const documents=[{review_required:false,extraction:{classification_confidence:'HIGH',lines:[{source_item_code:{value:'ITEM-1',confidence:'HIGH',method:'HUMAN_REVIEW'}}]}}];
+    await subject.documentHistory(user,documents);
+    expect(subject.query).toHaveBeenCalledWith(user,expect.objectContaining({plan:expect.objectContaining({filters:[{field:'item_id',operator:'in',value:[owner]}]})}));
+    (subject as any).read.mockResolvedValue([{id:owner,code:'ITEM-1'},{id:tenant,code:'ITEM-1'}]);
+    await expect(subject.documentHistory(user,documents)).rejects.toThrow('ambiguous');
+  });
   it("does not read purchasing or duplicate suppliers for a master-only report", async () => {
     const subject = new ReportingService({} as any, {} as any, {} as any),
       reads: string[] = [];

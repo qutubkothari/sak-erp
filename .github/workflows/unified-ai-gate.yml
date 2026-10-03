@@ -1,0 +1,49 @@
+name: Unified AI Regression Gate
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - 'scripts/qa/unified-ai*'
+      - 'scripts/qa/baselines/unified-ai-v1.json'
+      - '.github/workflows/unified-ai-gate.yml'
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    env:
+      CI: 'true'
+      NODE_PATH: '${{ github.workspace }}/node_modules/.pnpm/node_modules'
+      ERP_TENANT_PROFILE: 'MIZANTRA'
+      BUILD_GIT_SHA: '${{ github.sha }}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prod=false
+      - run: pnpm --filter @sak-erp/database generate
+      - run: pnpm --filter @sak-erp/hr-module build
+      - name: Capture API Results
+        working-directory: apps/api
+        run: |
+          node --max-old-space-size=6144 node_modules/jest/bin/jest.js --maxWorkers=1 --workerIdleMemoryLimit=512MB --no-cache --json --outputFile="$RUNNER_TEMP/unified-tests.json" || true
+          node --max-old-space-size=8192 node_modules/typescript/bin/tsc --noEmit --pretty false > "$RUNNER_TEMP/unified-types.log" 2>&1 || true
+      - name: Compare Temporary Debt Register
+        run: node scripts/qa/unified-ai-release-gate.cjs --tests "$RUNNER_TEMP/unified-tests.json" --types "$RUNNER_TEMP/unified-types.log"
+      - name: Release Check Self Tests
+        run: |
+          node scripts/qa/unified-ai-release-gate.cjs --self-test
+          node scripts/qa/unified-ai-parity.cjs --self-test
+      - name: Web Typecheck
+        working-directory: apps/web
+        run: pnpm exec tsc --noEmit
+      - name: Production Builds
+        run: |
+          pnpm --filter @sak-erp/api build
+          pnpm --filter @sak-erp/web build
+          git diff --check

@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SmartImportService } from './smart-import.service';
 
 describe('SmartImportService tenant guards',()=>{
@@ -16,5 +16,26 @@ describe('SmartImportService tenant guards',()=>{
   });
   it('blocks feature access when the profile flag is off',()=>{
     process.env.SMART_IMPORT_ENABLED='false';expect(()=> (service as any).assertEnabled()).toThrow(ConflictException);
+  });
+  it('blocks unowned unified import tasks before loading rows',async()=>{
+    response={data:{id:'33333333-3333-4333-8333-333333333333',tenant_id:tenant,requested_by:'44444444-4444-4444-8444-444444444444'},error:null};
+    (service as any).rows=jest.fn();
+    await expect(service.workingContext({userId,tenantId:tenant,permissions:[]},response.data.id)).rejects.toBeInstanceOf(ForbiddenException);
+    expect((service as any).rows).not.toHaveBeenCalled();
+  });
+  it('allows the owner to inspect a native import task',async()=>{
+    response={data:{id:'33333333-3333-4333-8333-333333333333',tenant_id:tenant,requested_by:userId},error:null};
+    (service as any).rows=jest.fn().mockResolvedValue([]);
+    expect((await service.workingContext({userId,tenantId:tenant},response.data.id)).rows).toEqual([]);
+  });
+  it('hands only recorded completed import item IDs to planning',async()=>{
+    response={data:{id:'33333333-3333-4333-8333-333333333333',tenant_id:tenant,requested_by:userId,status:'COMPLETED'},error:null};
+    (service as any).rows=jest.fn().mockResolvedValue([{created_table:'items',created_entity_id:userId,decision:'ALREADY_IMPORTED',result:{imported:true}},{created_table:'vendors',created_entity_id:tenant,decision:'ALREADY_IMPORTED',result:{imported:true}}]);
+    expect(await service.actionItems({userId,tenantId:tenant},response.data.id)).toEqual({item_ids:[userId]});
+  });
+  it('does not plan from an unapproved preview',async()=>{
+    response={data:{id:'33333333-3333-4333-8333-333333333333',tenant_id:tenant,requested_by:userId,status:'AWAITING_APPROVAL'},error:null};
+    (service as any).rows=jest.fn().mockResolvedValue([]);
+    await expect(service.actionItems({userId,tenantId:tenant},response.data.id)).rejects.toBeInstanceOf(BadRequestException);
   });
 });

@@ -92,6 +92,19 @@ export class SmartImportService {
   }
 
   async get(user:any,id:string) { this.assertEnabled();const batch=await this.ownedBatch(user,id);const rows=await this.rows(batch);return {batch,rows,configuration:{enabled:true,writeMode:String(process.env.SMART_IMPORT_WRITE_MODE||'APPROVAL_REQUIRED').toUpperCase(),writesRequireApproval:true}}; }
+  async workingContext(user:any,id:string) {
+    this.assertEnabled();
+    const batch=await this.ownedBatch(user,id);
+    if(batch.requested_by!==this.actorId(user)&&!hasAdminBypass(user))throw new ForbiddenException('This import task is not owned or authorized.');
+    return {batch,rows:await this.rows(batch)};
+  }
+  async actionItems(user:any,id:string) {
+    const {batch,rows}=await this.workingContext(user,id);
+    if(!['COMPLETED','PARTIALLY_COMPLETED'].includes(batch.status))throw new BadRequestException('Complete the governed import before planning from imported items.');
+    const item_ids=[...new Set(rows.filter(row=>row.created_table==='items'&&['ALREADY_IMPORTED','USE_EXISTING'].includes(row.decision)&&(row.result?.imported===true||row.result?.existing===true)).map(row=>String(row.created_entity_id||'')))];
+    if(!item_ids.length||item_ids.length>200||item_ids.some(value=>!(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i).test(value)))throw new BadRequestException('Select at most 200 recorded imported ERP items.');
+    return {item_ids};
+  }
   async refreshPreview(user:any,id:string) { this.assertEnabled();const batch=await this.ownedBatch(user,id);if(!['PARTIALLY_COMPLETED','FAILED','NEEDS_DATA','NEEDS_MAPPING_REVIEW','READY_FOR_PREVIEW','AWAITING_APPROVAL'].includes(batch.status))throw new ConflictException('This batch cannot be revalidated in its current state.');return this.buildPreview(user,id,false); }
 
   async updateMappings(user:any,id:string,input:any[]) {

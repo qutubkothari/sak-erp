@@ -5,6 +5,7 @@ import { Brain, RefreshCw } from "lucide-react";
 import { apiClient } from "../../../../../../lib/api-client";
 import { isAdminLike } from "@/lib/rbac";
 import { ProactiveOperationsHealth } from '@/components/MizantraProactiveOperations';
+import { UnifiedAiHealth } from '@/components/MizantraUnifiedAi';
 
 type Health = { enabled: boolean; contextEnabled: boolean; graphEnabled: boolean; actionPlannerMode: string; profile: string; resolver_count: number; recent_query_count: number; average_resolution_ms: number; errors: number; smart_approval?: { enabled: boolean; supported_document_types: string[]; check_count: number; review_count: number; average_execution_ms: number; errors: number }; data_doctor?: { enabled: boolean; rule_count: number; modules: string[]; recent_diagnostics: number; average_duration_ms: number; errors: number } };
 
@@ -30,7 +31,8 @@ export default function BrainHealthPage() {
     return () => { cancelled = true; };
   }, [router]);
   return <main className="mx-auto max-w-4xl space-y-6 p-4 md:p-8">
-    <header className="flex items-center justify-between gap-3 border-b pb-4"><h1 className="flex items-center gap-2 text-2xl font-semibold"><Brain className="h-6 w-6" />Mizantra Brain</h1><button type="button" title="Refresh health" aria-label="Refresh health" disabled={busy} onClick={() => void refresh()} className="rounded-md border p-2 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} /></button></header>
+    <header className="flex items-center justify-between gap-3 border-b pb-4"><h1 className="flex items-center gap-2 text-2xl font-semibold"><Brain className="h-6 w-6" />Mizantra AI</h1><button type="button" title="Refresh health" aria-label="Refresh health" disabled={busy} onClick={() => void refresh()} className="rounded-md border p-2 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} /></button></header>
+    <UnifiedAiHealth refreshSignal={healthRevision} />
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     {health && <dl className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">{[
       ["Profile", health.profile], ["Brain", health.enabled ? "Enabled" : "Off"],

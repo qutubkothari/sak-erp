@@ -55,9 +55,15 @@ import { ProactiveOperationsService } from './proactive-operations.service';
 import { ProactiveOperationsSources } from './proactive-operations.sources';
 import { ProactiveOperationsController } from './proactive-operations.controller';
 import { ProactiveOperationsScheduler } from './proactive-operations.scheduler';
+import { SmartImportModule } from '../smart-import/smart-import.module';
+import { UnifiedAiService } from './unified-ai.service';
+import { UnifiedAiContextService } from './unified-ai.context';
+import { FeatureAccessModule } from '../feature-access/feature-access.module';
 
 @Module({
   imports: [
+    FeatureAccessModule,
+    SmartImportModule,
     AuthModule,
     SupportAutofixModule,
     AuditModule,
@@ -80,6 +86,8 @@ import { ProactiveOperationsScheduler } from './proactive-operations.scheduler';
   ],
   controllers: [IntelligenceController, ActivePlannerController, ReportingController, DocumentAnalysisController, ActionOperatorController, ProactiveOperationsController],
   providers: [
+    UnifiedAiService,
+    UnifiedAiContextService,
     ProactiveOperationsService,
     ProactiveOperationsSources,
     ProactiveOperationsScheduler,

@@ -37,6 +37,7 @@ import { reportIntent } from "./reporting.registry";
 import { DocumentAnalysisService } from "./document-analysis.service";
 import { ActionOperatorService } from './action-operator.service';
 import { ProactiveOperationsService } from './proactive-operations.service';
+import { UnifiedAiService } from './unified-ai.service';
 
 @Controller("active-planner")
 export class ActivePlannerController {
@@ -53,7 +54,24 @@ export class ActivePlannerController {
     @Optional() private readonly documents?: DocumentAnalysisService,
     @Optional() private readonly operator?: ActionOperatorService,
     @Optional() private readonly proactive?: ProactiveOperationsService,
+    @Optional() private readonly unified?: UnifiedAiService,
   ) {}
+  @Get('unified/configuration') unifiedConfiguration(@Req() req: any) {
+    return this.unified?.configuration(req.user) || { enabled: false, router: false, capabilities: [] };
+  }
+  @Get('unified/health') unifiedHealth(@Req() req: any) {
+    return this.unified?.health(req.user);
+  }
+  @Post('unified/route')
+  @SkipAutomaticAudit()
+  unifiedRoute(@Req() req: any, @Body() body: any) {
+    return this.unified?.preview(req.user, body);
+  }
+  @Post('unified/correction')
+  @SkipAutomaticAudit()
+  unifiedCorrection(@Req() req: any, @Body() body: any) {
+    return this.unified?.correction(req.user, body);
+  }
   @Get("brain/configuration") brainConfiguration(@Req() req: any) {
     return this.brain.configuration(req.user);
   }
@@ -172,6 +190,8 @@ export class ActivePlannerController {
   @Post("interpret")
   @SkipAutomaticAudit()
   async interpret(@Req() req: any, @Body() body: any) {
+    const unified = this.unified && await this.unified.interpret(req.user, body, next => this.interpretErp(req, next));
+    if (unified) return unified;
     const brief = this.proactive && await this.proactive.interpret(req.user, body);
     if (brief) return brief;
     const actionPlan = this.operator && await this.operator.interpret(req.user, body);
@@ -199,6 +219,9 @@ export class ActivePlannerController {
     }
     const supportReply = await this.support.route(req.user, body);
     if (supportReply) return supportReply;
+    return this.interpretErp(req, body);
+  }
+  private async interpretErp(req: any, body: any) {
     const prepared = await this.memory.prepare(
       req.user.tenantId,
       req.user,

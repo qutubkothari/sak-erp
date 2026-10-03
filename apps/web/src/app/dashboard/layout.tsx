@@ -18,6 +18,7 @@ import { apiClient } from "../../../lib/api-client";
 import GovernanceRequiredNotice from "../../components/GovernanceRequiredNotice";
 import { captureBrainRoute } from "@/lib/brain-context";
 import { ProactiveAttentionIndicator } from '@/components/MizantraProactiveOperations';
+import { UnifiedAskEntry } from '@/components/MizantraUnifiedAi';
 
 // A module's overview can be disabled independently of its operational
 // workspaces.  Preserve the owner's feature controls, but do not strand a
@@ -318,6 +319,7 @@ export default function DashboardLayout({
           <div
             className={`min-w-0 ${isEmployeeSelfService ? "p-0 md:p-3 lg:p-4" : "p-2 sm:p-3 lg:p-4"}`}
           >
+            <UnifiedAskEntry />
             <ProactiveAttentionIndicator />
             {children}
           </div>

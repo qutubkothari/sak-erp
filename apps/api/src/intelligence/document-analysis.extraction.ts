@@ -101,7 +101,8 @@ export async function safeDocumentFile(file: Express.Multer.File): Promise<{
     (metadata.pages || 1) !== 1
   )
     throw new Error("Only single-page PNG/JPEG images are supported.");
-  const bytes = await (png ? image.png() : image.jpeg()).toBuffer();
+  const prepared = image.rotate().flatten({ background: '#ffffff' }).resize({ width: 3000, height: 3000, fit: 'inside', withoutEnlargement: true }).normalise().sharpen({ sigma: 0.6 });
+  const bytes = await (png ? prepared.png() : prepared.jpeg({ quality: 95 })).toBuffer();
   if (bytes.length > 10 * 1024 * 1024)
     throw new Error("Sanitized image exceeds the safe size.");
   return {
@@ -273,16 +274,16 @@ export async function extractDocument(
   const deterministic = extractLabelledText(file.pages, filename, instruction);
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || apiKey === "your_key_here") {
-    if (!file.pages.some((page) => page.text.trim()))
+    if (!file.pages.length || file.pages.some((page) => !page.text.trim()))
       deterministic.warnings.push(
         "Vision OCR is unavailable; review the uploaded document and enter extracted facts manually.",
       );
     return deterministic;
   }
   if (
-    deterministic.lines.length ||
+    file.pages.length > 0 && file.pages.every(page => page.text.trim()) && (deterministic.lines.length ||
     (deterministic.type === "TECHNICAL_DRAWING" &&
-      deterministic.fields.drawing_number.value != null)
+      deterministic.fields.drawing_number.value != null))
   )
     return deterministic;
   const client = new OpenAI({ apiKey, timeout: 25000, maxRetries: 0 });
@@ -296,14 +297,14 @@ export async function extractDocument(
     const content: any[] = [{ type: "input_text", text: instructionText }];
     if (file.pages.some((page) => page.text.trim()))
       content.push({ type: "input_text", text: JSON.stringify(file.pages) });
-    else if (file.mime === "application/pdf")
+    if (file.mime === "application/pdf" && (!file.pages.length || file.pages.some(page => !page.text.trim())))
       content.push({
         type: "input_file",
         filename: "document.pdf",
         file_data:
           "data:application/pdf;base64," + file.bytes.toString("base64"),
       });
-    else
+    else if (file.mime !== 'application/pdf')
       content.push({
         type: "input_image",
         image_url:
@@ -335,10 +336,10 @@ export async function extractDocument(
               .toUpperCase()
               .includes(String(fact.value).toUpperCase()));
       if (
-        !fact.page ||
+        !fact.page || !Number.isInteger(fact.page) || fact.page < 1 || fact.page > (file.pages.length || 1) ||
         !fact.snippet ||
         !visibleValue ||
-        (file.pages.some((page) => page.text.trim()) &&
+        (file.pages.some((page) => page.page === fact.page && page.text.trim()) &&
           !file.pages.some(
             (page) =>
               page.page === fact.page &&
@@ -359,6 +360,14 @@ export async function extractDocument(
       parsed.classification_confidence === "HIGH"
         ? "MEDIUM"
         : parsed.classification_confidence;
+    for (const field of HEADER_FIELDS) {
+      if (parsed.fields[field].value == null && deterministic.fields[field].value != null) parsed.fields[field] = deterministic.fields[field];
+    }
+    parsed.lines = [...deterministic.lines, ...parsed.lines.filter(line =>
+      Object.values(line).some(fact => fact.value != null) && !deterministic.lines.some(known =>
+        known.source_item_code.page === line.source_item_code.page &&
+        known.source_item_code.value === line.source_item_code.value &&
+        known.source_description.value === line.source_description.value))].slice(0, 200);
     return parsed;
   } catch {
     deterministic.warnings.push(

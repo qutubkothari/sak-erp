@@ -3,5 +3,5 @@ import { DocumentsModule } from '../documents/documents.module';
 import { SmartImportController } from './smart-import.controller';
 import { SmartImportService } from './smart-import.service';
 
-@Module({ imports: [DocumentsModule], controllers: [SmartImportController], providers: [SmartImportService] })
+@Module({ imports: [DocumentsModule], controllers: [SmartImportController], providers: [SmartImportService], exports: [SmartImportService] })
 export class SmartImportModule {}

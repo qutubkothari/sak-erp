@@ -277,6 +277,46 @@ export class ReportingService {
       }),
     );
   }
+  async workingContext(user: any, id: string, kind = 'SESSION') {
+    const scope = this.scope(user, kind === 'DASHBOARD');
+    const stored = await this.definition(scope, id, kind);
+    return kind === 'DASHBOARD' ? { id: stored.id, kind } : { id: stored.id, kind, plan: this.plan(stored.definition, scope) };
+  }
+  async contextualHistory(user: any, context: any) {
+    const scope = this.scope(user);
+    const filter = await this.brain.withDiagnosticEvidence(user, context, async evidence => {
+      const root = evidence.nodes[0];
+      if (root.type === 'item') return { field: 'item_id', operator: 'eq' as const, value: String(root.row.id) };
+      if (root.type === 'supplier') return { field: 'supplier_id', operator: 'eq' as const, value: String(root.row.id) };
+      const order = root.type === 'purchase_order' ? root : evidence.nodes.find(node => node.type === 'purchase_order' && node.row.id === root.row.po_id);
+      if (order?.row.vendor_id && evidence.canRead('supplier')) return { field: 'supplier_id', operator: 'eq' as const, value: String(order.row.vendor_id) };
+      const ids = [...new Set(evidence.nodes.filter(node => ['purchase_order_item','purchase_requisition_item'].includes(node.type)).map(node => String(node.row.item_id || '')).filter(value => uuid.test(value)))];
+      if (!ids.length) throw new BadRequestException('Select an authorized item or supplier for related purchase history.');
+      return { field: 'item_id', operator: 'in' as const, value: ids };
+    });
+    const base = interpretReport('Show all POs').plan!;
+    const plan = this.plan({ ...base, filters: [filter], title: 'Related purchase history', columns: base.columns.filter(key => canSeeField(user, REPORT_DATASETS.PURCHASE_ORDERS.fields[key])) }, scope);
+    const result = await this.query(user, { plan, create_session: true });
+    return { status: 'REPORT_READY', session_id: result.session_id, report: result, assistant_message: plan.title, safety: { read_only: true, executable: false } };
+  }
+  async documentHistory(user: any, documents: Array<{ extraction: any; review_required: boolean }>) {
+    const scope = this.scope(user);
+    if (!hasPermission(user, 'items:read')) throw new ForbiddenException('Item access is required for document purchase history.');
+    if (documents.some(document => document.review_required || document.extraction.classification_confidence !== 'HIGH')) throw new BadRequestException('Review document extraction before selecting items for purchase history.');
+    const codes = [...new Set(documents.flatMap(document => document.extraction.lines.map((line: any) => line.source_item_code).filter((fact: any) => fact?.value && fact.confidence === 'HIGH' && fact.method === 'HUMAN_REVIEW').map((fact: any) => String(fact.value))))];
+    if (!codes.length || codes.length > 200) throw new BadRequestException('Select reviewed document lines with explicit item codes.');
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 5000);
+    let itemIds: string[];
+    try {
+      const masters = await this.read(scope, 'items', 'id,code', controller.signal, query => query.in('code', codes).eq('is_active', true));
+      if (codes.some(code => masters.filter(item => item.code === code).length !== 1)) throw new BadRequestException('Some document codes are missing or ambiguous in active item masters. Select exact ERP items.');
+      itemIds = masters.map(item => String(item.id));
+    } finally { clearTimeout(timer); controller.abort(); }
+    const base = interpretReport('Show all POs').plan!;
+    const plan = this.plan({ ...base, filters: [{ field: 'item_id', operator: 'in', value: itemIds }], title: 'Document item purchase history', columns: base.columns.filter(key => canSeeField(user, REPORT_DATASETS.PURCHASE_ORDERS.fields[key])) }, scope);
+    const result = await this.query(user, { plan, create_session: true });
+    return { status: 'REPORT_READY', session_id: result.session_id, report: result, assistant_message: plan.title, safety: { read_only: true, executable: false } };
+  }
   async interpret(user: any, body: any) {
     this.rejectScopeInput(body);
     const scope = this.scope(user);

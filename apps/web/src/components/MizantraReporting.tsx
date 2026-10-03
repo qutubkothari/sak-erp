@@ -308,11 +308,13 @@ export default function MizantraReporting({
   initialSessionId,
   embedded = false,
   initialTab = "reports",
+  onWorkingReport,
 }: {
   initialReport?: ReportingResult;
   initialSessionId?: string;
   embedded?: boolean;
   initialTab?: "reports" | "dashboards";
+  onWorkingReport?: (report: ReportingResult, sessionId: string) => void;
 }) {
   const [configuration, setConfiguration] = useState<Configuration | null>(
       null,
@@ -426,6 +428,7 @@ export default function MizantraReporting({
       setReport(next.report);
       setSessionId(next.session_id);
       setTitle(next.report.plan.title);
+      if (next.session_id) onWorkingReport?.(next.report, next.session_id);
     } else if (next.status === "REPORT_DISCOVERY") setDiscovery(true);
     else if (next.status === "REPORT_EXPORT_READY") await exportReport();
     else if (next.status === "REPORT_SAVED") {
@@ -451,7 +454,10 @@ export default function MizantraReporting({
       page,
       ...(sessionId ? { session_id: sessionId } : {}),
     });
-    if (sequence === generation.current) setReport(next);
+    if (sequence === generation.current) {
+      setReport(next);
+      if (next.session_id || sessionId) onWorkingReport?.(next, next.session_id || sessionId);
+    }
   }
   async function exportReport() {
     if (!report) return;

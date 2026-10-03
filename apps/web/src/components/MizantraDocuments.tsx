@@ -89,6 +89,7 @@ export default function MizantraDocuments({
   onEnabled,
   comparison,
   onDiagnosis,
+  comparisonOnly = false,
 }: {
   refreshSignal: number;
   selectedIds: string[];
@@ -96,6 +97,7 @@ export default function MizantraDocuments({
   onEnabled: (enabled: boolean) => void;
   comparison?: DocumentComparison;
   onDiagnosis: (context: BrainEnvelope) => void;
+  comparisonOnly?: boolean;
 }) {
   const [enabled, setEnabled] = useState(false),
     [documents, setDocuments] = useState<Document[]>([]),
@@ -113,6 +115,7 @@ export default function MizantraDocuments({
   const previewRef = useRef<string | null>(null);
   const [manualPage, setManualPage] = useState("");
   useEffect(() => {
+    if (comparisonOnly) return;
     let active = true;
     void apiClient
       .get<{ enabled: boolean }>(base + "/configuration")
@@ -131,7 +134,7 @@ export default function MizantraDocuments({
     return () => {
       active = false;
     };
-  }, []);
+  }, [comparisonOnly]);
   const load = async () => {
     const rows = await apiClient.get<Document[]>(base + "/uploads");
     setDocuments(rows);
@@ -146,7 +149,7 @@ export default function MizantraDocuments({
     },
     [],
   );
-  if (!enabled) return null;
+  if (!enabled && !comparisonOnly) return null;
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -235,10 +238,10 @@ export default function MizantraDocuments({
     });
   return (
     <section
-      aria-label="Document Intelligence"
-      className="max-h-[45vh] min-w-0 overflow-y-auto border-t border-stone-200 px-3 py-3 text-sm"
+      aria-label={comparisonOnly ? 'Document comparison details' : 'Document Intelligence'}
+      className={comparisonOnly ? 'min-w-0 py-3 text-sm' : 'max-h-[45vh] min-w-0 overflow-y-auto border-t border-stone-200 px-3 py-3 text-sm'}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className={comparisonOnly ? 'hidden' : 'flex flex-wrap items-center justify-between gap-2'}>
         <h3 className="flex items-center gap-2 text-sm font-semibold">
           <FileText className="h-4 w-4" />
           Documents
@@ -296,7 +299,7 @@ export default function MizantraDocuments({
           {error}
         </p>
       )}
-      <div className="max-h-48 overflow-auto">
+      <div className={comparisonOnly ? 'hidden' : 'max-h-48 overflow-auto'}>
         <table className="w-full text-left text-xs">
           <thead>
             <tr>

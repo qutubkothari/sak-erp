@@ -45,6 +45,7 @@ import MizantraReporting, { type ReportingResult } from "@/components/MizantraRe
 import MizantraDocuments, { type DocumentComparison } from "@/components/MizantraDocuments";
 import MizantraActionOperator, { OperatorPlanHistory, type OperatorPlan } from '@/components/MizantraActionOperator';
 import { AttentionList, type ProactiveBrief } from '@/components/MizantraProactiveOperations';
+import { UnifiedResultHeader, type UnifiedEnvelope, type UnifiedConfiguration } from '@/components/MizantraUnifiedAi';
 
 type Capability = {
   intent: string;
@@ -56,6 +57,9 @@ type Capability = {
   examples: string[];
 };
 type Result = {
+  unified?: UnifiedEnvelope;
+  import_preview?: { batch_id: string; status: string; row_count: number; requires_approval: boolean };
+  export_request?: { session_id: string; version: string };
   proactive_brief?: ProactiveBrief;
   attention_evidence?: { explanation: string; evidence: Record<string, unknown> };
   action_operator_plan?: OperatorPlan;
@@ -445,6 +449,9 @@ const downloadAnalyticsDocument = async (
 };
 
 export default function ActivePlannerPage() {
+  const [unifiedConfiguration, setUnifiedConfiguration] = useState<UnifiedConfiguration | null>(null);
+  const [unifiedSessionId, setUnifiedSessionId] = useState<string | null>(null);
+  const [unifiedWorkingRef, setUnifiedWorkingRef] = useState<{ type: string; id: string } | null>(null);
   const [documentEnabled, setDocumentEnabled] = useState(false);
   const [documentIds, setDocumentIds] = useState<string[]>([]);
   const [documentRefresh, setDocumentRefresh] = useState(0);
@@ -518,6 +525,12 @@ export default function ActivePlannerPage() {
 
   useEffect(() => {
     let active = true;
+    void apiClient.get<UnifiedConfiguration>('/active-planner/unified/configuration').then(configuration => { if (active) { setUnifiedConfiguration(configuration); if (configuration.enabled && configuration.router) setTurns(previous => previous.length === 1 && previous[0].text.startsWith('Tell me the outcome') ? [{ role:'planner', text:'What would you like to know?' }] : previous); } }).catch(() => { if (active) setUnifiedConfiguration(null); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     const query = new URLSearchParams(window.location.search);
     const planId = query.get('attention_operator_plan');
     const prompt = query.get('attention_prompt');
@@ -525,11 +538,12 @@ export default function ActivePlannerPage() {
     const entityTypes: Record<string, string> = { PO: 'purchase_order', GRN: 'grn', ITEM: 'item', purchase_order: 'purchase_order', purchase_requisition: 'purchase_requisition', grn: 'grn', item: 'item', autoqa_finding: 'autoqa_finding' };
     const entityType = entityTypes[query.get('attention_review') || query.get('attention_entity') || ''];
     const validId = (value: string | null): value is string => !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-    const accept = (reply: Result) => { if (active) { setResult(reply); setMobilePanel('review'); setTurns(previous => [...previous, { role: 'planner', text: reply.assistant_message || 'System-checked preview ready.' }]); } };
+    const accept = (reply: Result) => { if (active) { setResult(reply); setUnifiedSessionId(reply.unified?.session_id || null); setMobilePanel('review'); setTurns(previous => [...previous, { role: 'planner', text: reply.assistant_message || 'System-checked preview ready.' }]); } };
     void (async () => {
       if (validId(planId)) {
         const plan = await apiClient.get<OperatorPlan>(`/active-planner/action-operator/plans/${planId}`);
         accept({ status: 'ACTION_OPERATOR_PLAN', intent_type: 'ACTION_OPERATOR', provider: 'MIZANTRA_ACTION_OPERATOR_V1', extracted: {}, resolved: {}, questions: plan.payload.warnings, context_token: '', safety: { executable: false }, action_operator_plan: plan });
+        if (active) setUnifiedWorkingRef({ type:'ACTION_PLAN', id:plan.id });
       } else if (prompt && /^(?:What needs my attention today\?|Show all overdue POs)$/i.test(prompt)) {
         accept(await apiClient.post<Result>('/active-planner/interpret', { message: prompt }));
       } else if (validId(entityId) && entityType) {
@@ -652,6 +666,9 @@ export default function ActivePlannerPage() {
     setConversations(data?.conversations || []);
     const active = data?.active;
     if (!active) return;
+    setUnifiedSessionId(active.conversation?.last_result?.unified?.session_id || null);
+    setUnifiedWorkingRef(null);
+    setDocumentIds([]);
     setConversationId(active.conversation?.id || "");
     setContext(active.conversation?.current_context_token || "");
     setResult(active.conversation?.last_result || null);
@@ -893,6 +910,7 @@ export default function ActivePlannerPage() {
   const submitMessage = async (
     rawMessage: string,
     mode?: "support" | "planner" | "status" | "improvement",
+    nextAction?: string,
   ) => {
     const message = rawMessage.trim();
     if (!message || busy || uploading) return;
@@ -904,7 +922,14 @@ export default function ActivePlannerPage() {
     try {
       const failedApi = getLastFailedApiContext();
       const support_mode = mode || (supportMode ? "support" : undefined);
-      const classification = await apiClient.post<{ intent: string }>(
+      const unifiedEnabled = unifiedConfiguration?.enabled && unifiedConfiguration.router;
+      let unifiedRoute: string | null = null;
+      if (unifiedEnabled) {
+        const routing = await apiClient.post<{ allowed: boolean; route: string | null; question?: string }>('/active-planner/unified/route', { message, context_type: unifiedWorkingRef?.type || result?.unified?.context.type || (brainContext ? 'ERP_ENTITY' : undefined), attachment_kinds: pendingFile ? [/\.(xlsx|csv)$/i.test(pendingFile.name) ? 'SPREADSHEET' : 'DOCUMENT'] : [] });
+        if (!routing.allowed) throw new Error(routing.question || 'This capability is not enabled or authorized here.');
+        unifiedRoute = routing.route;
+      }
+      const classification = unifiedEnabled ? { intent: unifiedRoute === 'SMART_IMPORT' && pendingFile ? 'SMART_IMPORT' : unifiedRoute === 'AUTOENGINEER' ? 'BUG' : 'NORMAL_ERP_REQUEST' } : await apiClient.post<{ intent: string }>(
         "/active-planner/support-intent",
         { message, support_mode },
       );
@@ -919,6 +944,12 @@ export default function ActivePlannerPage() {
         setInput("");
         setPendingFile(null);
         setAttachments([]);
+        if (unifiedEnabled) {
+          const reply = await apiClient.post<Result>('/active-planner/interpret', { message, unified_session_id: unifiedSessionId || undefined, context_ref: { type: 'IMPORT_BATCH', id: staged.batch?.id || staged.id } });
+          setResult(reply); setUnifiedSessionId(reply.unified?.session_id || null); setMobilePanel('review');
+          setTurns(previous => [...previous, { role:'user',text:message }, { role:'planner',text:reply.assistant_message || 'Import preview ready for review.' }]);
+          return;
+        }
         window.location.assign(`/dashboard/active-planner/smart-import?batch=${encodeURIComponent(staged.batch?.id || staged.id)}`);
         return;
       }
@@ -1003,9 +1034,12 @@ export default function ActivePlannerPage() {
       const device = /Mobi/i.test(navigator.userAgent) ? "mobile" : "desktop";
       const data = await apiClient.post<Result>("/active-planner/interpret", {
         message: rawMessage,
-        ...(documentEnabled && isPlanner && selectedDocumentIds.length ? { document_ids: selectedDocumentIds } : {}),
-        ...((result?.session_id || result?.action_operator_plan?.payload.request.session_id) ? { session_id: result?.session_id || result?.action_operator_plan?.payload.request.session_id } : {}),
-        ...(brainContext ? { brain_context: brainContext } : {}),
+        ...(unifiedEnabled && unifiedSessionId ? { unified_session_id: unifiedSessionId } : {}),
+        ...(unifiedEnabled && unifiedWorkingRef ? { context_ref: unifiedWorkingRef } : {}),
+        ...(nextAction ? { next_action: nextAction } : {}),
+        ...(documentEnabled && isPlanner && selectedDocumentIds.length && (!unifiedEnabled || !unifiedSessionId || pendingFile) ? { document_ids: selectedDocumentIds } : {}),
+        ...(!unifiedEnabled && (result?.session_id || result?.action_operator_plan?.payload.request.session_id) ? { session_id: result?.session_id || result?.action_operator_plan?.payload.request.session_id } : {}),
+        ...(brainContext && (!unifiedEnabled || (!unifiedSessionId && !unifiedWorkingRef)) ? { brain_context: brainContext } : {}),
         support_mode,
         ...(supportSourceRoute ? { source_route: supportSourceRoute } : {}),
         current_route: window.location.pathname,
@@ -1031,6 +1065,12 @@ export default function ActivePlannerPage() {
       if (mode !== "status") setInput("");
       setClarifySupport(false);
       setTurns((x) => [...x, { role: "user", text: message }]);
+      if (data.unified) { setUnifiedSessionId(data.unified.session_id); setUnifiedWorkingRef(null); setResult(data); setMobilePanel('review'); }
+      if (data.export_request) {
+        const blob = await apiClient.postBlob('/active-planner/reports/export', data.export_request);
+        const url = URL.createObjectURL(blob), anchor = document.createElement('a');
+        anchor.href = url; anchor.download = 'mizantra-report.xlsx'; anchor.click(); URL.revokeObjectURL(url);
+      }
       if (
         ["SUPPORT_INCIDENT", "BUG", "IMPROVEMENT", "FEATURE_REQUEST", "SUPPORT_STATUS", "CLARIFY_CHANGE_REQUEST"].includes(data.intent_type)
       ) {
@@ -1061,7 +1101,7 @@ export default function ActivePlannerPage() {
       setCorrectionOpen(false);
       setCorrectionText("");
       setCorrectionSaved(false);
-      setMobilePanel(data.action_operator_plan || data.status.startsWith("READY") ? "review" : "chat");
+      setMobilePanel(data.unified || data.action_operator_plan || data.status.startsWith("READY") ? "review" : "chat");
       const success =
         data.status === "READY_WITH_ANALYTICS"
           ? data.analytics?.headline ||
@@ -1165,6 +1205,9 @@ export default function ActivePlannerPage() {
     setSpeaking(false);
     setContext("");
     setResult(null);
+    setUnifiedSessionId(null);
+    setUnifiedWorkingRef(null);
+    setDocumentIds([]);
     setCreated(null);
     setApprovalRequest(null);
     setAttachments([]);
@@ -1213,6 +1256,9 @@ export default function ActivePlannerPage() {
       setConversationMenuOpen(false);
       setContext("");
       setResult(null);
+      setUnifiedSessionId(null);
+      setUnifiedWorkingRef(null);
+      setDocumentIds([]);
       setCreated(null);
       setApprovalRequest(null);
       setAttachments([]);
@@ -1280,6 +1326,7 @@ export default function ActivePlannerPage() {
         .toLocaleLowerCase()
         .includes(conversationSearch.trim().toLocaleLowerCase()),
     );
+  const unifiedMode = Boolean(unifiedConfiguration?.enabled && unifiedConfiguration.router);
   return (
     <main className="mx-auto max-w-7xl space-y-3 p-3 pb-24 text-[#2F241B] sm:space-y-4 sm:p-4 sm:pb-4">
       <header className="rounded-2xl border border-[#D8C8AA] bg-gradient-to-r from-[#FBF7EF] to-white p-4 sm:rounded-xl sm:p-5">
@@ -1290,18 +1337,17 @@ export default function ActivePlannerPage() {
               Mizantra intelligence
             </p>
             <h1 className="mt-1 text-2xl font-bold">
-              <span className="sm:hidden">Ask Mizantra</span>
-              <span className="hidden sm:inline">Active Planner</span>
+              {unifiedMode ? 'Ask Mizantra' : <><span className="sm:hidden">Ask Mizantra</span><span className="hidden sm:inline">Active Planner</span></>}
             </h1>
-            <p className="mt-1 hidden max-w-3xl text-sm text-[#6F5A45] sm:block [@media(max-height:760px)]:hidden">
+            {!unifiedMode && <p className="mt-1 hidden max-w-3xl text-sm text-[#6F5A45] sm:block [@media(max-height:760px)]:hidden">
               One prompt workspace for the complete ERP. It prepares safe
               drafts, validates controlled transactions, and hands work to the
               correct native screen without bypassing approvals.
-            </p>
+            </p>}
             <span
               className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-bold ${provider?.configured ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}
             >
-              {provider?.configured
+              {unifiedMode ? 'Ready' : provider?.configured
                 ? `${provider.provider} · ${provider.default_model} · ${provider.api_mode}`
                 : "Deterministic safe mode"}
             </span>
@@ -1395,7 +1441,7 @@ export default function ActivePlannerPage() {
               </button>
             )}
             <label className="hidden min-w-52 items-center gap-2 rounded border border-[#D8C8AA] bg-white px-3 py-1.5 text-xs font-semibold text-[#65452B] lg:flex">
-              <span className="whitespace-nowrap">Bot width</span>
+              <span className="whitespace-nowrap">Workspace width</span>
               <input
                 type="range"
                 min="35"
@@ -1466,11 +1512,11 @@ export default function ActivePlannerPage() {
           <div className="flex shrink-0 items-center gap-2 border-b p-4">
             <Bot className="h-5 w-5 text-[#80613D]" />
             <div>
-              <b>Prompt workspace</b>
-              <p className="hidden text-xs text-[#7A6555] sm:block">
+              <b>{unifiedMode ? 'Conversation' : 'Prompt workspace'}</b>
+              {!unifiedMode && <p className="hidden text-xs text-[#7A6555] sm:block">
                 Try: “Plan 100 drones for SO-100 by 30-09-2026” or “Raise NCR
                 for 5 rejected impellers”
-              </p>
+              </p>}
             </div>
             <button
               type="button"
@@ -1573,7 +1619,7 @@ export default function ActivePlannerPage() {
           >
             {brainContext && <div className="flex max-w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-xs">
               <span className="min-w-0 break-words">Context: {brainContext.document_number}</span>
-              <button type="button" title="Remove context" aria-label="Remove context" className="ml-auto shrink-0 p-1" onClick={() => { setBrainContext(null); sessionStorage.removeItem(BRAIN_CONTEXT_KEY); }}><Trash2 className="h-4 w-4" /></button>
+                <button type="button" title="Remove context" aria-label="Remove context" className="ml-auto shrink-0 p-1" onClick={() => { setBrainContext(null); setUnifiedSessionId(null); setUnifiedWorkingRef(null); sessionStorage.removeItem(BRAIN_CONTEXT_KEY); }}><Trash2 className="h-4 w-4" /></button>
             </div>}
             {turns.map((turn, i) => (
               <div
@@ -1591,7 +1637,7 @@ export default function ActivePlannerPage() {
               </li>)}</ul>
               {result.evidence?.filter(entry => entry.claim === "PO_RECEIPT_STATE").map((entry, index) => <dl key={index} className="mt-3 grid grid-cols-2 gap-2 text-xs">{Object.entries(entry.values || {}).filter(([key]) => key.endsWith("_qty")).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd className="font-semibold">{String(value)}</dd></div>)}</dl>)}
             </details>}
-            {result?.status === "REPORT_READY" && result.report && <MizantraReporting embedded initialReport={result.report} initialSessionId={result.session_id} />}
+              {result?.report && !result.unified && <MizantraReporting embedded initialReport={result.report} initialSessionId={result.session_id} />}
             {result?.document_quote_hint && <button type="button" className="flex items-center gap-2 px-3 py-2 text-xs underline" onClick={() => { const hint = result.document_quote_hint!; void apiClient.post<DocumentComparison>("/active-planner/document-intelligence/compare", { document_ids: hint.document_ids, brain_context: hint.brain_context }).then(comparison => setResult(previous => previous ? { ...previous, document_comparison: comparison } : previous)).catch(() => setError("Quotation evidence is unavailable or requires a fresh comparison.")); }}><FileText className="h-4 w-4" />View Quotation Comparison</button>}
             {result?.status === "SMART_APPROVAL_READ_ONLY" && result.items && result.review_version && <ReviewResults review={result as SmartApprovalReview} onRefresh={() => {
               const current = result;
@@ -1783,7 +1829,7 @@ export default function ActivePlannerPage() {
                     : "AI voice · audio not stored"}
               </span>
             </div>
-            <MizantraDocuments refreshSignal={documentRefresh} selectedIds={documentIds} onSelection={setDocumentIds} onEnabled={setDocumentEnabled} comparison={result?.document_comparison} onDiagnosis={context => { setBrainContext(context); setDocumentIds([]); setInput("Diagnose ERP data for this record"); }} />
+              <MizantraDocuments refreshSignal={documentRefresh} selectedIds={documentIds} onSelection={ids => { setDocumentIds(ids); setUnifiedSessionId(null); setUnifiedWorkingRef(null); }} onEnabled={setDocumentEnabled} comparison={result?.unified ? undefined : result?.document_comparison} onDiagnosis={context => { setBrainContext(context); setUnifiedSessionId(null); setUnifiedWorkingRef(null); setDocumentIds([]); setInput("Diagnose ERP data for this record"); }} />
             <form onSubmit={send} className="flex gap-2 p-3">
               <label className="self-end cursor-pointer rounded-xl border border-[#D8C8AA] p-3 text-[#65452B] sm:rounded-lg">
                 <Paperclip className="h-5 w-5" />
@@ -1844,7 +1890,7 @@ export default function ActivePlannerPage() {
                     ? "Mizantra is processing your request…"
                     : context
                       ? "Reply with the missing details…"
-                      : "What should Mizantra prepare?"
+                      : "Ask Mizantra anything..."
                 }
                 className="min-h-14 flex-1 resize-none rounded-xl border border-[#D8C8AA] p-3 text-sm sm:min-h-16 sm:rounded-lg"
               />
@@ -1865,15 +1911,18 @@ export default function ActivePlannerPage() {
         >
           <section className="rounded-2xl border border-[#E0D2B8] bg-white p-4 sm:rounded-xl">
             <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="font-bold">System-checked preview</h2>
+              <h2 className="font-bold">{result?.unified ? 'Ask Mizantra' : 'System-checked preview'}</h2>
               <span
                 className={`max-w-full rounded-full px-2 py-1 text-[10px] font-bold sm:text-xs ${result?.status?.startsWith("READY") ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}
               >
-                {result?.status?.replaceAll("_", " ") || "WAITING FOR REQUEST"}
+                {result?.unified ? (result.unified.partial ? 'Partial result' : 'Reviewed') : result?.status?.replaceAll("_", " ") || "WAITING FOR REQUEST"}
               </span>
             </div>
-            <OperatorPlanHistory currentId={result?.action_operator_plan?.id} onSelect={plan => { setResult({ status: 'ACTION_OPERATOR_PLAN', intent_type: 'ACTION_OPERATOR', provider: 'MIZANTRA_ACTION_OPERATOR_V1', extracted: {}, resolved: {}, questions: plan.payload.warnings, context_token: '', safety: { executable: false, autonomous_execution: false }, action_operator_plan: plan }); setMobilePanel('review'); }} />
-            {result?.proactive_brief ? <AttentionList brief={result.proactive_brief} onRefresh={async () => { const brief = await apiClient.get<ProactiveBrief>('/active-planner/proactive-operations/attention'); setResult(previous => previous ? { ...previous, proactive_brief: brief } : previous); }} /> : result?.attention_evidence ? <section aria-label="Attention evidence" className="py-4 text-sm"><p>{result.attention_evidence.explanation}</p><dl className="mt-3 space-y-2">{Object.entries(result.attention_evidence.evidence).map(([key, value]) => <div key={key}><dt className="text-stone-500">{key.replaceAll('_', ' ')}</dt><dd className="break-words [overflow-wrap:anywhere]">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl></section> : result?.action_operator_plan ? <MizantraActionOperator key={result.action_operator_plan.id} plan={result.action_operator_plan} onUpdate={plan => setResult(previous => previous ? { ...previous, action_operator_plan: plan } : previous)} onReportFailure={plan => { setSupportMode(true); setMobilePanel('chat'); setInput(`Report Action Operator software failure for plan ${plan.id}, build ${plan.build_sha}. No software patch was attempted during business execution.`); }} /> : result && !result.analytics ? (
+            {result?.unified && <UnifiedResultHeader envelope={result.unified} message={result.assistant_message} busy={busy} importPreview={result.import_preview} onAction={(key,message) => void submitMessage(message,undefined,key)} />}
+            {result?.unified && result.report && <MizantraReporting embedded initialReport={result.report} initialSessionId={result.session_id} onWorkingReport={(report, id) => { setUnifiedWorkingRef({ type:'REPORT', id }); setResult(current => current ? { ...current, report, session_id:id, unified:current.unified ? { ...current.unified, next_actions:[] } : undefined } : current); }} />}
+            {result?.unified && result.document_comparison && <MizantraDocuments comparisonOnly refreshSignal={0} selectedIds={[]} onSelection={() => undefined} onEnabled={() => undefined} comparison={result.document_comparison} onDiagnosis={context => { setBrainContext(context); setUnifiedSessionId(null); setUnifiedWorkingRef(null); setDocumentIds([]); setMobilePanel('chat'); setInput('Diagnose ERP data for this record'); }} />}
+            <OperatorPlanHistory currentId={result?.action_operator_plan?.id} onSelect={plan => { setUnifiedSessionId(null); setUnifiedWorkingRef({ type:'ACTION_PLAN', id:plan.id }); setDocumentIds([]); setResult({ status: 'ACTION_OPERATOR_PLAN', intent_type: 'ACTION_OPERATOR', provider: 'MIZANTRA_ACTION_OPERATOR_V1', extracted: {}, resolved: {}, questions: plan.payload.warnings, context_token: '', safety: { executable: false, autonomous_execution: false }, action_operator_plan: plan }); setMobilePanel('review'); }} />
+            {result?.proactive_brief ? <AttentionList brief={result.proactive_brief} onRefresh={async () => { const brief = await apiClient.get<ProactiveBrief>('/active-planner/proactive-operations/attention'); setResult(previous => previous ? { ...previous, proactive_brief: brief } : previous); }} /> : result?.attention_evidence ? <section aria-label="Attention evidence" className="py-4 text-sm"><p>{result.attention_evidence.explanation}</p><dl className="mt-3 space-y-2">{Object.entries(result.attention_evidence.evidence).map(([key, value]) => <div key={key}><dt className="text-stone-500">{key.replaceAll('_', ' ')}</dt><dd className="break-words [overflow-wrap:anywhere]">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl></section> : result?.action_operator_plan ? <MizantraActionOperator key={result.action_operator_plan.id} plan={result.action_operator_plan} onUpdate={plan => setResult(previous => previous ? { ...previous, action_operator_plan: plan } : previous)} onReportFailure={plan => { setSupportMode(true); setMobilePanel('chat'); setInput(`Report Action Operator software failure for plan ${plan.id}, build ${plan.build_sha}. No software patch was attempted during business execution.`); }} /> : result && !result.analytics && !result.unified ? (
               <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                 <div>
                   <span className="text-xs text-[#7A6555]">Module</span>
@@ -2825,7 +2874,7 @@ export default function ActivePlannerPage() {
               </Link>
             )}
           </section>
-          <section className="hidden rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm sm:block">
+          <section className={unifiedMode ? 'hidden' : 'hidden rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm sm:block'}>
             <h2 className="flex items-center gap-2 font-bold text-emerald-900">
               <ShieldCheck className="h-5 w-5" />
               Control boundary
