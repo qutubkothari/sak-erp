@@ -20,6 +20,7 @@ import {
 interface POItem {
   sl_no?: number;
   item_code: string;
+  oem_part_no?: string;
   item_name: string;
   description?: string;
   hsn_code?: string;
@@ -1458,6 +1459,7 @@ export class WorldClassPoPdfService {
     const lines = [
       item.item_name || item.description || "-",
       item.item_code ? `SAS Part Number-${item.item_code}` : "",
+      item.oem_part_no ? `OEM Part No.: ${item.oem_part_no}` : "",
       item.description && item.description !== item.item_name
         ? item.description
         : "",
