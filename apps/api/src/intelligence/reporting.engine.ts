@@ -225,7 +225,10 @@ export function evaluateReport(plan: ReportPlan, source: ReportRow[]) {
     type: dataset.fields[key]?.type || "number",
   }));
   const version = createHash("sha256")
-    .update(JSON.stringify({ plan, rows, matchingRows }))
+    .update(JSON.stringify({ plan, rows, matchingRows }, (_key, value) =>
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]))
+        : value))
     .digest("hex");
   return {
     rows,

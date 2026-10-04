@@ -26,6 +26,12 @@ const rows = Array.from({ length: 119 }, (_, index) => ({
   purchase_month: "2026-09",
 }));
 describe("report evaluator and complete XLSX parity", () => {
+  it('preserves export versions across JSONB object key ordering but rejects changed data', () => {
+    const original=plan('Show open POs');
+    const restored={...Object.fromEntries(Object.entries(original).reverse()),filters:original.filters.map(filter=>Object.fromEntries(Object.entries(filter).reverse()))} as typeof original;
+    expect(evaluateReport(restored,rows).version).toBe(evaluateReport(original,rows).version);
+    expect(evaluateReport(restored,rows.slice(1)).version).not.toBe(evaluateReport(original,rows).version);
+  });
   it("resolves timestamp calendar days and query bounds in user timezone", () => {
     expect(reportCalendarDay("2026-10-02T22:00:00Z", "Asia/Dubai")).toBe(
       "2026-10-03",
