@@ -7,6 +7,7 @@ import { classifyAutoEngineerIntent } from "../support-autofix/autoengineer-poli
 import { brainActionPreview, brainDepth, brainFlags, BRAIN_MAX_RECORDS, BRAIN_TIMEOUT_MS } from "./brain-policy";
 import { BRAIN_REGISTRY, BRAIN_DIAGNOSTIC_RESOLVERS, brainEntitySummary } from "./brain-registry";
 import { observedBrainRead } from "./unified-ai.performance";
+import { isPoGrnRequest } from "./unified-ai.registry";
 
 export type BrainContext = {
   profile: string; tenant_id: string; current_route: string; module: string;
@@ -106,6 +107,18 @@ export class BrainService {
   async validateContext(user: any, envelope: any) {
     if (!brainFlags().contextEnabled) return { enabled: false, context: null };
     return this.bounded(async signal => ({ enabled: true, context: (await this.validated(this.scope(user), envelope, signal)).context }));
+  }
+
+  async purchaseOrderContext(user: any, documentNumber: string) {
+    const flags = brainFlags();
+    if (!flags.enabled || !flags.contextEnabled || !flags.graphEnabled) throw new ForbiddenException('PO context is not enabled.');
+    if (!/^PO[-/][A-Za-z0-9_/-]{1,96}$/i.test(documentNumber)) throw new BadRequestException('Supply an exact PO number.');
+    const scope = this.scope(user);
+    return this.bounded(async signal => {
+      const rows = await this.rows(this.query(scope, 'purchase_order', signal).eq('po_number', documentNumber));
+      if (rows.length !== 1) throw new NotFoundException('Select one exact purchase order in your authorized tenant.');
+      return (await this.validated(scope, {tenant_id:scope.tenantId,profile:scope.profile,current_user_id:scope.userId,entity_type:'purchase_order',entity_id:rows[0].id,current_route:'/dashboard/purchase/orders',locale:'en'}, signal)).context;
+    });
   }
 
   async withDiagnosticEvidence<T>(user: any, envelope: any, inspect: (evidence: BrainDiagnosticEvidence) => Promise<T>): Promise<T> {
@@ -221,11 +234,17 @@ export class BrainService {
       if (!body.brain_context) return this.reply("Which document do you mean? Open or select a purchase order, receipt, item, supplier, or finding.", [], [], { questions: ["Which document do you mean?"] });
       return await this.bounded(async signal => {
         const { context, root } = await this.validated(scope, body.brain_context, signal);
-        const graph = await this.graph(scope, root, body?.brain_depth, signal);
+        const grnRequest = isPoGrnRequest(text) && root.type === 'purchase_order';
+        if (grnRequest && !this.allowed(scope, 'grn')) throw new ForbiddenException('GRN evidence is not permitted.');
+        const graph = await this.graph(scope, root, grnRequest ? 1 : body?.brain_depth, signal);
         used = [...new Set(graph.nodes.map(node => node.type))];
         const entities = graph.nodes.map(node => brainEntitySummary(node.type, node.row));
         const evidence: any[] = [];
         const extra = { brain_context: context, graph: { edges: graph.edges, maximum_depth: graph.maximumDepth }, authoritative_source: "LIVE_ERP" };
+        if (grnRequest) {
+          const receipts = graph.nodes.filter(node => node.type === 'grn' && node.row.po_id === root.row.id).map(node => brainEntitySummary('grn', node.row));
+          return this.reply(receipts.length ? `GRNs recorded against ${context.document_number}: ${receipts.map(receipt => receipt.document_number).join(', ')}.` : `No GRNs are recorded against ${context.document_number}.`, [{claim:'RELATED_GRNS',values:receipts}], receipts, extra);
+        }
         if (/\b(late|delay|cause)\b/i.test(text)) return this.reply("I can see the document, but there is not enough recorded evidence to determine the cause of a supplier delay.", [{ claim: "INSUFFICIENT_EVIDENCE", entities }], entities, extra);
         if (root.type === "smart_import_batch") {
           const rows = await this.rows(this.db.from("smart_import_batch_rows").select("row_reference,decision,validation,target_entity").eq("tenant_id", scope.tenantId).eq("batch_id", root.row.id).abortSignal(signal));

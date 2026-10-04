@@ -68,6 +68,21 @@ describe("Brain validated context and graph", () => {
   it("validates PO context and replaces a forged document label", async () => {
     expect((await subject.validateContext(user, envelope())).context).toMatchObject({ document_number: "PO-312", tenant_id: tenant, current_user_id: actor });
   });
+  it('resolves explicit PO numbers only inside the authorized tenant', async () => {
+    expect(await subject.purchaseOrderContext(user,'PO-312')).toMatchObject({entity_id:poId,document_number:'PO-312',tenant_id:tenant});
+    records.purchase_orders[0].tenant_id=otherTenant;
+    await expect(subject.purchaseOrderContext(user,'PO-312')).rejects.toThrow('authorized tenant');
+  });
+  it('blocks unauthorized explicit PO lookup', async () => {
+    await expect(subject.purchaseOrderContext({...user,role:'VIEWER'},'PO-312')).rejects.toThrow('cannot view');
+  });
+  it.each(['What are the related GRNs for this PO?','Has anything been received against this PO?'])('returns only the authoritative related GRNs for %s', async message => {
+    const reply=await ask(message);
+    expect(reply.message).toContain('GRN-300');
+    expect(reply.evidence[0].claim).toBe('RELATED_GRNS');
+    records.grns=[];
+    expect((await ask(message)).message).toBe('No GRNs are recorded against PO-312.');
+  });
   it("rejects forged tenant", async () => { await expect(ask("Why is this open?", { ...envelope(), tenant_id: otherTenant })).rejects.toThrow("authenticated scope"); });
   it("blocks forged diagnostic context before invoking a runner", async () => {
     const inspect = jest.fn();

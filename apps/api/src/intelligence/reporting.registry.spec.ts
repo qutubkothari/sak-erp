@@ -21,10 +21,16 @@ describe("semantic reporting registry", () => {
   });
   it("understands open purchase orders", () =>
     expect(plan("Show open POs").filters).toContainEqual({
-      field: "open_state",
+      field: "OPEN_PO",
       operator: "eq",
-      value: "OPEN",
+      value: true,
     }));
+  it.each(['Show all open purchase orders','Show POs with remaining quantity','Show all purchase orders with remaining quantity greater than 0','Show not fully received purchase orders','Show pending receipt POs','Show pending POs'])('maps %s to authoritative Open Receipt', message => {
+    expect(plan(message).filters).toContainEqual({field:'OPEN_PO',operator:'eq',value:true});
+  });
+  it.each(['Only open ones','Only with remaining quantity > 0'])('refines %s without replacing the owned PO dataset', message => {
+    expect(interpretReport(message,plan('Show all purchase orders')).plan?.filters).toContainEqual({field:'OPEN_PO',operator:'eq',value:true});
+  });
   it("filters suppliers", () =>
     expect(plan("Show open POs for Hero Steel").filters).toContainEqual({
       field: "supplier",

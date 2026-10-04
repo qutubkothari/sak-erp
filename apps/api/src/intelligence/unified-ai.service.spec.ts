@@ -1,6 +1,7 @@
 import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { UnifiedAiService, customerAiMessage } from './unified-ai.service';
 import { FeatureEntitlementGuard } from '../feature-access/feature-entitlement.guard';
+import { ActivePlannerController } from './active-planner.controller';
 jest.mock('@supabase/supabase-js', () => ({createClient:jest.fn(()=>({}))}));
 const tenant='11111111-1111-4111-8111-111111111111', owner='22222222-2222-4222-8222-222222222222', id='33333333-3333-4333-8333-333333333333';
 const user={tenantId:tenant,id:owner,role:{name:'ADMIN'},permissions:['*']};
@@ -68,12 +69,92 @@ describe('Unified governed orchestration', () => {
     expect(brain.interpret).toHaveBeenLastCalledWith(user,expect.objectContaining({message:'What is the ordered and received quantity for this PO?'}));
     expect(erp).not.toHaveBeenCalled();
   });
+  it.each(['Show me the related GRNs.','Show GRNs for this PO','Has anything been received against this PO?'])('reuses owned PO context for %s', async message => {
+    await service.interpret(user,{message,unified_session_id:id},erp);
+    expect(brain.interpret).toHaveBeenCalledWith(user,expect.objectContaining({brain_context:entity,message:'What are the related GRNs for this PO?'}));
+    expect(reporting.interpret).not.toHaveBeenCalled();expect(erp).not.toHaveBeenCalled();
+  });
+  it('uses freshly validated screen PO for a relative question after a broad report', async () => {
+    contexts.get.mockResolvedValue({id,version:1,working_ref:{current_type:'REPORT',report_session_id:id}});
+    await service.interpret(user,{message:'Why is this PO open?',screen_context:entity,unified_session_id:id},erp);
+    expect(brain.validateContext).toHaveBeenCalledWith(user,entity);
+    expect(brain.interpret).toHaveBeenCalledWith(user,expect.objectContaining({brain_context:entity}));
+    reporting.interpret.mockClear();brain.interpret.mockClear();
+    await service.interpret(user,{message:'Only open ones',screen_context:entity,unified_session_id:id},erp);
+    expect(reporting.interpret).toHaveBeenCalledWith(user,expect.objectContaining({session_id:id,brain_context:undefined}));expect(brain.interpret).not.toHaveBeenCalled();
+  });
+  it('handles the bare remaining-quantity predicate as a broad report or owned refinement', async () => {
+    await service.interpret(user,{message:'remaining quantity greater than 0',brain_context:entity},erp);
+    expect(reporting.interpret).toHaveBeenLastCalledWith(user,expect.objectContaining({message:'Show all purchase orders with remaining quantity greater than 0',brain_context:undefined,session_id:undefined}));
+    contexts.get.mockResolvedValue({id,version:1,working_ref:{current_type:'REPORT',report_session_id:id}});
+    reporting.workingContext.mockResolvedValue({id,plan:{dataset:'PURCHASE_ORDERS'}});
+    await service.interpret(user,{message:'remaining quantity > 0',unified_session_id:id},erp);
+    expect(reporting.interpret).toHaveBeenLastCalledWith(user,expect.objectContaining({message:'Only with remaining quantity > 0',session_id:id}));
+    expect(brain.interpret).not.toHaveBeenCalled();
+  });
+  it('resolves an explicit PO number instead of using a stale record', async () => {
+    const selected={...entity,entity_id:owner,document_number:'PO-2026-09-293'};
+    brain.purchaseOrderContext=jest.fn().mockResolvedValue(selected);brain.validateContext.mockResolvedValue({enabled:true,context:selected});
+    await service.interpret(user,{message:'Show the GRNs for PO-2026-09-293',unified_session_id:id},erp);
+    expect(brain.purchaseOrderContext).toHaveBeenCalledWith(user,'PO-2026-09-293');
+    expect(brain.interpret).toHaveBeenCalledWith(user,expect.objectContaining({brain_context:selected}));
+  });
+  it.each(['Export these','Why are these open?'])('uses registered Open PO list semantics without guessing an entity: %s', async message => {
+    reporting.workingContext.mockResolvedValue({id,plan:{dataset:'PURCHASE_ORDERS'}});
+    reporting.interpret.mockResolvedValue({status:'REPORT_READY',session_id:id,report:{plan:{dataset:'PURCHASE_ORDERS'},version:'native-version'}});
+    const result=await service.interpret(user,{message,list_context:{module:'PURCHASE_ORDERS',view:'OPEN_PO',current_route:'/dashboard/purchase/orders'}},erp);
+    expect(reporting.interpret).toHaveBeenCalledWith(user,{message:'Show all open purchase orders'});
+    expect(reporting.query).toHaveBeenCalledWith(user,{session_id:id});expect(brain.interpret).not.toHaveBeenCalled();expect(doctor.interpret).not.toHaveBeenCalled();
+    expect(contexts.save.mock.calls[0][1].entity).toBeUndefined();expect(result.unified.route).toBe('REPORT_BUILDER');
+  });
+  it('denies an unauthorized fresh list export before native queries', async () => {
+    reporting.configuration.mockReturnValue({enabled:true,datasets:[{}],can_export:false});
+    const result=await service.interpret(user,{message:'Export these',list_context:{module:'PURCHASE_ORDERS',view:'OPEN_PO',current_route:'/dashboard/purchase/orders'}},erp);
+    expect(result.status).toBe('UNIFIED_ERROR');expect(reporting.interpret).not.toHaveBeenCalled();expect(reporting.query).not.toHaveBeenCalled();expect(reporting.export).not.toHaveBeenCalled();
+  });
+  it.each([{module:'PURCHASE_ORDERS',view:'OPEN_PO',current_route:'/dashboard/purchase/orders',where:'1=1'},{module:'PURCHASE_ORDERS',view:'CUSTOM',current_route:'/dashboard/purchase/orders'},{module:'ITEMS',view:'OPEN_PO',current_route:'/dashboard/purchase/orders'}])('rejects unregistered or raw list filters',async list_context=>{
+    const result=await service.interpret(user,{message:'Export these',list_context},erp);
+    expect(result.status).toBe('UNIFIED_ERROR');expect(reporting.interpret).not.toHaveBeenCalled();expect(brain.interpret).not.toHaveBeenCalled();
+  });
+  it.each(['Show all open purchase orders','Show purchase orders with remaining quantity greater than 0'])('drops old entity defaults for explicit broad request %s', async message => {
+    await service.interpret(user,{message,brain_context:entity,unified_session_id:id},erp);
+    expect(reporting.interpret).toHaveBeenCalledWith(user,expect.objectContaining({brain_context:undefined,session_id:undefined}));
+    expect(brain.interpret).not.toHaveBeenCalled();expect(reporting.contextualHistory).not.toHaveBeenCalled();
+    expect(contexts.save.mock.calls[0][1].entity).toBeUndefined();
+  });
   it('keeps report refinement and export bound to native session',async()=>{
     contexts.get.mockResolvedValue({id,version:1,working_ref:{current_type:'REPORT',report_session_id:id}});
     await service.interpret(user,{message:'Only Hero Steel',unified_session_id:id},erp);
     expect(reporting.interpret).toHaveBeenCalledWith(user,expect.objectContaining({session_id:id}));
     const exported=await service.interpret(user,{message:'Export that',unified_session_id:id},erp);
     expect(exported.export_request).toEqual({session_id:id,version:'native-version'});expect(reporting.export).not.toHaveBeenCalled();
+  });
+  it('clears every owned working reference without an ERP operation', async () => {
+    const previous={id,version:1,working_ref:{current_type:'REPORT',entity,report_session_id:id,document_ids:[id],diagnosis_key:'OLD',plan_id:id}};
+    contexts.get.mockResolvedValue(previous);
+    expect(await service.clearContext(user,{session_id:id,session_version:1})).toMatchObject({context:null,executable:false});
+    expect(contexts.save).toHaveBeenCalledWith(user,{},previous);
+    expect(brain.interpret).not.toHaveBeenCalled();expect(operator.execute).not.toHaveBeenCalled();expect(erp).not.toHaveBeenCalled();
+  });
+  it('persists the Unified user turn before native dispatch and retains the response', async () => {
+    const sequence:string[]=[];
+    const memory={prepare:jest.fn(async()=>{sequence.push('USER');return {conversation:{id},body:{conversation_id:id}};}),complete:jest.fn(async(_tenant,_user,_conversation,_message,reply)=>{sequence.push('REPLY');return {...reply,conversation_id:id};})};
+    reporting.interpret.mockImplementation(async()=>{sequence.push('REPORT');return {status:'REPORT_READY',session_id:id,report:{plan:{dataset:'PURCHASE_ORDERS',visualization:'TABLE'},version:'native-version'}};});
+    const controller=new ActivePlannerController({} as any,{} as any,memory as any,support,{} as any,brain,doctor,approval,reporting,documents,operator,proactive,service);
+    const result=await controller.interpret({user},{message:'Show all purchase orders'});
+    expect(sequence).toEqual(['USER','REPORT','REPLY']);expect(result.conversation_id).toBe(id);
+    expect(memory.prepare).toHaveBeenCalledTimes(1);expect(memory.complete).toHaveBeenCalledTimes(1);expect(operator.execute).not.toHaveBeenCalled();
+  });
+  it('cannot clear someone else\'s session or a stale version', async () => {
+    await expect(service.clearContext(user,{session_id:id,session_version:7})).rejects.toThrow('request changed');
+    contexts.get.mockRejectedValue(new ForbiddenException('Not owned'));
+    await expect(service.clearContext(user,{session_id:id,session_version:1})).rejects.toThrow('Not owned');
+    expect(contexts.save).not.toHaveBeenCalled();
+  });
+  it('idempotently clears an already empty owned reference without blocking a fresh request', async () => {
+    contexts.get.mockResolvedValue({id,version:2,working_ref:{}});
+    expect(await service.clearContext(user,{session_id:id,session_version:1})).toMatchObject({session_version:2,context:null});
+    expect(contexts.save).not.toHaveBeenCalled();
   });
   it('selects oldest through the owned native report and replaces stale entity context', async () => {
     contexts.get.mockResolvedValue({id,version:1,working_ref:{current_type:'REPORT',report_session_id:id,entity:{...entity,entity_id:owner}}});

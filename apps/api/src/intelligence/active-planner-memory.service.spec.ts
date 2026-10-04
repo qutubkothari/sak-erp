@@ -7,6 +7,13 @@ process.env.SUPABASE_URL ||= "http://localhost:54321";
 process.env.SUPABASE_KEY ||= "planner-memory-test-key";
 
 describe("ActivePlannerMemoryService presentation", () => {
+  it('preserves the exact verified Unified zero-GRN reply in automatic English', async () => {
+    const ai={isEnabled:jest.fn(()=>true),structuredJson:jest.fn()};
+    const subject=new ActivePlannerMemoryService(ai as any);
+    const message='No GRNs are recorded against PO-2026-09-293.';
+    expect(await (subject as any).groundedAssistantMessage('tenant','user','Show me the related GRNs',{unified:{route:'BRAIN_QUERY'},assistant_message:message,questions:[]},'auto')).toBe(message);
+    expect(ai.structuredJson).not.toHaveBeenCalled();
+  });
   it("persists the direct analytics answer as the planner message", () => {
     expect(
       plannerAssistantMessage({

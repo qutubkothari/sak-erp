@@ -32,6 +32,18 @@ export function unifiedFlags() {
   };
 }
 
+export function isPoGrnRequest(message: string) {
+  return /\bGRNs?\b.*\b(?:for|against)\b.*\bPO\b|\b(?:related|its) GRNs?\b|\b(?:received|receipts?)\b.*\b(?:against|for)\b.*\b(?:this PO|PO[-/])/i.test(message);
+}
+
+export function isExplicitPoReport(message: string) {
+  return (/^(?:show|list|report|chart|count|total|find|export)\b.*\b(?:purchase orders|POs)\b/i.test(message) || /^(?:(?:all|open|pending receipt|not fully received)\s+)?(?:purchase orders|POs)\b/i.test(message)) && !isPoGrnRequest(message) && !/\b(?:related|similar|this|that)\b/i.test(message);
+}
+
+export function isPoRemainingFilter(message: string) {
+  return /^remaining\s+(?:quantity|qty)\s*(?:greater than|>)\s*0[.!?]?$/i.test(message.trim());
+}
+
 export function selectUnifiedRoute(message: string, input: RouteInput = {}): RouteDecision {
   const text = message.trim();
   const choose = (route: UnifiedRoute, operation: RouteDecision['operation'] = 'INTERPRET', contextual = false): RouteDecision =>
@@ -44,6 +56,9 @@ export function selectUnifiedRoute(message: string, input: RouteInput = {}): Rou
     return { route: null, operation: 'BLOCKED', confidence: 'EXACT', question: 'I cannot bypass permissions, change tenants, run SQL, or approve actions automatically.' };
   }
   if (/\bwhat can you do\b|\b(?:your|available) capabilities\b/i.test(text)) return choose('ERP_QUERY', 'DISCOVER');
+  if (isPoGrnRequest(text)) return choose('BRAIN_QUERY', 'INTERPRET', !!input.contextType);
+  if (isExplicitPoReport(text)) return choose('REPORT_BUILDER');
+  if (isPoRemainingFilter(text)) return choose('REPORT_BUILDER');
   if (input.contextType === 'REPORT' && /^(?:diagnose|why|who|check)\b.*\b(?:this|that|it|them)\b/i.test(text) && !/\b(?:PO|GRN|item|supplier|record)\b/i.test(text)) return clarify('Which authorized record in the report do you mean?');
   if (input.contextType === 'ACTION_PLAN' && /^(?:review|show|approve|check)\b/i.test(text)) return choose('ACTION_PLANNER', 'REVIEW', true);
   if (input.contextType === 'ACTION_PLAN' && /^(?:quantity|qty|required date|delivery date|needed|reason|warehouse|cost centre)\b/i.test(text)) return choose('ACTION_PLANNER', 'INTERPRET', true);

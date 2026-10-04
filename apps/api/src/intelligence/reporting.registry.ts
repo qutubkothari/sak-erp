@@ -122,6 +122,7 @@ export const REPORT_DATASETS: Record<string, ReportDataset> = {
       buyer: text("Buyer"),
       status: text("Status"),
       open_state: text("Open PO state"),
+      OPEN_PO: { label: "Open receipt", type: "boolean", filter: true },
       item_id: text("Item reference"),
       item: text("Item"),
       item_code: text("Item code"),
@@ -131,6 +132,7 @@ export const REPORT_DATASETS: Record<string, ReportDataset> = {
       accepted_qty: number("Accepted quantity"),
       rejected_qty: number("Rejected quantity"),
       open_qty: number("Open quantity"),
+      remaining_qty: number("Remaining quantity"),
       unit_price: price("Unit price"),
       currency: text("Currency"),
       line_value: price("Line value"),
@@ -799,8 +801,8 @@ export function interpretReport(
     );
     plan.filters.push(filter);
   };
-  if (/open|pending/i.test(textMessage) && dataset === "PURCHASE_ORDERS")
-    put({ field: "open_state", operator: "eq", value: "OPEN" });
+  if (/\b(?:open|pending|not fully received)\b|\bremaining\s+(?:quantity|qty)\b/i.test(textMessage) && dataset === "PURCHASE_ORDERS")
+    put({ field: "OPEN_PO", operator: "eq", value: true });
   if (/overdue/i.test(textMessage) && dataset === "PURCHASE_ORDERS") {
     put({ field: "open_state", operator: "eq", value: "OPEN" });
     put({ field: "overdue_days", operator: "gte", value: 1 });
@@ -849,7 +851,7 @@ export function interpretReport(
   ) {
     plan.grouping = ["supplier"];
     plan.aggregations = [
-      plan.filters.some((filter) => filter.field === "open_state")
+      plan.filters.some((filter) => filter.field === "open_state" || filter.field === "OPEN_PO")
         ? "OPEN_PO_COUNT"
         : "PO_COUNT",
     ];
@@ -878,7 +880,7 @@ export function interpretReport(
   if (/value/i.test(textMessage) && dataset === "PURCHASE_ORDERS") {
     const measure =
       /open/i.test(textMessage) ||
-      plan.filters.some((filter) => filter.field === "open_state")
+      plan.filters.some((filter) => filter.field === "open_state" || filter.field === "OPEN_PO")
         ? "OPEN_PO_VALUE"
         : "PURCHASE_VALUE";
     if (!plan.aggregations.includes(measure)) plan.aggregations.push(measure);
@@ -886,7 +888,7 @@ export function interpretReport(
   if (/\bcount\b/i.test(textMessage) && !plan.aggregations.length)
     plan.aggregations = [
       dataset === "PURCHASE_ORDERS"
-        ? plan.filters.some((filter) => filter.field === "open_state")
+        ? plan.filters.some((filter) => filter.field === "open_state" || filter.field === "OPEN_PO")
           ? "OPEN_PO_COUNT"
           : "PO_COUNT"
         : dataset === "ITEMS"

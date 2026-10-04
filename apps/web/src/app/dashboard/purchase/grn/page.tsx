@@ -705,7 +705,7 @@ function GRNContent() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [showQCModal, setShowQCModal] = useState(false);
   const [selectedGRN, setSelectedGRN] = useState<GRN | null>(null);
-  useBrainRecord('grn', selectedGRN?.id, selectedGRN?.grn_number);
+  useBrainRecord('grn', showViewModal ? selectedGRN?.id : null, selectedGRN?.grn_number);
   const [reverseTargetGRN, setReverseTargetGRN] = useState<GRN | null>(null);
   const [reverseReason, setReverseReason] = useState("");
   const [qcFormData, setQcFormData] = useState<

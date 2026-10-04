@@ -1,4 +1,6 @@
 "use client";
+import { useUnifiedDrawer } from "../../../components/MizantraUnifiedAi";
+import { ASK_LIST_CONTEXT_KEY, readAskListContext, type AskListContext } from '@/lib/brain-context';
 import {
   type CSSProperties,
   FormEvent,
@@ -449,6 +451,11 @@ const downloadAnalyticsDocument = async (
 };
 
 export default function ActivePlannerPage() {
+  const embedded = useUnifiedDrawer();
+  const freshScreenContext = useRef<BrainEnvelope | null>(null);
+  const freshScreenList = useRef<AskListContext | null>(null);
+  const [screenList,setScreenList] = useState<AskListContext | null>(null);
+  const [screenContextLoading,setScreenContextLoading] = useState(true);
   const [unifiedConfiguration, setUnifiedConfiguration] = useState<UnifiedConfiguration | null>(null);
   const [unifiedSessionId, setUnifiedSessionId] = useState<string | null>(null);
   const [unifiedWorkingRef, setUnifiedWorkingRef] = useState<{ type: string; id: string } | null>(null);
@@ -525,6 +532,7 @@ export default function ActivePlannerPage() {
 
   useEffect(() => {
     let active = true;
+    freshScreenList.current=readAskListContext();setScreenList(freshScreenList.current);
     void apiClient.get<UnifiedConfiguration>('/active-planner/unified/configuration').then(configuration => { if (active) { setUnifiedConfiguration(configuration); if (configuration.enabled && configuration.router) setTurns(previous => previous.length === 1 && previous[0].text.startsWith('Tell me the outcome') ? [{ role:'planner', text:'What would you like to know?' }] : previous); } }).catch(() => { if (active) setUnifiedConfiguration(null); });
     return () => { active = false; };
   }, []);
@@ -532,6 +540,7 @@ export default function ActivePlannerPage() {
   useEffect(() => {
     let active = true;
     const query = new URLSearchParams(window.location.search);
+    if (embedded) return;
     const planId = query.get('attention_operator_plan');
     const prompt = query.get('attention_prompt');
     const entityId = query.get('attention_id');
@@ -568,8 +577,8 @@ export default function ActivePlannerPage() {
         const envelope = buildBrainEnvelope(stored, configuration, "", language === "ar" ? "ar-EG" : "en");
         if (!envelope) return;
         const validated = await apiClient.post<{ context: BrainEnvelope | null }>("/active-planner/brain/context", envelope);
-        if (!cancelled) setBrainContext(validated.context);
-      }).catch(() => { if (!cancelled) setBrainContext(null); });
+        if (!cancelled) { freshScreenContext.current = validated.context;setBrainContext(validated.context); }
+      }).catch(() => { if (!cancelled) setBrainContext(null); }).finally(() => { if (!cancelled) setScreenContextLoading(false); });
     return () => { cancelled = true; };
   }, [language]);
 
@@ -666,6 +675,8 @@ export default function ActivePlannerPage() {
     setConversations(data?.conversations || []);
     const active = data?.active;
     if (!active) return;
+    setBrainContext(null);
+    setScreenList(null);
     setUnifiedSessionId(active.conversation?.last_result?.unified?.session_id || null);
     setUnifiedWorkingRef(null);
     setDocumentIds([]);
@@ -703,7 +714,9 @@ export default function ActivePlannerPage() {
     }
   };
   useEffect(() => {
-    void loadHistory();
+    if (embedded || sessionStorage.getItem(BRAIN_CONTEXT_KEY) || readAskListContext()) {
+      void apiClient.get<any>('/active-planner/conversations').then(data => setConversations(data?.conversations || [])).catch(() => undefined).finally(() => setHistoryLoading(false));
+    } else void loadHistory();
     // The latest tenant/user conversation is restored once on entry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -913,8 +926,9 @@ export default function ActivePlannerPage() {
     nextAction?: string,
   ) => {
     const message = rawMessage.trim();
-    if (!message || busy || uploading) return;
+    if (!message || busy || uploading || screenContextLoading) return;
     setBusy(true);
+    setTurns(previous => [...previous, {role:'user',text:message}]);
     setMobilePanel("chat");
     setError("");
     setCreated(null);
@@ -924,7 +938,7 @@ export default function ActivePlannerPage() {
       const support_mode = mode || (supportMode ? "support" : undefined);
       const unifiedEnabled = unifiedConfiguration?.enabled && unifiedConfiguration.router;
       let unifiedRoute: string | null = null;
-      if (unifiedEnabled) {
+      if (unifiedEnabled && pendingFile) {
         const routing = await apiClient.post<{ allowed: boolean; route: string | null; question?: string }>('/active-planner/unified/route', { message, context_type: unifiedWorkingRef?.type || result?.unified?.context.type || (brainContext ? 'ERP_ENTITY' : undefined), attachment_kinds: pendingFile ? [/\.(xlsx|csv)$/i.test(pendingFile.name) ? 'SPREADSHEET' : 'DOCUMENT'] : [] });
         if (!routing.allowed) throw new Error(routing.question || 'This capability is not enabled or authorized here.');
         unifiedRoute = routing.route;
@@ -947,7 +961,7 @@ export default function ActivePlannerPage() {
         if (unifiedEnabled) {
           const reply = await apiClient.post<Result>('/active-planner/interpret', { message, unified_session_id: unifiedSessionId || undefined, context_ref: { type: 'IMPORT_BATCH', id: staged.batch?.id || staged.id } });
           setResult(reply); setUnifiedSessionId(reply.unified?.session_id || null); setMobilePanel('review');
-          setTurns(previous => [...previous, { role:'user',text:message }, { role:'planner',text:reply.assistant_message || 'Import preview ready for review.' }]);
+          setTurns(previous => [...previous, { role:'planner',text:reply.assistant_message || 'Import preview ready for review.' }]);
           return;
         }
         window.location.assign(`/dashboard/active-planner/smart-import?batch=${encodeURIComponent(staged.batch?.id || staged.id)}`);
@@ -1040,6 +1054,8 @@ export default function ActivePlannerPage() {
         ...(documentEnabled && isPlanner && selectedDocumentIds.length && (!unifiedEnabled || !unifiedSessionId || pendingFile) ? { document_ids: selectedDocumentIds } : {}),
         ...(!unifiedEnabled && (result?.session_id || result?.action_operator_plan?.payload.request.session_id) ? { session_id: result?.session_id || result?.action_operator_plan?.payload.request.session_id } : {}),
         ...(brainContext && (!unifiedEnabled || (!unifiedSessionId && !unifiedWorkingRef)) ? { brain_context: brainContext } : {}),
+        ...(unifiedEnabled && brainContext && unifiedSessionId ? {screen_context:brainContext} : {}),
+        ...(unifiedEnabled && screenList && !brainContext && !unifiedSessionId && !unifiedWorkingRef ? {list_context:screenList} : {}),
         support_mode,
         ...(supportSourceRoute ? { source_route: supportSourceRoute } : {}),
         current_route: window.location.pathname,
@@ -1064,8 +1080,7 @@ export default function ActivePlannerPage() {
       });
       if (mode !== "status") setInput("");
       setClarifySupport(false);
-      setTurns((x) => [...x, { role: "user", text: message }]);
-      if (data.unified) { setUnifiedSessionId(data.unified.session_id); setUnifiedWorkingRef(null); setResult(data); setMobilePanel('review'); }
+      if (data.unified) { setUnifiedSessionId(data.unified.session_id); setUnifiedWorkingRef(null); setResult(data); setMobilePanel(embedded ? 'chat' : 'review'); }
       if (data.export_request) {
         const blob = await apiClient.postBlob('/active-planner/reports/export', data.export_request);
         const url = URL.createObjectURL(blob), anchor = document.createElement('a');
@@ -1124,7 +1139,8 @@ export default function ActivePlannerPage() {
             (data.questions.length ? data.questions.join("\n") : success),
         },
       ]);
-      void loadHistory(data.conversation_id || conversationId);
+      setConversationId(data.conversation_id || conversationId);
+      void apiClient.get<any>('/active-planner/conversations').then(history => setConversations(history?.conversations || [])).catch(() => undefined);
     } catch (x: any) {
       setError(
         x?.message ||
@@ -1200,7 +1216,38 @@ export default function ActivePlannerPage() {
       setBusy(false);
     }
   };
+  const clearWorkingContext = async () => {
+    if (unifiedSessionId) await apiClient.post('/active-planner/unified/context/clear', {session_id:unifiedSessionId,session_version:result?.unified?.session_version});
+    setUnifiedSessionId(null);
+    setUnifiedWorkingRef(null);
+    setContext('');
+    setConversationId('');
+    setDocumentIds([]);
+    setResult(null);
+    setCreated(null);
+    setApprovalRequest(null);
+  };
+  const removeContext = async () => {
+    if (busy || uploading || doctorBusy) return;
+    setBusy(true);
+    try { await clearWorkingContext();freshScreenContext.current=null;freshScreenList.current=null;setBrainContext(null);setScreenList(null);sessionStorage.removeItem(BRAIN_CONTEXT_KEY);sessionStorage.removeItem(ASK_LIST_CONTEXT_KEY); }
+    catch (failure:any) { setError(failure?.message || 'Context could not be cleared.'); }
+    finally { setBusy(false); }
+  };
   const restart = async () => {
+    if (busy || uploading || doctorBusy) return;
+    setBusy(true);
+    try { await clearWorkingContext(); } catch (failure:any) { setError(failure?.message || 'The previous request could not be cleared.');setBusy(false);return; }
+    setBrainContext(freshScreenContext.current);
+    setScreenList(freshScreenList.current);
+    setInput('');
+    setSupportSourceRoute(null);
+    setSupportStatuses([]);
+    setRequestScope('CURRENT_PROFILE');
+    setTargetProfiles([]);
+    setConversationMenuOpen(false);
+    setConversationSearch('');
+    setMobilePanel('chat');
     audioPlayerRef.current?.pause();
     setSpeaking(false);
     setContext("");
@@ -1230,7 +1277,7 @@ export default function ActivePlannerPage() {
       setError(
         x?.message || "A new planner conversation could not be started.",
       );
-    }
+    } finally { setBusy(false); }
     setTurns([
       {
         role: "planner",
@@ -1328,10 +1375,10 @@ export default function ActivePlannerPage() {
     );
   const unifiedMode = Boolean(unifiedConfiguration?.enabled && unifiedConfiguration.router);
   return (
-    <main className="mx-auto max-w-7xl space-y-3 p-3 pb-24 text-[#2F241B] sm:space-y-4 sm:p-4 sm:pb-4">
-      <header className="rounded-2xl border border-[#D8C8AA] bg-gradient-to-r from-[#FBF7EF] to-white p-4 sm:rounded-xl sm:p-5">
+    <main className={embedded ? 'min-w-0 space-y-3 p-3 pb-4 text-[#2F241B]' : 'mx-auto max-w-7xl space-y-3 p-3 pb-24 text-[#2F241B] sm:space-y-4 sm:p-4 sm:pb-4'}>
+      <header className={embedded ? 'border-b border-stone-200 pb-3' : 'rounded-2xl border border-[#D8C8AA] bg-gradient-to-r from-[#FBF7EF] to-white p-4 sm:rounded-xl sm:p-5'}>
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+          <div hidden={embedded}>
             <p className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
               <Sparkles className="h-4 w-4" />
               Mizantra intelligence
@@ -1424,7 +1471,7 @@ export default function ActivePlannerPage() {
                 )}
               </div>
             )}
-            {!!conversations.length && (
+            {!!conversations.length && !embedded && (
               <button
                 type="button"
                 onClick={() => void clearConversationList()}
@@ -1440,7 +1487,7 @@ export default function ActivePlannerPage() {
                 <span className="hidden sm:inline">Clear list</span>
               </button>
             )}
-            <label className="hidden min-w-52 items-center gap-2 rounded border border-[#D8C8AA] bg-white px-3 py-1.5 text-xs font-semibold text-[#65452B] lg:flex">
+            <label className={embedded ? 'hidden' : 'hidden min-w-52 items-center gap-2 rounded border border-[#D8C8AA] bg-white px-3 py-1.5 text-xs font-semibold text-[#65452B] lg:flex'}>
               <span className="whitespace-nowrap">Workspace width</span>
               <input
                 type="range"
@@ -1461,6 +1508,7 @@ export default function ActivePlannerPage() {
             </label>
             <button
               onClick={() => void restart()}
+              disabled={busy || uploading || !!doctorBusy || screenContextLoading}
               className="rounded border border-[#80613D] px-3 py-2 text-sm font-semibold"
             >
               New request
@@ -1499,7 +1547,7 @@ export default function ActivePlannerPage() {
         </button>
       </div>
       <section
-        className="grid gap-3 lg:grid-cols-[minmax(360px,var(--planner-chat-width))_minmax(0,1fr)] lg:gap-4"
+        className={embedded ? 'grid min-w-0 grid-cols-1 gap-3' : 'grid gap-3 lg:grid-cols-[minmax(360px,var(--planner-chat-width))_minmax(0,1fr)] lg:gap-4'}
         style={
           {
             "--planner-chat-width": `${chatPanelWidth}%`,
@@ -1507,7 +1555,7 @@ export default function ActivePlannerPage() {
         }
       >
         <div
-          className={`${mobilePanel === "chat" ? "flex" : "hidden"} h-[calc(100dvh-20.5rem)] min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[#E0D2B8] bg-white sm:h-auto sm:min-h-[560px] sm:rounded-xl lg:flex lg:h-[calc(100dvh-20rem)] lg:min-h-[320px] lg:max-h-[680px]`}
+          className={`${embedded || mobilePanel === "chat" ? "flex" : "hidden"} h-[calc(100dvh-20.5rem)] min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl border border-[#E0D2B8] bg-white sm:h-auto sm:min-h-[560px] sm:rounded-xl lg:flex lg:h-[calc(100dvh-20rem)] lg:min-h-[320px] lg:max-h-[680px]`}
         >
           <div className="flex shrink-0 items-center gap-2 border-b p-4">
             <Bot className="h-5 w-5 text-[#80613D]" />
@@ -1617,9 +1665,14 @@ export default function ActivePlannerPage() {
             aria-label="Conversation with Mizantra"
             className="min-h-0 flex-1 space-y-3 overflow-auto p-4"
           >
+            {screenContextLoading && <p role="status" className="text-xs text-stone-500">Checking screen context...</p>}
             {brainContext && <div className="flex max-w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-xs">
               <span className="min-w-0 break-words">Context: {brainContext.document_number}</span>
-                <button type="button" title="Remove context" aria-label="Remove context" className="ml-auto shrink-0 p-1" onClick={() => { setBrainContext(null); setUnifiedSessionId(null); setUnifiedWorkingRef(null); sessionStorage.removeItem(BRAIN_CONTEXT_KEY); }}><Trash2 className="h-4 w-4" /></button>
+                <button type="button" title="Remove context" aria-label="Remove context" disabled={busy||uploading} className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center" onClick={() => void removeContext()}><Trash2 className="h-4 w-4" /></button>
+            </div>}
+            {!brainContext && screenList && <div className="flex max-w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 py-2 text-xs">
+              <span className="min-w-0 break-words">Context: {screenList.view === 'OPEN_PO' ? 'Open purchase orders' : 'All purchase orders'}</span>
+              <button type="button" title="Remove context" aria-label="Remove context" disabled={busy||uploading||!!doctorBusy} className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center" onClick={()=>void removeContext()}><Trash2 className="h-4 w-4"/></button>
             </div>}
             {turns.map((turn, i) => (
               <div
@@ -1907,7 +1960,8 @@ export default function ActivePlannerPage() {
           </div>
         </div>
         <div
-          className={`${mobilePanel === "review" ? "block" : "hidden"} min-w-0 space-y-3 sm:space-y-4 lg:block`}
+          className={`${embedded || mobilePanel === "review" ? "block" : "hidden"} min-w-0 space-y-3 sm:space-y-4 lg:block`}
+          style={embedded && !result ? {display:'none'} : undefined}
         >
           <section className="rounded-2xl border border-[#E0D2B8] bg-white p-4 sm:rounded-xl">
             <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">

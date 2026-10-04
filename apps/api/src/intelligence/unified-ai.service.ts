@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { hasAdminBypass, hasPermission } from '../auth/utils/permission-utils';
 import { SmartImportService } from '../smart-import/smart-import.service';
 import { FeatureAccessService } from '../feature-access/feature-access.service';
@@ -12,7 +12,7 @@ import { SmartApprovalService } from './smart-approval.service';
 import { PlannerSupportService } from './planner-support.service';
 import { ProactiveOperationsService } from './proactive-operations.service';
 import { UnifiedAiContextService, UnifiedSession, UnifiedWorkingRef, UnifiedTelemetry } from './unified-ai.context';
-import { selectUnifiedRoute, UnifiedResultType, UnifiedRoute, unifiedFlags } from './unified-ai.registry';
+import { isExplicitPoReport, isPoGrnRequest, isPoRemainingFilter, selectUnifiedRoute, UnifiedResultType, UnifiedRoute, unifiedFlags } from './unified-ai.registry';
 import { aiPerformance, withAiPerformance } from './unified-ai.performance';
 
 const nextActions = {
@@ -145,6 +145,16 @@ export class UnifiedAiService {
   async interpret(user: any, body: any, erp: (body: any) => Promise<any>): Promise<any | null> {
     return withAiPerformance(() => this.interpretScoped(user, body, erp));
   }
+  async clearContext(user: any, body: any) {
+    const configuration = await this.configuration(user);
+    if (!configuration.enabled || !configuration.router) throw new ForbiddenException('Ask is not enabled.');
+    if (!body || Object.keys(body).some(key => !['session_id','session_version'].includes(key)) || !Number.isInteger(body.session_version)) throw new BadRequestException('Supply the owned session and version.');
+    const previous = await this.contexts.get(user, body.session_id);
+    if (Object.keys(previous.working_ref).length === 0) return {session_id:previous.id,session_version:previous.version,context:null,executable:false};
+    if (previous.version !== body.session_version) throw new ConflictException('The request changed. Reload it before clearing context.');
+    const cleared = await this.contexts.save(user, {}, previous);
+    return {session_id:cleared.id,session_version:cleared.version,context:null,executable:false};
+  }
   private async interpretScoped(user: any, body: any, erp: (body: any) => Promise<any>): Promise<any | null> {
     if (!unifiedFlags().enabled || !unifiedFlags().router) return null;
     const started = Date.now(), configuration = await this.configuration(user);
@@ -172,9 +182,29 @@ export class UnifiedAiService {
         }
       }
       if (body.brain_context) ref = { ...ref, entity: body.brain_context, current_type: 'ERP_ENTITY' };
+      if (body.screen_context && !body.brain_context && !ref.entity && (isPoGrnRequest(body.message) || /\bthis (?:PO|purchase order|GRN|item|supplier)\b/i.test(body.message))) {
+        if (!configuration.capabilities.includes('BRAIN_QUERY')) throw new ForbiddenException('Record context is not available.');
+        ref = {...ref,entity:body.screen_context,current_type:'ERP_ENTITY'};
+      }
       if (body.document_ids?.length) ref = { ...ref, document_ids: body.document_ids, current_type: 'DOCUMENT_ANALYSIS' };
       if (body.session_id && !ref.report_session_id) ref = { ...ref, report_session_id: body.session_id, current_type: 'REPORT' };
+      const listContext = body.list_context;
+      if (listContext !== undefined) {
+        if (!listContext || typeof listContext !== 'object' || Array.isArray(listContext) || Object.keys(listContext).some(key => !['module','view','current_route'].includes(key)) || listContext.module !== 'PURCHASE_ORDERS' || !['ALL','OPEN_PO'].includes(listContext.view) || listContext.current_route !== '/dashboard/purchase/orders' || body.brain_context) throw new BadRequestException('Select one registered list view or one record.');
+        if (!configuration.capabilities.includes('REPORT_BUILDER')) throw new ForbiddenException('The purchase order list is not available.');
+        if (/^export\b/i.test(body.message) && !configuration.can_export) throw new ForbiddenException('Report export is not permitted.');
+        if (decision.operation !== 'BLOCKED' && !ref.current_type && !isExplicitPoReport(body.message) && /\b(?:these|this list|this view)\b/i.test(body.message)) {
+          const report = await this.reporting.interpret(user, {message:listContext.view === 'OPEN_PO' ? 'Show all open purchase orders' : 'Show all purchase orders'});
+          if (!report?.session_id || report.report?.plan?.dataset !== 'PURCHASE_ORDERS') throw new BadRequestException('The current list could not be verified.');
+          ref = {current_type:'REPORT',report_session_id:report.session_id};
+        }
+      }
+      if (decision.operation !== 'BLOCKED' && isPoGrnRequest(body.message) && configuration.capabilities.includes('BRAIN_QUERY')) {
+        const number = body.message.match(/\bPO[-/][A-Za-z0-9_/-]+\b/i)?.[0];
+        if (number) ref = {current_type:'ERP_ENTITY',entity:await this.brain.purchaseOrderContext(user,number)};
+      }
       ({ ref, reportDataset, currentPlan, currentEngineering } = await this.validate(user, ref));
+      if (isExplicitPoReport(body.message) || (isPoRemainingFilter(body.message) && ref.current_type !== 'REPORT')) { ref = {};reportDataset=undefined;currentPlan=undefined;currentEngineering=undefined; }
       contextValidated = true;
       let message = body.message;
       if (ref.current_type === 'REPORT' && ref.report_session_id && /^(?:open|select|diagnose)(?: the)? oldest(?: one| PO)?[.!?]?$/i.test(message)) {
@@ -191,6 +221,7 @@ export class UnifiedAiService {
         message = action.message;
       }
       decision = selectUnifiedRoute(message, { contextType: ref.current_type, entityType: ref.entity?.entity_type, profile:configuration.profile,attachmentKinds: ref.document_ids?.length ? ['DOCUMENT'] : ref.import_batch_id ? ['SPREADSHEET'] : [] });
+      if (listContext && /^why\b.*\b(?:these|this list|this view)\b/i.test(message)) decision = selectUnifiedRoute('Show all purchase orders');
       routingMs = Date.now() - started;
       if (decision.operation === 'BLOCKED') {
         failureType = 'AUTHORIZATION'; result = { ...this.clarification(decision.question!), status: 'UNIFIED_BLOCKED' };
@@ -210,14 +241,21 @@ export class UnifiedAiService {
         subsystemStarted = Date.now();
         switch (decision.route) {
           case 'BRAIN_QUERY': {
-            const brainMessage = /^show (?:related|its) GRNs?\b/i.test(message) ? 'What are the related GRNs for this PO?' : ref.entity?.entity_type === 'purchase_order' && /\b(?:quantity|how many)\b/i.test(message) ? 'What is the ordered and received quantity for this PO?' : message;
+            const brainMessage = isPoGrnRequest(message) ? 'What are the related GRNs for this PO?' : ref.entity?.entity_type === 'purchase_order' && /\b(?:quantity|how many)\b/i.test(message) ? 'What is the ordered and received quantity for this PO?' : message;
             result = await this.brain.interpret(user, { ...input, message:brainMessage });
             break;
           }
           case 'DATA_DOCTOR': result = await this.doctor.interpret(user, { ...input, message: 'Diagnose this record' }); break;
           case 'SMART_APPROVAL': result = ref.entity ? await this.approval.interpret(user, { ...input, message: 'Review this before approval' }) : this.clarification('Which authorized PR, PO, or GRN should I review?'); break;
           case 'REPORT_BUILDER':
-            if (decision.operation === 'EXPORT') {
+            if (isPoRemainingFilter(message)) {
+              if (ref.current_type === 'REPORT' && reportDataset !== 'PURCHASE_ORDERS') throw new BadRequestException('Select a purchase order report for the remaining-quantity filter.');
+              input.message = ref.current_type === 'REPORT' ? 'Only with remaining quantity > 0' : 'Show all purchase orders with remaining quantity greater than 0';
+            }
+            if (listContext && /^why\b.*\b(?:these|this list|this view)\b/i.test(message)) {
+              const report = await this.reporting.query(user, {session_id:ref.report_session_id});
+              result = {status:'REPORT_READY',session_id:ref.report_session_id,report,assistant_message:listContext.view === 'OPEN_PO' ? 'These purchase orders are eligible for receipt and have remaining quantity greater than 0. Select one PO for its receipt evidence.' : 'This is the purchase order list. Select one PO to explain its receipt evidence.'};
+            } else if (decision.operation === 'EXPORT') {
               const report = await this.reporting.query(user, { session_id: ref.report_session_id });
               result = { status:'REPORT_EXPORT_READY', report, session_id:ref.report_session_id, assistant_message:'Your current report is ready to export.', export_request:{session_id:ref.report_session_id,version:report.version} };
             } else if (ref.current_type === 'DOCUMENT_ANALYSIS' && /\b(?:history|previous purchases)\b/i.test(message)) {

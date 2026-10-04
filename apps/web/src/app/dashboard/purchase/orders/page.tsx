@@ -1,5 +1,6 @@
 'use client';
 import { useBrainRecord } from '@/hooks/useBrainRecord';
+import { ASK_LIST_CONTEXT_KEY, capturePurchaseOrderList } from '@/lib/brain-context';
 import MizantraReview from '@/components/MizantraReview';
 
 import { useState, useEffect, Suspense, useMemo, useRef, type ReactNode } from 'react';
@@ -389,7 +390,7 @@ function PurchaseOrdersContent() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [poViewSection, setPoViewSection] = useState('overview');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
-  useBrainRecord('purchase_order', selectedPO?.id, selectedPO?.po_number);
+  useBrainRecord('purchase_order', showViewModal ? selectedPO?.id : null, selectedPO?.po_number);
   const [showPOEmailPreview, setShowPOEmailPreview] = useState(false);
   const [poEmailPreviewLoading, setPoEmailPreviewLoading] = useState(false);
   const [poEmailSending, setPoEmailSending] = useState(false);
@@ -403,6 +404,14 @@ function PurchaseOrdersContent() {
   const [filterVendor, setFilterVendor] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebouncedValue(searchTerm.trim(), 350);
+  useEffect(() => {
+    const capture=()=>{
+      if (showViewModal || loading || filterVendor || debouncedSearch || !['ALL','OPEN_PO'].includes(filterStatus)) sessionStorage.removeItem(ASK_LIST_CONTEXT_KEY);
+      else capturePurchaseOrderList(filterStatus as 'ALL'|'OPEN_PO');
+    };
+    capture();window.addEventListener('mizantra:ask-open',capture);
+    return () => {window.removeEventListener('mizantra:ask-open',capture);sessionStorage.removeItem(ASK_LIST_CONTEXT_KEY);};
+  }, [showViewModal,loading,filterVendor,debouncedSearch,filterStatus]);
   const ordersRequest = useRef(0);
   const registerQuery = poRegisterQuery(filterStatus, filterVendor, debouncedSearch);
   const [loadingPR, setLoadingPR] = useState(false);

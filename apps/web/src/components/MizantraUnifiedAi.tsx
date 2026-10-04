@@ -1,9 +1,12 @@
 "use client";
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
-import { AlertTriangle, Download, FileSearch, ListChecks, PackagePlus, ReceiptText, Sparkles, ThumbsDown, Wrench } from 'lucide-react';
+import { AlertTriangle, Download, Expand, FileSearch, ListChecks, PackagePlus, ReceiptText, Sparkles, ThumbsDown, Wrench, X } from 'lucide-react';
 import { apiClient } from '../../lib/api-client';
+import { BRAIN_CONTEXT_KEY } from '../lib/brain-context';
 
 export type UnifiedEnvelope = {
   type: string; content_type: string; route: string;
@@ -54,15 +57,56 @@ export function UnifiedResultHeader({envelope,message,busy,onAction,importPrevie
 }
 
 export function UnifiedAskEntry() {
-  const pathname=usePathname(),[enabled,setEnabled]=useState(false);
+  const pathname=usePathname(),[enabled,setEnabled]=useState(false),[open,setOpen]=useState(false);
+  const panel=useRef<HTMLElement>(null);
+  const openAsk=()=>{window.dispatchEvent(new Event('mizantra:ask-open'));setOpen(true);};
+  const [hasRecord,setHasRecord]=useState(false);
+  useEffect(()=>{
+    const refresh=()=>setHasRecord(!!sessionStorage.getItem(BRAIN_CONTEXT_KEY));
+    refresh();window.addEventListener('mizantra:screen-context',refresh);
+    return ()=>window.removeEventListener('mizantra:screen-context',refresh);
+  },[]);
+  useEffect(()=>{
+    if(!enabled||pathname?.startsWith('/dashboard/active-planner'))return;
+    const ask=(event:MouseEvent)=>{
+      if(event.button!==0||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey)return;
+      const anchor=(event.target as Element)?.closest('a');
+      if(anchor?.getAttribute('href')==='/dashboard/active-planner'&&/^ask\b/i.test((anchor.getAttribute('aria-label')||anchor.getAttribute('title')||anchor.textContent||'').trim())){event.preventDefault();event.stopPropagation();window.dispatchEvent(new Event('mizantra:ask-open'));setOpen(true);}
+    };
+    document.addEventListener('click',ask,true);
+    return ()=>document.removeEventListener('click',ask,true);
+  },[enabled,pathname]);
+  useEffect(()=>{setOpen(false);},[pathname]);
+  useEffect(()=>{
+    if(!open)return;
+    const previous=document.activeElement as HTMLElement|null,overflow=document.body.style.overflow;
+    document.body.style.overflow='hidden';
+    panel.current?.focus();
+    const keydown=(event:KeyboardEvent)=>{
+      if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();setOpen(false);return;}
+      if(event.key!=='Tab')return;
+      const controls=Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]')||[]).filter(element=>element.offsetParent!==null);
+      const first=controls[0],last=controls[controls.length-1];
+      if(!first){event.preventDefault();panel.current?.focus();}
+      else if(event.shiftKey&&(document.activeElement===first||document.activeElement===panel.current)){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&(document.activeElement===last||document.activeElement===panel.current)){event.preventDefault();first.focus();}
+    };
+    document.addEventListener('keydown',keydown,true);
+    return ()=>{document.body.style.overflow=overflow;document.removeEventListener('keydown',keydown,true);if(previous?.isConnected)previous.focus();};
+  },[open]);
   useEffect(()=>{
     let active=true;
     void apiClient.get<UnifiedConfiguration>('/active-planner/unified/configuration').then(configuration=>{if(active)setEnabled(configuration.enabled&&configuration.router);}).catch(()=>{if(active)setEnabled(false);});
     return ()=>{active=false;};
   },[]);
   if(!enabled||pathname?.startsWith('/dashboard/active-planner'))return null;
-  return <div className="flex min-w-0 justify-end pb-2"><Link href="/dashboard/active-planner" title="Ask Mizantra" className="inline-flex h-9 max-w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 text-xs font-medium"><Sparkles className="h-4 w-4 shrink-0"/><span>Ask Mizantra</span></Link></div>;
+  const trigger=<button type="button" onClick={openAsk} title="Ask Mizantra" className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 text-xs font-medium shadow-sm"><Sparkles className="h-4 w-4 shrink-0"/><span>Ask Mizantra</span></button>;
+  return <>{hasRecord?createPortal(<div className="fixed bottom-20 right-4 z-[2147483644]">{trigger}</div>,document.body):<div className="flex min-w-0 justify-end pb-2">{trigger}</div>}{open&&createPortal(<div className="fixed inset-0 z-[2147483645] bg-black/30" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false);}}><aside ref={panel} role="dialog" aria-modal="true" aria-labelledby="unified-ask-title" tabIndex={-1} className="absolute inset-y-0 right-0 flex h-[100dvh] w-full max-w-[760px] flex-col bg-white shadow-2xl outline-none"><div className="flex shrink-0 items-center justify-between border-b px-4 py-2"><h2 id="unified-ask-title" className="text-base font-semibold">Ask Mizantra</h2><div className="flex gap-1"><Link href="/dashboard/active-planner" title="Open full workspace" aria-label="Open full workspace" className="flex h-11 w-11 items-center justify-center"><Expand className="h-5 w-5"/></Link><button type="button" title="Close Ask Mizantra" aria-label="Close Ask Mizantra" onClick={()=>setOpen(false)} className="flex h-11 w-11 items-center justify-center"><X className="h-5 w-5"/></button></div></div><div className="min-h-0 flex-1 overflow-y-auto"><UnifiedDrawerContext.Provider value={true}><AskWorkspace/></UnifiedDrawerContext.Provider></div></aside></div>,document.body)}</>;
 }
+
+const UnifiedDrawerContext=createContext(false);
+export const useUnifiedDrawer=()=>useContext(UnifiedDrawerContext);
+const AskWorkspace=dynamic(()=>import('../app/dashboard/active-planner/page'),{ssr:false,loading:()=> <p role="status" className="p-4 text-sm">Loading request...</p>});
 
 type UnifiedHealth = {enabled:boolean;router:boolean;profile:string;status:string;release_sha:string|null;capability_status:Record<string,string>;routing_p50_ms:number|null;routing_p95_ms:number|null;subsystem_p50_ms:number|null;subsystem_p95_ms:number|null;partial_failure_rate:number|null;clarification_rate:number|null;ocr_fallback_rate:number|null;document_extraction_failure_rate:number|null;slow_query_count:number;target_violations:number;request_count:number;average_response_ms:number;routing_failures:number;handoff_failures:number;partial_results:number;clarifications:number;corrections:number;truncated:boolean;capabilities:string[];modes:Record<string,string|boolean>;routes:Array<{route:string;count:number;average_subsystem_ms:number;failures:number}>};
 export function UnifiedAiHealth({refreshSignal=0}:{refreshSignal?:number}) {

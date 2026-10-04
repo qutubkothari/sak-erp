@@ -15,6 +15,19 @@ describe('Unified AI deterministic routing', () => {
     ['Who supplies this item?', 'BRAIN_QUERY', { contextType: 'ERP_ENTITY' }],
     ['Show related GRNs', 'BRAIN_QUERY', { contextType: 'ERP_ENTITY' }],
     ['Show its GRNs.', 'BRAIN_QUERY', { contextType: 'ERP_ENTITY' }],
+    ['Show me the related GRNs.', 'BRAIN_QUERY', { contextType: 'ERP_ENTITY' }],
+    ['Show GRNs for this PO', 'BRAIN_QUERY', { contextType: 'ERP_ENTITY' }],
+    ['Show the GRNs for PO-2026-09-293', 'BRAIN_QUERY', {}],
+    ['Has anything been received against this PO?', 'BRAIN_QUERY', { contextType: 'ERP_ENTITY' }],
+    ['Show all open purchase orders', 'REPORT_BUILDER', { contextType: 'ERP_ENTITY' }],
+    ['open purchase orders', 'REPORT_BUILDER', { contextType: 'ERP_ENTITY' }],
+    ['open POs', 'REPORT_BUILDER', { contextType: 'ERP_ENTITY' }],
+    ['POs with remaining quantity', 'REPORT_BUILDER', { contextType: 'ERP_ENTITY' }],
+    ['not fully received purchase orders', 'REPORT_BUILDER', { contextType: 'ERP_ENTITY' }],
+    ['pending receipt POs', 'REPORT_BUILDER', { contextType: 'ERP_ENTITY' }],
+    ['remaining quantity greater than 0', 'REPORT_BUILDER', { contextType: 'ERP_ENTITY' }],
+    ['Show purchase orders with remaining quantity greater than 0', 'REPORT_BUILDER', { contextType: 'ERP_ENTITY' }],
+    ['Show POs with remaining qty > 0', 'REPORT_BUILDER', { contextType: 'ERP_ENTITY' }],
   ])('routes %s to %s', (text, route, input) => {
     expect(selectUnifiedRoute(text, input as any).route).toBe(route);
   });

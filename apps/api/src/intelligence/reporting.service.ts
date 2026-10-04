@@ -869,6 +869,7 @@ export class ReportingService {
               : null,
             status: receipt.status,
             open_state: receipt.open_po ? "OPEN" : "CLOSED",
+            OPEN_PO: receipt.open_po === true,
             item_id: value(line.item_id),
             item: value(line.item_name || item?.name),
             item_code: value(line.item_code || item?.code),
@@ -878,6 +879,7 @@ export class ReportingService {
             accepted_qty: reportNumber(fact.accepted_qty),
             rejected_qty: reportNumber(fact.rejected_qty),
             open_qty: open,
+            remaining_qty: open,
             unit_price: rate,
             currency,
             line_value:

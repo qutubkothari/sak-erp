@@ -70,7 +70,7 @@ export function evaluateReport(plan: ReportPlan, source: ReportRow[]) {
   const dataset = REPORT_DATASETS[plan.dataset];
   const filtered = source.filter((row) =>
     plan.filters.every((filter) => {
-      const current = row[filter.field];
+      const current = filter.field === 'OPEN_PO' ? row.OPEN_PO ?? (row.open_state == null ? null : row.open_state === 'OPEN') : row[filter.field];
       if (current == null) return false;
       if (filter.operator === "contains")
         return normalized(current).includes(normalized(filter.value));

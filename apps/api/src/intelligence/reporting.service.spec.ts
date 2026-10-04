@@ -2,6 +2,7 @@ import { ReportingService } from "./reporting.service";
 import { interpretReport } from "./reporting.registry";
 import * as XLSX from "xlsx";
 import { ActivePlannerController } from "./active-planner.controller";
+import { PurchaseOrdersService } from '../purchase/services/purchase-orders.service';
 jest.mock("@supabase/supabase-js", () => ({
   createClient: jest.fn(() => ({ from: jest.fn() })),
 }));
@@ -280,6 +281,37 @@ describe("report service isolation and metadata boundary", () => {
     const book = XLSX.read(buffer, { type: "buffer" });
     expect(XLSX.utils.sheet_to_json(book.Sheets.Data)).toHaveLength(119);
     expect(first.report!.rows).toHaveLength(50);
+  });
+  it('matches exact native Open PO IDs across report pages and XLSX using the native receipt predicate', async () => {
+    const headers=Array.from({length:137},(_,index)=>({id:`00000000-0000-4000-8000-${String(index+1).padStart(12,'0')}`,tenant_id:tenant,po_number:`PO-PARITY-${index+1}`,status:index===1||index===2?'CLOSED':index===3?'DRAFT':index===4?'CANCELLED':'APPROVED',purchase_order_items:[{id:`line-${index}`,tenant_id:tenant,po_id:`00000000-0000-4000-8000-${String(index+1).padStart(12,'0')}`,ordered_qty:10,unit_price:1,item_code:'ITEM-1',item:{category:'RAW_MATERIAL'}}]}));
+    const ledger={receivedByPoItem:new Map([['line-1',10],['line-5',4]]),receivedByPoId:new Map([[headers[1].id,10],[headers[5].id,4]]),receiptFactsByPoItem:new Map([['line-1',{received:10,accepted:10,rejected:0,qcPending:0}],['line-5',{received:4,accepted:4,rejected:0,qcPending:0}]])};
+    const orders=new PurchaseOrdersService({} as any,{} as any,{ensureSchema:jest.fn()} as any);
+    (orders as any).fetchReceiptLedgerForPurchaseOrders=jest.fn().mockResolvedValue(ledger);
+    (orders as any).supabase={from:(table:string)=>{
+      let rows:any[]=table==='purchase_orders'?headers:[];
+      const query:any={select:()=>query,eq:(key:string,value:any)=>{rows=rows.filter(row=>row[key]===value);return query;},in:(key:string,values:any[])=>{rows=rows.filter(row=>values.includes(row[key]));return query;},order:()=>query,abortSignal:()=>query,range:(start:number,end:number)=>{rows=rows.slice(start,end+1);return query;},then:(resolve:any)=>Promise.resolve({data:rows,error:null}).then(resolve)};
+      return query;
+    }};
+    const native=await orders.findAll(tenant,{status:'OPEN_PO'});
+    const expected=[...new Set(native.map(row=>row.id))].sort();
+    expect(expected).toContain(headers[2].id);expect(expected).not.toContain(headers[1].id);expect(expected).not.toContain(headers[3].id);expect(expected).not.toContain(headers[4].id);
+    (service as any).orders=orders;
+    (service as any).sourceRows=(ReportingService.prototype as any).sourceRows.bind(service);
+    (service as any).read=jest.fn(async(scope:any,table:string)=>{
+      expect(scope.tenant).toBe(tenant);
+      return table==='purchase_orders'?headers:table==='purchase_order_items'?headers.flatMap(header=>header.purchase_order_items):[];
+    });
+    const plan={...interpretReport('Show all open purchase orders').plan!,columns:['po_id','po_number','open_qty','remaining_qty']};
+    const first=await service.query(user,{plan,create_session:true,page_size:100});
+    const rows=[...first.rows];
+    for(let page=2;rows.length<first.matching_rows;page++) rows.push(...(await service.query(user,{session_id:first.session_id,page,page_size:100})).rows);
+    expect([...new Set(rows.map(row=>row.po_id))].sort()).toEqual(expected);
+    expect(rows.every(row=>row.remaining_qty===row.open_qty)).toBe(true);
+    const book=XLSX.read(await service.export(user,{session_id:first.session_id,version:first.version}),{type:'buffer'});
+    const exported=XLSX.utils.sheet_to_json<any[]>(book.Sheets.Data,{header:1}).slice(1);
+    expect([...new Set(exported.map(row=>row[0]))].sort()).toEqual(expected);
+    expect(first.matching_documents).toBe(expected.length);
+    expect(writes.every(table=>['mizantra_reporting_definitions','mizantra_reporting_audit'].includes(table))).toBe(true);
   });
   it("rejects export if evidence changed", async () => {
     const first = await service.interpret(user, { message: "Show open POs" });

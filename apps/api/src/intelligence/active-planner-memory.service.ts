@@ -106,6 +106,7 @@ export class ActivePlannerMemoryService {
       !forceArabic;
     const autoMatchLanguage = requestedLanguage === "auto";
     const matchUserLanguage = usesNonLatinScript(utterance);
+    if (result?.unified && !forceArabic && !explicitNonEnglishLanguage && !matchUserLanguage) return fallback;
     const localizeReply =
       forceArabic ||
       explicitNonEnglishLanguage ||

@@ -62,6 +62,11 @@ export class ActivePlannerController {
   @Get('unified/health') unifiedHealth(@Req() req: any) {
     return this.unified?.health(req.user);
   }
+  @Post('unified/context/clear')
+  @SkipAutomaticAudit()
+  unifiedClearContext(@Req() req: any, @Body() body: any) {
+    return this.unified?.clearContext(req.user, body);
+  }
   @Post('unified/route')
   @SkipAutomaticAudit()
   unifiedRoute(@Req() req: any, @Body() body: any) {
@@ -190,6 +195,12 @@ export class ActivePlannerController {
   @Post("interpret")
   @SkipAutomaticAudit()
   async interpret(@Req() req: any, @Body() body: any) {
+    const configuration = this.unified && await this.unified.configuration(req.user);
+    if (configuration?.enabled && configuration.router) {
+      const prepared = await this.memory.prepare(req.user.tenantId, req.user, body);
+      const reply = await this.unified!.interpret(req.user, body, next => this.planner.interpret(req.user.tenantId, req.user, {...prepared.body,...next}));
+      if (reply) return this.memory.complete(req.user.tenantId, req.user, prepared.conversation, body?.message, reply, body?.response_language);
+    }
     const unified = this.unified && await this.unified.interpret(req.user, body, next => this.interpretErp(req, next));
     if (unified) return unified;
     const brief = this.proactive && await this.proactive.interpret(req.user, body);
