@@ -54,9 +54,13 @@ export function AttentionList({ brief, onRefresh }: { brief: ProactiveBrief; onR
       if (action === 'WHY' && !recordTypes.has(item.entity_type)) {
         const result = await apiClient.get<{ explanation: string; evidence: Record<string, unknown>; status: string }>(`${root}/attention/${item.id}/why`);
         setEvidence(previous => ({...previous,[item.id]:result}));await onRefresh?.();
-      } else if (['WHY','VIEW','DATA_DOCTOR','REPORT_BUILDER','PREPARE_PR_PLAN'].includes(action)) {
+      } else if (['WHY','VIEW','SMART_APPROVAL_REVIEW','DATA_DOCTOR','REPORT_BUILDER','PREPARE_PR_PLAN'].includes(action)) {
         const handoff = await apiClient.post<AttentionHandoff>(`${root}/attention/${item.id}/handoff`, {action});
-        if (action === 'VIEW') {
+        if (action === 'SMART_APPROVAL_REVIEW') {
+          beginAttentionTask(sessionStorage,{profile:handoff.profile!,tenant_id:handoff.tenant!,current_user_id:handoff.owner_id!});
+          sessionStorage.removeItem(BRAIN_CONTEXT_KEY);
+          router.push(`${handoff.current_route}?attention_review=${encodeURIComponent(JSON.stringify(handoff))}`);
+        } else if (action === 'VIEW') {
           const reply = await apiClient.post<any>('/active-planner/interpret', {message:'View attention record',attention_handoff:handoff});
           if (!reply.attention_handoff || reply.unified?.type === 'ERROR') throw new Error(reply.assistant_message || 'The attention record is unavailable.');
           beginAttentionTask(sessionStorage,{profile:handoff.profile!,tenant_id:handoff.tenant!,current_user_id:handoff.owner_id!});
@@ -79,7 +83,7 @@ export function AttentionList({ brief, onRefresh }: { brief: ProactiveBrief; onR
       <h3 className="mt-2 break-words text-base font-semibold text-stone-900">{item.title}</h3><p className="mt-1 break-words text-sm leading-6 text-stone-700">{item.explanation}</p>
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         <button type="button" title="Why is this on my attention list?" disabled={!!busy} onClick={() => void act(item, 'WHY')} className="inline-flex min-h-11 items-center gap-1 text-teal-800"><HelpCircle className="h-4 w-4" />Why?</button>
-        {item.available_actions.map(action => action.kind === 'PLAN' || action.label === 'Diagnose' && recordTypes.has(item.entity_type) || action.kind === 'VIEW' && recordTypes.has(item.entity_type) ? <button type="button" key={action.label} disabled={!!busy} onClick={() => void act(item, action.kind === 'VIEW' ? 'VIEW' : action.kind === 'PLAN' ? 'PREPARE_PR_PLAN' : 'DATA_DOCTOR')} className="inline-flex min-h-11 items-center gap-1 font-medium text-teal-800">{action.label}<ChevronRight className="h-4 w-4" /></button> : <Link key={action.label} href={action.href} className="inline-flex min-h-11 items-center gap-1 font-medium text-teal-800">{action.label}<ChevronRight className="h-4 w-4" /></Link>)}
+        {item.available_actions.map(action => action.kind === 'PLAN' || action.label === 'Diagnose' && recordTypes.has(item.entity_type) || action.kind === 'VIEW' && recordTypes.has(item.entity_type) ? <button type="button" key={action.label} disabled={!!busy} onClick={() => void act(item, action.kind === 'VIEW' ? ['GRN','grn'].includes(item.entity_type) && action.label === 'Review' ? 'SMART_APPROVAL_REVIEW' : 'VIEW' : action.kind === 'PLAN' ? 'PREPARE_PR_PLAN' : 'DATA_DOCTOR')} className="inline-flex min-h-11 items-center gap-1 font-medium text-teal-800">{action.label}<ChevronRight className="h-4 w-4" /></button> : <Link key={action.label} href={action.href} className="inline-flex min-h-11 items-center gap-1 font-medium text-teal-800">{action.label}<ChevronRight className="h-4 w-4" /></Link>)}
         {item.category === 'OVERDUE_OPEN_PO' && <button type="button" disabled={!!busy} onClick={() => void act(item, 'REPORT_BUILDER')} className="inline-flex min-h-11 items-center gap-1 text-teal-800">Report<ChevronRight className="h-4 w-4" /></button>}
         <button title="Acknowledge attention" aria-label={`Acknowledge ${item.entity_reference}`} type="button" disabled={!!busy} onClick={() => void act(item, 'acknowledge')} className="inline-flex h-11 w-11 items-center justify-center text-stone-600"><Check className="h-4 w-4" /></button><button title="Dismiss attention" aria-label={`Dismiss ${item.entity_reference}`} type="button" disabled={!!busy} onClick={() => void act(item, 'dismiss')} className="inline-flex h-11 w-11 items-center justify-center text-stone-600"><X className="h-4 w-4" /></button>{busy.startsWith(item.id) && <Loader2 aria-label="Updating attention" className="h-4 w-4 animate-spin" />}
       </div>

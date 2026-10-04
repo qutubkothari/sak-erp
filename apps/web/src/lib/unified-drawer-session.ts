@@ -1,7 +1,7 @@
 import type { AskListContext, BrainEnvelope } from './brain-context';
 
 export type DrawerScope = { profile: string; tenant_id: string; current_user_id: string };
-export type AttentionHandoff = { source: 'PROACTIVE_OPERATIONS'; action: 'WHY' | 'VIEW' | 'DATA_DOCTOR' | 'REPORT_BUILDER' | 'PREPARE_PR_PLAN'; attention_id: string; entity_type?: string; entity_id?: string; entity_reference?: string; tenant?: string; profile?: string; owner_id?: string; current_route?: string; category?: string; executable?: false };
+export type AttentionHandoff = { source: 'PROACTIVE_OPERATIONS'; action: 'WHY' | 'VIEW' | 'SMART_APPROVAL_REVIEW' | 'DATA_DOCTOR' | 'REPORT_BUILDER' | 'PREPARE_PR_PLAN'; attention_id: string; entity_type?: string; entity_id?: string; entity_reference?: string; tenant?: string; profile?: string; owner_id?: string; current_route?: string; category?: string; executable?: false };
 export type DrawerOrigin = { current_route: string; entity_type?: string; entity_id?: string; view?: 'ALL' | 'OPEN_PO' };
 export type DrawerReportRef = { type: 'REPORT'; id: string; saved_report_id?: string };
 export type DrawerSession = { session_id: string; session_version: number; conversation_id?: string; context_ref?: DrawerReportRef; origin: DrawerOrigin; expires_at: number; status: 'ACTIVE' | 'SUSPENDED' };

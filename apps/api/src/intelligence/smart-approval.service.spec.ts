@@ -17,6 +17,15 @@ describe("Smart Approval bounded Brain integration", () => {
   afterAll(()=>{process.env=previous;});
   const review = (extra={})=>service.review(user,{brain_context:context,...extra});
   it.each(["purchase_order","purchase_requisition","grn"])("reviews validated %s context",async type=>{evidence.context={...context,entity_type:type};evidence.nodes[0]={...evidence.nodes[0],type};const result=await service.review(user,{brain_context:{...context,entity_type:type}});expect(result.brain_context.entity_type).toBe(type);expect(result.safety).toEqual({read_only:true,executable:false,workflow_mutation:false});});
+  it("preserves GRN rejection facts in the 13-check read-only review",async()=>{
+    evidence.context={...context,entity_type:"grn",entity_id:"grn",document_number:"GRN-2026-07-169"};
+    evidence.nodes=[{type:"grn",row:{id:"grn",grn_number:"GRN-2026-07-169",po_id:"po",status:"QC_COMPLETED"},depth:0},{type:"grn_item",row:{id:"line",grn_id:"grn",po_item_id:"po-line",received_qty:20,accepted_qty:10,rejected_qty:10,qc_status:"REJECTED"},depth:1},{type:"purchase_order",row:{id:"po",po_number:"PO-1"},depth:1},{type:"purchase_order_item",row:{id:"po-line",po_id:"po",item_id:"item",ordered_qty:20},depth:2}];
+    const result=await service.review(user,{brain_context:evidence.context});
+    expect(result.checks_executed).toHaveLength(13);
+    expect(result.receipt_quantities).toEqual({received_qty:20,accepted_qty:10,rejected_qty:10});
+    expect(result.safety).toEqual({read_only:true,executable:false,workflow_mutation:false});
+    expect(JSON.stringify(result)).not.toMatch(/you should approve|you should reject/i);
+  });
   it("rejects cross-tenant context",async()=>{await expect(review({brain_context:{...context,tenant_id:"other"}})).rejects.toThrow("Tenant mismatch");});
   it("rejects a reader lacking document approval permission",async()=>{await expect(service.review({...user,role:"VIEWER",permissions:["purchase_orders:read"]},{brain_context:context})).rejects.toThrow("approval-review permission");expect(brain.withDiagnosticEvidence).not.toHaveBeenCalled();});
   it("propagates unauthorized document rejection",async()=>{brain.withDiagnosticEvidence.mockRejectedValue(new ForbiddenException("Not authorized"));await expect(review()).rejects.toThrow("Not authorized");});

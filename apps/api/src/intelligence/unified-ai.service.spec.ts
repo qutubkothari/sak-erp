@@ -70,6 +70,22 @@ describe('Unified governed orchestration', () => {
     prepareAttention('VIEW');await service.interpret(user,{message:'Export it',attention_handoff:{...attention,action:'VIEW'},unified_session_id:id},erp);
     expect(brain.interpret).toHaveBeenCalledWith(user,expect.objectContaining({brain_context:expect.objectContaining({entity_id:id})}));expect(contexts.get).not.toHaveBeenCalled();
   });
+  it.each(['REPORT','DIAGNOSIS'])('GRN Review overrides stale %s and runs Smart Approval only',async staleType=>{
+    const grn={...entity,entity_type:'grn',document_number:'GRN-2026-07-169',current_route:'/dashboard/purchase/grn'};
+    const handoff={...attention,action:'SMART_APPROVAL_REVIEW',entity_type:'grn',entity_reference:'GRN-2026-07-169',current_route:grn.current_route};
+    proactive.handoff=jest.fn().mockResolvedValue(handoff);
+    brain.validateContext.mockResolvedValue({enabled:true,context:grn});
+    approval.configuration.mockReturnValue({enabled:true,supported_document_types:['grn']});
+    approval.interpret.mockResolvedValue({status:'SMART_APPROVAL_READ_ONLY',brain_context:grn,checks_executed:Array.from({length:13},(_,index)=>`GRN_CHECK_${index}`),receipt_quantities:{received_qty:20,accepted_qty:10,rejected_qty:10},safety:{read_only:true,executable:false,workflow_mutation:false}});
+    contexts.get.mockResolvedValue({id,version:1,working_ref:{current_type:staleType,report_session_id:id,diagnosis_key:'OLD_DIAGNOSIS',entity}});
+    const result=await service.interpret(user,{message:'Show old report',attention_handoff:handoff,unified_session_id:id,session_id:id,context_ref:{type:'REPORT',id}},erp);
+    expect(result.unified?.route).toBe('SMART_APPROVAL');
+    expect(result.brain_context).toMatchObject({entity_type:'grn',entity_id:id,document_number:'GRN-2026-07-169'});
+    expect(result.receipt_quantities.rejected_qty).toBe(10);
+    expect(result.checks_executed).toHaveLength(13);
+    expect(contexts.get).not.toHaveBeenCalled();
+    expect(reporting.interpret).not.toHaveBeenCalled();expect(doctor.interpret).not.toHaveBeenCalled();expect(operator.execute).not.toHaveBeenCalled();expect(operator.approve).not.toHaveBeenCalled();
+  });
   it('Report starts registered overdue purchasing scope without old supplier/report',async()=>{
     prepareAttention('REPORT_BUILDER');await service.interpret(user,{message:'Export it',attention_handoff:{...attention,action:'REPORT_BUILDER'},unified_session_id:id,session_id:id,context_ref:{type:'REPORT',id}},erp);
     expect(reporting.interpret).toHaveBeenCalledWith(user,expect.objectContaining({message:'Show all overdue POs',session_id:undefined,saved_report_id:undefined}));expect(contexts.get).not.toHaveBeenCalled();

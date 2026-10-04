@@ -1,6 +1,7 @@
 "use client";
 import { useBrainRecord } from '@/hooks/useBrainRecord';
-import MizantraReview from '@/components/MizantraReview';
+import MizantraReview, { type SmartApprovalReview } from '@/components/MizantraReview';
+import type { AttentionHandoff } from '@/lib/unified-drawer-session';
 
 import { useState, useEffect, Suspense, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -609,6 +610,7 @@ function GRNContent() {
   const searchParams = useSearchParams();
   const initialGrnSearch = searchParams.get("search") || "";
   const viewId = searchParams.get("viewId");
+  const attentionReview = searchParams.get("attention_review");
   const returnTo = searchParams.get("returnTo");
   const todayDate = getTodayDateInputValue();
   const currentUser = readStoredUser();
@@ -637,6 +639,7 @@ function GRNContent() {
   const closeGRNView = () => {
     setShowViewModal(false);
     setSelectedGRN(null);
+    setHandoffReview(null);
     setEditMode(false);
 
     const safeReturnTo =
@@ -705,6 +708,9 @@ function GRNContent() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [showQCModal, setShowQCModal] = useState(false);
   const [selectedGRN, setSelectedGRN] = useState<GRN | null>(null);
+  const [handoffReview, setHandoffReview] = useState<SmartApprovalReview | null>(null);
+  const [handoffError, setHandoffError] = useState("");
+  const consumedReview = useRef<string | null>(null);
   useBrainRecord('grn', showViewModal ? selectedGRN?.id : null, selectedGRN?.grn_number);
   const [reverseTargetGRN, setReverseTargetGRN] = useState<GRN | null>(null);
   const [reverseReason, setReverseReason] = useState("");
@@ -1343,6 +1349,37 @@ function GRNContent() {
   useEffect(() => {
     fetchGRNs();
   }, [filterStatus]);
+
+  useEffect(() => {
+    if (!attentionReview || consumedReview.current === attentionReview) return;
+    let active = true;
+    const openReview = async () => {
+      setHandoffError("");
+      try {
+        const handoff = JSON.parse(attentionReview) as AttentionHandoff;
+        if (handoff.source !== "PROACTIVE_OPERATIONS" || handoff.action !== "SMART_APPROVAL_REVIEW" || handoff.entity_type !== "grn" || handoff.current_route !== "/dashboard/purchase/grn" || !handoff.entity_id || !handoff.entity_reference) throw new Error("Invalid GRN review handoff.");
+        const detailedGRN = await apiClient.get<GRN>(`/purchase/grn/${encodeURIComponent(handoff.entity_id)}`);
+        if (detailedGRN.id !== handoff.entity_id || detailedGRN.grn_number !== handoff.entity_reference) throw new Error("The GRN does not match the authorized attention item.");
+        if (!active) return;
+        setSelectedGRN(detailedGRN);
+        setEditMode(false);
+        setShowViewModal(true);
+        const result = await apiClient.post<SmartApprovalReview & { attention_handoff?: AttentionHandoff; unified?: { route?: string } }>("/active-planner/interpret", { message: "Review this before approval", attention_handoff: handoff });
+        if (result.attention_handoff?.attention_id !== handoff.attention_id || result.unified?.route !== "SMART_APPROVAL" || result.status !== "SMART_APPROVAL_READ_ONLY" || result.brain_context?.entity_id !== handoff.entity_id || result.brain_context?.entity_type !== "grn") throw new Error("The exact GRN review could not be verified.");
+        if (!active) return;
+        consumedReview.current = attentionReview;
+        setHandoffReview(result);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("attention_review");
+        url.searchParams.delete("brain_entity");
+        window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+      } catch (failure: any) {
+        if (active) setHandoffError(failure?.message || "GRN review is unavailable.");
+      }
+    };
+    void openReview();
+    return () => { active = false; };
+  }, [attentionReview]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -3307,6 +3344,8 @@ function GRNContent() {
           }
         />
 
+        {handoffError && <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">{handoffError} <button type="button" className="ml-2 underline" onClick={() => router.back()}>Back to Today&apos;s Attention</button></div>}
+
         <ErpMetricStrip
           loading={loading}
           metrics={[
@@ -4033,7 +4072,8 @@ function GRNContent() {
                   <h2 className="truncate text-xl font-bold text-[#4A3426]">
                     {selectedGRN.grn_number}
                   </h2>
-                  <MizantraReview entityType="grn" document={selectedGRN} />
+                  <MizantraReview entityType="grn" document={selectedGRN} initialReview={handoffReview} />
+                  {handoffError && <p role="alert" className="mt-2 text-sm text-red-700">{handoffError}</p>}
                 </div>
                 <button
                   onClick={closeGRNView}

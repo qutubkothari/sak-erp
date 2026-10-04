@@ -24,6 +24,16 @@ describe('Scoped briefing orchestration', () => {
     expect(result).toMatchObject({ source: 'PROACTIVE_OPERATIONS', action: 'DATA_DOCTOR', attention_id: id, entity_id: id, entity_type: 'purchase_order', entity_reference: 'PO-2026-05-023', tenant, profile: 'MIZANTRA', owner_id: owner, executable: false });
     expect(mockRpc).not.toHaveBeenCalled();
   });
+  it('issues an exact read-only GRN review handoff only to an authorized approver', async () => {
+    mockItems = [stored({ category: 'GRN_REJECTION_REQUIRES_ATTENTION', entity_type: 'GRN', entity_reference: 'GRN-2026-07-169', required_permission: 'grns:read', evidence: { rejected_qty: 10 }, available_actions: [{ label: 'Review', kind: 'VIEW' }] })];
+    const authorized = { ...user, permissions: ['grns:read', 'grns:approve'] };
+    const handoff = await operations.handoff(authorized, id, { action: 'SMART_APPROVAL_REVIEW' });
+    expect(handoff).toMatchObject({ source: 'PROACTIVE_OPERATIONS', action: 'SMART_APPROVAL_REVIEW', attention_id: id, entity_type: 'grn', entity_id: id, entity_reference: 'GRN-2026-07-169', tenant, profile: 'MIZANTRA', executable: false });
+    expect(mockRpc).not.toHaveBeenCalled();
+    await expect(operations.handoff({ ...user, permissions: ['grns:read'] }, id, { action: 'SMART_APPROVAL_REVIEW' })).rejects.toThrow('not available');
+    mockItems[0].tenant_id = 'foreign';
+    await expect(operations.handoff(authorized, id, { action: 'SMART_APPROVAL_REVIEW' })).rejects.toThrow('not available');
+  });
   it.each([{ tenant_id: 'foreign' }, { profile: 'ARWA' }, { owner_id: 'foreign' }])('rejects foreign attention handoff %j', async extra => {
     mockItems = [stored(extra)];
     await expect(operations.handoff(user, id, { action: 'WHY' })).rejects.toThrow('not available');

@@ -221,12 +221,12 @@ export class UnifiedAiService {
         const target = { profile: attentionHandoff.profile, tenant_id: attentionHandoff.tenant, current_user_id: attentionHandoff.owner_id, entity_type: attentionHandoff.entity_type, entity_id: attentionHandoff.entity_id, current_route: body.drawer_origin?.current_route || attentionHandoff.current_route, locale: 'en' };
         const validated = await this.brain.validateContext(user, target);
         if (!validated.enabled || !validated.context || validated.context.entity_id !== target.entity_id || validated.context.entity_type !== target.entity_type) throw new ForbiddenException('Attention target is not authorized.');
-        const messages: Record<string, string> = { DATA_DOCTOR: 'Diagnose this record', WHY: 'Why is this on my attention list?', REPORT_BUILDER: 'Show all overdue POs', PREPARE_PR_PLAN: 'Create a PR for this item', VIEW: `What is this ${target.entity_type === 'purchase_order' ? 'PO' : 'record'} status?` };
+        const messages: Record<string, string> = { DATA_DOCTOR: 'Diagnose this record', WHY: 'Why is this on my attention list?', REPORT_BUILDER: 'Show all overdue POs', PREPARE_PR_PLAN: 'Create a PR for this item', VIEW: `What is this ${target.entity_type === 'purchase_order' ? 'PO' : 'record'} status?`, SMART_APPROVAL_REVIEW: 'Review this before approval' };
         body = { message: messages[attentionHandoff.action], brain_context: validated.context, attention_id: attentionHandoff.attention_id, ...(body.drawer_origin ? { drawer_origin: { current_route: target.current_route, ...(body.drawer_origin.entity_id ? { entity_type: target.entity_type, entity_id: target.entity_id } : {}) } } : {}) };
         decision = selectUnifiedRoute(body.message, { profile: configuration.profile });
         handoff = 1;
       }
-      if (body.unified_session_id) {
+      if (body.unified_session_id && !attentionHandoff) {
         session = await this.contexts.get(user, body.unified_session_id);
         ref = session.working_ref;
       }
@@ -243,7 +243,7 @@ export class UnifiedAiService {
           ref.entity = { profile: scope.profile, tenant_id: scope.tenant, current_user_id: scope.owner, entity_type: context.type === 'AUTOQA_FINDING' ? 'autoqa_finding' : 'support_incident', entity_id: context.id, current_route: '/dashboard', locale: 'en' } as any;
         }
       }
-      if (body.brain_context) ref = { ...ref, entity: body.brain_context, current_type: 'ERP_ENTITY' };
+      if (body.brain_context) ref = attentionHandoff ? { entity: body.brain_context, current_type: 'ERP_ENTITY' } : { ...ref, entity: body.brain_context, current_type: 'ERP_ENTITY' };
       if (attentionHandoff) ref.attention_item_id = attentionHandoff.attention_id;
       if (attentionHandoff?.action === 'PREPARE_PR_PLAN') ref.current_type = 'ATTENTION_ITEM';
       if (body.screen_context && !body.brain_context && !ref.entity && (isPoGrnRequest(body.message) || /\bthis (?:PO|purchase order|GRN|item|supplier)\b/i.test(body.message))) {
