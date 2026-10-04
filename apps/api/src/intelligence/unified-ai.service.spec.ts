@@ -72,6 +72,18 @@ describe('Unified governed orchestration', () => {
     await expect(service.resumeContext(user,{session_id:id})).rejects.toThrow('has been cleared');
     expect(reporting.query).not.toHaveBeenCalled();
   });
+  it('keeps saved report identity through a refinement reply and another remount',async()=>{
+    contexts.get.mockResolvedValue({id,version:4,working_ref:{current_type:'REPORT',report_session_id:id,saved_report_id:owner}});
+    const reply=await service.interpret(user,{message:'Only overdue',unified_session_id:id,context_ref:{type:'REPORT',id}},erp);
+    expect(reply.report.saved_report_id).toBe(owner);
+    const resumed=await service.resumeContext(user,{session_id:id,context_ref:{type:'REPORT',id}});
+    expect(resumed.report!.saved_report_id).toBe(owner);
+  });
+  it('does not attach an old saved-report identity to a different selected native report',async()=>{
+    contexts.get.mockResolvedValue({id,version:4,working_ref:{current_type:'REPORT',report_session_id:id,saved_report_id:owner}});
+    const resumed=await service.resumeContext(user,{session_id:id,context_ref:{type:'REPORT',id:tenant}});
+    expect(resumed.working_ref.saved_report_id).toBeUndefined();
+  });
   it('explicitly selected old report history rehydrates native permissions after New Request',async()=>{
     contexts.get.mockResolvedValue({id,version:4,working_ref:{}});
     const reply=await service.resumeContext(user,{session_id:id,explicit_history:true,context_ref:{type:'REPORT',id:owner}});

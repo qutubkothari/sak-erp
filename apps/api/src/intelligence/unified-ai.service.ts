@@ -168,7 +168,7 @@ export class UnifiedAiService {
     if (origin && origin !== ref.drawer_origin && !body.explicit_history) throw new NotFoundException('No active task belongs to this screen.');
     if (body.context_ref) {
       if (body.context_ref.type !== 'REPORT' || typeof body.context_ref.id !== 'string' || Object.keys(body.context_ref).some(key => !['type','id','saved_report_id'].includes(key))) throw new BadRequestException('Unsupported working reference.');
-      ref = {...ref,current_type:'REPORT',report_session_id:body.context_ref.id,saved_report_id:body.context_ref.saved_report_id};
+      ref = {...ref,current_type:'REPORT',report_session_id:body.context_ref.id,saved_report_id:body.context_ref.saved_report_id || (body.context_ref.id === ref.report_session_id ? ref.saved_report_id : undefined)};
     }
     if (!ref.current_type) throw new NotFoundException('This working request has been cleared. Select an authorized saved result.');
     const validated = await this.validate(user, ref);
@@ -213,8 +213,9 @@ export class UnifiedAiService {
         const context = body.context_ref;
         const fields: Record<string, keyof UnifiedWorkingRef> = { REPORT:'report_session_id', DASHBOARD:'dashboard_id', IMPORT_BATCH:'import_batch_id', ACTION_PLAN:'plan_id', ATTENTION_ITEM:'attention_item_id', ENGINEERING_REQUEST:'engineering_request_id', AUTOQA_FINDING:'autoqa_finding_id' };
         if (!fields[context.type] || typeof context.id !== 'string') throw new BadRequestException('Unsupported working reference.');
+        const previousReportId = ref.report_session_id;
         ref = { ...ref, current_type: context.type, [fields[context.type]]: context.id };
-        if (context.type === 'REPORT') ref.saved_report_id = context.saved_report_id;
+        if (context.type === 'REPORT') ref.saved_report_id = context.saved_report_id || (context.id === previousReportId ? ref.saved_report_id : undefined);
         if (['AUTOQA_FINDING','ENGINEERING_REQUEST'].includes(context.type)) {
           const scope = this.contexts.scope(user);
           ref.entity = { profile: scope.profile, tenant_id: scope.tenant, current_user_id: scope.owner, entity_type: context.type === 'AUTOQA_FINDING' ? 'autoqa_finding' : 'support_incident', entity_id: context.id, current_route: '/dashboard', locale: 'en' } as any;
@@ -360,6 +361,7 @@ export class UnifiedAiService {
       if (result?.report?.plan) reportDataset = result.report.plan.dataset;
       if (drawerOrigin) ref.drawer_origin = drawerOrigin;
       if (result?.saved_report?.id) ref.saved_report_id = result.saved_report.id;
+      if (result?.report && ref.saved_report_id) result.report = {...result.report,saved_report_id:ref.saved_report_id};
       result = await this.finish(user, result, ref, session, configuration, reportDataset, decision, routingMs, subsystemMs, failures);
     } catch (error) {
       if (subsystemStarted !== undefined) subsystemMs = Date.now() - subsystemStarted;
