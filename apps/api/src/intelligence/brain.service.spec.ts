@@ -68,6 +68,16 @@ describe("Brain validated context and graph", () => {
   it("validates PO context and replaces a forged document label", async () => {
     expect((await subject.validateContext(user, envelope())).context).toMatchObject({ document_number: "PO-312", tenant_id: tenant, current_user_id: actor });
   });
+  it('keeps Saif item diagnosis scoped to native Item read permission and tenant', async () => {
+    process.env.ERP_TENANT_PROFILE = 'SAIFSEAS';
+    const context={...envelope('item',itemId),profile:'SAIFSEAS',current_route:'/dashboard/inventory/items'};
+    const reader={...user,role:'VIEWER',permissions:['items:read']};
+    const inspected=await subject.withDiagnosticEvidence(reader,context,async evidence=>({code:evidence.nodes[0].row.code,canReadStock:evidence.canRead('doctor_stock'),canReadPricing:evidence.canRead('approval_po_prices'),canReadHr:evidence.canRead('attendance')}));
+    expect(inspected).toEqual({code:'ITEM-1',canReadStock:false,canReadPricing:false,canReadHr:false});
+    await expect(subject.withDiagnosticEvidence({...reader,permissions:[]},context,async()=>null)).rejects.toThrow('cannot view');
+    await expect(subject.withDiagnosticEvidence(reader,{...context,tenant_id:otherTenant},async()=>null)).rejects.toThrow('authenticated scope');
+    expect(queries.every(query=>query.filters.some(([field,value])=>field==='tenant_id'&&value===tenant)||query.table==='tenants')).toBe(true);
+  });
   it('resolves explicit PO numbers only inside the authorized tenant', async () => {
     expect(await subject.purchaseOrderContext(user,'PO-312')).toMatchObject({entity_id:poId,document_number:'PO-312',tenant_id:tenant});
     records.purchase_orders[0].tenant_id=otherTenant;

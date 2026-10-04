@@ -46,7 +46,10 @@ export const ATTENTION_RULES = [
 export const severityOrder: Record<AttentionSeverity, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
 export function proactiveFlags(env: NodeJS.ProcessEnv = process.env) {
   const profile = String(env.ERP_TENANT_PROFILE || '').toUpperCase();
-  const enabled = ['MIZANTRA', 'ARWA'].includes(profile) && env.MIZANTRA_PROACTIVE_OPERATIONS_ENABLED === 'true';
+  const profileEnabled = profile === 'SAIFSEAS'
+    ? env.SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED === 'true'
+    : ['MIZANTRA', 'ARWA'].includes(profile);
+  const enabled = profileEnabled && env.MIZANTRA_PROACTIVE_OPERATIONS_ENABLED === 'true';
   return { profile, enabled, daily_brief: enabled && env.MIZANTRA_DAILY_BRIEF_ENABLED === 'true', notifications: enabled && env.MIZANTRA_PROACTIVE_NOTIFICATIONS_ENABLED === 'true', business_writes: false, external_notifications: false };
 }
 export function attentionIntent(message: string) {

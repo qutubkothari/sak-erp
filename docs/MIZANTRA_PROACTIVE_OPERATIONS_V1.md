@@ -16,7 +16,7 @@ All three flags default to `false`:
 - `MIZANTRA_DAILY_BRIEF_ENABLED`
 - `MIZANTRA_PROACTIVE_NOTIFICATIONS_ENABLED`
 
-Saif remains OFF even if raw flags are accidentally set. Enable all three only on Mizantra/Arwa pilots. Existing Brain, Operator, Doctor, Smart Import and software-agent modes are independent and must remain unchanged.
+Saif remains OFF if only the common flags are set. Its read-only attention pilot also requires `SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED=true`; daily brief and notifications remain separately gated by their common flags. This additional gate has no effect on Mizantra/Arwa. Existing Brain, Operator, Doctor, Smart Import and software-agent modes are independent and must remain unchanged.
 
 An authenticated user can set an IANA timezone in Today's Attention. Defaults are `MIZANTRA_PROACTIVE_TIMEZONE`, then `ERP_TIMEZONE`, then UTC. The five-minute in-app scheduler validates current native users, checks local 08:00, and catches up once per local date. There is no email or external push. Daily brief uniqueness and lifecycle reconciliation are enforced transactionally in PostgreSQL.
 

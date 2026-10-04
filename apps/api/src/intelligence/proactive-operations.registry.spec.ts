@@ -13,6 +13,13 @@ describe('Proactive purchasing rules', () => {
   it('rejects invalid dates and quantities', () => { expect(recordedDate('2026-02-30')).toBeNull(); expect(finiteFact(null)).toBeNull(); expect(finiteFact(false)).toBeNull(); });
   it('has stable sorted-object fingerprints', () => expect(attentionHash({ a: 1, b: 2 })).toBe(attentionHash({ b: 2, a: 1 })));
   it('defaults all flags off and prevents Saif activation', () => { expect(proactiveFlags({} as any).enabled).toBe(false); expect(proactiveFlags({ ERP_TENANT_PROFILE: 'SAIFSEAS', MIZANTRA_PROACTIVE_OPERATIONS_ENABLED: 'true' }).enabled).toBe(false); });
+  it('enables Saif attention only with both explicit flags, without daily brief or notifications', () => {
+    expect(proactiveFlags({ ERP_TENANT_PROFILE: 'SAIFSEAS', SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED: 'true', MIZANTRA_PROACTIVE_OPERATIONS_ENABLED: 'true' })).toMatchObject({ enabled: true, daily_brief: false, notifications: false, business_writes: false });
+  });
+  it.each(['MIZANTRA', 'ARWA'])('preserves the %s attention flag policy', profile => {
+    expect(proactiveFlags({ ERP_TENANT_PROFILE: profile, MIZANTRA_PROACTIVE_OPERATIONS_ENABLED: 'true' })).toMatchObject({ enabled: true, business_writes: false });
+    expect(proactiveFlags({ ERP_TENANT_PROFILE: profile })).toMatchObject({ enabled: false });
+  });
   it.each(['What needs my attention today?', 'Give me my morning brief.', 'Anything urgent in purchasing?', 'What changed since yesterday?', 'Show only purchasing issues.', 'Why is this on my attention list?'])('routes %s', message => expect(attentionIntent(message)).toBe(true));
   it('does not intercept business execution intents', () => expect(attentionIntent('Create a PR for item P001')).toBe(false));
 });

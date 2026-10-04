@@ -2,6 +2,8 @@ import { BadRequestException, ForbiddenException, NotFoundException, ServiceUnav
 import { UnifiedAiService, customerAiMessage } from './unified-ai.service';
 import { FeatureEntitlementGuard } from '../feature-access/feature-entitlement.guard';
 import { ActivePlannerController } from './active-planner.controller';
+import { brainFlags } from './brain-policy';
+import { operatorFlags } from './action-operator.registry';
 jest.mock('@supabase/supabase-js', () => ({createClient:jest.fn(()=>({}))}));
 const tenant='11111111-1111-4111-8111-111111111111', owner='22222222-2222-4222-8222-222222222222', id='33333333-3333-4333-8333-333333333333';
 const user={tenantId:tenant,id:owner,role:{name:'ADMIN'},permissions:['*']};
@@ -485,6 +487,42 @@ describe('Unified governed orchestration', () => {
       expect(features.featureForApiPath).toHaveBeenLastCalledWith(tenant,request.originalUrl);
     }
     expect(contexts.save).not.toHaveBeenCalled();expect(erp).not.toHaveBeenCalled();
+  });
+  it('offers Saif read-only diagnosis, Brain and reports while denying the Operator', async()=>{
+    Object.assign(process.env, {
+      ERP_TENANT_PROFILE:'SAIFSEAS', MIZANTRA_BRAIN_ENABLED:'true',
+      MIZANTRA_CONTEXT_ENGINE_ENABLED:'true', MIZANTRA_BUSINESS_GRAPH_ENABLED:'true',
+      MIZANTRA_DATA_DOCTOR_ENABLED:'true', MIZANTRA_REPORT_BUILDER_ENABLED:'true',
+    });
+    const item={...entity,profile:'SAIFSEAS',entity_type:'item',document_number:'400-0002',current_route:'/dashboard/inventory/items'};
+    brain.configuration.mockImplementation(()=>brainFlags());
+    brain.validateContext.mockResolvedValue({enabled:true,context:item});
+    brain.interpret.mockResolvedValue({status:'BRAIN_READ_ONLY',brain_context:item,assistant_message:'Authorized supplier evidence',safety:{read_only:true,executable:false}});
+    doctor.interpret.mockResolvedValue({status:'DATA_DOCTOR_READ_ONLY',brain_context:item,diagnoses:[],assistant_message:'No inconsistency found',safety:{read_only:true,executable:false}});
+    operator.configuration.mockImplementation(()=>operatorFlags());
+    proactive.configuration.mockReturnValue({enabled:false});
+    const configuration=await service.configuration(user);
+    expect(configuration.capabilities).toEqual(expect.arrayContaining(['BRAIN_QUERY','DATA_DOCTOR','REPORT_BUILDER']));
+    expect(configuration.capabilities).not.toContain('ACTION_PLANNER');
+    expect(configuration.modes).toMatchObject({operator:'OFF',operator_pr:false,operator_rfq:false});
+    const discovery=await service.interpret(user,{message:'What can you do?'},erp);
+    expect(discovery.assistant_message).toContain('diagnose recorded data issues');
+    expect(discovery.assistant_message).toContain('build and refine reports');
+    expect(discovery.assistant_message).not.toMatch(/create draft PR|execute RFQ|approve\/reject|change stock|accounting writes/i);
+    const diagnose=await service.interpret(user,{message:'Diagnose this item',brain_context:item},erp);
+    expect(diagnose.assistant_message).toContain('No inconsistency found');
+    expect(doctor.interpret).toHaveBeenCalled();
+    const supplier=await service.interpret(user,{message:'Who supplies this item?',brain_context:item},erp);
+    expect(supplier.assistant_message).toContain('Authorized supplier evidence');
+    expect(brain.interpret).toHaveBeenCalled();
+    await service.interpret(user,{message:'Show purchase history for this item',brain_context:item},erp);
+    expect(reporting.contextualHistory).toHaveBeenCalled();
+    const denied=await service.interpret(user,{message:'Prepare a PR for this item',brain_context:item},erp);
+    expect(denied.questions[0]).toContain('not enabled or permitted');
+    expect(operator.interpret).not.toHaveBeenCalled();
+    expect(operator.execute).not.toHaveBeenCalled();
+    expect(operator.approve).not.toHaveBeenCalled();
+    expect(erp).not.toHaveBeenCalled();
   });
   it('returns useful evidence when context metadata fails',async()=>{
     contexts.save.mockRejectedValue(new ServiceUnavailableException());

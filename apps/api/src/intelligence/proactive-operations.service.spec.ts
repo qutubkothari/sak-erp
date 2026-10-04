@@ -64,6 +64,16 @@ describe('Scoped briefing orchestration', () => {
   it('routes attention but preserves other Brain intents', async () => { expect(await operations.interpret(user, { message: 'Create a PR' })).toBeNull(); const result = await operations.interpret(user, { message: 'What needs my attention today?' }); expect(result?.safety.executable).toBe(false); expect(result?.proactive_brief?.items).toHaveLength(1); });
   it('blocks forged Brain context on briefing requests', async () => { await expect(operations.interpret(user, { message: 'Give me my morning brief', brain_context: { tenant_id: 'foreign' } })).rejects.toThrow('authenticated scope'); });
   it('does not activate for Saif even if raw flags are true', async () => { process.env.ERP_TENANT_PROFILE = 'SAIFSEAS'; expect(operations.configuration(user).enabled).toBe(false); await expect(operations.list(user)).rejects.toThrow('unavailable'); });
+  it('allows Saif attention only with its explicit read-only gate and native permissions', async () => {
+    process.env.ERP_TENANT_PROFILE = 'SAIFSEAS'; process.env.SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED = 'true';
+    try {
+      expect(operations.configuration(user)).toMatchObject({ enabled: true, read_only: true, business_writes: false });
+      mockItems = [stored({ profile: 'SAIFSEAS' })];
+      expect((await operations.list(user)).items).toHaveLength(1);
+      expect((await operations.list({ ...user, permissions: [] })).items).toEqual([]);
+      expect(mockMutation).not.toHaveBeenCalled();
+    } finally { delete process.env.SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED; }
+  });
   it('validates configured IANA timezone', async () => { mockTimezone = 'Not/AZone'; await expect(operations.timezone(user)).rejects.toThrow('valid briefing timezone'); });
   it('restricts health to native admins', async () => { await expect(operations.health(user)).rejects.toThrow('Admin'); });
   it('uses timezone-local calendar and morning clock', () => { expect(localBriefClock('Asia/Dubai', new Date('2026-10-03T04:00:00Z'))).toEqual({ date: '2026-10-03', hour: 8 }); });
