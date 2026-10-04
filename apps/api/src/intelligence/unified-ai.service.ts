@@ -210,7 +210,7 @@ export class UnifiedAiService {
         subsystemStarted = Date.now();
         switch (decision.route) {
           case 'BRAIN_QUERY': {
-            const brainMessage = /^show related GRNs?\b/i.test(message) ? 'What are the related GRNs for this PO?' : ref.entity?.entity_type === 'purchase_order' && /\b(?:quantity|how many)\b/i.test(message) ? 'What is the ordered and received quantity for this PO?' : message;
+            const brainMessage = /^show (?:related|its) GRNs?\b/i.test(message) ? 'What are the related GRNs for this PO?' : ref.entity?.entity_type === 'purchase_order' && /\b(?:quantity|how many)\b/i.test(message) ? 'What is the ordered and received quantity for this PO?' : message;
             result = await this.brain.interpret(user, { ...input, message:brainMessage });
             break;
           }

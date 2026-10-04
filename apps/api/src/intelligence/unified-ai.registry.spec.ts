@@ -14,6 +14,7 @@ describe('Unified AI deterministic routing', () => {
     ['Create a customer', 'NORMAL_ERP_COMMAND', {}],
     ['Who supplies this item?', 'BRAIN_QUERY', { contextType: 'ERP_ENTITY' }],
     ['Show related GRNs', 'BRAIN_QUERY', { contextType: 'ERP_ENTITY' }],
+    ['Show its GRNs.', 'BRAIN_QUERY', { contextType: 'ERP_ENTITY' }],
   ])('routes %s to %s', (text, route, input) => {
     expect(selectUnifiedRoute(text, input as any).route).toBe(route);
   });

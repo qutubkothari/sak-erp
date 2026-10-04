@@ -62,6 +62,8 @@ describe('Unified governed orchestration', () => {
   it('uses deterministic native Brain wording for related GRNs and PO quantity',async()=>{
     await service.interpret(user,{message:'Show related GRNs',brain_context:entity},erp);
     expect(brain.interpret).toHaveBeenLastCalledWith(user,expect.objectContaining({message:'What are the related GRNs for this PO?'}));
+    await service.interpret(user,{message:'Show its GRNs.',brain_context:entity},erp);
+    expect(brain.interpret).toHaveBeenLastCalledWith(user,expect.objectContaining({message:'What are the related GRNs for this PO?'}));
     await service.interpret(user,{message:'What is PO quantity?',brain_context:entity},erp);
     expect(brain.interpret).toHaveBeenLastCalledWith(user,expect.objectContaining({message:'What is the ordered and received quantity for this PO?'}));
     expect(erp).not.toHaveBeenCalled();

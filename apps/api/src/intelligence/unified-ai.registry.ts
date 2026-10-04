@@ -66,7 +66,7 @@ export function selectUnifiedRoute(message: string, input: RouteInput = {}): Rou
   if (/^fix\b/i.test(text) && input.contextType === 'DIAGNOSIS') return choose('AUTOENGINEER', 'PREPARE_FIX', true);
   if (/^fix (?:this|that|it|them)[.!?]?$/i.test(text)) return clarify('Do you mean diagnose the data or report a software problem?');
   if (/^diagnose\b|^why is (?:this|that|it) (?:here|wrong)\b/i.test(text) && input.contextType) return choose('DATA_DOCTOR', 'INTERPRET', true);
-  if (/\b(?:why|who|what|which|where|how many|related GRNs|receipt|supplier|supplies|quantity|status|came from)\b/i.test(text) && input.contextType) return choose('BRAIN_QUERY', 'INTERPRET', true);
+  if (/\b(?:why|who|what|which|where|how many|related GRNs|show its GRNs|receipt|supplier|supplies|quantity|status|came from)\b/i.test(text) && input.contextType) return choose('BRAIN_QUERY', 'INTERPRET', true);
   if (/\b(?:this|that|these|those|it|them)\b/i.test(text) && !input.contextType) return clarify('Which authorized record or result do you mean?');
   if (/^(?:show|list|find|what|who|which|how many|is|are)\b/i.test(text)) return choose('ERP_QUERY');
   return choose('NORMAL_ERP_COMMAND');
