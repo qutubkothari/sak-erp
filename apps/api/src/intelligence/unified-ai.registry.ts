@@ -59,6 +59,7 @@ export function selectUnifiedRoute(message: string, input: RouteInput = {}): Rou
   if (isPoGrnRequest(text)) return choose('BRAIN_QUERY', 'INTERPRET', !!input.contextType);
   if (isExplicitPoReport(text)) return choose('REPORT_BUILDER');
   if (isPoRemainingFilter(text)) return choose('REPORT_BUILDER');
+  if (input.contextType === 'REPORT' && /^(?:add\s+(?:(?:it|this|that|this report)\s+)?to\s+(?:the\s+)?dashboard|save\s+(?:this|that|the)?\s*report|show\s+(?:it\s+)?as\s+(?:a\s+)?chart)\b/i.test(text)) return choose('REPORT_BUILDER','INTERPRET',true);
   if (input.contextType === 'REPORT' && /^(?:diagnose|why|who|check)\b.*\b(?:this|that|it|them)\b/i.test(text) && !/\b(?:PO|GRN|item|supplier|record)\b/i.test(text)) return clarify('Which authorized record in the report do you mean?');
   if (input.contextType === 'ACTION_PLAN' && /^(?:review|show|approve|check)\b/i.test(text)) return choose('ACTION_PLANNER', 'REVIEW', true);
   if (input.contextType === 'ACTION_PLAN' && /^(?:quantity|qty|required date|delivery date|needed|reason|warehouse|cost centre)\b/i.test(text)) return choose('ACTION_PLANNER', 'INTERPRET', true);

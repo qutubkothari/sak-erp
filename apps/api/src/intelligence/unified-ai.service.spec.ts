@@ -24,6 +24,67 @@ describe('Unified governed orchestration', () => {
     features={featureForApiPath:jest.fn().mockResolvedValue(null)};
     service=new UnifiedAiService(contexts,brain,doctor,reporting,documents,operator,approval,support,proactive,imports,features);
   });
+  it('rehydrates the owned native report without creating or executing a task',async()=>{
+    contexts.get.mockResolvedValue({id,version:3,working_ref:{current_type:'REPORT',report_session_id:id}});
+    const reply=await service.resumeContext(user,{session_id:id});
+    expect(contexts.get).toHaveBeenCalledWith(user,id);
+    expect(reporting.workingContext).toHaveBeenCalledWith(user,id);
+    expect(reporting.query).toHaveBeenCalledWith(user,{session_id:id});
+    expect(reply.report!.version).toBe('native-version');expect(reply.session_version).toBe(3);
+    expect(contexts.save).not.toHaveBeenCalled();expect(operator.execute).not.toHaveBeenCalled();expect(reporting.interpret).not.toHaveBeenCalled();
+  });
+  it('does not expose protected report data after permissions change',async()=>{
+    contexts.get.mockResolvedValue({id,version:3,working_ref:{current_type:'REPORT',report_session_id:id}});
+    reporting.workingContext.mockRejectedValue(new ForbiddenException('Report access is required.'));
+    await expect(service.resumeContext(user,{session_id:id})).rejects.toThrow('Report access');
+    expect(reporting.query).not.toHaveBeenCalled();
+  });
+  it('binds a broad report to its validated originating PO without narrowing the dataset',async()=>{
+    await service.interpret(user,{message:'Show all open purchase orders',drawer_origin:{current_route:entity.current_route,entity_type:entity.entity_type,entity_id:id}},erp);
+    expect(contexts.save.mock.calls[0][1].drawer_origin).toBe(`${entity.current_route}|purchase_order:${id}|`);
+    expect(reporting.interpret).toHaveBeenCalledWith(user,expect.objectContaining({brain_context:undefined}));
+  });
+  it('does not activate a report on a different entity or route',async()=>{
+    contexts.get.mockResolvedValue({id,version:3,working_ref:{current_type:'REPORT',report_session_id:id,drawer_origin:'/dashboard/inventory/items|item:33333333-3333-4333-8333-333333333333|'}});
+    await expect(service.resumeContext(user,{session_id:id,drawer_origin:{current_route:entity.current_route,entity_type:entity.entity_type,entity_id:id}})).rejects.toThrow('No active task belongs');
+    expect(reporting.query).not.toHaveBeenCalled();
+  });
+  it('restores report semantic state after same-PO reopen and keeps saved-report identity',async()=>{
+    const origin=`${entity.current_route}|purchase_order:${id}|`;
+    contexts.get.mockResolvedValue({id,version:3,working_ref:{current_type:'REPORT',report_session_id:id,saved_report_id:owner,drawer_origin:origin}});
+    reporting.query.mockResolvedValue({plan:{dataset:'PURCHASE_ORDERS',title:'Bombay Open POs',filters:[{field:'OPEN_PO',operator:'eq',value:true},{field:'vendor_name',operator:'eq',value:'Bombay Anodising Corporation'}],grouping:[],sort:[],visualization:'TABLE'},version:'native-version'});
+    const reply=await service.resumeContext(user,{session_id:id,drawer_origin:{current_route:entity.current_route,entity_type:entity.entity_type,entity_id:id}});
+    expect(reply.report!.plan.title).toBe('Bombay Open POs');expect(reply.report!.plan.filters).toHaveLength(2);expect(reply.report!.saved_report_id).toBe(owner);
+    expect(reporting.workingContext).toHaveBeenCalledWith(user,owner,'REPORT');
+  });
+  it('permits explicit owned history selection without silently restoring unrelated history',async()=>{
+    contexts.get.mockResolvedValue({id,version:3,working_ref:{current_type:'REPORT',report_session_id:id,drawer_origin:'/dashboard||'}});
+    await service.resumeContext(user,{session_id:id,explicit_history:true,drawer_origin:{current_route:entity.current_route,entity_type:entity.entity_type,entity_id:id}});
+    expect(contexts.save).toHaveBeenCalledWith(user,expect.objectContaining({drawer_origin:`${entity.current_route}|purchase_order:${id}|`}),expect.objectContaining({version:3}));
+  });
+  it('does not silently resume an expired or foreign owned session',async()=>{
+    contexts.get.mockRejectedValue(new ForbiddenException('Unavailable owned session'));
+    await expect(service.resumeContext(user,{session_id:id})).rejects.toThrow('Unavailable owned session');
+    expect(reporting.workingContext).not.toHaveBeenCalled();expect(reporting.query).not.toHaveBeenCalled();
+  });
+  it('does not revive a protected snapshot from a cleared session',async()=>{
+    contexts.get.mockResolvedValue({id,version:4,working_ref:{}});
+    await expect(service.resumeContext(user,{session_id:id})).rejects.toThrow('has been cleared');
+    expect(reporting.query).not.toHaveBeenCalled();
+  });
+  it('explicitly selected old report history rehydrates native permissions after New Request',async()=>{
+    contexts.get.mockResolvedValue({id,version:4,working_ref:{}});
+    const reply=await service.resumeContext(user,{session_id:id,explicit_history:true,context_ref:{type:'REPORT',id:owner}});
+    expect(reporting.workingContext).toHaveBeenCalledWith(user,owner);expect(reporting.query).toHaveBeenCalledWith(user,{session_id:owner});expect(reply.report).toBeDefined();
+  });
+  it.each(['Add to Dashboard','Export it','Only overdue','Save this report','Show as chart'])('routes restored report follow-up without generic planner fallback: %s',async message=>{
+    contexts.get.mockResolvedValue({id,version:4,working_ref:{current_type:'REPORT',report_session_id:id,saved_report_id:owner}});
+    await service.resumeContext(user,{session_id:id});
+    await service.interpret(user,{message,unified_session_id:id},erp);
+    if(message==='Export it') expect(reporting.query).toHaveBeenCalledWith(user,{session_id:id});
+    else expect(reporting.interpret).toHaveBeenCalledWith(user,expect.objectContaining({session_id:id,saved_report_id:owner}));
+    expect(erp).not.toHaveBeenCalled();expect(operator.execute).not.toHaveBeenCalled();
+  });
   it.each([
     ['Why is this PO open?','BRAIN_QUERY'],['Why is stock wrong?','DATA_DOCTOR'],['Show overdue POs','REPORT_BUILDER'],['Import this Excel','SMART_IMPORT'],['This field is broken','AUTOENGINEER'],['Review this before approval','SMART_APPROVAL'],['Prepare a PR for these items','ACTION_PLANNER'],['What needs my attention today?','PROACTIVE_OPERATIONS'],['Show all customers','ERP_QUERY'],['Create a customer','NORMAL_ERP_COMMAND'],
   ])('dispatches %s through %s only',async(message,route)=>{

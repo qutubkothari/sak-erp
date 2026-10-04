@@ -1,6 +1,7 @@
 "use client";
 import { useUnifiedDrawer } from "../../../components/MizantraUnifiedAi";
 import { ASK_LIST_CONTEXT_KEY, readAskListContext, type AskListContext } from '@/lib/brain-context';
+import { clearDrawerSession, drawerOrigin, readDrawerSession, suspendDrawerSession, writeDrawerSession, type DrawerScope } from '@/lib/unified-drawer-session';
 import {
   type CSSProperties,
   FormEvent,
@@ -454,11 +455,13 @@ export default function ActivePlannerPage() {
   const embedded = useUnifiedDrawer();
   const freshScreenContext = useRef<BrainEnvelope | null>(null);
   const freshScreenList = useRef<AskListContext | null>(null);
+  const [drawerScope,setDrawerScope] = useState<DrawerScope | null>(null);
+  const drawerRestoreAttempted = useRef(false);
   const [screenList,setScreenList] = useState<AskListContext | null>(null);
   const [screenContextLoading,setScreenContextLoading] = useState(true);
   const [unifiedConfiguration, setUnifiedConfiguration] = useState<UnifiedConfiguration | null>(null);
   const [unifiedSessionId, setUnifiedSessionId] = useState<string | null>(null);
-  const [unifiedWorkingRef, setUnifiedWorkingRef] = useState<{ type: string; id: string } | null>(null);
+  const [unifiedWorkingRef, setUnifiedWorkingRef] = useState<{ type: string; id: string; saved_report_id?: string } | null>(null);
   const [documentEnabled, setDocumentEnabled] = useState(false);
   const [documentIds, setDocumentIds] = useState<string[]>([]);
   const [documentRefresh, setDocumentRefresh] = useState(0);
@@ -572,6 +575,7 @@ export default function ActivePlannerPage() {
     let cancelled = false;
     void apiClient.get<{ enabled: boolean; contextEnabled: boolean; profile: string; tenant_id: string; current_user_id: string }>("/active-planner/brain/configuration")
       .then(async configuration => {
+        if (!cancelled) setDrawerScope({profile:configuration.profile,tenant_id:configuration.tenant_id,current_user_id:configuration.current_user_id});
         if (!configuration.enabled || !configuration.contextEnabled) return;
         const stored = JSON.parse(sessionStorage.getItem(BRAIN_CONTEXT_KEY) || "null");
         const envelope = buildBrainEnvelope(stored, configuration, "", language === "ar" ? "ar-EG" : "en");
@@ -671,18 +675,20 @@ export default function ActivePlannerPage() {
       .catch(() => undefined)
       .finally(() => setCapabilitiesLoaded(true));
   }, []);
-  const applyHistory = (data: any) => {
+  const applyHistory = async (data: any, resumed?: any, preserveScreen = false) => {
     setConversations(data?.conversations || []);
     const active = data?.active;
     if (!active) return;
-    setBrainContext(null);
-    setScreenList(null);
-    setUnifiedSessionId(active.conversation?.last_result?.unified?.session_id || null);
-    setUnifiedWorkingRef(null);
+    const storedResult = active.conversation?.last_result;
+    if (!resumed && storedResult?.unified?.session_id) resumed = await apiClient.post('/active-planner/unified/context/resume', {session_id:storedResult.unified.session_id,...(storedResult.report && storedResult.session_id ? {context_ref:{type:'REPORT',id:storedResult.session_id,saved_report_id:storedResult.report.saved_report_id}} : {}),...(embedded ? {drawer_origin:drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current),explicit_history:true} : {})});
+    if (!preserveScreen) { setBrainContext(null);setScreenList(null); }
+    const restoredResult = resumed && storedResult ? {...storedResult,...(resumed.report ? {report:resumed.report,session_id:resumed.working_ref.report_session_id} : {}),unified:{...storedResult.unified,session_id:resumed.session_id,session_version:resumed.session_version,...(resumed.report ? {context:{type:'REPORT',label:resumed.report.plan.title}} : {})}} : storedResult;
+    setUnifiedSessionId(resumed?.session_id || storedResult?.unified?.session_id || null);
+    setUnifiedWorkingRef(resumed?.working_ref?.current_type === 'REPORT' ? {type:'REPORT',id:resumed.working_ref.report_session_id,saved_report_id:resumed.working_ref.saved_report_id} : null);
     setDocumentIds([]);
     setConversationId(active.conversation?.id || "");
     setContext(active.conversation?.current_context_token || "");
-    setResult(active.conversation?.last_result || null);
+    setResult(restoredResult || null);
     const restored = (active.messages || []).map((message: any) => ({
       role: message.role === "USER" ? "user" : "planner",
       text: String(message.content || ""),
@@ -698,7 +704,7 @@ export default function ActivePlannerPage() {
           ? `/active-planner/conversations/${encodeURIComponent(id)}`
           : "/active-planner/conversations",
       );
-      applyHistory(data);
+      await applyHistory(data);
       const updates = consumePendingSupportUpdates();
       if (updates.length)
         setTurns((current) => [
@@ -731,6 +737,39 @@ export default function ActivePlannerPage() {
     return () =>
       window.removeEventListener("mizantra:support-update", onSupportUpdate);
   }, []);
+  useEffect(() => {
+    if (!embedded || screenContextLoading || !drawerScope || !unifiedConfiguration || drawerRestoreAttempted.current) return;
+    drawerRestoreAttempted.current = true;
+    if (!unifiedConfiguration.enabled || !unifiedConfiguration.router) return;
+    const origin = drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current);
+    const pointer = readDrawerSession(sessionStorage,drawerScope,origin);
+    if (!pointer) return;
+    let active = true;
+    setBusy(true);
+    void (async () => {
+      const resumed: any = await apiClient.post('/active-planner/unified/context/resume', {session_id:pointer.session_id,drawer_origin:origin,...(pointer.context_ref ? {context_ref:pointer.context_ref} : {})});
+      if (!resumed.working_ref?.current_type) throw new Error('The previous working request has been cleared.');
+      const history: any = pointer.conversation_id ? await apiClient.get(`/active-planner/conversations/${encodeURIComponent(pointer.conversation_id)}`) : null;
+      if (!active) return;
+      if (history?.active) await applyHistory(history,resumed,true);
+      else if (resumed.report) {
+        setUnifiedSessionId(resumed.session_id);
+        setUnifiedWorkingRef({type:'REPORT',id:resumed.working_ref.report_session_id,saved_report_id:resumed.working_ref.saved_report_id});
+        setResult({status:'REPORT_READY',intent_type:'UNIFIED_AI',provider:'MIZANTRA_UNIFIED_AI_V1',extracted:{},resolved:{},questions:[],context_token:'',safety:{read_only:true,executable:false},report:resumed.report,session_id:resumed.working_ref.report_session_id,unified:{type:'REPORT',content_type:'REPORT',route:'REPORT_BUILDER',session_id:resumed.session_id,session_version:resumed.session_version,context:{type:'REPORT',label:resumed.report.plan.title},next_actions:[],failures:[],partial:false,executable:false}});
+      }
+    })().catch((failure: any) => { if (active) { clearDrawerSession(sessionStorage,drawerScope);setError(failure?.message || 'The previous request is unavailable. Start a new request.'); } }).finally(() => { if (active) setBusy(false); });
+    return () => { active = false; };
+  }, [embedded,screenContextLoading,drawerScope,unifiedConfiguration]);
+  useEffect(() => {
+    if (!embedded || !drawerScope || !unifiedSessionId || !result?.unified?.session_version) return;
+    writeDrawerSession(sessionStorage,drawerScope,drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current),{session_id:unifiedSessionId,session_version:result.unified.session_version,conversation_id:conversationId || undefined,context_ref:unifiedWorkingRef?.type === 'REPORT' ? {type:'REPORT',id:unifiedWorkingRef.id,saved_report_id:unifiedWorkingRef.saved_report_id} : result.report && result.session_id ? {type:'REPORT',id:result.session_id,saved_report_id:result.report.saved_report_id} : undefined});
+  }, [embedded,drawerScope,unifiedSessionId,unifiedWorkingRef,conversationId,result]);
+  useEffect(() => {
+    if (!embedded || !drawerScope) return;
+    const suspend = () => suspendDrawerSession(sessionStorage,drawerScope,drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current));
+    window.addEventListener('mizantra:ask-close',suspend);
+    return () => { suspend();window.removeEventListener('mizantra:ask-close',suspend); };
+  }, [embedded,drawerScope]);
   useEffect(
     () => () => {
       if (recordingTimeoutRef.current)
@@ -1050,6 +1089,7 @@ export default function ActivePlannerPage() {
         message: rawMessage,
         ...(unifiedEnabled && unifiedSessionId ? { unified_session_id: unifiedSessionId } : {}),
         ...(unifiedEnabled && unifiedWorkingRef ? { context_ref: unifiedWorkingRef } : {}),
+        ...(embedded && unifiedEnabled ? {drawer_origin:drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current)} : {}),
         ...(nextAction ? { next_action: nextAction } : {}),
         ...(documentEnabled && isPlanner && selectedDocumentIds.length && (!unifiedEnabled || !unifiedSessionId || pendingFile) ? { document_ids: selectedDocumentIds } : {}),
         ...(!unifiedEnabled && (result?.session_id || result?.action_operator_plan?.payload.request.session_id) ? { session_id: result?.session_id || result?.action_operator_plan?.payload.request.session_id } : {}),
@@ -1078,6 +1118,7 @@ export default function ActivePlannerPage() {
             ? uploadedAttachments
             : undefined,
       });
+      if (embedded && drawerScope && data.unified?.session_id && data.unified.session_version) writeDrawerSession(sessionStorage,drawerScope,drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current),{session_id:data.unified.session_id,session_version:data.unified.session_version,conversation_id:data.conversation_id || conversationId || undefined,context_ref:data.report && data.session_id ? {type:'REPORT',id:data.session_id,saved_report_id:data.report.saved_report_id} : undefined});
       if (mode !== "status") setInput("");
       setClarifySupport(false);
       if (data.unified) { setUnifiedSessionId(data.unified.session_id); setUnifiedWorkingRef(null); setResult(data); setMobilePanel(embedded ? 'chat' : 'review'); }
@@ -1218,6 +1259,7 @@ export default function ActivePlannerPage() {
   };
   const clearWorkingContext = async () => {
     if (unifiedSessionId) await apiClient.post('/active-planner/unified/context/clear', {session_id:unifiedSessionId,session_version:result?.unified?.session_version});
+    if (drawerScope) clearDrawerSession(sessionStorage,drawerScope);
     setUnifiedSessionId(null);
     setUnifiedWorkingRef(null);
     setContext('');
@@ -1973,7 +2015,7 @@ export default function ActivePlannerPage() {
               </span>
             </div>
             {result?.unified && <UnifiedResultHeader envelope={result.unified} message={result.assistant_message} busy={busy} importPreview={result.import_preview} onAction={(key,message) => void submitMessage(message,undefined,key)} />}
-            {result?.unified && result.report && <MizantraReporting embedded initialReport={result.report} initialSessionId={result.session_id} onWorkingReport={(report, id) => { setUnifiedWorkingRef({ type:'REPORT', id }); setResult(current => current ? { ...current, report, session_id:id, unified:current.unified ? { ...current.unified, next_actions:[] } : undefined } : current); }} />}
+            {result?.unified && result.report && <MizantraReporting embedded initialReport={result.report} initialSessionId={result.session_id} onWorkingReport={(report, id) => { setUnifiedWorkingRef({ type:'REPORT', id, saved_report_id:report.saved_report_id }); setResult(current => current ? { ...current, report, session_id:id, unified:current.unified ? { ...current.unified, context:{type:'REPORT',label:report.plan.title}, next_actions:[] } : undefined } : current); }} />}
             {result?.unified && result.document_comparison && <MizantraDocuments comparisonOnly refreshSignal={0} selectedIds={[]} onSelection={() => undefined} onEnabled={() => undefined} comparison={result.document_comparison} onDiagnosis={context => { setBrainContext(context); setUnifiedSessionId(null); setUnifiedWorkingRef(null); setDocumentIds([]); setMobilePanel('chat'); setInput('Diagnose ERP data for this record'); }} />}
             <OperatorPlanHistory currentId={result?.action_operator_plan?.id} onSelect={plan => { setUnifiedSessionId(null); setUnifiedWorkingRef({ type:'ACTION_PLAN', id:plan.id }); setDocumentIds([]); setResult({ status: 'ACTION_OPERATOR_PLAN', intent_type: 'ACTION_OPERATOR', provider: 'MIZANTRA_ACTION_OPERATOR_V1', extracted: {}, resolved: {}, questions: plan.payload.warnings, context_token: '', safety: { executable: false, autonomous_execution: false }, action_operator_plan: plan }); setMobilePanel('review'); }} />
             {result?.proactive_brief ? <AttentionList brief={result.proactive_brief} onRefresh={async () => { const brief = await apiClient.get<ProactiveBrief>('/active-planner/proactive-operations/attention'); setResult(previous => previous ? { ...previous, proactive_brief: brief } : previous); }} /> : result?.attention_evidence ? <section aria-label="Attention evidence" className="py-4 text-sm"><p>{result.attention_evidence.explanation}</p><dl className="mt-3 space-y-2">{Object.entries(result.attention_evidence.evidence).map(([key, value]) => <div key={key}><dt className="text-stone-500">{key.replaceAll('_', ' ')}</dt><dd className="break-words [overflow-wrap:anywhere]">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl></section> : result?.action_operator_plan ? <MizantraActionOperator key={result.action_operator_plan.id} plan={result.action_operator_plan} onUpdate={plan => setResult(previous => previous ? { ...previous, action_operator_plan: plan } : previous)} onReportFailure={plan => { setSupportMode(true); setMobilePanel('chat'); setInput(`Report Action Operator software failure for plan ${plan.id}, build ${plan.build_sha}. No software patch was attempted during business execution.`); }} /> : result && !result.analytics && !result.unified ? (

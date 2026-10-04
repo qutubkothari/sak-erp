@@ -67,6 +67,11 @@ export class ActivePlannerController {
   unifiedClearContext(@Req() req: any, @Body() body: any) {
     return this.unified?.clearContext(req.user, body);
   }
+  @Post('unified/context/resume')
+  @SkipAutomaticAudit()
+  unifiedResumeContext(@Req() req: any, @Body() body: any) {
+    return this.unified?.resumeContext(req.user, body);
+  }
   @Post('unified/route')
   @SkipAutomaticAudit()
   unifiedRoute(@Req() req: any, @Body() body: any) {

@@ -56,6 +56,7 @@ export type ReportingResult = {
   plan: SemanticPlan;
   version: string;
   session_id?: string;
+  saved_report_id?: string;
   page: number;
   pages: number;
   page_size: number;
@@ -497,7 +498,13 @@ export default function MizantraReporting({
     const saved = await apiClient.post<Saved>(endpoint + "/saved", {
       title: title || report.plan.title,
       plan: report.plan,
+      ...(sessionId ? {session_id:sessionId} : {}),
     });
+    if (sessionId) {
+      const next = await apiClient.post<ReportingResult>(endpoint + '/query', {session_id:sessionId});
+      const current = {...next,saved_report_id:saved.id};
+      setReport(current);setTitle(saved.title);onWorkingReport?.(current,sessionId);
+    }
     setNotice(saved.title + " saved");
     await reloadDefinitions();
   }

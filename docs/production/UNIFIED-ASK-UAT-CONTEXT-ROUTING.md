@@ -46,3 +46,33 @@ Branch: `fix/unified-ai-uat-context-routing`.
 Deployment must fast-forward normal canonical history and pin one full commit SHA for SAIFSEAS, MIZANTRA and ARWA. Preserve effective native feature modes, existing web/API URLs and PM2 arguments. Capture fresh immutable business fingerprints before deployment; never reset a baseline to conceal concurrent traffic.
 
 Live acceptance additionally requires the actual PO-2026-09-293 receipt evidence, related-GRN reply, complete native Open PO/report/XLSX ID parity, public/API/web provenance and final business fingerprints. Local synthetic browser quantities are not production evidence and the observed 291/112 counts are not hardcoded.
+
+## Drawer Session Continuity
+
+Baseline: `71e3e91239c8b898b7b6ac819b201592912a9500`. Closing the drawer suspends its owned working identity; it does not clear native AI context. A tab-scoped pointer contains only opaque session/conversation/report IDs, validated originating route/entity or registered list view, lifecycle state and a maximum 24-hour expiry. Scope includes profile, tenant and user. No report rows, document contents or SQL are cached.
+
+Reopening uses the native owned-context expiry check and revalidates current record, dataset, field, report, document and capability permissions before returning working data. Report state is requeried from its native semantic session, preserving filters, grouping, sort, visualization and title. Saving updates the native session title and retains the saved-report ID. Report follow-ups use native Report Builder operations. New Request and Remove Context delete the pointer and clear the owned hidden referents. Different route/entity/list identity never automatically selects the old task; explicit Search Conversations remains available and is revalidated.
+
+Acceptance coverage:
+
+1. Native report creation.
+2. Supplier refinement retaining authoritative Open PO semantics.
+3. Drawer close suspends without clearing native working references.
+4. Same-PO reopen rehydrates the report and saved title.
+5. Add to Dashboard uses the restored saved-report ID.
+6. Export uses the restored native report session and current version.
+7. Further refinement retains earlier filters.
+8. Component remount uses a durable pointer and server rehydration.
+9. New Request clears the report and old referents.
+10. New Request retains independent fresh screen context.
+11. Different route/entity does not activate the old task.
+12. Explicit history selection can restore an owned task.
+13. Expired tasks are not silently restored.
+14. User, tenant and profile isolation.
+15. Permission/capability revalidation before protected data restoration.
+16. Responsive mobile close/reopen behavior.
+17. Existing PO quantity and related-GRN regressions.
+18. Existing exact native Open PO/report/XLSX parity regression.
+19. Metadata-only reporting/context writes; no ERP business transaction execution.
+
+Production acceptance must reproduce the real PO-2026-09-293 flow: open POs, Bombay supplier refinement, export, save as Bombay Open POs, close, reopen and Add to Dashboard without asking which report. Only native AI/report/dashboard metadata may change. Preserve fresh pre-deployment business fingerprints and all effective profile modes; deploy one normally fast-forwarded canonical SHA to all three applications.

@@ -728,11 +728,11 @@ export function interpretReport(
   if (/^save\b/i.test(textMessage))
     return {
       action: "SAVE",
-      name: textMessage
+      name: /^(?:save\s+(?:(?:this|that|the)\s+)?report)[.!?]?$/i.test(textMessage) ? undefined : textMessage
         .replace(/^save\s+(?:this\s+)?(?:as\s+)?/i, "")
         .slice(0, 120),
     };
-  if (/^add\s+(?:this|one widget|this report).*dashboard/i.test(textMessage))
+  if (/^add\s+(?:this|it|one widget|this report).*dashboard/i.test(textMessage) || /^add\s+to\s+(?:the\s+)?dashboard[.!?]?$/i.test(textMessage))
     return { action: "DASHBOARD" };
   if (/^create.*dashboard/i.test(textMessage))
     return {
@@ -953,7 +953,7 @@ export function interpretReport(
         },
       ];
   }
-  if (/bar chart/i.test(textMessage)) plan.visualization = "BAR";
+  if (/bar chart|^show\s+(?:it\s+)?as\s+(?:a\s+)?chart[.!?]?$/i.test(textMessage)) plan.visualization = "BAR";
   if (/line chart/i.test(textMessage)) plan.visualization = "LINE";
   if (/donut|pie chart/i.test(textMessage)) plan.visualization = "DONUT";
   if (/\bkpi\b/i.test(textMessage)) plan.visualization = "KPI";

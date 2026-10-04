@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { hasAdminBypass, hasPermission } from '../auth/utils/permission-utils';
 import { SmartImportService } from '../smart-import/smart-import.service';
 import { FeatureAccessService } from '../feature-access/feature-access.service';
@@ -119,7 +119,10 @@ export class UnifiedAiService {
       result.entity = validated.context;
     }
     let reportDataset: string | undefined;
-    if (ref.current_type === 'REPORT' && ref.report_session_id) reportDataset = (await this.reporting.workingContext(user, ref.report_session_id)).plan?.dataset;
+    if (ref.current_type === 'REPORT' && ref.report_session_id) {
+      reportDataset = (await this.reporting.workingContext(user, ref.report_session_id)).plan?.dataset;
+      if (ref.saved_report_id) await this.reporting.workingContext(user, ref.saved_report_id, 'REPORT');
+    }
     if (ref.current_type === 'DASHBOARD' && ref.dashboard_id) await this.reporting.workingContext(user, ref.dashboard_id, 'DASHBOARD');
     if (ref.current_type === 'DOCUMENT_ANALYSIS') for (const id of ref.document_ids || []) await this.documents.get(user, id);
     if (ref.current_type === 'IMPORT_BATCH' && ref.import_batch_id) await this.imports.workingContext(user, ref.import_batch_id);
@@ -144,6 +147,40 @@ export class UnifiedAiService {
   }
   async interpret(user: any, body: any, erp: (body: any) => Promise<any>): Promise<any | null> {
     return withAiPerformance(() => this.interpretScoped(user, body, erp));
+  }
+  private async drawerOrigin(user: any, origin: any) {
+    if (!origin || Object.keys(origin).some(key => !['current_route','entity_type','entity_id','view'].includes(key)) || typeof origin.current_route !== 'string' || !/^\/dashboard(?:\/[a-z0-9_-]+)*$/i.test(origin.current_route) || origin.current_route.length > 200) throw new BadRequestException('Supply a registered originating screen.');
+    if (origin.view && (origin.current_route !== '/dashboard/purchase/orders' || !['ALL','OPEN_PO'].includes(origin.view) || origin.entity_id)) throw new BadRequestException('Unsupported originating list.');
+    if (origin.entity_id || origin.entity_type) {
+      const scope = this.contexts.scope(user);
+      const validated = await this.brain.validateContext(user, {profile:scope.profile,tenant_id:scope.tenant,current_user_id:scope.owner,entity_type:origin.entity_type,entity_id:origin.entity_id,current_route:origin.current_route,locale:'en'});
+      if (!validated.enabled || !validated.context || validated.context.entity_id !== origin.entity_id || validated.context.entity_type !== origin.entity_type) throw new ForbiddenException('The originating record is not authorized.');
+    }
+    return `${origin.current_route}|${origin.entity_id ? `${origin.entity_type}:${origin.entity_id}` : ''}|${origin.view || ''}`;
+  }
+  async resumeContext(user: any, body: any) {
+    const configuration = await this.configuration(user);
+    if (!configuration.enabled || !configuration.router) throw new ForbiddenException('Ask is not enabled.');
+    if (!body || Object.keys(body).some(key => !['session_id','context_ref','drawer_origin','explicit_history'].includes(key)) || (body.explicit_history !== undefined && typeof body.explicit_history !== 'boolean')) throw new BadRequestException('Supply an owned working session.');
+    let session = await this.contexts.get(user, body.session_id);
+    let ref = session.working_ref;
+    const origin = body.drawer_origin ? await this.drawerOrigin(user, body.drawer_origin) : undefined;
+    if (origin && origin !== ref.drawer_origin && !body.explicit_history) throw new NotFoundException('No active task belongs to this screen.');
+    if (body.context_ref) {
+      if (body.context_ref.type !== 'REPORT' || typeof body.context_ref.id !== 'string' || Object.keys(body.context_ref).some(key => !['type','id','saved_report_id'].includes(key))) throw new BadRequestException('Unsupported working reference.');
+      ref = {...ref,current_type:'REPORT',report_session_id:body.context_ref.id,saved_report_id:body.context_ref.saved_report_id};
+    }
+    if (!ref.current_type) throw new NotFoundException('This working request has been cleared. Select an authorized saved result.');
+    const validated = await this.validate(user, ref);
+    const capability = ref.current_type && this.routeContextCapability(ref.current_type);
+    if (capability && !configuration.capabilities.includes(capability)) throw new ForbiddenException('Working capability access is required.');
+    if (ref.current_type === 'REPORT' && !configuration.capabilities.includes('REPORT_BUILDER')) throw new ForbiddenException('Report access is required.');
+    const report = ref.current_type === 'REPORT' && ref.report_session_id ? {...await this.reporting.query(user, {session_id:ref.report_session_id}),saved_report_id:ref.saved_report_id} : undefined;
+    if (body.context_ref || (body.explicit_history && origin)) session = await this.contexts.save(user, {...validated.ref,...(origin ? {drawer_origin:origin} : {})}, session);
+    return {session_id:session.id,session_version:session.version,working_ref:validated.ref,report,executable:false};
+  }
+  private routeContextCapability(type: string): UnifiedRoute | undefined {
+    return ({ERP_ENTITY:'BRAIN_QUERY',REPORT:'REPORT_BUILDER',DASHBOARD:'REPORT_BUILDER',DIAGNOSIS:'DATA_DOCTOR',DOCUMENT_ANALYSIS:'DOCUMENT_INTELLIGENCE',IMPORT_BATCH:'SMART_IMPORT',ACTION_PLAN:'ACTION_PLANNER',APPROVAL_REVIEW:'SMART_APPROVAL',ATTENTION_ITEM:'PROACTIVE_OPERATIONS',ENGINEERING_REQUEST:'AUTOENGINEER'} as Record<string,UnifiedRoute>)[type];
   }
   async clearContext(user: any, body: any) {
     const configuration = await this.configuration(user);
@@ -171,11 +208,13 @@ export class UnifiedAiService {
         session = await this.contexts.get(user, body.unified_session_id);
         ref = session.working_ref;
       }
+      const drawerOrigin = body.drawer_origin && decision.operation !== 'BLOCKED' ? await this.drawerOrigin(user, body.drawer_origin) : undefined;
       if (body.context_ref) {
         const context = body.context_ref;
         const fields: Record<string, keyof UnifiedWorkingRef> = { REPORT:'report_session_id', DASHBOARD:'dashboard_id', IMPORT_BATCH:'import_batch_id', ACTION_PLAN:'plan_id', ATTENTION_ITEM:'attention_item_id', ENGINEERING_REQUEST:'engineering_request_id', AUTOQA_FINDING:'autoqa_finding_id' };
         if (!fields[context.type] || typeof context.id !== 'string') throw new BadRequestException('Unsupported working reference.');
         ref = { ...ref, current_type: context.type, [fields[context.type]]: context.id };
+        if (context.type === 'REPORT') ref.saved_report_id = context.saved_report_id;
         if (['AUTOQA_FINDING','ENGINEERING_REQUEST'].includes(context.type)) {
           const scope = this.contexts.scope(user);
           ref.entity = { profile: scope.profile, tenant_id: scope.tenant, current_user_id: scope.owner, entity_type: context.type === 'AUTOQA_FINDING' ? 'autoqa_finding' : 'support_incident', entity_id: context.id, current_route: '/dashboard', locale: 'en' } as any;
@@ -236,7 +275,7 @@ export class UnifiedAiService {
         result = { status: 'UNIFIED_DISCOVERY', assistant_message: `I can ${configuration.capabilities.filter(route => descriptions[route]).map(route => descriptions[route]).join(', ')}.${configuration.capabilities.includes('ACTION_PLANNER') ? ' Material actions still require their normal authorization and approval.' : ' Action execution is not enabled for this environment.'}`, questions: [], safety: { executable:false, read_only:true } };
       } else {
         handoff = Number(!!session && ref.current_type !== this.routeContext(decision.route));
-        const input = { ...body, message, brain_context: ref.entity, session_id: ref.current_type === 'REPORT' ? ref.report_session_id : undefined, document_ids: ref.current_type === 'DOCUMENT_ANALYSIS' ? ref.document_ids : undefined };
+        const input = { ...body, message, brain_context: ref.entity, session_id: ref.current_type === 'REPORT' ? ref.report_session_id : undefined, saved_report_id:ref.current_type === 'REPORT' ? ref.saved_report_id : undefined, document_ids: ref.current_type === 'DOCUMENT_ANALYSIS' ? ref.document_ids : undefined };
         delete input.context_ref; delete input.unified_session_id; delete input.next_action;
         subsystemStarted = Date.now();
         switch (decision.route) {
@@ -307,7 +346,7 @@ export class UnifiedAiService {
         if (decision.route === 'BRAIN_QUERY' && result.brain_context) ref.current_type = 'ERP_ENTITY';
         if (decision.route === 'SMART_APPROVAL' && result.brain_context) ref.current_type = 'APPROVAL_REVIEW';
         if (result.session_id) { ref.report_session_id = result.session_id; ref.current_type = 'REPORT'; }
-        if (result.dashboard?.id) { ref.dashboard_id = result.dashboard.id; ref.current_type = 'DASHBOARD'; }
+        if (result.dashboard?.id) { ref.dashboard_id = result.dashboard.id; ref.current_type = ref.report_session_id ? 'REPORT' : 'DASHBOARD'; }
         if (result.diagnoses) {
           ref.current_type = 'DIAGNOSIS';
           const confirmed = result.diagnoses.filter((issue: any) => issue.classification === 'SOFTWARE_DEFECT_CANDIDATE' && issue.confidence === 'CONFIRMED');
@@ -319,6 +358,8 @@ export class UnifiedAiService {
         clarification ||= !!result.questions?.length && !result.action_operator_plan;
       }
       if (result?.report?.plan) reportDataset = result.report.plan.dataset;
+      if (drawerOrigin) ref.drawer_origin = drawerOrigin;
+      if (result?.saved_report?.id) ref.saved_report_id = result.saved_report.id;
       result = await this.finish(user, result, ref, session, configuration, reportDataset, decision, routingMs, subsystemMs, failures);
     } catch (error) {
       if (subsystemStarted !== undefined) subsystemMs = Date.now() - subsystemStarted;

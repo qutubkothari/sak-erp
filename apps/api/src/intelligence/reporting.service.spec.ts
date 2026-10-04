@@ -193,6 +193,24 @@ describe("report service isolation and metadata boundary", () => {
     expect(response.report!.matching_documents).toBe(119);
     expect(storage[0].owner_id).toBe(owner);
   });
+  it('keeps the saved Bombay open report authoritative across restore export dashboard and refinement',async()=>{
+    (service as any).sourceRows=jest.fn().mockResolvedValue([
+      {po_id:tenant,po_number:'PO-293',supplier:'Bombay Anodising Corporation',OPEN_PO:true,remaining_qty:1220,open_qty:1220,open_value:100,due_date:'2026-01-01'},
+      {po_id:owner,po_number:'PO-294',supplier:'Other supplier',OPEN_PO:true,remaining_qty:10,open_qty:10,open_value:20,due_date:'2026-01-01'},
+    ]);
+    const first=await service.interpret(user,{message:'Show all open purchase orders'});
+    const refined=await service.interpret(user,{message:'Only Bombay Anodising Corporation',session_id:first.session_id});
+    expect(refined.report!.matching_documents).toBe(1);
+    const saved=await service.saveReport(user,{title:'Bombay Open POs',session_id:first.session_id,plan:refined.report!.plan});
+    const restored=await service.query(user,{session_id:first.session_id});
+    expect(restored.plan.title).toBe('Bombay Open POs');expect(restored.plan.filters).toEqual(refined.report!.plan.filters);
+    expect((await service.export(user,{session_id:first.session_id,version:restored.version})).length).toBeGreaterThan(0);
+    const dashboard=await service.interpret(user,{message:'Add to Dashboard',session_id:first.session_id,saved_report_id:saved.id});
+    expect(dashboard.dashboard!.definition.widgets.at(-1).report_id).toBe(saved.id);
+    const overdue=await service.interpret(user,{message:'Only overdue',session_id:first.session_id});
+    expect(overdue.report!.plan.filters).toEqual(expect.arrayContaining(refined.report!.plan.filters));
+    expect(writes.every(table=>['mizantra_reporting_definitions','mizantra_reporting_audit'].includes(table))).toBe(true);
+  });
   it("requeries an owner-scoped item report for the Operator", async () => {
     const itemId="33333333-3333-4333-8333-333333333333";
     (service as any).sourceRows=jest.fn().mockResolvedValue([{item_id:itemId,item_code:"RM-1",item:"Material",uom:"PCS",below_reorder:true,item_type:"RAW_MATERIAL"}]);

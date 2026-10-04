@@ -10,6 +10,8 @@ export type UnifiedWorkingRef = {
   current_type?: UnifiedContextType;
   entity?: BrainContext;
   report_session_id?: string;
+  saved_report_id?: string;
+  drawer_origin?: string;
   dashboard_id?: string;
   document_ids?: string[];
   import_batch_id?: string;
@@ -53,7 +55,11 @@ export class UnifiedAiContextService {
       if (ref.entity.tenant_id !== scope.tenant || ref.entity.profile !== scope.profile || ref.entity.current_user_id !== scope.owner || !uuid.test(ref.entity.entity_id)) throw new ForbiddenException('Working context does not match your scope.');
       result.entity = Object.fromEntries(['profile','tenant_id','current_route','module','entity_type','entity_id','document_number','current_user_id','current_user_role','locale'].map(key => [key, String((ref.entity as any)[key] || '')])) as BrainContext;
     }
-    for (const field of ['report_session_id','dashboard_id','import_batch_id','engineering_request_id','plan_id','attention_item_id','autoqa_finding_id'] as const) {
+    if (ref.drawer_origin) {
+      if (!/^\/dashboard(?:\/[a-z0-9_-]+)*\|(?:[a-z_]+:[0-9a-f-]{36})?\|(?:ALL|OPEN_PO)?$/i.test(ref.drawer_origin) || ref.drawer_origin.length > 300) throw new ForbiddenException('Invalid originating screen.');
+      result.drawer_origin = ref.drawer_origin;
+    }
+    for (const field of ['report_session_id','saved_report_id','dashboard_id','import_batch_id','engineering_request_id','plan_id','attention_item_id','autoqa_finding_id'] as const) {
       if (ref[field]) {
         if (!uuid.test(ref[field]!)) throw new ForbiddenException('Opaque working reference is required.');
         result[field] = ref[field];

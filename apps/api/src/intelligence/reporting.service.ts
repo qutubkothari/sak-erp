@@ -436,17 +436,19 @@ export class ReportingService {
           summary: REPORT_DATASETS[previous.dataset].explanation,
           session_id: body.session_id,
         };
-      if (understood.action === "SAVE")
+      if (understood.action === "SAVE") {
+        const saved = await this.saveReport(user, {id:body.saved_report_id,session_id:body.session_id,title:understood.name || previous.title,plan:previous});
         return {
           status: "REPORT_SAVED",
-          saved_report: await this.saveReport(user, {
-            title: understood.name || previous.title,
-            plan: previous,
-          }),
+          saved_report: saved,
+          report: {...await this.query(user,{session_id:body.session_id}),saved_report_id:saved.id},
           session_id: body.session_id,
         };
+      }
       if (understood.action === "DASHBOARD") {
         const report = await this.saveReport(user, {
+          id:body.saved_report_id,
+          session_id:body.session_id,
           title: previous.title,
           plan: previous,
         });
@@ -457,6 +459,8 @@ export class ReportingService {
         const widgets = dashboard?.definition?.widgets || [];
         return {
           status: "DASHBOARD_SAVED",
+          saved_report: report,
+          report: {...await this.query(user,{session_id:body.session_id}),saved_report_id:report.id},
           dashboard: await this.saveDashboard(user, {
             id: dashboard?.id,
             title: dashboard?.title || "My Dashboard",
@@ -1329,6 +1333,7 @@ export class ReportingService {
   async saveReport(user: any, body: any) {
     this.rejectScopeInput(body);
     const scope = this.scope(user);
+    const session = body.session_id ? await this.definition(scope,body.session_id,'SESSION') : undefined;
     let old: any;
     if (body.id) {
       old = await this.definition(scope, body.id, "REPORT");
@@ -1349,6 +1354,7 @@ export class ReportingService {
       shared,
     );
     await this.audit(scope, "SAVE", plan);
+    if (session) await this.store(scope,'SESSION',result.title,{...plan,title:result.title},session.id);
     return result;
   }
   async duplicateReport(user: any, id: string) {
