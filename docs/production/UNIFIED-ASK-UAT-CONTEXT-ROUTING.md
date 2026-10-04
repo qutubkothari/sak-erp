@@ -76,3 +76,36 @@ Acceptance coverage:
 19. Metadata-only reporting/context writes; no ERP business transaction execution.
 
 Production acceptance must reproduce the real PO-2026-09-293 flow: open POs, Bombay supplier refinement, export, save as Bombay Open POs, close, reopen and Add to Dashboard without asking which report. Only native AI/report/dashboard metadata may change. Preserve fresh pre-deployment business fingerprints and all effective profile modes; deploy one normally fast-forwarded canonical SHA to all three applications.
+
+## Proactive Attention Handoff Priority
+
+Baseline: `101e1261b05d6ece3e889a5f7f80620d9d578e21`. Precedence is explicit current handoff, fresh current screen/entity, owned working-session restoration, then generic history/default. Attention IDs and registered actions are re-resolved from current owner/tenant/profile metadata before native entity permission and tenant validation. Client target overrides are rejected. No prior report, document, entity, diagnosis or plan reference is merged into an explicit request.
+
+Record Why, Diagnose, Report and Prepare PR Plan open the existing global drawer over Attention. View navigates to the exact authorized native record. Non-record attention retains its existing owned evidence/native navigation. PO Diagnose names its validated PO and runs deterministic Data Doctor rules; an overdue/open attention condition is not itself a data inconsistency. Report starts the registered overdue purchasing scope without the old supplier or saved-report session. PR preparation uses the existing native preview/approval boundary and never approves or executes automatically.
+
+Explicit task generations prevent late previous replies from overwriting the new task. Ordinary close/reopen retains its owned native identity and revalidates permissions. Consumed URL parameters are replaced only after the new task is bound; other URL parameters and the browser back entry are preserved. Full workspace and drawer entry suppress competing initial history/screen restoration.
+
+Acceptance checks:
+
+1. PO Attention Diagnose targets the exact PO.
+2. Prior saved report cannot change that target.
+3. Prior entity cannot change that target.
+4. Suspended identity cannot override the handoff.
+5. Native entity permission is revalidated before diagnosis.
+6. Foreign tenant/profile/owner attention is rejected.
+7. Why uses the exact owned attention evidence.
+8. View PO validates and navigates to the exact entity.
+9. Report starts fresh registered purchasing scope, not the old supplier report.
+10. Prepare PR Plan remains native preview only.
+11. Ordinary drawer close/reopen remains intact.
+12. Explicit handoff invalidates old task generations and late responses.
+13. Diagnosis names the validated PO.
+14. No approval or execution is automatic.
+15. Mobile Attention Diagnose remains over Attention.
+16. Full Unified AI regression gate.
+17. Native Data Doctor regression gate.
+18. Native Report Builder regression gate.
+19. Native Operator regression gate.
+20. Original pre-deployment ERP business fingerprints and zero business mutations.
+
+Live acceptance must start with an unrelated saved Bombay report available, then Diagnose the existing PO-2026-05-023 attention item. Verify its target, named deterministic result, old-report isolation, close/reopen and mobile behavior. Smoke Why, View PO and Report on the same item. Preserve effective feature modes and deploy one canonical SHA to all three targets without force operations or replacement baselines.

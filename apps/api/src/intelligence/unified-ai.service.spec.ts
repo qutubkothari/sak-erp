@@ -33,6 +33,50 @@ describe('Unified governed orchestration', () => {
     expect(reply.report!.version).toBe('native-version');expect(reply.session_version).toBe(3);
     expect(contexts.save).not.toHaveBeenCalled();expect(operator.execute).not.toHaveBeenCalled();expect(reporting.interpret).not.toHaveBeenCalled();
   });
+  const attention = { source:'PROACTIVE_OPERATIONS',action:'DATA_DOCTOR',attention_id:owner,entity_type:'purchase_order',entity_id:id,entity_reference:'PO-2026-05-023',tenant,profile:'MIZANTRA',owner_id:owner,current_route:'/dashboard/purchase/orders',category:'OVERDUE_OPEN_PO',executable:false };
+  const prepareAttention = (action = 'DATA_DOCTOR') => {
+    proactive.handoff = jest.fn().mockResolvedValue({...attention,action});
+    brain.validateContext.mockImplementation(async (_user: any, context: any) => ({enabled:true,context:{...context,document_number:'PO-2026-05-023'}}));
+    doctor.interpret.mockResolvedValue({status:'DATA_DOCTOR_READ_ONLY',diagnoses:[],assistant_message:'No data inconsistency detected.'});
+  };
+  it.each([
+    {unified_session_id:id,context_ref:{type:'REPORT',id,saved_report_id:tenant}},
+    {brain_context:{...entity,entity_id:tenant,document_number:'PO-2026-09-293'}},
+    {unified_session_id:id,session_id:id,document_ids:[id]},
+  ])('explicit Diagnose overrides all previous working references %j',async stale=>{
+    prepareAttention();
+    const result=await service.interpret(user,{message:'Export it',...stale,attention_handoff:attention},erp);
+    expect(contexts.get).not.toHaveBeenCalled();expect(reporting.workingContext).not.toHaveBeenCalled();expect(documents.get).not.toHaveBeenCalled();
+    expect(doctor.interpret).toHaveBeenCalledWith(user,expect.objectContaining({brain_context:expect.objectContaining({entity_id:id,document_number:'PO-2026-05-023'}),session_id:undefined}));
+    expect(result.assistant_message).toContain('Diagnosis: PO-2026-05-023');expect(result.assistant_message).toContain('No data inconsistency detected');
+    expect(contexts.save).toHaveBeenCalledWith(user,expect.objectContaining({current_type:'DIAGNOSIS',entity:expect.objectContaining({entity_id:id})}),undefined);
+    expect(reporting.interpret).not.toHaveBeenCalled();expect(erp).not.toHaveBeenCalled();expect(operator.execute).not.toHaveBeenCalled();
+  });
+  it('revalidates native target permission before Doctor dispatch',async()=>{
+    prepareAttention();brain.validateContext.mockRejectedValue(new ForbiddenException('Revoked'));
+    const result=await service.interpret(user,{message:'Diagnose',attention_handoff:attention},erp);
+    expect(result.status).toBe('UNIFIED_ERROR');expect(doctor.interpret).not.toHaveBeenCalled();expect(contexts.get).not.toHaveBeenCalled();
+  });
+  it('rejects forged scope/entity handoff rather than restoring previous state',async()=>{
+    prepareAttention();const result=await service.interpret(user,{message:'Diagnose',attention_handoff:{...attention,tenant:'foreign',entity_id:tenant},unified_session_id:id},erp);
+    expect(result.status).toBe('UNIFIED_ERROR');expect(doctor.interpret).not.toHaveBeenCalled();expect(contexts.get).not.toHaveBeenCalled();
+  });
+  it('Why uses the exact owned attention after native entity validation',async()=>{
+    prepareAttention('WHY');await service.interpret(user,{message:'Export it',attention_handoff:{...attention,action:'WHY'},session_id:id},erp);
+    expect(proactive.interpret).toHaveBeenCalledWith(user,expect.objectContaining({attention_id:owner,brain_context:expect.objectContaining({entity_id:id})}));expect(reporting.interpret).not.toHaveBeenCalled();
+  });
+  it('View PO validates the exact target and ignores prior report',async()=>{
+    prepareAttention('VIEW');await service.interpret(user,{message:'Export it',attention_handoff:{...attention,action:'VIEW'},unified_session_id:id},erp);
+    expect(brain.interpret).toHaveBeenCalledWith(user,expect.objectContaining({brain_context:expect.objectContaining({entity_id:id})}));expect(contexts.get).not.toHaveBeenCalled();
+  });
+  it('Report starts registered overdue purchasing scope without old supplier/report',async()=>{
+    prepareAttention('REPORT_BUILDER');await service.interpret(user,{message:'Export it',attention_handoff:{...attention,action:'REPORT_BUILDER'},unified_session_id:id,session_id:id,context_ref:{type:'REPORT',id}},erp);
+    expect(reporting.interpret).toHaveBeenCalledWith(user,expect.objectContaining({message:'Show all overdue POs',session_id:undefined,saved_report_id:undefined}));expect(contexts.get).not.toHaveBeenCalled();
+  });
+  it('Prepare PR attention dispatch remains native preview only',async()=>{
+    prepareAttention('PREPARE_PR_PLAN');await service.interpret(user,{message:'Execute',attention_handoff:{...attention,action:'PREPARE_PR_PLAN'},unified_session_id:id},erp);
+    expect(proactive.preparePlan).toHaveBeenCalledWith(user,owner);expect(operator.execute).not.toHaveBeenCalled();expect(operator.approve).not.toHaveBeenCalled();expect(erp).not.toHaveBeenCalled();
+  });
   it('does not expose protected report data after permissions change',async()=>{
     contexts.get.mockResolvedValue({id,version:3,working_ref:{current_type:'REPORT',report_session_id:id}});
     reporting.workingContext.mockRejectedValue(new ForbiddenException('Report access is required.'));

@@ -18,6 +18,19 @@ describe('Scoped briefing orchestration', () => {
   beforeEach(() => { process.env.ERP_TENANT_PROFILE = 'MIZANTRA'; process.env.MIZANTRA_PROACTIVE_OPERATIONS_ENABLED = 'true'; process.env.MIZANTRA_DAILY_BRIEF_ENABLED = 'true'; process.env.MIZANTRA_PROACTIVE_NOTIFICATIONS_ENABLED = 'true'; mockItems = [stored()]; mockEvents = []; mockTimezone = 'UTC'; mockRpcResult = {}; mockRpc.mockClear(); mockMutation.mockClear(); mockTraces.length = 0; sources = { scan: jest.fn(async () => ({ items: [], complete_rules: [], errors: [] })) }; operator = { interpret: jest.fn(async () => ({ action_operator_plan: { status: 'NEEDS_INPUT' } })), execute: jest.fn(), approve: jest.fn() }; operations = new ProactiveOperationsService(sources, operator); });
   afterEach(() => { expect(operator.execute).not.toHaveBeenCalled(); expect(operator.approve).not.toHaveBeenCalled(); expect(mockTraces.filter(trace => trace.mutation).every(trace => ['mizantra_attention_preferences', 'mizantra_attention_notifications'].includes(trace.table))).toBe(true); });
   it('filters both native permissions on every metadata read', async () => { expect((await operations.list({ ...user, permissions: ['items:read'] })).items).toEqual([]); });
+  it('derives Diagnose target only from owned attention metadata', async () => {
+    mockItems = [stored({ category: 'OVERDUE_OPEN_PO', entity_type: 'PO', entity_reference: 'PO-2026-05-023', required_permission: 'purchase_orders:read', evidence: {}, available_actions: [{ label: 'Diagnose', kind: 'ASK' }] })];
+    const result = await operations.handoff({ ...user, permissions: ['purchase_orders:read'] }, id, { action: 'DATA_DOCTOR' });
+    expect(result).toMatchObject({ source: 'PROACTIVE_OPERATIONS', action: 'DATA_DOCTOR', attention_id: id, entity_id: id, entity_type: 'purchase_order', entity_reference: 'PO-2026-05-023', tenant, profile: 'MIZANTRA', owner_id: owner, executable: false });
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+  it.each([{ tenant_id: 'foreign' }, { profile: 'ARWA' }, { owner_id: 'foreign' }])('rejects foreign attention handoff %j', async extra => {
+    mockItems = [stored(extra)];
+    await expect(operations.handoff(user, id, { action: 'WHY' })).rejects.toThrow('not available');
+  });
+  it('revalidates revoked attention permissions before handoff', async () => { await expect(operations.handoff({ ...user, permissions: [] }, id, { action: 'WHY' })).rejects.toThrow('not available'); });
+  it('rejects a client target/scope override instead of merging it', async () => { await expect(operations.handoff(user, id, { action: 'WHY', tenant: 'foreign', entity_id: 'old-report' })).rejects.toThrow('Only a registered'); });
+  it('rejects unregistered execution actions', async () => { await expect(operations.handoff(user, id, { action: 'EXECUTE' })).rejects.toThrow('not available'); });
   it('hides cached PO receipt evidence after GRN permission is revoked', async () => { mockItems = [stored({ category: 'OVERDUE_OPEN_PO', required_permission: 'purchase_orders:read', evidence: { required_read: 'grns:read', remaining_qty: 30 } })]; expect((await operations.list({ ...user, permissions: ['purchase_orders:read'] })).items).toEqual([]); });
   it('filters cross-tenant metadata even if a source returns it', async () => { mockItems = [stored({ tenant_id: 'foreign' })]; expect((await operations.list(user)).items).toEqual([]); });
   it('filters cross-profile metadata', async () => { mockItems = [stored({ profile: 'ARWA' })]; expect((await operations.list(user)).items).toEqual([]); });

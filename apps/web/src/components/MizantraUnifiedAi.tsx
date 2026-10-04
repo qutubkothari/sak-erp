@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation';
 import { AlertTriangle, Download, Expand, FileSearch, ListChecks, PackagePlus, ReceiptText, Sparkles, ThumbsDown, Wrench, X } from 'lucide-react';
 import { apiClient } from '../../lib/api-client';
 import { BRAIN_CONTEXT_KEY } from '../lib/brain-context';
+import { beginAttentionTask, type AttentionHandoff } from '../lib/unified-drawer-session';
 
 export type UnifiedEnvelope = {
   type: string; content_type: string; route: string;
@@ -58,8 +59,22 @@ export function UnifiedResultHeader({envelope,message,busy,onAction,importPrevie
 
 export function UnifiedAskEntry() {
   const pathname=usePathname(),[enabled,setEnabled]=useState(false),[open,setOpen]=useState(false);
+  const [handoff,setHandoff]=useState<AttentionHandoff | null>(null),[taskKey,setTaskKey]=useState(0);
   const panel=useRef<HTMLElement>(null);
-  const openAsk=()=>{window.dispatchEvent(new Event('mizantra:ask-open'));setOpen(true);};
+  const openAsk=()=>{setHandoff(null);window.dispatchEvent(new Event('mizantra:ask-open'));setOpen(true);};
+  useEffect(()=>{
+    if(!enabled)return;
+    const accept=(event:Event)=>{
+      const next=(event as CustomEvent<AttentionHandoff>).detail;
+      if(next?.source!=='PROACTIVE_OPERATIONS'||!next.tenant||!next.profile||!next.owner_id)return;
+      beginAttentionTask(sessionStorage,{profile:next.profile,tenant_id:next.tenant,current_user_id:next.owner_id});
+      if(pathname==='/dashboard/active-planner'){window.location.assign(`/dashboard/active-planner?attention_handoff=${encodeURIComponent(next.attention_id)}&attention_action=${encodeURIComponent(next.action)}`);return;}
+      setHandoff(next);setTaskKey(previous=>previous+1);setOpen(true);
+    };
+    window.addEventListener('mizantra:attention-handoff',accept);
+    return ()=>window.removeEventListener('mizantra:attention-handoff',accept);
+  },[enabled,pathname]);
+  useEffect(()=>{if(!open)setHandoff(null);},[open]);
   const [hasRecord,setHasRecord]=useState(false);
   useEffect(()=>{
     const refresh=()=>setHasRecord(!!sessionStorage.getItem(BRAIN_CONTEXT_KEY));
@@ -99,11 +114,13 @@ export function UnifiedAskEntry() {
     void apiClient.get<UnifiedConfiguration>('/active-planner/unified/configuration').then(configuration=>{if(active)setEnabled(configuration.enabled&&configuration.router);}).catch(()=>{if(active)setEnabled(false);});
     return ()=>{active=false;};
   },[]);
-  if(!enabled||pathname?.startsWith('/dashboard/active-planner'))return null;
+  if(!enabled||pathname==='/dashboard/active-planner')return null;
   const trigger=<button type="button" onClick={openAsk} title="Ask Mizantra" className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 text-xs font-medium shadow-sm"><Sparkles className="h-4 w-4 shrink-0"/><span>Ask Mizantra</span></button>;
-  return <>{hasRecord?createPortal(<div className="fixed bottom-20 right-4 z-[2147483644]">{trigger}</div>,document.body):<div className="flex min-w-0 justify-end pb-2">{trigger}</div>}{open&&createPortal(<div className="fixed inset-0 z-[2147483645] bg-black/30" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false);}}><aside ref={panel} role="dialog" aria-modal="true" aria-labelledby="unified-ask-title" tabIndex={-1} className="absolute inset-y-0 right-0 flex h-[100dvh] w-full max-w-[760px] flex-col bg-white shadow-2xl outline-none"><div className="flex shrink-0 items-center justify-between border-b px-4 py-2"><h2 id="unified-ask-title" className="text-base font-semibold">Ask Mizantra</h2><div className="flex gap-1"><Link href="/dashboard/active-planner" title="Open full workspace" aria-label="Open full workspace" className="flex h-11 w-11 items-center justify-center"><Expand className="h-5 w-5"/></Link><button type="button" title="Close Ask Mizantra" aria-label="Close Ask Mizantra" onClick={()=>setOpen(false)} className="flex h-11 w-11 items-center justify-center"><X className="h-5 w-5"/></button></div></div><div className="min-h-0 flex-1 overflow-y-auto"><UnifiedDrawerContext.Provider value={true}><AskWorkspace/></UnifiedDrawerContext.Provider></div></aside></div>,document.body)}</>;
+  return <>{hasRecord?createPortal(<div className="fixed bottom-20 right-4 z-[2147483644]">{trigger}</div>,document.body):<div className="flex min-w-0 justify-end pb-2">{trigger}</div>}{open&&createPortal(<div className="fixed inset-0 z-[2147483645] bg-black/30" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false);}}><aside ref={panel} role="dialog" aria-modal="true" aria-labelledby="unified-ask-title" tabIndex={-1} className="absolute inset-y-0 right-0 flex h-[100dvh] w-full max-w-[760px] flex-col bg-white shadow-2xl outline-none"><div className="flex shrink-0 items-center justify-between border-b px-4 py-2"><h2 id="unified-ask-title" className="text-base font-semibold">Ask Mizantra</h2><div className="flex gap-1"><Link href="/dashboard/active-planner" title="Open full workspace" aria-label="Open full workspace" className="flex h-11 w-11 items-center justify-center"><Expand className="h-5 w-5"/></Link><button type="button" title="Close Ask Mizantra" aria-label="Close Ask Mizantra" onClick={()=>setOpen(false)} className="flex h-11 w-11 items-center justify-center"><X className="h-5 w-5"/></button></div></div><div className="min-h-0 flex-1 overflow-y-auto"><UnifiedDrawerContext.Provider value={true}><AttentionHandoffContext.Provider value={handoff}><AskWorkspace key={taskKey}/></AttentionHandoffContext.Provider></UnifiedDrawerContext.Provider></div></aside></div>,document.body)}</>;
 }
 
+const AttentionHandoffContext=createContext<AttentionHandoff | null>(null);
+export const useAttentionHandoff=()=>useContext(AttentionHandoffContext);
 const UnifiedDrawerContext=createContext(false);
 export const useUnifiedDrawer=()=>useContext(UnifiedDrawerContext);
 const AskWorkspace=dynamic(()=>import('../app/dashboard/active-planner/page'),{ssr:false,loading:()=> <p role="status" className="p-4 text-sm">Loading request...</p>});

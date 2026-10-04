@@ -1,7 +1,7 @@
 "use client";
-import { useUnifiedDrawer } from "../../../components/MizantraUnifiedAi";
+import { useAttentionHandoff, useUnifiedDrawer } from "../../../components/MizantraUnifiedAi";
 import { ASK_LIST_CONTEXT_KEY, readAskListContext, type AskListContext } from '@/lib/brain-context';
-import { clearDrawerSession, drawerOrigin, readDrawerSession, suspendDrawerSession, writeDrawerSession, type DrawerScope } from '@/lib/unified-drawer-session';
+import { attentionEntry, attentionTaskEpoch, beginAttentionTask, consumedAttentionUrl, hasExplicitAttentionEntry, clearDrawerSession, drawerOrigin, readDrawerSession, suspendDrawerSession, writeDrawerSession, type DrawerScope } from '@/lib/unified-drawer-session';
 import {
   type CSSProperties,
   FormEvent,
@@ -453,6 +453,8 @@ const downloadAnalyticsDocument = async (
 
 export default function ActivePlannerPage() {
   const embedded = useUnifiedDrawer();
+  const suppliedHandoff = useAttentionHandoff();
+  const explicitEntry = useRef(!!suppliedHandoff || typeof window !== 'undefined' && hasExplicitAttentionEntry(window.location.search));
   const freshScreenContext = useRef<BrainEnvelope | null>(null);
   const freshScreenList = useRef<AskListContext | null>(null);
   const [drawerScope,setDrawerScope] = useState<DrawerScope | null>(null);
@@ -543,7 +545,10 @@ export default function ActivePlannerPage() {
   useEffect(() => {
     let active = true;
     const query = new URLSearchParams(window.location.search);
-    if (embedded) return;
+    const requested = suppliedHandoff || attentionEntry(window.location.search);
+    if (embedded && !requested || !explicitEntry.current) return;
+    drawerRestoreAttempted.current = true;
+    setBusy(true);
     const planId = query.get('attention_operator_plan');
     const prompt = query.get('attention_prompt');
     const entityId = query.get('attention_id');
@@ -552,7 +557,25 @@ export default function ActivePlannerPage() {
     const validId = (value: string | null): value is string => !!value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
     const accept = (reply: Result) => { if (active) { setResult(reply); setUnifiedSessionId(reply.unified?.session_id || null); setMobilePanel('review'); setTurns(previous => [...previous, { role: 'planner', text: reply.assistant_message || 'System-checked preview ready.' }]); } };
     void (async () => {
-      if (validId(planId)) {
+      if (requested) {
+        const entryRoute = window.location.pathname;
+        const configuration = await apiClient.get<{profile:string;tenant_id:string;current_user_id:string}>('/active-planner/brain/configuration');
+        if(!active)return;
+        beginAttentionTask(sessionStorage,configuration);
+        const handoffEpoch = attentionTaskEpoch(sessionStorage,configuration);
+        sessionStorage.removeItem(BRAIN_CONTEXT_KEY);sessionStorage.removeItem(ASK_LIST_CONTEXT_KEY);
+        const reply = await apiClient.post<Result>('/active-planner/interpret',{message:'Open attention task',attention_handoff:requested,drawer_origin:{current_route:entryRoute}});
+        if(handoffEpoch !== attentionTaskEpoch(sessionStorage,configuration))return;
+        if (!reply.unified?.session_id || reply.unified.type === 'ERROR') throw new Error(reply.assistant_message || 'The attention handoff is unavailable.');
+        const target = (reply as any).attention_handoff;
+        const selected = buildBrainEnvelope({entity_type:target.entity_type,entity_id:target.entity_id,document_number:target.entity_reference,current_route:entryRoute,tenant_id:configuration.tenant_id,current_user_id:configuration.current_user_id,captured_at:Date.now()},configuration,'',language === 'ar' ? 'ar-EG' : 'en');
+        if(selected && window.location.pathname === entryRoute)sessionStorage.setItem(BRAIN_CONTEXT_KEY,JSON.stringify({...selected,captured_at:Date.now()}));
+        writeDrawerSession(sessionStorage,configuration,drawerOrigin(entryRoute,selected,null),{session_id:reply.unified.session_id,session_version:reply.unified.session_version!,conversation_id:reply.conversation_id || undefined,context_ref:reply.report && reply.session_id ? {type:'REPORT',id:reply.session_id,saved_report_id:reply.report.saved_report_id} : undefined});
+        if (!active) return;
+        freshScreenContext.current = selected;freshScreenList.current = null;setBrainContext(selected);setScreenList(null);setDocumentIds([]);setUnifiedWorkingRef(null);setConversationId(reply.conversation_id || '');setContext(reply.context_token || '');
+        setTurns([{role:'user',text:`${target.action === 'DATA_DOCTOR' ? 'Diagnose' : target.action === 'WHY' ? 'Why' : target.action === 'REPORT_BUILDER' ? 'Report' : 'Prepare PR Plan'} ${target.entity_reference}`},{role:'planner',text:reply.assistant_message || 'Authorized attention result ready.'}]);
+        setResult(reply);setUnifiedSessionId(reply.unified.session_id);setMobilePanel('review');
+      } else if (validId(planId)) {
         const plan = await apiClient.get<OperatorPlan>(`/active-planner/action-operator/plans/${planId}`);
         accept({ status: 'ACTION_OPERATOR_PLAN', intent_type: 'ACTION_OPERATOR', provider: 'MIZANTRA_ACTION_OPERATOR_V1', extracted: {}, resolved: {}, questions: plan.payload.warnings, context_token: '', safety: { executable: false }, action_operator_plan: plan });
         if (active) setUnifiedWorkingRef({ type:'ACTION_PLAN', id:plan.id });
@@ -567,7 +590,9 @@ export default function ActivePlannerPage() {
         await apiClient.get(`/active-planner/document-intelligence/uploads/${id}`);
         if (active) { setDocumentIds([id]); setInput('Review the selected document extraction'); setDocumentRefresh(previous => previous + 1); }
       }
-    })().catch((failure: any) => { if (active) setError(failure.message || 'Attention handoff is unavailable.'); });
+      else throw new Error('Select a valid attention handoff.');
+      if(active)window.history.replaceState(window.history.state,'',consumedAttentionUrl(window.location.href));
+    })().catch((failure: any) => { if (active) setError(failure.message || 'Attention handoff is unavailable.'); }).finally(()=>{if(active)setBusy(false);});
     return () => { active = false; };
   }, []);
 
@@ -576,6 +601,7 @@ export default function ActivePlannerPage() {
     void apiClient.get<{ enabled: boolean; contextEnabled: boolean; profile: string; tenant_id: string; current_user_id: string }>("/active-planner/brain/configuration")
       .then(async configuration => {
         if (!cancelled) setDrawerScope({profile:configuration.profile,tenant_id:configuration.tenant_id,current_user_id:configuration.current_user_id});
+        if (explicitEntry.current) return;
         if (!configuration.enabled || !configuration.contextEnabled) return;
         const stored = JSON.parse(sessionStorage.getItem(BRAIN_CONTEXT_KEY) || "null");
         const envelope = buildBrainEnvelope(stored, configuration, "", language === "ar" ? "ar-EG" : "en");
@@ -720,7 +746,7 @@ export default function ActivePlannerPage() {
     }
   };
   useEffect(() => {
-    if (embedded || sessionStorage.getItem(BRAIN_CONTEXT_KEY) || readAskListContext()) {
+    if (embedded || explicitEntry.current || sessionStorage.getItem(BRAIN_CONTEXT_KEY) || readAskListContext() || Object.keys(sessionStorage).some(key => key.startsWith('mizantra-unified-drawer:'))) {
       void apiClient.get<any>('/active-planner/conversations').then(data => setConversations(data?.conversations || [])).catch(() => undefined).finally(() => setHistoryLoading(false));
     } else void loadHistory();
     // The latest tenant/user conversation is restored once on entry.
@@ -738,7 +764,7 @@ export default function ActivePlannerPage() {
       window.removeEventListener("mizantra:support-update", onSupportUpdate);
   }, []);
   useEffect(() => {
-    if (!embedded || screenContextLoading || !drawerScope || !unifiedConfiguration || drawerRestoreAttempted.current) return;
+    if (explicitEntry.current || screenContextLoading || !drawerScope || !unifiedConfiguration || drawerRestoreAttempted.current) return;
     drawerRestoreAttempted.current = true;
     if (!unifiedConfiguration.enabled || !unifiedConfiguration.router) return;
     const origin = drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current);
@@ -751,6 +777,7 @@ export default function ActivePlannerPage() {
       if (!resumed.working_ref?.current_type) throw new Error('The previous working request has been cleared.');
       const history: any = pointer.conversation_id ? await apiClient.get(`/active-planner/conversations/${encodeURIComponent(pointer.conversation_id)}`) : null;
       if (!active) return;
+      if (['/dashboard/active-planner','/dashboard/active-planner/attention'].includes(window.location.pathname) && resumed.working_ref.entity) { freshScreenContext.current=resumed.working_ref.entity;setBrainContext(resumed.working_ref.entity); }
       if (history?.active) await applyHistory(history,resumed,true);
       else if (resumed.report) {
         setUnifiedSessionId(resumed.session_id);
@@ -761,7 +788,7 @@ export default function ActivePlannerPage() {
     return () => { active = false; };
   }, [embedded,screenContextLoading,drawerScope,unifiedConfiguration]);
   useEffect(() => {
-    if (!embedded || !drawerScope || !unifiedSessionId || !result?.unified?.session_version) return;
+    if (!drawerScope || !unifiedSessionId || !result?.unified?.session_version) return;
     writeDrawerSession(sessionStorage,drawerScope,drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current),{session_id:unifiedSessionId,session_version:result.unified.session_version,conversation_id:conversationId || undefined,context_ref:unifiedWorkingRef?.type === 'REPORT' ? {type:'REPORT',id:unifiedWorkingRef.id,saved_report_id:unifiedWorkingRef.saved_report_id} : result.report && result.session_id ? {type:'REPORT',id:result.session_id,saved_report_id:result.report.saved_report_id} : undefined});
   }, [embedded,drawerScope,unifiedSessionId,unifiedWorkingRef,conversationId,result]);
   useEffect(() => {
@@ -966,6 +993,7 @@ export default function ActivePlannerPage() {
   ) => {
     const message = rawMessage.trim();
     if (!message || busy || uploading || screenContextLoading) return;
+    const requestEpoch = drawerScope ? attentionTaskEpoch(sessionStorage,drawerScope) : null;
     setBusy(true);
     setTurns(previous => [...previous, {role:'user',text:message}]);
     setMobilePanel("chat");
@@ -1085,11 +1113,12 @@ export default function ActivePlannerPage() {
               ? "Safari"
               : "Other";
       const device = /Mobi/i.test(navigator.userAgent) ? "mobile" : "desktop";
+      if(drawerScope && requestEpoch !== attentionTaskEpoch(sessionStorage,drawerScope))return;
       const data = await apiClient.post<Result>("/active-planner/interpret", {
         message: rawMessage,
         ...(unifiedEnabled && unifiedSessionId ? { unified_session_id: unifiedSessionId } : {}),
         ...(unifiedEnabled && unifiedWorkingRef ? { context_ref: unifiedWorkingRef } : {}),
-        ...(embedded && unifiedEnabled ? {drawer_origin:drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current)} : {}),
+        ...(unifiedEnabled ? {drawer_origin:drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current)} : {}),
         ...(nextAction ? { next_action: nextAction } : {}),
         ...(documentEnabled && isPlanner && selectedDocumentIds.length && (!unifiedEnabled || !unifiedSessionId || pendingFile) ? { document_ids: selectedDocumentIds } : {}),
         ...(!unifiedEnabled && (result?.session_id || result?.action_operator_plan?.payload.request.session_id) ? { session_id: result?.session_id || result?.action_operator_plan?.payload.request.session_id } : {}),
@@ -1118,7 +1147,8 @@ export default function ActivePlannerPage() {
             ? uploadedAttachments
             : undefined,
       });
-      if (embedded && drawerScope && data.unified?.session_id && data.unified.session_version) writeDrawerSession(sessionStorage,drawerScope,drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current),{session_id:data.unified.session_id,session_version:data.unified.session_version,conversation_id:data.conversation_id || conversationId || undefined,context_ref:data.report && data.session_id ? {type:'REPORT',id:data.session_id,saved_report_id:data.report.saved_report_id} : undefined});
+      if(drawerScope && requestEpoch !== attentionTaskEpoch(sessionStorage,drawerScope))return;
+      if (drawerScope && data.unified?.session_id && data.unified.session_version) writeDrawerSession(sessionStorage,drawerScope,drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current),{session_id:data.unified.session_id,session_version:data.unified.session_version,conversation_id:data.conversation_id || conversationId || undefined,context_ref:data.report && data.session_id ? {type:'REPORT',id:data.session_id,saved_report_id:data.report.saved_report_id} : undefined});
       if (mode !== "status") setInput("");
       setClarifySupport(false);
       if (data.unified) { setUnifiedSessionId(data.unified.session_id); setUnifiedWorkingRef(null); setResult(data); setMobilePanel(embedded ? 'chat' : 'review'); }

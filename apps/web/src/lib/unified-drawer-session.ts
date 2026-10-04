@@ -1,6 +1,7 @@
 import type { AskListContext, BrainEnvelope } from './brain-context';
 
 export type DrawerScope = { profile: string; tenant_id: string; current_user_id: string };
+export type AttentionHandoff = { source: 'PROACTIVE_OPERATIONS'; action: 'WHY' | 'VIEW' | 'DATA_DOCTOR' | 'REPORT_BUILDER' | 'PREPARE_PR_PLAN'; attention_id: string; entity_type?: string; entity_id?: string; entity_reference?: string; tenant?: string; profile?: string; owner_id?: string; current_route?: string; category?: string; executable?: false };
 export type DrawerOrigin = { current_route: string; entity_type?: string; entity_id?: string; view?: 'ALL' | 'OPEN_PO' };
 export type DrawerReportRef = { type: 'REPORT'; id: string; saved_report_id?: string };
 export type DrawerSession = { session_id: string; session_version: number; conversation_id?: string; context_ref?: DrawerReportRef; origin: DrawerOrigin; expires_at: number; status: 'ACTIVE' | 'SUSPENDED' };
@@ -12,7 +13,33 @@ function key(scope: DrawerScope) {
   return `mizantra-unified-drawer:${scope.profile}:${scope.tenant_id}:${scope.current_user_id}`;
 }
 export function drawerOrigin(route: string, entity: BrainEnvelope | null, list: AskListContext | null): DrawerOrigin {
+  if (['/dashboard/active-planner','/dashboard/active-planner/attention'].includes(route)) return {current_route:route};
   return {current_route:route,...(entity ? {entity_type:entity.entity_type,entity_id:entity.entity_id} : list ? {view:list.view} : {})};
+}
+export function attentionTaskEpoch(storage: Pick<Storage,'getItem'>, scope: DrawerScope) {
+  return storage.getItem(key(scope).replace('mizantra-unified-drawer:', 'mizantra-unified-task-epoch:')) || '0';
+}
+export function beginAttentionTask(storage: Pick<Storage,'getItem' | 'setItem' | 'removeItem'>, scope: DrawerScope) {
+  const value = Number(attentionTaskEpoch(storage, scope));
+  storage.setItem(key(scope).replace('mizantra-unified-drawer:', 'mizantra-unified-task-epoch:'), String(Number.isSafeInteger(value) ? value + 1 : 1));
+  clearDrawerSession(storage, scope);
+}
+export function hasExplicitAttentionEntry(search: string) {
+  let explicit = false;
+  new URLSearchParams(search).forEach((_value, name) => { explicit ||= name.startsWith('attention_'); });
+  return explicit;
+}
+export function attentionEntry(search: string): AttentionHandoff | null {
+  const query = new URLSearchParams(search), id = query.get('attention_handoff'), action = query.get('attention_action');
+  if (!id || !uuid.test(id) || !action || !['WHY','VIEW','DATA_DOCTOR','REPORT_BUILDER','PREPARE_PR_PLAN'].includes(action)) return null;
+  return {source:'PROACTIVE_OPERATIONS',attention_id:id,action:action as AttentionHandoff['action']};
+}
+export function consumedAttentionUrl(href: string) {
+  const url = new URL(href);
+  const names: string[] = [];
+  url.searchParams.forEach((_value, name) => { if (name.startsWith('attention_')) names.push(name); });
+  names.forEach(name => url.searchParams.delete(name));
+  return url.pathname + url.search + url.hash;
 }
 export function drawerOriginKey(origin: DrawerOrigin) {
   return `${origin.current_route}|${origin.entity_id ? `${origin.entity_type}:${origin.entity_id}` : ''}|${origin.view || ''}`;

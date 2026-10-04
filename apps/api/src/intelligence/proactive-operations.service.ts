@@ -98,6 +98,20 @@ export class ProactiveOperationsService {
     const incomplete = !refreshed.completed_rules.includes(item.category) || refreshed.incomplete_sources.some(error => error.split(':')[0].split(',').includes(item.category));
     return { attention_id: item.id, status: item.status, explanation: item.explanation + (incomplete ? ' Current source revalidation is incomplete; this is the last recorded evidence.' : ''), evidence: { ...item.evidence, source_freshness: incomplete ? 'NOT_REVALIDATED' : 'REVALIDATED' }, evidence_reference: { source: item.source, entity_type: item.entity_type, entity_id: item.entity_id, observed_at: item.last_detected, fingerprint: item.fingerprint }, read_only: true, executable: false };
   }
+  async handoff(user: any, id: string, body: any) {
+    const scope = this.scope(user);
+    if (!body || Object.keys(body).some(key => key !== 'action')) throw new BadRequestException('Only a registered attention action is accepted.');
+    const item = await this.owned(scope, id);
+    const action = body.action;
+    const types: Record<string, string> = { PO: 'purchase_order', PR: 'purchase_requisition', GRN: 'grn', ITEM: 'item', purchase_order: 'purchase_order', purchase_requisition: 'purchase_requisition', grn: 'grn', item: 'item' };
+    const entityType = types[item.entity_type];
+    const actions = item.available_actions || [];
+    const allowed = action === 'WHY' || action === 'VIEW' && actions.some((entry: any) => entry.kind === 'VIEW') || action === 'DATA_DOCTOR' && actions.some((entry: any) => entry.label === 'Diagnose') || action === 'REPORT_BUILDER' && item.category === 'OVERDUE_OPEN_PO' || action === 'PREPARE_PR_PLAN' && item.category === 'ITEM_BELOW_REORDER';
+    if (!allowed || !entityType || !uuid.test(item.entity_id) || !ATTENTION_RULES.some(rule => rule[0] === item.category)) throw new ForbiddenException('This attention action is not available.');
+    if (action !== 'WHY' && !['ACTIVE', 'ACKNOWLEDGED'].includes(item.status)) throw new ForbiddenException('An active attention item is required.');
+    const routes: Record<string, string> = { purchase_order: '/dashboard/purchase/orders', purchase_requisition: '/dashboard/purchase/requisitions', grn: '/dashboard/purchase/grn', item: '/dashboard/inventory/items' };
+    return { source: 'PROACTIVE_OPERATIONS', action, attention_id: item.id, entity_type: entityType, entity_id: item.entity_id, entity_reference: item.entity_reference, tenant: scope.tenant, profile: scope.profile, owner_id: scope.owner, current_route: routes[entityType], category: item.category, executable: false };
+  }
   async state(user: any, id: string, status: string) {
     const scope = this.scope(user);
     await this.owned(scope, id);

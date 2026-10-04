@@ -8,11 +8,35 @@ const sandbox = { exports: {}, Set, Date };
 vm.runInNewContext(compiled, sandbox);
 const { buildBrainEnvelope } = sandbox.exports;
 const drawerCompiled = ts.transpileModule(fs.readFileSync(require.resolve('./unified-drawer-session.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
-const drawerSandbox = { exports: {}, Date };
+const drawerSandbox = { exports: {}, Date, URL, URLSearchParams };
 vm.runInNewContext(drawerCompiled, drawerSandbox);
 const drawer = drawerSandbox.exports;
 const drawerScope = {profile:'MIZANTRA',tenant_id:'11111111-1111-4111-8111-111111111111',current_user_id:'22222222-2222-4222-8222-222222222222'};
 const drawerOrigin = {current_route:'/dashboard/purchase/orders',entity_type:'purchase_order',entity_id:'33333333-3333-4333-8333-333333333333'};
+test('explicit attention entry has priority even with legacy handoff params',()=>{
+  assert.equal(drawer.hasExplicitAttentionEntry('?attention_entity=PO&attention_id='+drawerOrigin.entity_id),true);
+  assert.equal(drawer.hasExplicitAttentionEntry('?tab=history'),false);
+  assert.equal(drawer.attentionEntry('?attention_handoff='+drawerOrigin.entity_id+'&attention_action=DATA_DOCTOR').action,'DATA_DOCTOR');
+  assert.equal(drawer.attentionEntry('?attention_handoff=foreign&attention_action=EXECUTE'),null);
+});
+test('consumed attention URL removes stale retargeting params without changing back-route or other params',()=>{
+  assert.equal(drawer.consumedAttentionUrl('https://example.test/dashboard/active-planner?attention_handoff='+drawerOrigin.entity_id+'&attention_action=DATA_DOCTOR&tab=review#answer'),'/dashboard/active-planner?tab=review#answer');
+});
+test('explicit handoff invalidates suspended report and late old-task replies within owned scope only',()=>{
+  const storage=drawerStorage();drawer.writeDrawerSession(storage,drawerScope,drawerOrigin,{session_id:drawerOrigin.entity_id,session_version:1,context_ref:{type:'REPORT',id:drawerScope.tenant_id}});
+  drawer.suspendDrawerSession(storage,drawerScope,drawerOrigin);
+  const epoch=drawer.attentionTaskEpoch(storage,drawerScope);
+  drawer.beginAttentionTask(storage,drawerScope);
+  assert.equal(drawer.readDrawerSession(storage,drawerScope,drawerOrigin),null);
+  assert.notEqual(drawer.attentionTaskEpoch(storage,drawerScope),epoch);
+  assert.equal(drawer.attentionTaskEpoch(storage,{...drawerScope,profile:'ARWA'}),'0');
+});
+test('Attention task origin remains stable when the ephemeral screen selection expires',()=>{
+  const origin=drawer.drawerOrigin('/dashboard/active-planner/attention',drawerOrigin,null);
+  assert.equal(drawer.drawerOriginKey(origin),drawer.drawerOriginKey(drawer.drawerOrigin('/dashboard/active-planner/attention',null,null)));
+  const storage=drawerStorage();drawer.writeDrawerSession(storage,drawerScope,origin,{session_id:drawerOrigin.entity_id,session_version:1});drawer.suspendDrawerSession(storage,drawerScope,origin);
+  assert.equal(drawer.readDrawerSession(storage,drawerScope,origin).status,'SUSPENDED');
+});
 function drawerStorage() {
   const values = new Map();
   return {getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key),values};

@@ -4,11 +4,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bell, Check, ChevronRight, HelpCircle, Inbox, Loader2, MessageCircle, RefreshCw, X } from 'lucide-react';
 import { apiClient } from '../../lib/api-client';
+import { beginAttentionTask, type AttentionHandoff } from '../lib/unified-drawer-session';
+import { BRAIN_CONTEXT_KEY } from '../lib/brain-context';
 
 const root = '/active-planner/proactive-operations';
 export type AttentionItem = { id: string; module: string; category: string; severity: string; status: string; entity_type: string; entity_id: string; entity_reference: string; title: string; explanation: string; first_detected: string; last_detected: string; available_actions: Array<{ label: string; href: string; kind: string }> };
 export type ProactiveBrief = { items: AttentionItem[]; categories: Array<{ module: string; count: number }>; unread_notifications: number; last_scan: string | null; incomplete_sources: string[]; timezone?: string; assurance?: string; changes?: { changes: Array<{ id: string; event: string; created_at: string; item: AttentionItem }> } | null };
 const tones: Record<string, string> = { CRITICAL: 'text-red-800 bg-red-50', HIGH: 'text-red-700 bg-red-50', MEDIUM: 'text-amber-800 bg-amber-50', LOW: 'text-sky-800 bg-sky-50', INFO: 'text-stone-700 bg-stone-100' };
+const recordTypes = new Set(['PO','PR','GRN','ITEM','purchase_order','purchase_requisition','grn','item']);
 
 export function ProactiveAttentionIndicator() {
   const [enabled, setEnabled] = useState(false), [count, setCount] = useState(0), [unread, setUnread] = useState(0);
@@ -48,8 +51,19 @@ export function AttentionList({ brief, onRefresh }: { brief: ProactiveBrief; onR
   const act = async (item: AttentionItem, action: string) => {
     setBusy(item.id + ':' + action); setError('');
     try {
-      if (action === 'why') { const result = await apiClient.get<{ explanation: string; evidence: Record<string, unknown>; status: string }>(`${root}/attention/${item.id}/why`); setEvidence(previous => ({ ...previous, [item.id]: result })); await onRefresh?.(); }
-      else if (action === 'prepare-plan') { const result = await apiClient.post<{ action_operator_plan: { id: string } }>(`${root}/attention/${item.id}/prepare-plan`, {}); router.push(`/dashboard/active-planner?attention_operator_plan=${encodeURIComponent(result.action_operator_plan.id)}`); }
+      if (action === 'WHY' && !recordTypes.has(item.entity_type)) {
+        const result = await apiClient.get<{ explanation: string; evidence: Record<string, unknown>; status: string }>(`${root}/attention/${item.id}/why`);
+        setEvidence(previous => ({...previous,[item.id]:result}));await onRefresh?.();
+      } else if (['WHY','VIEW','DATA_DOCTOR','REPORT_BUILDER','PREPARE_PR_PLAN'].includes(action)) {
+        const handoff = await apiClient.post<AttentionHandoff>(`${root}/attention/${item.id}/handoff`, {action});
+        if (action === 'VIEW') {
+          const reply = await apiClient.post<any>('/active-planner/interpret', {message:'View attention record',attention_handoff:handoff});
+          if (!reply.attention_handoff || reply.unified?.type === 'ERROR') throw new Error(reply.assistant_message || 'The attention record is unavailable.');
+          beginAttentionTask(sessionStorage,{profile:handoff.profile!,tenant_id:handoff.tenant!,current_user_id:handoff.owner_id!});
+          sessionStorage.removeItem(BRAIN_CONTEXT_KEY);
+          router.push(`${handoff.current_route}?${handoff.entity_type === 'purchase_order' ? 'viewId' : 'brain_entity'}=${encodeURIComponent(handoff.entity_id!)}`);
+        } else window.dispatchEvent(new CustomEvent('mizantra:attention-handoff',{detail:handoff}));
+      }
       else { await apiClient.post(`${root}/attention/${item.id}/${action}`, {}); await onRefresh?.(); }
     } catch (failure: any) { setError(failure.message || 'Attention could not be refreshed.'); }
     finally { setBusy(''); }
@@ -63,9 +77,9 @@ export function AttentionList({ brief, onRefresh }: { brief: ProactiveBrief; onR
       <div className="flex flex-wrap items-center gap-2 text-xs"><span className={`px-2 py-1 font-semibold ${tones[item.severity] || tones.INFO}`}>{item.severity}</span><span className="text-stone-600">{item.module}</span><span className="break-all text-stone-600">{item.entity_reference}</span><span className="text-stone-500">{item.status.replaceAll('_', ' ')}</span></div>
       <h3 className="mt-2 break-words text-base font-semibold text-stone-900">{item.title}</h3><p className="mt-1 break-words text-sm leading-6 text-stone-700">{item.explanation}</p>
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-        <button type="button" title="Why is this on my attention list?" disabled={!!busy} onClick={() => void act(item, 'why')} className="inline-flex min-h-11 items-center gap-1 text-teal-800"><HelpCircle className="h-4 w-4" />Why?</button>
-        {item.available_actions.map(action => action.kind === 'PLAN' ? <button type="button" key={action.label} disabled={!!busy} onClick={() => void act(item, 'prepare-plan')} className="inline-flex min-h-11 items-center gap-1 text-teal-800"><MessageCircle className="h-4 w-4" />Prepare PR Plan</button> : <Link key={action.label} href={action.href} className="inline-flex min-h-11 items-center gap-1 font-medium text-teal-800">{action.label}<ChevronRight className="h-4 w-4" /></Link>)}
-        {item.category === 'OVERDUE_OPEN_PO' && <Link href="/dashboard/active-planner?attention_prompt=Show%20all%20overdue%20POs" className="inline-flex min-h-11 items-center gap-1 text-teal-800">Report<ChevronRight className="h-4 w-4" /></Link>}
+        <button type="button" title="Why is this on my attention list?" disabled={!!busy} onClick={() => void act(item, 'WHY')} className="inline-flex min-h-11 items-center gap-1 text-teal-800"><HelpCircle className="h-4 w-4" />Why?</button>
+        {item.available_actions.map(action => action.kind === 'PLAN' || action.label === 'Diagnose' && recordTypes.has(item.entity_type) || action.kind === 'VIEW' && recordTypes.has(item.entity_type) ? <button type="button" key={action.label} disabled={!!busy} onClick={() => void act(item, action.kind === 'VIEW' ? 'VIEW' : action.kind === 'PLAN' ? 'PREPARE_PR_PLAN' : 'DATA_DOCTOR')} className="inline-flex min-h-11 items-center gap-1 font-medium text-teal-800">{action.label}<ChevronRight className="h-4 w-4" /></button> : <Link key={action.label} href={action.href} className="inline-flex min-h-11 items-center gap-1 font-medium text-teal-800">{action.label}<ChevronRight className="h-4 w-4" /></Link>)}
+        {item.category === 'OVERDUE_OPEN_PO' && <button type="button" disabled={!!busy} onClick={() => void act(item, 'REPORT_BUILDER')} className="inline-flex min-h-11 items-center gap-1 text-teal-800">Report<ChevronRight className="h-4 w-4" /></button>}
         <button title="Acknowledge attention" aria-label={`Acknowledge ${item.entity_reference}`} type="button" disabled={!!busy} onClick={() => void act(item, 'acknowledge')} className="inline-flex h-11 w-11 items-center justify-center text-stone-600"><Check className="h-4 w-4" /></button><button title="Dismiss attention" aria-label={`Dismiss ${item.entity_reference}`} type="button" disabled={!!busy} onClick={() => void act(item, 'dismiss')} className="inline-flex h-11 w-11 items-center justify-center text-stone-600"><X className="h-4 w-4" /></button>{busy.startsWith(item.id) && <Loader2 aria-label="Updating attention" className="h-4 w-4 animate-spin" />}
       </div>
       {evidence[item.id] && <div className="mt-3 border-l-2 border-teal-700 pl-3 text-sm" aria-label={`Evidence for ${item.entity_reference}`}><p className="break-words">{evidence[item.id].explanation}</p><dl className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2">{Object.entries(evidence[item.id].evidence).map(([key, value]) => <div key={key} className="min-w-0"><dt className="text-xs text-stone-500">{key.replaceAll('_', ' ')}</dt><dd className="break-words [overflow-wrap:anywhere]">{value === null ? 'Unknown' : typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}</dl></div>}

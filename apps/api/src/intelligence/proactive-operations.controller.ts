@@ -14,6 +14,7 @@ export class ProactiveOperationsController {
   @Post('preferences') @SkipAutomaticAudit() updatePreferences(@Req() request: any, @Body() body: any) { return this.operations.preferences(request.user, body.timezone); }
   @Get('health') health(@Req() request: any) { return this.operations.health(request.user); }
   @Get('attention/:id/why') why(@Req() request: any, @Param('id') id: string) { return this.operations.why(request.user, id); }
+  @Post('attention/:id/handoff') @SkipAutomaticAudit() handoff(@Req() request: any, @Param('id') id: string, @Body() body: any) { return this.operations.handoff(request.user, id, body); }
   @Post('attention/:id/acknowledge') @SkipAutomaticAudit() acknowledge(@Req() request: any, @Param('id') id: string) { return this.operations.state(request.user, id, 'ACKNOWLEDGED'); }
   @Post('attention/:id/dismiss') @SkipAutomaticAudit() dismiss(@Req() request: any, @Param('id') id: string) { return this.operations.state(request.user, id, 'DISMISSED'); }
   @Post('notifications/read') @SkipAutomaticAudit() markRead(@Req() request: any) { return this.operations.markRead(request.user); }

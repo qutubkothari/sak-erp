@@ -203,7 +203,21 @@ export class UnifiedAiService {
     let failureType: UnifiedTelemetry['failure_type'] = null, clarification = false, handoff = 0;
     let contextValidated = false, subsystemStarted: number | undefined;
     let routingMs = -1;
+    let attentionHandoff: any;
     try {
+      if (body.attention_handoff) {
+        const requested = body.attention_handoff;
+        if (requested.source !== 'PROACTIVE_OPERATIONS') throw new BadRequestException('Select a registered attention action.');
+        attentionHandoff = await this.proactive.handoff(user, requested.attention_id, { action: requested.action });
+        for (const key of Object.keys(requested)) if (!(key in attentionHandoff) || requested[key] !== attentionHandoff[key]) throw new ForbiddenException('Attention handoff does not match the current authorized target.');
+        const target = { profile: attentionHandoff.profile, tenant_id: attentionHandoff.tenant, current_user_id: attentionHandoff.owner_id, entity_type: attentionHandoff.entity_type, entity_id: attentionHandoff.entity_id, current_route: body.drawer_origin?.current_route || attentionHandoff.current_route, locale: 'en' };
+        const validated = await this.brain.validateContext(user, target);
+        if (!validated.enabled || !validated.context || validated.context.entity_id !== target.entity_id || validated.context.entity_type !== target.entity_type) throw new ForbiddenException('Attention target is not authorized.');
+        const messages: Record<string, string> = { DATA_DOCTOR: 'Diagnose this record', WHY: 'Why is this on my attention list?', REPORT_BUILDER: 'Show all overdue POs', PREPARE_PR_PLAN: 'Create a PR for this item', VIEW: `What is this ${target.entity_type === 'purchase_order' ? 'PO' : 'record'} status?` };
+        body = { message: messages[attentionHandoff.action], brain_context: validated.context, attention_id: attentionHandoff.attention_id, ...(body.drawer_origin ? { drawer_origin: { current_route: target.current_route, ...(body.drawer_origin.entity_id ? { entity_type: target.entity_type, entity_id: target.entity_id } : {}) } } : {}) };
+        decision = selectUnifiedRoute(body.message, { profile: configuration.profile });
+        handoff = 1;
+      }
       if (body.unified_session_id) {
         session = await this.contexts.get(user, body.unified_session_id);
         ref = session.working_ref;
@@ -222,6 +236,8 @@ export class UnifiedAiService {
         }
       }
       if (body.brain_context) ref = { ...ref, entity: body.brain_context, current_type: 'ERP_ENTITY' };
+      if (attentionHandoff) ref.attention_item_id = attentionHandoff.attention_id;
+      if (attentionHandoff?.action === 'PREPARE_PR_PLAN') ref.current_type = 'ATTENTION_ITEM';
       if (body.screen_context && !body.brain_context && !ref.entity && (isPoGrnRequest(body.message) || /\bthis (?:PO|purchase order|GRN|item|supplier)\b/i.test(body.message))) {
         if (!configuration.capabilities.includes('BRAIN_QUERY')) throw new ForbiddenException('Record context is not available.');
         ref = {...ref,entity:body.screen_context,current_type:'ERP_ENTITY'};
@@ -275,7 +291,7 @@ export class UnifiedAiService {
         const descriptions: Partial<Record<UnifiedRoute, string>> = { ERP_QUERY:'answer authorized ERP questions', BRAIN_QUERY:'explain records and their relationships', DATA_DOCTOR:'diagnose recorded data issues', REPORT_BUILDER:'build and refine reports', DOCUMENT_INTELLIGENCE:'review and compare documents', SMART_IMPORT:'prepare spreadsheet import previews for approval', AUTOENGINEER:'report software problems', SMART_APPROVAL:'review documents before approval', ACTION_PLANNER:'prepare governed action plans', PROACTIVE_OPERATIONS:'show items needing attention' };
         result = { status: 'UNIFIED_DISCOVERY', assistant_message: `I can ${configuration.capabilities.filter(route => descriptions[route]).map(route => descriptions[route]).join(', ')}.${configuration.capabilities.includes('ACTION_PLANNER') ? ' Material actions still require their normal authorization and approval.' : ' Action execution is not enabled for this environment.'}`, questions: [], safety: { executable:false, read_only:true } };
       } else {
-        handoff = Number(!!session && ref.current_type !== this.routeContext(decision.route));
+        handoff = attentionHandoff ? 1 : Number(!!session && ref.current_type !== this.routeContext(decision.route));
         const input = { ...body, message, brain_context: ref.entity, session_id: ref.current_type === 'REPORT' ? ref.report_session_id : undefined, saved_report_id:ref.current_type === 'REPORT' ? ref.saved_report_id : undefined, document_ids: ref.current_type === 'DOCUMENT_ANALYSIS' ? ref.document_ids : undefined };
         delete input.context_ref; delete input.unified_session_id; delete input.next_action;
         subsystemStarted = Date.now();
@@ -359,6 +375,11 @@ export class UnifiedAiService {
         clarification ||= !!result.questions?.length && !result.action_operator_plan;
       }
       if (result?.report?.plan) reportDataset = result.report.plan.dataset;
+      if (attentionHandoff) {
+        result.attention_handoff = attentionHandoff;
+        if (attentionHandoff.action === 'DATA_DOCTOR') result.assistant_message = `Diagnosis: ${ref.entity?.document_number || attentionHandoff.entity_reference}. ${result.assistant_message || result.summary || 'Review the deterministic findings below.'}`;
+        if (result.attention_evidence) { result.evidence = [{ claim: 'ATTENTION_EVIDENCE', values: result.attention_evidence.evidence }]; ref.current_type = 'ATTENTION_ITEM'; }
+      }
       if (drawerOrigin) ref.drawer_origin = drawerOrigin;
       if (result?.saved_report?.id) ref.saved_report_id = result.saved_report.id;
       if (result?.report && ref.saved_report_id) result.report = {...result.report,saved_report_id:ref.saved_report_id};
