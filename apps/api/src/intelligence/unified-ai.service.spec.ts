@@ -1,4 +1,4 @@
-import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { UnifiedAiService, customerAiMessage } from './unified-ai.service';
 import { FeatureEntitlementGuard } from '../feature-access/feature-entitlement.guard';
 import { ActivePlannerController } from './active-planner.controller';
@@ -27,6 +27,7 @@ describe('Unified governed orchestration', () => {
   it('rehydrates the owned native report without creating or executing a task',async()=>{
     contexts.get.mockResolvedValue({id,version:3,working_ref:{current_type:'REPORT',report_session_id:id}});
     const reply=await service.resumeContext(user,{session_id:id});
+    if (!('working_ref' in reply)) throw new Error('Expected an available owned task');
     expect(contexts.get).toHaveBeenCalledWith(user,id);
     expect(reporting.workingContext).toHaveBeenCalledWith(user,id);
     expect(reporting.query).toHaveBeenCalledWith(user,{session_id:id});
@@ -98,6 +99,7 @@ describe('Unified governed orchestration', () => {
     contexts.get.mockResolvedValue({id,version:3,working_ref:{current_type:'REPORT',report_session_id:id,saved_report_id:owner,drawer_origin:origin}});
     reporting.query.mockResolvedValue({plan:{dataset:'PURCHASE_ORDERS',title:'Bombay Open POs',filters:[{field:'OPEN_PO',operator:'eq',value:true},{field:'vendor_name',operator:'eq',value:'Bombay Anodising Corporation'}],grouping:[],sort:[],visualization:'TABLE'},version:'native-version'});
     const reply=await service.resumeContext(user,{session_id:id,drawer_origin:{current_route:entity.current_route,entity_type:entity.entity_type,entity_id:id}});
+    if (!('working_ref' in reply)) throw new Error('Expected an available owned task');
     expect(reply.report!.plan.title).toBe('Bombay Open POs');expect(reply.report!.plan.filters).toHaveLength(2);expect(reply.report!.saved_report_id).toBe(owner);
     expect(reporting.workingContext).toHaveBeenCalledWith(user,owner,'REPORT');
   });
@@ -111,6 +113,25 @@ describe('Unified governed orchestration', () => {
     await expect(service.resumeContext(user,{session_id:id})).rejects.toThrow('Unavailable owned session');
     expect(reporting.workingContext).not.toHaveBeenCalled();expect(reporting.query).not.toHaveBeenCalled();
   });
+  it('returns nonfatal absence only for automatic expired or missing session restoration',async()=>{
+    contexts.get.mockRejectedValue(new NotFoundException('Unavailable or expired'));
+    await expect(service.resumeContext(user,{session_id:id,auto_resume:true})).resolves.toEqual({status:'UNAVAILABLE',executable:false});
+    await expect(service.resumeContext(user,{session_id:id})).rejects.toBeInstanceOf(NotFoundException);
+    expect(contexts.save).not.toHaveBeenCalled();expect(reporting.query).not.toHaveBeenCalled();expect(operator.execute).not.toHaveBeenCalled();
+  });
+  it.each([new ForbiddenException('Revoked permission'),new ServiceUnavailableException('Metadata unavailable')])('keeps automatic resume failures visible: %s',async failure=>{
+    contexts.get.mockRejectedValue(failure);
+    await expect(service.resumeContext(user,{session_id:id,auto_resume:true})).rejects.toBe(failure);
+  });
+  it.each([{working_ref:{}},{working_ref:{current_type:'ERP_ENTITY',entity,drawer_origin:'/dashboard||'}}])('treats cleared and different-origin automatic tasks as unavailable',async session=>{
+    contexts.get.mockResolvedValue({id,version:4,...session});
+    await expect(service.resumeContext(user,{session_id:id,auto_resume:true,drawer_origin:{current_route:entity.current_route,entity_type:entity.entity_type,entity_id:id}})).resolves.toEqual({status:'UNAVAILABLE',executable:false});
+    expect(contexts.save).not.toHaveBeenCalled();expect(reporting.query).not.toHaveBeenCalled();
+  });
+  it.each([{auto_resume:'true'},{auto_resume:true,explicit_history:true}])('rejects invalid automatic-resume mode %j',async mode=>{
+    await expect(service.resumeContext(user,{session_id:id,...mode})).rejects.toBeInstanceOf(BadRequestException);
+    expect(contexts.get).not.toHaveBeenCalled();
+  });
   it('does not revive a protected snapshot from a cleared session',async()=>{
     contexts.get.mockResolvedValue({id,version:4,working_ref:{}});
     await expect(service.resumeContext(user,{session_id:id})).rejects.toThrow('has been cleared');
@@ -121,16 +142,19 @@ describe('Unified governed orchestration', () => {
     const reply=await service.interpret(user,{message:'Only overdue',unified_session_id:id,context_ref:{type:'REPORT',id}},erp);
     expect(reply.report.saved_report_id).toBe(owner);
     const resumed=await service.resumeContext(user,{session_id:id,context_ref:{type:'REPORT',id}});
+    if (!('working_ref' in resumed)) throw new Error('Expected an available owned task');
     expect(resumed.report!.saved_report_id).toBe(owner);
   });
   it('does not attach an old saved-report identity to a different selected native report',async()=>{
     contexts.get.mockResolvedValue({id,version:4,working_ref:{current_type:'REPORT',report_session_id:id,saved_report_id:owner}});
     const resumed=await service.resumeContext(user,{session_id:id,context_ref:{type:'REPORT',id:tenant}});
+    if (!('working_ref' in resumed)) throw new Error('Expected an available owned task');
     expect(resumed.working_ref.saved_report_id).toBeUndefined();
   });
   it('explicitly selected old report history rehydrates native permissions after New Request',async()=>{
     contexts.get.mockResolvedValue({id,version:4,working_ref:{}});
     const reply=await service.resumeContext(user,{session_id:id,explicit_history:true,context_ref:{type:'REPORT',id:owner}});
+    if (!('working_ref' in reply)) throw new Error('Expected an available owned task');
     expect(reporting.workingContext).toHaveBeenCalledWith(user,owner);expect(reporting.query).toHaveBeenCalledWith(user,{session_id:owner});expect(reply.report).toBeDefined();
   });
   it.each(['Add to Dashboard','Export it','Only overdue','Save this report','Show as chart'])('routes restored report follow-up without generic planner fallback: %s',async message=>{

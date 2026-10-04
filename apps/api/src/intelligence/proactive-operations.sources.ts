@@ -39,7 +39,10 @@ export class ProactiveOperationsSources {
     const scan: AttentionScan = { items: [], complete_rules: [], errors: [] };
     const source = async (rules: string[], allowed: boolean, load: () => Promise<AttentionCandidate[]>) => {
       if (!allowed) return;
-      try { scan.items.push(...await load()); scan.complete_rules.push(...rules); } catch { scan.errors.push(rules.join(',') + ':SOURCE_UNAVAILABLE_OR_INCOMPLETE'); }
+      try { scan.items.push(...await load()); scan.complete_rules.push(...rules); } catch (failure) {
+        const reason = failure instanceof Error && failure.message === 'DIAGNOSTIC_COVERAGE_LIMIT' ? 'DIAGNOSTIC_COVERAGE_LIMIT' : 'SOURCE_UNAVAILABLE_OR_INCOMPLETE';
+        scan.errors.push(rules.join(',') + ':' + reason);
+      }
     };
     const can = (permission: string) => hasPermission(scope.user, permission);
     const doctorTargets: Array<{ type: string; rows: any[]; rule: string; permission: string; module: string }> = [];

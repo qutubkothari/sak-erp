@@ -773,7 +773,9 @@ export default function ActivePlannerPage() {
     let active = true;
     setBusy(true);
     void (async () => {
-      const resumed: any = await apiClient.post('/active-planner/unified/context/resume', {session_id:pointer.session_id,drawer_origin:origin,...(pointer.context_ref ? {context_ref:pointer.context_ref} : {})});
+      const resumed: any = await apiClient.post('/active-planner/unified/context/resume', {session_id:pointer.session_id,drawer_origin:origin,auto_resume:true,...(pointer.context_ref ? {context_ref:pointer.context_ref} : {})});
+      if (!active) return;
+      if (resumed.status === 'UNAVAILABLE') { clearDrawerSession(sessionStorage,drawerScope);return; }
       if (!resumed.working_ref?.current_type) throw new Error('The previous working request has been cleared.');
       const history: any = pointer.conversation_id ? await apiClient.get(`/active-planner/conversations/${encodeURIComponent(pointer.conversation_id)}`) : null;
       if (!active) return;

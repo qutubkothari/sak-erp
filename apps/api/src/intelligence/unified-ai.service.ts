@@ -161,7 +161,15 @@ export class UnifiedAiService {
   async resumeContext(user: any, body: any) {
     const configuration = await this.configuration(user);
     if (!configuration.enabled || !configuration.router) throw new ForbiddenException('Ask is not enabled.');
-    if (!body || Object.keys(body).some(key => !['session_id','context_ref','drawer_origin','explicit_history'].includes(key)) || (body.explicit_history !== undefined && typeof body.explicit_history !== 'boolean')) throw new BadRequestException('Supply an owned working session.');
+    if (!body || Object.keys(body).some(key => !['session_id','context_ref','drawer_origin','explicit_history','auto_resume'].includes(key)) || (body.explicit_history !== undefined && typeof body.explicit_history !== 'boolean') || (body.auto_resume !== undefined && typeof body.auto_resume !== 'boolean') || (body.auto_resume && body.explicit_history)) throw new BadRequestException('Supply an owned working session.');
+    try {
+      return await this.resumeOwnedContext(user, body, configuration);
+    } catch (failure) {
+      if (body.auto_resume === true && failure instanceof NotFoundException) return {status:'UNAVAILABLE',executable:false};
+      throw failure;
+    }
+  }
+  private async resumeOwnedContext(user: any, body: any, configuration: any) {
     let session = await this.contexts.get(user, body.session_id);
     let ref = session.working_ref;
     const origin = body.drawer_origin ? await this.drawerOrigin(user, body.drawer_origin) : undefined;
