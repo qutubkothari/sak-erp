@@ -55,6 +55,7 @@ export class UnifiedAiService {
     let documents: any = { enabled: false };
     try { documents = this.documents.configuration(user); } catch (error) { if (!(error instanceof ForbiddenException)) throw error; }
     const approval = this.approval.configuration(user), operator = this.operator.configuration(user), proactive = this.proactive.configuration(user);
+    const proactiveReady = proactive.enabled && await this.proactive.ready(user);
     const enabled: Record<UnifiedRoute, boolean> = {
       ERP_QUERY: true, NORMAL_ERP_COMMAND: true,
       BRAIN_QUERY: brainEnabled,
@@ -65,7 +66,7 @@ export class UnifiedAiService {
       AUTOENGINEER: true,
       SMART_APPROVAL: approval.enabled && approval.supported_document_types.length > 0,
       ACTION_PLANNER: operator.enabled,
-      PROACTIVE_OPERATIONS: proactive.enabled,
+      PROACTIVE_OPERATIONS: proactiveReady,
     };
     const paths: Record<UnifiedRoute,string> = {ERP_QUERY:'/active-planner/interpret',NORMAL_ERP_COMMAND:'/active-planner/interpret',BRAIN_QUERY:'/active-planner/brain/context',DATA_DOCTOR:'/active-planner/data-doctor/prepare-fix',REPORT_BUILDER:'/active-planner/reports/query',DOCUMENT_INTELLIGENCE:'/active-planner/document-intelligence/compare',SMART_IMPORT:'/smart-imports',AUTOENGINEER:'/active-planner/support-status',SMART_APPROVAL:'/active-planner/smart-approval/review',ACTION_PLANNER:'/active-planner/action-operator/plans',PROACTIVE_OPERATIONS:'/active-planner/proactive-operations/attention'};
     await Promise.all(Object.entries(enabled).filter(([,permitted])=>permitted).map(async ([route])=>{
@@ -226,12 +227,20 @@ export class UnifiedAiService {
         decision = selectUnifiedRoute(body.message, { profile: configuration.profile });
         handoff = 1;
       }
-      if (body.unified_session_id && !attentionHandoff) {
+      // A general attention request has no record target. Old item, report, or
+      // diagnosis state must not turn it into an entity-scoped operation.
+      const generalAttention = !attentionHandoff && (body.next_action === 'VIEW_ATTENTION' || decision.route === 'PROACTIVE_OPERATIONS' && !body.attention_id);
+      if (generalAttention && body.brain_context) {
+        const scope = this.contexts.scope(user);
+        if (body.brain_context.tenant_id !== scope.tenant || body.brain_context.profile !== scope.profile || body.brain_context.current_user_id !== scope.owner)
+          throw new ForbiddenException('Attention context does not match authenticated scope.');
+      }
+      if (body.unified_session_id && !attentionHandoff && !generalAttention) {
         session = await this.contexts.get(user, body.unified_session_id);
         ref = session.working_ref;
       }
       const drawerOrigin = body.drawer_origin && decision.operation !== 'BLOCKED' ? await this.drawerOrigin(user, body.drawer_origin) : undefined;
-      if (body.context_ref) {
+      if (body.context_ref && !generalAttention) {
         const context = body.context_ref;
         const fields: Record<string, keyof UnifiedWorkingRef> = { REPORT:'report_session_id', DASHBOARD:'dashboard_id', IMPORT_BATCH:'import_batch_id', ACTION_PLAN:'plan_id', ATTENTION_ITEM:'attention_item_id', ENGINEERING_REQUEST:'engineering_request_id', AUTOQA_FINDING:'autoqa_finding_id' };
         if (!fields[context.type] || typeof context.id !== 'string') throw new BadRequestException('Unsupported working reference.');
@@ -243,16 +252,16 @@ export class UnifiedAiService {
           ref.entity = { profile: scope.profile, tenant_id: scope.tenant, current_user_id: scope.owner, entity_type: context.type === 'AUTOQA_FINDING' ? 'autoqa_finding' : 'support_incident', entity_id: context.id, current_route: '/dashboard', locale: 'en' } as any;
         }
       }
-      if (body.brain_context) ref = attentionHandoff ? { entity: body.brain_context, current_type: 'ERP_ENTITY' } : { ...ref, entity: body.brain_context, current_type: 'ERP_ENTITY' };
+      if (body.brain_context && !generalAttention) ref = attentionHandoff ? { entity: body.brain_context, current_type: 'ERP_ENTITY' } : { ...ref, entity: body.brain_context, current_type: 'ERP_ENTITY' };
       if (attentionHandoff) ref.attention_item_id = attentionHandoff.attention_id;
       if (attentionHandoff?.action === 'PREPARE_PR_PLAN') ref.current_type = 'ATTENTION_ITEM';
-      if (body.screen_context && !body.brain_context && !ref.entity && (isPoGrnRequest(body.message) || /\bthis (?:PO|purchase order|GRN|item|supplier)\b/i.test(body.message))) {
+      if (body.screen_context && !generalAttention && !body.brain_context && !ref.entity && (isPoGrnRequest(body.message) || /\bthis (?:PO|purchase order|GRN|item|supplier)\b/i.test(body.message))) {
         if (!configuration.capabilities.includes('BRAIN_QUERY')) throw new ForbiddenException('Record context is not available.');
         ref = {...ref,entity:body.screen_context,current_type:'ERP_ENTITY'};
       }
-      if (body.document_ids?.length) ref = { ...ref, document_ids: body.document_ids, current_type: 'DOCUMENT_ANALYSIS' };
-      if (body.session_id && !ref.report_session_id) ref = { ...ref, report_session_id: body.session_id, current_type: 'REPORT' };
-      const listContext = body.list_context;
+      if (body.document_ids?.length && !generalAttention) ref = { ...ref, document_ids: body.document_ids, current_type: 'DOCUMENT_ANALYSIS' };
+      if (body.session_id && !ref.report_session_id && !generalAttention) ref = { ...ref, report_session_id: body.session_id, current_type: 'REPORT' };
+      const listContext = generalAttention ? undefined : body.list_context;
       if (listContext !== undefined) {
         if (!listContext || typeof listContext !== 'object' || Array.isArray(listContext) || Object.keys(listContext).some(key => !['module','view','current_route'].includes(key)) || listContext.module !== 'PURCHASE_ORDERS' || !['ALL','OPEN_PO'].includes(listContext.view) || listContext.current_route !== '/dashboard/purchase/orders' || body.brain_context) throw new BadRequestException('Select one registered list view or one record.');
         if (!configuration.capabilities.includes('REPORT_BUILDER')) throw new ForbiddenException('The purchase order list is not available.');

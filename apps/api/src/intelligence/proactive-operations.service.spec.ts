@@ -2,20 +2,20 @@ import { ProactiveOperationsService, localBriefClock } from './proactive-operati
 import { candidate } from './proactive-operations.registry';
 
 const tenant = '11111111-1111-4111-8111-111111111111', owner = '22222222-2222-4222-8222-222222222222', id = '33333333-3333-4333-8333-333333333333';
-let mockItems: any[] = [], mockEvents: any[] = [], mockRpcResult: any = {}, mockTimezone = 'UTC';
-const mockRpc = jest.fn(async (_name: string, _payload: any) => ({ data: mockRpcResult }));
+let mockItems: any[] = [], mockEvents: any[] = [], mockRpcResult: any = {}, mockTimezone = 'UTC', mockScanErrors: string[] = [];
+const mockRpc = jest.fn(async (name: string, payload: any) => { if (name === 'mizantra_attention_reconcile') mockScanErrors = payload.p_errors; return { data: mockRpcResult }; });
 const mockMutation = jest.fn(async (_table: string, _payload: any) => ({ data: null }));
 const mockTraces: any[] = [];
 const mockDb = { rpc: mockRpc, from: (table: string) => {
   const trace = { table, filters: [] as any[], mutation: null as any }; mockTraces.push(trace);
-  const query: any = { select: () => query, eq: (key: string, value: any) => { trace.filters.push([key, value]); return query; }, order: () => query, limit: () => query, is: () => query, gte: () => query, maybeSingle: () => query, upsert: (value: any) => { trace.mutation = value; return query; }, update: (value: any) => { trace.mutation = value; return query; }, then: (resolve: any, reject: any) => { if (trace.mutation) mockMutation(table, trace.mutation); const data = table === 'mizantra_attention_items' ? trace.filters.some(([key]) => key === 'id') ? mockItems.find(item => trace.filters.every(([key, value]) => item[key] === value)) || null : mockItems : table === 'mizantra_attention_events' ? mockEvents : table === 'mizantra_attention_preferences' ? { timezone: mockTimezone } : table === 'mizantra_attention_notifications' ? [] : null; return Promise.resolve({ data }).then(resolve, reject); } }; return query;
+  const query: any = { select: () => query, eq: (key: string, value: any) => { trace.filters.push([key, value]); return query; }, order: () => query, limit: () => query, is: () => query, gte: () => query, maybeSingle: () => query, upsert: (value: any) => { trace.mutation = value; return query; }, update: (value: any) => { trace.mutation = value; return query; }, then: (resolve: any, reject: any) => { if (trace.mutation) mockMutation(table, trace.mutation); const data = table === 'mizantra_attention_items' ? trace.filters.some(([key]) => key === 'id') ? mockItems.find(item => trace.filters.every(([key, value]) => item[key] === value)) || null : mockItems : table === 'mizantra_attention_events' ? mockEvents : table === 'mizantra_attention_preferences' ? { timezone: mockTimezone } : table === 'mizantra_attention_notifications' ? [] : table === 'mizantra_attention_scans' ? { errors: mockScanErrors } : null; return Promise.resolve({ data }).then(resolve, reject); } }; return query;
 } };
 jest.mock('@supabase/supabase-js', () => ({ createClient: () => mockDb }));
 describe('Scoped briefing orchestration', () => {
   const user = { id: owner, tenantId: tenant, role: { name: 'USER' }, permissions: ['items:read', 'inventory:read'] };
   let operations: ProactiveOperationsService, sources: any, operator: any;
   const stored = (extra: any = {}) => ({ id, tenant_id: tenant, profile: 'MIZANTRA', owner_id: owner, attention_key: 'ITEM_BELOW_REORDER:' + id, category: 'ITEM_BELOW_REORDER', entity_id: id, entity_type: 'ITEM', module: 'Inventory', severity: 'MEDIUM', status: 'ACTIVE', required_permission: 'inventory:read', title: 'Item below reorder', explanation: 'Recorded evidence only', evidence: { current_stock: 3, reorder_level: 10, required_read: 'items:read' }, ...extra });
-  beforeEach(() => { process.env.ERP_TENANT_PROFILE = 'MIZANTRA'; process.env.MIZANTRA_PROACTIVE_OPERATIONS_ENABLED = 'true'; process.env.MIZANTRA_DAILY_BRIEF_ENABLED = 'true'; process.env.MIZANTRA_PROACTIVE_NOTIFICATIONS_ENABLED = 'true'; mockItems = [stored()]; mockEvents = []; mockTimezone = 'UTC'; mockRpcResult = {}; mockRpc.mockClear(); mockMutation.mockClear(); mockTraces.length = 0; sources = { scan: jest.fn(async () => ({ items: [], complete_rules: [], errors: [] })) }; operator = { interpret: jest.fn(async () => ({ action_operator_plan: { status: 'NEEDS_INPUT' } })), execute: jest.fn(), approve: jest.fn() }; operations = new ProactiveOperationsService(sources, operator); });
+  beforeEach(() => { process.env.ERP_TENANT_PROFILE = 'MIZANTRA'; process.env.MIZANTRA_PROACTIVE_OPERATIONS_ENABLED = 'true'; process.env.MIZANTRA_DAILY_BRIEF_ENABLED = 'true'; process.env.MIZANTRA_PROACTIVE_NOTIFICATIONS_ENABLED = 'true'; mockItems = [stored()]; mockEvents = []; mockTimezone = 'UTC'; mockScanErrors = []; mockRpcResult = {}; mockRpc.mockClear(); mockMutation.mockClear(); mockTraces.length = 0; sources = { scan: jest.fn(async () => ({ items: [], complete_rules: [], errors: [] })) }; operator = { interpret: jest.fn(async () => ({ action_operator_plan: { status: 'NEEDS_INPUT' } })), execute: jest.fn(), approve: jest.fn() }; operations = new ProactiveOperationsService(sources, operator); });
   afterEach(() => { expect(operator.execute).not.toHaveBeenCalled(); expect(operator.approve).not.toHaveBeenCalled(); expect(mockTraces.filter(trace => trace.mutation).every(trace => ['mizantra_attention_preferences', 'mizantra_attention_notifications'].includes(trace.table))).toBe(true); });
   it('filters both native permissions on every metadata read', async () => { expect((await operations.list({ ...user, permissions: ['items:read'] })).items).toEqual([]); });
   it('derives Diagnose target only from owned attention metadata', async () => {
@@ -65,12 +65,36 @@ describe('Scoped briefing orchestration', () => {
   it('blocks forged Brain context on briefing requests', async () => { await expect(operations.interpret(user, { message: 'Give me my morning brief', brain_context: { tenant_id: 'foreign' } })).rejects.toThrow('authenticated scope'); });
   it('does not activate for Saif even if raw flags are true', async () => { process.env.ERP_TENANT_PROFILE = 'SAIFSEAS'; expect(operations.configuration(user).enabled).toBe(false); await expect(operations.list(user)).rejects.toThrow('unavailable'); });
   it('allows Saif attention only with its explicit read-only gate and native permissions', async () => {
-    process.env.ERP_TENANT_PROFILE = 'SAIFSEAS'; process.env.SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED = 'true';
+    process.env.ERP_TENANT_PROFILE = 'SAIFSEAS'; process.env.SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED = 'true'; process.env.MIZANTRA_PROACTIVE_NOTIFICATIONS_ENABLED = 'false';
     try {
       expect(operations.configuration(user)).toMatchObject({ enabled: true, read_only: true, business_writes: false });
       mockItems = [stored({ profile: 'SAIFSEAS' })];
       expect((await operations.list(user)).items).toHaveLength(1);
       expect((await operations.list({ ...user, permissions: [] })).items).toEqual([]);
+      expect(mockMutation).not.toHaveBeenCalled();
+    } finally { delete process.env.SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED; }
+  });
+  it('withholds availability when the scoped metadata schema is not ready', async () => {
+    process.env.ERP_TENANT_PROFILE = 'SAIFSEAS'; process.env.SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED = 'true';
+    try {
+      mockRpcResult = false;
+      expect(await operations.ready(user)).toBe(false);
+      mockRpcResult = true;
+      expect(await operations.ready(user)).toBe(true);
+      expect(mockRpc).toHaveBeenCalledWith('mizantra_attention_scope_ready', { p_profile: 'SAIFSEAS' });
+      expect(mockMutation).not.toHaveBeenCalled();
+    } finally { delete process.env.SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED; }
+  });
+  it('returns Saif attention despite an incomplete diagnostic source', async () => {
+    process.env.ERP_TENANT_PROFILE = 'SAIFSEAS'; process.env.SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED = 'true'; process.env.MIZANTRA_PROACTIVE_NOTIFICATIONS_ENABLED = 'false';
+    try {
+      mockItems = [stored({ profile: 'SAIFSEAS' })];
+      sources.scan.mockResolvedValue({ items: [], complete_rules: [], errors: ['INVENTORY_DATA_DOCTOR_ISSUE:DIAGNOSTIC_COVERAGE_LIMIT'] });
+      const result = await operations.interpret(user, { message: "Today's attention" });
+      expect(result?.proactive_brief?.items).toHaveLength(1);
+      expect(result?.proactive_brief?.incomplete_sources).toEqual(['INVENTORY_DATA_DOCTOR_ISSUE:DIAGNOSTIC_COVERAGE_LIMIT']);
+      expect(result?.safety).toMatchObject({ read_only: true, executable: false });
+      expect(mockRpc).toHaveBeenCalledWith('mizantra_attention_reconcile', expect.objectContaining({ p_profile: 'SAIFSEAS', p_errors: ['INVENTORY_DATA_DOCTOR_ISSUE:DIAGNOSTIC_COVERAGE_LIMIT'], p_notify: false }));
       expect(mockMutation).not.toHaveBeenCalled();
     } finally { delete process.env.SAIFSEAS_PROACTIVE_READ_ONLY_ENABLED; }
   });

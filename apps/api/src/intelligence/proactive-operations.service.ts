@@ -20,6 +20,14 @@ export class ProactiveOperationsService {
     const flags = proactiveFlags();
     return { ...flags, enabled: flags.enabled && uuid.test(String(user?.tenantId || '')) && uuid.test(String(user?.userId || user?.id || '')), rule_count: ATTENTION_RULES.length, default_morning_hour: 8, read_only: true };
   }
+  async ready(user: any): Promise<boolean> {
+    const configuration = this.configuration(user);
+    if (!configuration.enabled) return false;
+    try {
+      const result = await this.db.rpc('mizantra_attention_scope_ready', { p_profile: configuration.profile });
+      return !result.error && result.data === true;
+    } catch { return false; }
+  }
   private scope(user: any): AttentionScope {
     const flags = this.configuration(user);
     if (!flags.enabled) throw new ForbiddenException('Proactive Operations is unavailable in your authenticated scope.');

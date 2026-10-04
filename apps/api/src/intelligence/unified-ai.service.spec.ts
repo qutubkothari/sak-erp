@@ -20,7 +20,7 @@ describe('Unified governed orchestration', () => {
     operator={configuration:jest.fn(()=>({enabled:true,mode:'APPROVAL_REQUIRED'})),interpret:jest.fn().mockResolvedValue({action_operator_plan:{id},status:'ACTION_OPERATOR_PLAN'}),get:jest.fn().mockResolvedValue({id,payload:{request:{brain_context:entity},warnings:[]}}),approve:jest.fn(),execute:jest.fn()};
     approval={configuration:jest.fn(()=>({enabled:true,supported_document_types:['purchase_order']})),interpret:jest.fn().mockResolvedValue({status:'SMART_APPROVAL_READ_ONLY',brain_context:entity}),review:jest.fn()};
     support={route:jest.fn().mockResolvedValue({status:'SUPPORT_INCIDENT',support_incident:{id}}),history:jest.fn().mockResolvedValue({support_incidents:[{id,status:'AWAITING_REVIEW'}]}),prepareDoctorFix:jest.fn().mockResolvedValue({status:'SUPPORT_INCIDENT',support_incident:{id}})};
-    proactive={configuration:jest.fn(()=>({enabled:true})),interpret:jest.fn().mockResolvedValue({status:'PROACTIVE_BRIEF',proactive_brief:{}}),why:jest.fn().mockResolvedValue({evidence_reference:{entity_type:'PO',entity_id:id}}),preparePlan:jest.fn().mockResolvedValue({action_operator_plan:{id}})};
+    proactive={configuration:jest.fn(()=>({enabled:true})),ready:jest.fn().mockResolvedValue(true),interpret:jest.fn().mockResolvedValue({status:'PROACTIVE_BRIEF',proactive_brief:{}}),why:jest.fn().mockResolvedValue({evidence_reference:{entity_type:'PO',entity_id:id}}),preparePlan:jest.fn().mockResolvedValue({action_operator_plan:{id}})};
     imports={workingContext:jest.fn().mockResolvedValue({batch:{id,status:'AWAITING_APPROVAL'},rows:[{}]}),actionItems:jest.fn().mockResolvedValue({item_ids:[id]})};
     erp=jest.fn().mockResolvedValue({status:'INTERPRETED',assistant_message:'Authorized ERP answer'});
     features={featureForApiPath:jest.fn().mockResolvedValue(null)};
@@ -464,6 +464,47 @@ describe('Unified governed orchestration', () => {
     expect((await service.configuration(user)).capabilities).not.toContain('ACTION_PLANNER');
     const result=await service.interpret(user,{message:'Prepare a PR',next_action:'PREPARE_PR_PLAN',brain_context:entity},erp);
     expect(result.status).toBe('UNIFIED_ERROR');expect(operator.interpret).not.toHaveBeenCalled();
+  });
+  it.each(["Today's attention",'What needs my attention today?'])('opens general Saif attention without an old item or report for %s',async message=>{
+    process.env.ERP_TENANT_PROFILE='SAIFSEAS';
+    const item={...entity,profile:'SAIFSEAS',entity_type:'item',document_number:'400-0002',current_route:'/dashboard/inventory/items'};
+    contexts.get.mockResolvedValue({id,version:4,working_ref:{current_type:'REPORT',report_session_id:id,entity}});
+    proactive.interpret.mockResolvedValue({status:'PROACTIVE_BRIEF',assistant_message:'156 authorized attention items. No business actions were taken.',proactive_brief:{items:[{id:owner}],incomplete_sources:['INVENTORY_DATA_DOCTOR_ISSUE:DIAGNOSTIC_COVERAGE_LIMIT']},safety:{read_only:true,executable:false}});
+    const result=await service.interpret(user,{message,unified_session_id:id,brain_context:item,session_id:id},erp);
+    expect(result.unified.route).toBe('PROACTIVE_OPERATIONS');
+    expect(result.proactive_brief.items).toHaveLength(1);
+    expect(result.assistant_message).toContain('Some attention checks are unavailable');
+    expect(proactive.interpret).toHaveBeenCalledWith(user,expect.objectContaining({brain_context:undefined,session_id:undefined}));
+    expect(contexts.get).not.toHaveBeenCalled();expect(brain.validateContext).not.toHaveBeenCalled();
+    expect(reporting.workingContext).not.toHaveBeenCalled();expect(operator.execute).not.toHaveBeenCalled();
+  });
+  it('next-action attention overrides a stale diagnosis and old PO',async()=>{
+    process.env.ERP_TENANT_PROFILE='SAIFSEAS';
+    contexts.get.mockResolvedValue({id,version:4,working_ref:{current_type:'DIAGNOSIS',entity,diagnosis_key:'OLD'}});
+    const result=await service.interpret(user,{message:'Diagnose this PO',next_action:'VIEW_ATTENTION',unified_session_id:id,screen_context:entity},erp);
+    expect(result.unified.route).toBe('PROACTIVE_OPERATIONS');expect(proactive.interpret).toHaveBeenCalledWith(user,expect.objectContaining({brain_context:undefined}));
+    expect(contexts.get).not.toHaveBeenCalled();expect(doctor.interpret).not.toHaveBeenCalled();
+  });
+  it('rejects a foreign item context even when the general attention list ignores its record',async()=>{
+    const result=await service.interpret(user,{message:"Today's attention",brain_context:{...entity,tenant_id:'foreign'}},erp);
+    expect(result.status).toBe('UNIFIED_ERROR');expect(proactive.interpret).not.toHaveBeenCalled();
+  });
+  it('never offers a next action for a disabled capability',async()=>{
+    const ref={current_type:'REPORT',entity,report_session_id:id,diagnosis_key:'CONFIRMED'};
+    const disabled={capabilities:[],entity_types:[],can_export:false};
+    expect((service as any).actions(disabled,ref,'ITEMS')).toEqual([]);
+    proactive.configuration.mockReturnValue({enabled:false});operator.configuration.mockReturnValue({enabled:false});
+    const result=await service.interpret(user,{message:'Show overdue POs',brain_context:entity},erp);
+    expect(result.unified.next_actions.map((action:any)=>action.key)).not.toEqual(expect.arrayContaining(['VIEW_ATTENTION','PREPARE_PR_PLAN']));
+    expect(proactive.interpret).not.toHaveBeenCalled();expect(operator.execute).not.toHaveBeenCalled();
+  });
+  it('hides attention discovery when its metadata scope is unavailable',async()=>{
+    proactive.ready.mockResolvedValue(false);
+    const configuration=await service.configuration(user);
+    expect(configuration.capabilities).not.toContain('PROACTIVE_OPERATIONS');
+    const result=await service.interpret(user,{message:'Who supplies this item?',brain_context:entity},erp);
+    expect(result.unified.next_actions.map((action:any)=>action.key)).not.toContain('VIEW_ATTENTION');
+    expect(proactive.interpret).not.toHaveBeenCalled();
   });
   it.each(['SAIFSEAS','MIZANTRA','ARWA'])('respects runtime profile %s',async profile=>{
     process.env.ERP_TENANT_PROFILE=profile;expect((await service.configuration(user)).profile).toBe(profile);

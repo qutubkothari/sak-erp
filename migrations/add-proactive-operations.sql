@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS public.mizantra_attention_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL,
-  profile text NOT NULL CHECK (profile IN ('MIZANTRA','ARWA')), owner_id uuid NOT NULL,
+  profile text NOT NULL CHECK (profile IN ('MIZANTRA','ARWA','SAIFSEAS')), owner_id uuid NOT NULL,
   attention_key text NOT NULL, category text NOT NULL, module text NOT NULL,
   entity_type text NOT NULL, entity_id text NOT NULL, entity_reference text NOT NULL,
   severity text NOT NULL CHECK (severity IN ('CRITICAL','HIGH','MEDIUM','LOW','INFO')),
@@ -48,7 +48,7 @@ DECLARE incoming jsonb; current_row public.mizantra_attention_items; previous js
   event_id uuid; new_count integer:=0; resolved_count integer:=0; notification_count integer:=0;
   active_count integer; meaningful boolean; should_notify boolean; existed boolean; previous_scan public.mizantra_attention_scans;
 BEGIN
-  IF p_tenant IS NULL OR p_owner IS NULL OR p_profile NOT IN ('MIZANTRA','ARWA') OR jsonb_typeof(p_items)<>'array' OR jsonb_array_length(p_items)>2000 OR jsonb_typeof(p_errors)<>'array' OR p_duration<0 OR p_started>clock_timestamp()+interval '1 minute' THEN RAISE EXCEPTION 'ATTENTION_SCOPE_INVALID'; END IF;
+  IF p_tenant IS NULL OR p_owner IS NULL OR p_profile NOT IN ('MIZANTRA','ARWA','SAIFSEAS') OR jsonb_typeof(p_items)<>'array' OR jsonb_array_length(p_items)>2000 OR jsonb_typeof(p_errors)<>'array' OR p_duration<0 OR p_started>clock_timestamp()+interval '1 minute' THEN RAISE EXCEPTION 'ATTENTION_SCOPE_INVALID'; END IF;
   PERFORM pg_advisory_xact_lock(hashtextextended(p_tenant::text||p_profile||p_owner::text,0));
   SELECT * INTO previous_scan FROM public.mizantra_attention_scans WHERE tenant_id=p_tenant AND profile=p_profile AND owner_id=p_owner;
   IF FOUND AND previous_scan.started_at>p_started THEN RETURN jsonb_build_object('stale_scan',true); END IF;
@@ -93,6 +93,18 @@ BEGIN
   RETURN jsonb_build_object('active_count',active_count,'new_count',new_count,'resolved_count',resolved_count,'notification_count',notification_count);
 END $$;
 
+CREATE OR REPLACE FUNCTION public.mizantra_attention_scope_ready(p_profile text)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+  SELECT p_profile IN ('MIZANTRA','ARWA','SAIFSEAS')
+    AND EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conrelid='public.mizantra_attention_items'::regclass
+        AND conname='mizantra_attention_items_profile_check'
+        AND pg_get_constraintdef(oid) LIKE '%SAIFSEAS%'
+    )
+    AND pg_get_functiondef('public.mizantra_attention_reconcile(uuid,text,uuid,timestamptz,jsonb,text[],jsonb,integer,boolean)'::regprocedure) LIKE '%SAIFSEAS%';
+$$;
+
 CREATE OR REPLACE FUNCTION public.mizantra_attention_state(p_tenant uuid,p_profile text,p_owner uuid,p_id uuid,p_status text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE current_row public.mizantra_attention_items; event_name text;
@@ -115,7 +127,7 @@ CREATE OR REPLACE FUNCTION public.mizantra_attention_brief(p_tenant uuid,p_profi
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE result public.mizantra_daily_briefs;
 BEGIN
-  IF p_profile NOT IN ('MIZANTRA','ARWA') OR NOT EXISTS(SELECT 1 FROM pg_timezone_names WHERE name=p_timezone) OR EXISTS(SELECT 1 FROM unnest(p_ids) entity WHERE NOT EXISTS(SELECT 1 FROM public.mizantra_attention_items WHERE id=entity AND tenant_id=p_tenant AND profile=p_profile AND owner_id=p_owner)) THEN RAISE EXCEPTION 'BRIEF_SCOPE_INVALID'; END IF;
+  IF p_profile NOT IN ('MIZANTRA','ARWA','SAIFSEAS') OR NOT EXISTS(SELECT 1 FROM pg_timezone_names WHERE name=p_timezone) OR EXISTS(SELECT 1 FROM unnest(p_ids) entity WHERE NOT EXISTS(SELECT 1 FROM public.mizantra_attention_items WHERE id=entity AND tenant_id=p_tenant AND profile=p_profile AND owner_id=p_owner)) THEN RAISE EXCEPTION 'BRIEF_SCOPE_INVALID'; END IF;
   INSERT INTO public.mizantra_daily_briefs(tenant_id,profile,owner_id,local_date,timezone,attention_ids) VALUES(p_tenant,p_profile,p_owner,p_date,p_timezone,p_ids) ON CONFLICT(tenant_id,profile,owner_id,local_date) DO NOTHING;
   SELECT * INTO result FROM public.mizantra_daily_briefs WHERE tenant_id=p_tenant AND profile=p_profile AND owner_id=p_owner AND local_date=p_date;
   RETURN to_jsonb(result);
@@ -130,4 +142,6 @@ DO $$ DECLARE table_name text; BEGIN
 END $$;
 REVOKE ALL ON FUNCTION public.mizantra_attention_reconcile(uuid,text,uuid,timestamptz,jsonb,text[],jsonb,integer,boolean),public.mizantra_attention_state(uuid,text,uuid,uuid,text),public.mizantra_attention_brief(uuid,text,uuid,date,text,uuid[]) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.mizantra_attention_reconcile(uuid,text,uuid,timestamptz,jsonb,text[],jsonb,integer,boolean),public.mizantra_attention_state(uuid,text,uuid,uuid,text),public.mizantra_attention_brief(uuid,text,uuid,date,text,uuid[]) TO service_role;
+REVOKE ALL ON FUNCTION public.mizantra_attention_scope_ready(text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.mizantra_attention_scope_ready(text) TO service_role;
 NOTIFY pgrst,'reload schema';

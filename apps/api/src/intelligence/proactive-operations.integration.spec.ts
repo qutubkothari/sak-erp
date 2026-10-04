@@ -11,13 +11,16 @@ describe('Proactive metadata PostgreSQL lifecycle', () => {
   const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
   const sql = (query: string, params: any[] = []) => new Promise<any>(async (resolveQuery, reject) => { const id = ++sequence; pending.set(id, { resolve: resolveQuery, reject }); worker.postMessage({ id, query, params }); });
   const item = (extra: any = {}) => ({ attention_key: 'OVERDUE_OPEN_PO:po-1', category: 'OVERDUE_OPEN_PO', module: 'Purchasing', entity_type: 'PO', entity_id: '33333333-3333-4333-8333-333333333333', entity_reference: 'PO-1', severity: 'HIGH', title: 'PO-1 is overdue', explanation: '30 accepted units remain outstanding.', evidence: { remaining_qty: 30 }, source: 'ERP', permission: 'purchase_orders:read', available_actions: [], due_date: '2026-10-01', fingerprint: attentionHash({ qty: 30 }), ...extra });
-  const scan = async (items = [item()], rules = ['OVERDUE_OPEN_PO'], notify = true, scopeOwner = owner, started = new Date().toISOString()) => (await sql('SELECT public.mizantra_attention_reconcile($1::uuid,$2,$3::uuid,$4::timestamptz,$5::jsonb,$6::text[],$7::jsonb,$8,$9) AS result', [tenant, 'MIZANTRA', scopeOwner, started, JSON.stringify(items), rules, '[]', 12, notify])).rows[0].result;
+  const scan = async (items = [item()], rules = ['OVERDUE_OPEN_PO'], notify = true, scopeOwner = owner, started = new Date().toISOString(), profile = 'MIZANTRA') => (await sql('SELECT public.mizantra_attention_reconcile($1::uuid,$2,$3::uuid,$4::timestamptz,$5::jsonb,$6::text[],$7::jsonb,$8,$9) AS result', [tenant, profile, scopeOwner, started, JSON.stringify(items), rules, '[]', 12, notify])).rows[0].result;
   const rows = async (table: string) => (await sql(`SELECT * FROM public.${table} ORDER BY created_at`, [])).rows;
   beforeAll(async () => {
     worker = new Worker(`const {parentPort}=require('node:worker_threads');(async()=>{const {PGlite}=await import(${JSON.stringify(pathToFileURL(require.resolve('@electric-sql/pglite')).href)});const db=new PGlite();await db.exec('CREATE ROLE anon;CREATE ROLE authenticated;CREATE ROLE service_role;');parentPort.on('message',async message=>{try{const result=await db.query(message.query,message.params);parentPort.postMessage({id:message.id,result});}catch(error){parentPort.postMessage({id:message.id,error:error.message});}});parentPort.postMessage({ready:true});})().catch(error=>parentPort.postMessage({fatal:error.message}));`, { eval: true });
     await new Promise<void>((ready, reject) => { worker.on('message', message => { if (message.ready) ready(); else if (message.fatal) reject(new Error(message.fatal)); else { const callback = pending.get(message.id); if (!callback) return; pending.delete(message.id); message.error ? callback.reject(new Error(message.error)) : callback.resolve(message.result); } }); worker.on('error', reject); });
     const migration = readFileSync(resolve(__dirname, '../../../../migrations/add-proactive-operations.sql'), 'utf8');
-    await sql('DO $migration$ BEGIN EXECUTE ' + "'" + migration.replace(/'/g, "''") + "'" + ';END $migration$;');
+    const legacy = migration.replaceAll("'MIZANTRA','ARWA','SAIFSEAS'", "'MIZANTRA','ARWA'");
+    await sql('DO $migration$ BEGIN EXECUTE ' + "'" + legacy.replace(/'/g, "''") + "'" + ';END $migration$;');
+    const extension = readFileSync(resolve(__dirname, '../../../../migrations/extend-proactive-operations-saifseas.sql'), 'utf8').replace(/^BEGIN;/m, '').replace(/^COMMIT;/m, '');
+    await sql('DO $migration$ BEGIN EXECUTE ' + "'" + extension.replace(/'/g, "''") + "'" + ';END $migration$;');
     await sql('CREATE TABLE public.purchase_orders(id uuid PRIMARY KEY,status text);');
     await sql("INSERT INTO public.purchase_orders VALUES('33333333-3333-4333-8333-333333333333','APPROVED');");
     for (const table of businessTables.slice(1)) {
@@ -49,6 +52,17 @@ describe('Proactive metadata PostgreSQL lifecycle', () => {
   it('fails atomic reconciliation on invalid payload', async () => { await expect(scan([item(), item({ attention_key: 'second', severity: 'OPAQUE_SCORE' })])).rejects.toThrow('ATTENTION_PAYLOAD_INVALID'); expect((await sql('SELECT count(*)::int AS count FROM mizantra_attention_items')).rows[0].count).toBe(0); });
   it('does not let an older scan resolve newer evidence', async () => { await scan(); const result = await scan([], ['OVERDUE_OPEN_PO'], true, owner, '2020-01-01'); expect(result.stale_scan).toBe(true); expect((await sql('SELECT status FROM mizantra_attention_items')).rows[0].status).toBe('ACTIVE'); });
   it('keeps user audiences separate', async () => { await scan(); await scan([item()], ['OVERDUE_OPEN_PO'], true, foreign); expect((await sql('SELECT count(*)::int AS count FROM mizantra_attention_items')).rows[0].count).toBe(2); });
+  it('upgrades a legacy metadata schema for Saif while preserving profile isolation', async () => {
+    for (const profile of ['SAIFSEAS','MIZANTRA','ARWA']) expect((await sql('SELECT mizantra_attention_scope_ready($1) AS ready', [profile])).rows[0].ready).toBe(true);
+    expect((await sql('SELECT mizantra_attention_scope_ready($1) AS ready', ['OTHER'])).rows[0].ready).toBe(false);
+    await scan([item()], ['OVERDUE_OPEN_PO'], false, owner, new Date().toISOString(), 'SAIFSEAS');
+    const stored = (await sql("SELECT id FROM mizantra_attention_items WHERE profile='SAIFSEAS'")).rows[0];
+    expect(stored.id).toBeDefined();
+    await sql('SELECT mizantra_attention_brief($1::uuid,$2,$3::uuid,$4::date,$5,$6::uuid[])', [tenant, 'SAIFSEAS', owner, '2026-10-05', 'UTC', [stored.id]]);
+    await expect(sql('SELECT mizantra_attention_state($1::uuid,$2,$3::uuid,$4::uuid,$5)', [tenant, 'MIZANTRA', owner, stored.id, 'DISMISSED'])).rejects.toThrow('ATTENTION_NOT_FOUND');
+    await expect(sql('SELECT mizantra_attention_state($1::uuid,$2,$3::uuid,$4::uuid,$5)', [foreign, 'SAIFSEAS', owner, stored.id, 'DISMISSED'])).rejects.toThrow('ATTENTION_NOT_FOUND');
+    expect((await sql('SELECT status FROM purchase_orders')).rows[0].status).toBe('APPROVED');
+  });
   it('changes zero native PR/PO/GRN/stock/accounting/attendance/payroll rows through the full metadata lifecycle', async () => {
     const snapshot = async () => attentionHash(await Promise.all(businessTables.map(async table => ({ table, rows: (await sql(`SELECT to_jsonb(record) AS row FROM public.${table} record ORDER BY id`)).rows }))));
     const before = await snapshot();
