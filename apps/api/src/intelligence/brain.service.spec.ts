@@ -83,6 +83,13 @@ describe("Brain validated context and graph", () => {
     records.grns=[];
     expect((await ask(message)).message).toBe('No GRNs are recorded against PO-312.');
   });
+  it('does not replace the normalized PO quantity request with a related-GRN answer', async () => {
+    records.grns=[];
+    const reply=await ask('What is the ordered and received quantity for this PO?');
+    expect(reply.message).not.toBe('No GRNs are recorded against PO-312.');
+    expect(reply.evidence.some((fact:{claim:string})=>fact.claim==='RELATED_GRNS')).toBe(false);
+    expect(reply.evidence.some((fact:{claim:string})=>fact.claim==='PO_RECEIPT_STATE')).toBe(true);
+  });
   it("rejects forged tenant", async () => { await expect(ask("Why is this open?", { ...envelope(), tenant_id: otherTenant })).rejects.toThrow("authenticated scope"); });
   it("blocks forged diagnostic context before invoking a runner", async () => {
     const inspect = jest.fn();

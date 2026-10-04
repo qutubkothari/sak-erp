@@ -33,7 +33,7 @@ export function unifiedFlags() {
 }
 
 export function isPoGrnRequest(message: string) {
-  return /\bGRNs?\b.*\b(?:for|against)\b.*\bPO\b|\b(?:related|its) GRNs?\b|\b(?:received|receipts?)\b.*\b(?:against|for)\b.*\b(?:this PO|PO[-/])/i.test(message);
+  return /\bGRNs?\b.*\b(?:for|against)\b.*\bPO\b|\b(?:related|its) GRNs?\b/i.test(message) || (/\b(?:received|receipts?)\b.*\b(?:against|for)\b.*\b(?:this PO|PO[-/])/i.test(message) && !/\b(?:quantity|ordered|how many)\b/i.test(message));
 }
 
 export function isExplicitPoReport(message: string) {

@@ -20,7 +20,7 @@ Branch: `fix/unified-ai-uat-context-routing`.
 13. History remains explicitly selectable and separate from the fresh screen default.
 14. Explicit plural PO reports discard validated entity defaults before report interpretation.
 15. Relative record questions return to freshly validated screen context; report refinements retain their owned report.
-16. The requested related-GRN aliases normalize to native Brain wording.
+16. The requested related-GRN aliases normalize to native Brain wording without matching ordered/received quantity questions.
 17. Exact PO-number lookup is bounded, tenant-scoped and permission-checked; ambiguous matches are rejected.
 18. Zero receipts have the exact verified reply `No GRNs are recorded against PO-2026-09-293.`; English metadata persistence does not rephrase it.
 19. Open PO and remaining-quantity aliases, including bare noun/threshold phrases, route through the native report engine.
@@ -34,7 +34,7 @@ Branch: `fix/unified-ai-uat-context-routing`.
 
 ## Local Release Gate
 
-- 118 API suites and 1,672 tests passed, including 45 added regressions.
+- 118 API suites and 1,673 tests passed, including 46 added regressions.
 - Nine release-gate self-tests passed.
 - No new or worsened diagnostics; the existing baseline remains 208.
 - API SWC production build and Next production build passed.
