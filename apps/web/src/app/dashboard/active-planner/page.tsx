@@ -1150,6 +1150,14 @@ export default function ActivePlannerPage() {
             : undefined,
       });
       if(drawerScope && requestEpoch !== attentionTaskEpoch(sessionStorage,drawerScope))return;
+      if (data.unified?.route === 'PROACTIVE_OPERATIONS' && data.proactive_brief) {
+        freshScreenContext.current = null;
+        freshScreenList.current = null;
+        setBrainContext(null);
+        setScreenList(null);
+        sessionStorage.removeItem(BRAIN_CONTEXT_KEY);
+        sessionStorage.removeItem(ASK_LIST_CONTEXT_KEY);
+      }
       if (drawerScope && data.unified?.session_id && data.unified.session_version) writeDrawerSession(sessionStorage,drawerScope,drawerOrigin(window.location.pathname,freshScreenContext.current,freshScreenList.current),{session_id:data.unified.session_id,session_version:data.unified.session_version,conversation_id:data.conversation_id || conversationId || undefined,context_ref:data.report && data.session_id ? {type:'REPORT',id:data.session_id,saved_report_id:data.report.saved_report_id} : undefined});
       if (mode !== "status") setInput("");
       setClarifySupport(false);
