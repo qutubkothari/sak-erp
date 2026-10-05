@@ -417,6 +417,21 @@ export class HrController {
     return this.hrService.getSalaryComponents(req.user.tenantId, employeeId);
   }
 
+  @Post("salary/:employeeId/revisions")
+  @RequireUpdate("hr")
+  createSalaryRevision(
+    @Request() req: any,
+    @Param("employeeId") employeeId: string,
+    @Body() body: any,
+  ) {
+    return this.hrService.createEffectiveDatedSalaryRevision(
+      req.user.tenantId,
+      employeeId,
+      req.user.userId,
+      body,
+    );
+  }
+
   @Put("salary/employee/:employeeId")
   @RequireUpdate("hr")
   replaceSalaryComponents(
@@ -450,6 +465,24 @@ export class HrController {
   @Get("payroll/runs")
   getPayrollRuns(@Request() req: any) {
     return this.hrService.getPayrollRuns(req.user.tenantId);
+  }
+
+  @Get("payroll/control/features")
+  @RequireRead("hr")
+  getPayrollControlFeatures(@Request() req: any) {
+    return this.hrService.getPayrollControlFlags(req.user.tenantId);
+  }
+
+  @Get("payroll/control/month/:month")
+  @RequireRead("hr")
+  getPayrollMonthCockpit(@Request() req: any, @Param("month") month: string) {
+    return this.hrService.getPayrollMonthCockpit(req.user.tenantId, month);
+  }
+
+  @Get("payroll/control/working/:payslipId")
+  @RequireRead("hr")
+  getPayrollWorking(@Request() req: any, @Param("payslipId") payslipId: string) {
+    return this.hrService.getPayrollWorking(req.user.tenantId, payslipId);
   }
 
   // Payslip Generation

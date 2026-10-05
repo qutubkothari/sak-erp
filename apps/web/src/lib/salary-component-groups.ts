@@ -7,6 +7,9 @@ export interface SalaryComponentRow {
   amount: number;
   is_taxable: boolean;
   ctc_revised_date?: string | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  effective_date_state?: string | null;
   effective_date?: string | null;
   revised_date?: string | null;
 }
@@ -33,7 +36,7 @@ const componentOrder: Record<string, number> = {
 };
 
 const revisedDate = (component: SalaryComponentRow) =>
-  component.ctc_revised_date || component.revised_date || component.effective_date || null;
+  component.effective_from || component.ctc_revised_date || component.revised_date || component.effective_date || null;
 
 const dateValue = (date: string | null) => {
   if (!date) return Number.NEGATIVE_INFINITY;
@@ -66,6 +69,7 @@ export function groupSalaryComponents(
       const ctc = components
         .filter((component) => String(component.component_type).toUpperCase() === "CTC")
         .filter((component) => dateValue(revisedDate(component)) <= todayValue)
+        .filter((component) => !component.effective_to || dateValue(component.effective_to) >= todayValue)
         .sort((a, b) => dateValue(revisedDate(b)) - dateValue(revisedDate(a)))[0] || null;
       const dates = components
         .map(revisedDate)
@@ -98,4 +102,11 @@ export function filterSalaryComponentGroups(
       return matching.length ? { ...group, components: matching } : null;
     })
     .filter((group): group is SalaryComponentEmployeeGroup => Boolean(group));
+}
+
+export function salaryComponentIsCurrent(component: SalaryComponentRow, today = new Date()): boolean {
+  const currentDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const start = revisedDate(component);
+  const end = component.effective_to || null;
+  return (!start || dateValue(start) <= currentDay) && (!end || dateValue(end) >= currentDay);
 }

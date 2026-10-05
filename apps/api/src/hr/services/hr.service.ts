@@ -8,6 +8,14 @@ import {
 } from "../../auth/utils/permission-utils";
 import { AccountingService } from "../../accounting/accounting.service";
 import { HrAttendanceControlService } from "./hr-attendance-control.service";
+import {
+  derivePayrollStage,
+  calculateNetVariance,
+  monthContainsEffectiveDate,
+  safePayrollFeatureFlags,
+  summarizePayrollBlockers,
+  type PayrollBlocker,
+} from "../payroll-control.domain";
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
@@ -1877,6 +1885,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       tenantId,
       String(data?.employee_id || ""),
     );
+    if (await this.employeeHasPayrollHistory(tenantId, String(data?.employee_id || ""))) {
+      throw new ConflictException(
+        "This employee has payroll history. Add salary changes through an effective-dated revision.",
+      );
+    }
 
     const componentData = {
       ...data,
@@ -1964,6 +1977,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (!Array.isArray(components)) {
       throw new BadRequestException("Salary components must be an array");
     }
+    if (await this.employeeHasPayrollHistory(tenantId, employeeId)) {
+      throw new ConflictException(
+        "This employee has payroll history. Salary components cannot be replaced or removed; add an effective-dated revision instead.",
+      );
+    }
 
     let deleteResult = await this.supabase
       .from("salary_components")
@@ -1998,6 +2016,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   async deleteSalaryComponent(tenantId: string, id: string) {
+    const { data: existingRow, error: existingError } = await this.supabase
+      .from("salary_components")
+      .select("id,employee_id")
+      .eq("id", id)
+      .single();
+    if (existingError) throw new Error(existingError.message);
+    const employeeId = String((existingRow as any)?.employee_id || "");
+    await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+    if (await this.employeeHasPayrollHistory(tenantId, employeeId)) {
+      throw new ConflictException(
+        "This salary component is protected by payroll history. End-date it instead of deleting it.",
+      );
+    }
     const { error } = await this.supabase
       .from("salary_components")
       .delete()
@@ -2032,6 +2063,289 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     }
 
     return { message: "Salary component deleted successfully" };
+  }
+
+  private async employeeHasPayrollHistory(tenantId: string, employeeId: string) {
+    const { data, error } = await this.supabase
+      .from("payslips")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("employee_id", employeeId)
+      .limit(1);
+    if (!error) return Boolean(data?.length);
+    if (isMissingColumnError(error, "payslips.tenant_id") || isMissingColumnError(error, "tenant_id")) {
+      await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+      const { data: legacyData, error: legacyError } = await this.supabase
+        .from("payslips")
+        .select("id")
+        .eq("employee_id", employeeId)
+        .limit(1);
+      if (legacyError) throw new Error(legacyError.message);
+      return Boolean(legacyData?.length);
+    }
+    if (isMissingRelationError(error, "payslips")) return false;
+    throw new Error(error.message);
+  }
+
+  async getPayrollControlFlags(tenantId: string) {
+    const { data, error } = await this.supabase
+      .from("hr_payroll_feature_flags")
+      .select("feature_key,is_enabled")
+      .eq("tenant_id", tenantId);
+    // During rollout the additive migration may not yet be installed. Treat
+    // that state as disabled, never as implicit entitlement.
+    if (error) {
+      if (isMissingRelationError(error, "hr_payroll_feature_flags")) {
+        return safePayrollFeatureFlags();
+      }
+      throw new Error(error.message);
+    }
+    return safePayrollFeatureFlags(data || []);
+  }
+
+  async createEffectiveDatedSalaryRevision(
+    tenantId: string,
+    employeeId: string,
+    actorId: string,
+    payload: { effective_from?: string; reason?: string; components?: any[] },
+  ) {
+    const flags = await this.getPayrollControlFlags(tenantId);
+    if (!flags.PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED) {
+      throw new ConflictException("Effective-dated salary changes are not enabled for this tenant.");
+    }
+    await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+    const effectiveFrom = String(payload?.effective_from || "");
+    const reason = String(payload?.reason || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom) || !Number.isFinite(Date.parse(`${effectiveFrom}T00:00:00Z`))) {
+      throw new BadRequestException("An effective_from date in YYYY-MM-DD format is required.");
+    }
+    if (!reason) throw new BadRequestException("A reason is required for a salary revision.");
+    if (!Array.isArray(payload?.components) || payload.components.length === 0) {
+      throw new BadRequestException("Provide at least one salary component revision.");
+    }
+    const components = payload.components.map((item: any) => {
+      const amount = Number(item?.amount);
+      const componentType = String(item?.component_type || "").trim().toUpperCase();
+      const componentName = String(item?.component_name || "").trim();
+      if (!componentType || !componentName || !Number.isFinite(amount)) {
+        throw new BadRequestException("Each salary component needs a type, name, and numeric amount.");
+      }
+      return {
+        supersedes_id: item.supersedes_id || null,
+        component_type: componentType,
+        component_name: componentName,
+        amount,
+        is_taxable: item.is_taxable !== false,
+      };
+    });
+    const { data, error } = await this.supabase.rpc("hr_create_salary_revision", {
+      p_tenant_id: tenantId,
+      p_employee_id: employeeId,
+      p_actor_id: actorId,
+      p_effective_from: effectiveFrom,
+      p_reason: reason,
+      p_components: components,
+    });
+    if (error) throw new BadRequestException(error.message);
+    return { employee_id: employeeId, effective_from: effectiveFrom, reason, components: data || [] };
+  }
+
+  async getPayrollMonthCockpit(tenantId: string, month: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      throw new BadRequestException("Payroll month must use YYYY-MM format");
+    }
+    const flags = await this.getPayrollControlFlags(tenantId);
+    if (!flags.PAYROLL_MONTH_COCKPIT_ENABLED) {
+      return { enabled: false, month, flags, blockers: [], counts: { blocker_count: 0, warning_count: 0, info_count: 0 } };
+    }
+
+    const [{ data: runs, error: runError }, { data: employees, error: employeeError }] = await Promise.all([
+      this.supabase.from("payroll_runs").select("*").eq("tenant_id", tenantId).eq("payroll_month", month).order("created_at", { ascending: false }),
+      this.supabase.from("employees").select("*").eq("tenant_id", tenantId),
+    ]);
+    if (runError) throw new Error(runError.message);
+    if (employeeError) throw new Error(employeeError.message);
+    const run = (runs || [])[0] || null;
+    const blockers: PayrollBlocker[] = [];
+    const eligibleEmployees = (employees || []).filter((employee: any) =>
+      ["ACTIVE", "ON_LEAVE"].includes(String(employee.status || "ACTIVE").toUpperCase()),
+    );
+    const salaryRows = await this.getSalaryComponents(tenantId);
+    const employeeNames = new Map((employees || []).map((employee: any) => [String(employee.id), employee.employee_name || employee.employee_code || "Employee"]));
+    const salaryByEmployee = new Set(
+      salaryRows.filter((row: any) => monthContainsEffectiveDate(row.effective_from, row.effective_to, month)).map((row: any) => String(row.employee_id)),
+    );
+    for (const employee of eligibleEmployees) {
+      if (salaryByEmployee.has(String(employee.id))) continue;
+      blockers.push({
+        key: `salary-missing:${employee.id}`,
+        entity_id: String(employee.id),
+        employee_name: employee.employee_name || employee.employee_code || "Employee",
+        reason: "No salary component is configured for this month.",
+        responsible: "HR",
+        fix_href: "/dashboard/hr/management?section=management&tab=payroll",
+        severity: "BLOCKER",
+      });
+    }
+
+    const { start: monthStart, end: monthEnd } = monthToRange(month);
+    const { data: attendance, error: attendanceError } = await this.supabase
+      .from("attendance")
+      .select("id,employee_id,attendance_date,approval_status,status")
+      .eq("tenant_id", tenantId)
+      .gte("attendance_date", monthStart)
+      .lte("attendance_date", monthEnd);
+    if (!attendanceError) {
+      for (const row of attendance || []) {
+        const state = String(row.approval_status || "").toUpperCase();
+        if (!["PENDING", "REJECTED"].includes(state)) continue;
+        blockers.push({
+          key: `attendance:${row.id}`,
+          entity_id: String(row.employee_id || row.id),
+          employee_name: employeeNames.get(String(row.employee_id)) || "Employee",
+          reason: state === "PENDING" ? "Attendance correction is awaiting review." : "Attendance correction was rejected and needs resolution.",
+          responsible: "Attendance reviewer",
+          fix_href: "/dashboard/hr/management?section=management&tab=attendance",
+          evidence: { attendance_date: row.attendance_date, approval_status: state, record_id: row.id },
+          severity: "BLOCKER",
+        });
+      }
+    } else if (!isMissingRelationError(attendanceError, "attendance") && !isMissingColumnError(attendanceError, "attendance.tenant_id")) {
+      throw new Error(attendanceError.message);
+    }
+
+    const { data: leaves, error: leaveError } = await this.supabase
+      .from("leave_requests")
+      .select("id,employee_id,start_date,end_date,status")
+      .eq("tenant_id", tenantId)
+      .eq("status", "PENDING");
+    if (!leaveError) {
+      for (const row of leaves || []) {
+        if (String(row.end_date) < monthStart || String(row.start_date) > monthEnd) continue;
+        blockers.push({
+          key: `leave:${row.id}`,
+          entity_id: String(row.employee_id),
+          employee_name: employeeNames.get(String(row.employee_id)) || "Employee",
+          reason: "Leave request overlaps the payroll month and is still pending.",
+          responsible: "Leave approver",
+          fix_href: "/dashboard/hr/management?section=management&tab=leaves",
+          evidence: { start_date: row.start_date, end_date: row.end_date, request_id: row.id },
+          severity: "WARNING",
+        });
+      }
+    } else if (!isMissingRelationError(leaveError, "leave_requests") && !isMissingColumnError(leaveError, "leave_requests.tenant_id")) {
+      throw new Error(leaveError.message);
+    }
+
+    const allSlips = run ? await this.getPayslips(tenantId) : [];
+    const slips = allSlips.filter((slip: any) => String(slip.payroll_run_id) === String(run?.id));
+    const totals = slips.reduce((sum: any, slip: any) => ({
+      gross: sum.gross + Number(slip.gross_salary || 0),
+      deductions: sum.deductions + Number(slip.total_deductions || 0),
+      net: sum.net + Number(slip.net_salary || 0),
+    }), { gross: 0, deductions: 0, net: 0 });
+    const variance = slips.map((slip: any) => {
+      const previous = allSlips
+        .filter((candidate: any) => String(candidate.employee_id) === String(slip.employee_id) && String(candidate.salary_month || "") < month)
+        .sort((a: any, b: any) => String(b.salary_month || "").localeCompare(String(a.salary_month || "")))[0];
+      const diff = previous ? calculateNetVariance(Number(previous.net_salary || 0), Number(slip.net_salary || 0)) : null;
+      const oldBreakdown = previous?.payroll_breakdown || {};
+      const currentBreakdown = slip.payroll_breakdown || {};
+      const oldComponents = new Map((oldBreakdown.salary_components || []).map((item: any) => [String(item.id), Number(item.amount || 0)]));
+      const salaryChanged = (currentBreakdown.salary_components || []).some((item: any) => oldComponents.has(String(item.id)) && oldComponents.get(String(item.id)) !== Number(item.amount || 0));
+      const reasons = [
+        salaryChanged ? "Salary revision" : null,
+        previous && Number(previous.attendance_days || 0) !== Number(slip.attendance_days || 0) ? "Attendance days changed" : null,
+        previous && Number(previous.overtime_amount || 0) !== Number(slip.overtime_amount || 0) ? "Overtime changed" : null,
+        previous && Number(previous.total_deductions || 0) !== Number(slip.total_deductions || 0) ? "Deductions changed" : null,
+        !previous ? "No earlier payslip found" : null,
+      ].filter(Boolean);
+      return {
+        employee_id: slip.employee_id,
+        employee_name: employeeNames.get(String(slip.employee_id)) || "Employee",
+        previous_month: previous?.salary_month || null,
+        previous_net: diff?.previous_net ?? null,
+        current_net: Number(slip.net_salary || 0),
+        difference: diff?.difference ?? null,
+        difference_percent: diff?.difference_percent ?? null,
+        known_reasons: reasons,
+        flagged: !(currentBreakdown.calculation_lines?.length),
+      };
+    });
+    const counts = summarizePayrollBlockers(blockers);
+    return {
+      enabled: true,
+      month,
+      version: 1,
+      stage: derivePayrollStage(run?.status),
+      responsible: "HR / Payroll",
+      last_action: run?.status || "OPEN",
+      last_action_at: run?.created_at || null,
+      blockers,
+      counts,
+      variance,
+      employee_count: eligibleEmployees.length,
+      payroll_employee_count: (slips || []).length,
+      gross: totals.gross,
+      deductions: totals.deductions,
+      net: totals.net,
+      approval_state: run?.status === "APPROVED" ? "APPROVED" : "NOT_APPROVED",
+      payment_state: run?.status === "PAID" ? "PAID" : "NOT_PAID",
+      legacy_run: run,
+      flags,
+      read_only: true,
+    };
+  }
+
+  async getPayrollWorking(tenantId: string, payslipId: string) {
+    const flags = await this.getPayrollControlFlags(tenantId);
+    if (!flags.PAYROLL_WORKING_ENABLED) {
+      return { enabled: false, reason: "Payroll Working is not enabled for this tenant." };
+    }
+    const slips = await this.getPayslips(tenantId);
+    const current = slips.find((slip: any) => String(slip.id) === payslipId);
+    if (!current) throw new NotFoundException("Payslip was not found for this tenant.");
+    const employees = await this.getEmployees(tenantId);
+    const employee = (employees || []).find((row: any) => String(row.id) === String(current.employee_id));
+    const previous = slips
+      .filter((slip: any) => String(slip.employee_id) === String(current.employee_id) && String(slip.salary_month || "") < String(current.salary_month || ""))
+      .sort((a: any, b: any) => String(b.salary_month || "").localeCompare(String(a.salary_month || "")))[0] || null;
+    const breakdown = current.payroll_breakdown || {};
+    return {
+      enabled: true,
+      employee_id: current.employee_id,
+      employee_name: employee?.employee_name || employee?.employee_code || "Employee",
+      month: current.salary_month,
+      payslip_id: current.id,
+      payslip_number: current.payslip_number,
+      lines: Array.isArray(breakdown.calculation_lines) ? breakdown.calculation_lines : [],
+      evidence: {
+        salary_components: Array.isArray(breakdown.salary_components) ? breakdown.salary_components : [],
+        attendance: {
+          present_days: breakdown.present_days,
+          half_days: breakdown.half_days,
+          payable_days: breakdown.payable_days,
+          policy: breakdown.policy,
+        },
+        overtime: {
+          hours: current.overtime_hours || 0,
+          amount: current.overtime_amount || 0,
+          overtime_credit_days: breakdown.overtime_credit_days || 0,
+        },
+      },
+      totals: breakdown.totals || {
+        gross: Number(current.gross_salary || 0),
+        deductions: Number(current.total_deductions || 0),
+        net: Number(current.net_salary || 0),
+      },
+      variance: previous ? {
+        previous_month: previous.salary_month,
+        ...calculateNetVariance(Number(previous.net_salary || 0), Number(current.net_salary || 0)),
+        prior_breakdown_available: Boolean(previous.payroll_breakdown?.calculation_lines),
+      } : null,
+      evidence_complete: Array.isArray(breakdown.calculation_lines) && breakdown.calculation_lines.length > 0,
+      deterministic_only: true,
+    };
   }
 
   // Payroll Run
@@ -2291,7 +2605,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     // one paid day; overtime is calculated separately and remains auditable.
     const payslips = payableEmployees.map((employee, index) => {
       const employeeSalaryComponents =
-        salaryComponents?.filter((sc: any) => sc.employee_id === employee.id) ||
+        salaryComponents?.filter((sc: any) =>
+          sc.employee_id === employee.id &&
+          monthContainsEffectiveDate(sc.effective_from, sc.effective_to, payrollMonth),
+        ) ||
         [];
 
       const deductionTypes = new Set(["DEDUCTION", "PF", "ESI", "TAX"]);
@@ -2433,6 +2750,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           overtime_eligible: employee.overtime_eligible !== false,
           employer_pf_contribution: roundCurrency(employerPf),
           employer_esi_contribution: roundCurrency(employerEsi),
+          salary_components: employeeSalaryComponents.map((component: any) => ({
+            id: component.id,
+            component_type: component.component_type,
+            component_name: component.component_name,
+            amount: Number(component.amount || 0),
+            is_taxable: component.is_taxable !== false,
+            effective_from: component.effective_from || null,
+            effective_to: component.effective_to || null,
+          })),
+          calculation_lines: [
+            ...employeeSalaryComponents.map((component: any) => ({
+              kind: deductionTypes.has(String(component.component_type)) ? "DEDUCTION" : grossTypes.has(String(component.component_type)) ? "EARNING" : "INFO",
+              label: component.component_name,
+              amount: roundCurrency(Number(component.amount || 0)),
+              source: { salary_component_id: component.id, component_type: component.component_type, effective_from: component.effective_from || null, effective_to: component.effective_to || null },
+              formula: "Configured salary component amount, effective for the payroll month",
+            })),
+            { kind: "EARNING", label: "Overtime", amount: overtimeAmount, source: { overtime_hours: overtimeHours, overtime_credit_days: overtimeCreditDays, rate: attendanceRegister.policy.overtime_multiplier }, formula: "Tenant attendance policy overtime calculation" },
+            { kind: "EARNING", label: "Travel per diem", amount: totalPerDiem, source: { travel_days: travelDays, per_diem_amount: perDiemAmount }, formula: "Approved travel days × employee per diem" },
+            { kind: "DEDUCTION", label: "Attendance deduction", amount: attendanceDeduction, source: { unpaid_attendance_days: unpaidAttendanceDays, daily_gross_rate: roundCurrency(dailyGrossRate) }, formula: "Daily gross rate × unpaid attendance days" },
+            { kind: "DEDUCTION", label: "Late deduction", amount: lateDeduction, source: { late_days: lateDays, late_minutes: lateMinutes, policy: attendanceRegister.policy.late_deduction_mode }, formula: "Tenant attendance policy late deduction" },
+          ],
+          totals: { gross: grossSalary, deductions: totalDeductions, overtime: overtimeAmount, travel_per_diem: totalPerDiem, net: netSalary },
         },
         travel_days: travelDays,
         per_diem_amount: perDiemAmount,

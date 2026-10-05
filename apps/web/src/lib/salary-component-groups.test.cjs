@@ -14,7 +14,7 @@ const loaded = new Module(sourcePath, module);
 loaded.filename = sourcePath;
 loaded.paths = Module._nodeModulePaths(path.dirname(sourcePath));
 loaded._compile(compiled, sourcePath);
-const { filterSalaryComponentGroups, groupSalaryComponents } = loaded.exports;
+const { filterSalaryComponentGroups, groupSalaryComponents, salaryComponentIsCurrent } = loaded.exports;
 
 const row = (id, employee_id, employee_name, component_type, component_name, amount, ctc_revised_date = null) => ({
   id, employee_id, employee_name, component_type, component_name, amount,
@@ -41,6 +41,18 @@ test("uses the latest effective authoritative CTC and leaves missing CTC unset",
   ], new Date("2026-10-05T12:00:00"));
   assert.equal(groups.find((group) => group.employeeId === "emp-1").ctc.amount, 2000);
   assert.equal(groups.find((group) => group.employeeId === "emp-2").ctc, null);
+});
+
+test("effective period determines current versus historical salary and CTC", () => {
+  const current = row("current", "emp-1", "One", "CTC", "Annual CTC", 2000, "2026-04-01");
+  current.effective_from = "2026-04-01";
+  const historical = row("old", "emp-1", "One", "CTC", "Annual CTC", 1000, "2025-01-01");
+  historical.effective_from = "2025-01-01";
+  historical.effective_to = "2026-03-31";
+  assert.equal(salaryComponentIsCurrent(current, new Date("2026-10-05T12:00:00")), true);
+  assert.equal(salaryComponentIsCurrent(historical, new Date("2026-10-05T12:00:00")), false);
+  const groups = groupSalaryComponents([current, historical], new Date("2026-10-05T12:00:00"));
+  assert.equal(groups[0].ctc.id, "current");
 });
 
 test("search keeps matching employee groups and narrows component matches", () => {

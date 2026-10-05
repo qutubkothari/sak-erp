@@ -35,6 +35,7 @@ import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import {
   filterSalaryComponentGroups,
   groupSalaryComponents,
+  salaryComponentIsCurrent,
 } from "@/lib/salary-component-groups";
 import {
   AlertTriangle,
@@ -260,6 +261,9 @@ interface SalaryComponent {
   amount: number;
   is_taxable: boolean;
   ctc_revised_date?: string | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  effective_date_state?: string | null;
 }
 
 interface ComprehensiveSalaryForm {
@@ -1520,6 +1524,8 @@ function HrPageContent() {
   const [editingSalaryEmployeeId, setEditingSalaryEmployeeId] = useState<
     string | null
   >(null);
+  const [salaryRevisionEffectiveFrom, setSalaryRevisionEffectiveFrom] = useState(getTodayDateInputValue());
+  const [salaryRevisionReason, setSalaryRevisionReason] = useState("");
   const [showPayrollRunForm, setShowPayrollRunForm] = useState(false);
   const [selectedSalaryComponent, setSelectedSalaryComponent] =
     useState<SalaryComponent | null>(null);
@@ -2899,6 +2905,8 @@ function HrPageContent() {
   const openComprehensiveSalaryCreate = () => {
     setEditingSalaryEmployeeId(null);
     setComprehensiveSalaryForm(createEmptyComprehensiveSalaryForm());
+    setSalaryRevisionEffectiveFrom(getTodayDateInputValue());
+    setSalaryRevisionReason("");
     setShowComprehensiveSalaryForm(true);
   };
 
@@ -2961,6 +2969,12 @@ function HrPageContent() {
           })),
       });
       setEditingSalaryEmployeeId(employeeId);
+      setSalaryRevisionEffectiveFrom(
+        ctcComponent?.ctc_revised_date
+          ? String(ctcComponent.ctc_revised_date).slice(0, 10)
+          : getTodayDateInputValue(),
+      );
+      setSalaryRevisionReason("");
       setShowComprehensiveSalaryForm(true);
     } catch (error: any) {
       alert(error?.message || "Failed to load salary components");
@@ -3341,10 +3355,37 @@ function HrPageContent() {
       });
 
       if (editingSalaryEmployeeId) {
-        await apiClient.put(
-          `/hr/salary/employee/${editingSalaryEmployeeId}`,
-          { components },
-        );
+        const flagsResponse = await apiClient.get<any>("/hr/payroll/control/features");
+        const payrollFlags = flagsResponse?.data || flagsResponse;
+        if (payrollFlags?.PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED === true) {
+          if (!salaryRevisionReason.trim()) {
+            alert("Enter a reason for this salary revision");
+            setLoading(false);
+            return;
+          }
+          const existingResponse = await apiClient.get<any>(`/hr/salary/${editingSalaryEmployeeId}`);
+          const existingRows: SalaryComponent[] = Array.isArray(existingResponse) ? existingResponse : existingResponse?.data || [];
+          const usedIds = new Set<string>();
+          const revisions = components.map((component: any) => {
+            const prior = existingRows.find((row) =>
+              !usedIds.has(row.id) &&
+              row.component_type === component.component_type &&
+              row.component_name === component.component_name,
+            );
+            if (prior) usedIds.add(prior.id);
+            return { ...component, supersedes_id: prior?.id || null };
+          });
+          await apiClient.post(`/hr/salary/${editingSalaryEmployeeId}/revisions`, {
+            effective_from: salaryRevisionEffectiveFrom,
+            reason: salaryRevisionReason.trim(),
+            components: revisions,
+          });
+        } else {
+          await apiClient.put(
+            `/hr/salary/employee/${editingSalaryEmployeeId}`,
+            { components },
+          );
+        }
       } else {
         for (const comp of components) {
           await apiClient.post("/hr/salary", comp);
@@ -9811,19 +9852,21 @@ function HrPageContent() {
                                   <table className="min-w-full text-left text-sm">
                                     <thead className="bg-[#F7F3EA] text-[11px] font-bold uppercase tracking-wide text-[#6F5A49]">
                                       <tr>
-                                        <th className="px-3 py-2">Component Type</th><th className="px-3 py-2">Effective / Revised Date</th><th className="px-3 py-2">Component Name</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Taxable</th><th className="px-3 py-2">CTC Revised</th><th className="px-3 py-2">Actions</th>
+                                        <th className="px-3 py-2">Component Type</th><th className="px-3 py-2">Effective From</th><th className="px-3 py-2">Effective To</th><th className="px-3 py-2">Component Name</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Taxable</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Actions</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-[#EFE3CF]">
                                       {group.components.map((comp) => {
-                                        const revised = comp.ctc_revised_date || (comp as SalaryComponent & { effective_date?: string }).effective_date || null;
+                                        const revised = comp.effective_from || comp.ctc_revised_date || null;
+                                        const isCurrent = salaryComponentIsCurrent(comp);
                                         return <tr key={comp.id}>
                                           <td className="px-3 py-3"><span className="inline-flex rounded-full bg-[#EFF8FF] px-2.5 py-1 text-xs font-bold text-[#175CD3]">{comp.component_type}</span></td>
                                           <td className="px-3 py-3">{revised ? new Date(`${String(revised).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN") : "-"}</td>
+                                          <td className="px-3 py-3">{comp.effective_to ? new Date(`${String(comp.effective_to).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN") : "-"}</td>
                                           <td className="px-3 py-3 font-medium text-[#4A3426]">{comp.component_name}</td>
                                           <td className="px-3 py-3 text-right font-bold">{formatCurrency(comp.amount)}</td>
                                           <td className="px-3 py-3">{comp.is_taxable ? "Yes" : "No"}</td>
-                                          <td className="px-3 py-3">{revised ? "Yes" : "No"}</td>
+                                          <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${isCurrent ? "bg-emerald-50 text-emerald-800" : "bg-stone-100 text-stone-600"}`}>{isCurrent ? "Current" : "Historical"}</span>{comp.effective_date_state === "LEGACY_EFFECTIVE_DATE_UNKNOWN" && <span className="ml-2 text-xs text-amber-700">Legacy date unknown</span>}</td>
                                           <td className="whitespace-nowrap px-3 py-3">
                                             {canEditHR && <button onClick={() => openComprehensiveSalaryEdit(comp.employee_id)} className="mr-3 font-semibold text-[#175CD3] hover:underline">Edit</button>}
                                             {canDeleteHR && <button onClick={() => handleDeleteSalaryComponent(comp.id)} className="font-semibold text-[#B42318] hover:underline">Delete</button>}
@@ -9835,10 +9878,11 @@ function HrPageContent() {
                                 </div>
                                 <div className="space-y-2 md:hidden">
                                   {group.components.map((comp) => {
-                                    const revised = comp.ctc_revised_date || (comp as SalaryComponent & { effective_date?: string }).effective_date || null;
+                                    const revised = comp.effective_from || comp.ctc_revised_date || null;
+                                    const isCurrent = salaryComponentIsCurrent(comp);
                                     return <article key={comp.id} className="rounded-xl border border-[#E8DCC4] bg-white p-3">
                                       <div className="flex flex-wrap items-start justify-between gap-2">
-                                        <div className="min-w-0"><div className="font-semibold text-[#2F1B12]">{comp.component_name}</div><div className="mt-1 text-xs text-[#6F5A49]">{comp.component_type} · {revised ? new Date(`${String(revised).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN") : "No date"}</div></div>
+                                        <div className="min-w-0"><div className="font-semibold text-[#2F1B12]">{comp.component_name}</div><div className="mt-1 text-xs text-[#6F5A49]">{comp.component_type} · {revised ? new Date(`${String(revised).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN") : "Legacy date unknown"} → {comp.effective_to ? new Date(`${String(comp.effective_to).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN") : "Current"}</div><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${isCurrent ? "bg-emerald-50 text-emerald-800" : "bg-stone-100 text-stone-600"}`}>{isCurrent ? "Current" : "Historical"}</span></div>
                                         <div className="shrink-0 text-right"><div className="font-bold text-[#2F1B12]">{formatCurrency(comp.amount)}</div><div className="text-xs text-[#6F5A49]">Taxable: {comp.is_taxable ? "Yes" : "No"}</div></div>
                                       </div>
                                       <div className="mt-3 flex gap-4 border-t border-[#F0E8DC] pt-2 text-sm">
@@ -13081,14 +13125,26 @@ function HrPageContent() {
                 : "Comprehensive Salary Setup"}
             </h3>
             <p className="text-sm text-gray-600 mb-4">
-              Enter all salary components for an employee in one form. All
-              existing components will be replaced.
+              {editingSalaryEmployeeId
+                ? "Review the complete salary structure. When effective-dated salary is enabled, this change is appended to history and preserves prior payroll values."
+                : "Enter the employee’s salary components. Legacy effective dates are not inferred."}
             </p>
 
             <form
               onSubmit={handleSaveComprehensiveSalary}
               className="space-y-6"
             >
+              {editingSalaryEmployeeId && <div className="grid gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-stone-800">Change effective from</label>
+                  <input type="date" value={salaryRevisionEffectiveFrom} onChange={(event) => setSalaryRevisionEffectiveFrom(event.target.value)} className="w-full rounded border border-stone-300 px-3 py-2" required />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-stone-800">Reason for change</label>
+                  <input type="text" value={salaryRevisionReason} onChange={(event) => setSalaryRevisionReason(event.target.value)} className="w-full rounded border border-stone-300 px-3 py-2" placeholder="Salary review, promotion, correction..." />
+                </div>
+                <p className="text-xs text-amber-900 sm:col-span-2">A revision taking effect in a past paid month must go through a correction version. Legacy salary rows keep their effective date marked unknown until confirmed.</p>
+              </div>}
               {/* Region Selector */}
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-4">
                 <label className="block text-sm font-semibold mb-2">
