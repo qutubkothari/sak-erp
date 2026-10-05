@@ -55,6 +55,27 @@ test("effective period determines current versus historical salary and CTC", () 
   assert.equal(groups[0].ctc.id, "current");
 });
 
+test("group summary counts only dated current salary and exposes the current effective date", () => {
+  const current = row("current", "emp-1", "One", "BASIC", "Basic", 2000);
+  current.effective_from = "2026-04-01";
+  const past = row("past", "emp-1", "One", "BASIC", "Basic", 1000);
+  past.effective_from = "2025-04-01";
+  past.effective_to = "2026-03-31";
+  const unknown = row("unknown", "emp-1", "One", "ALLOWANCE", "Allowance", 250);
+  const [group] = groupSalaryComponents([current, past, unknown], new Date("2026-10-05T12:00:00"));
+  assert.equal(group.componentCount, 3);
+  assert.equal(group.currentComponentCount, 1);
+  assert.equal(group.currentEffectiveDate, "2026-04-01");
+  assert.equal(salaryComponentIsCurrent(unknown, new Date("2026-10-05T12:00:00")), false);
+});
+
+test("unknown legacy CTC dates are not guessed as the current authoritative CTC", () => {
+  const legacy = row("unknown-ctc", "emp-1", "One", "CTC", "CTC", 5000);
+  const [group] = groupSalaryComponents([legacy], new Date("2026-10-05T12:00:00"));
+  assert.equal(group.ctc, null);
+  assert.equal(group.currentComponentCount, 0);
+});
+
 test("search keeps matching employee groups and narrows component matches", () => {
   const groups = groupSalaryComponents([
     row("a", "emp-1", "Abdul", "CTC", "Annual CTC", 1000, "2026-01-01"),
@@ -67,12 +88,14 @@ test("search keeps matching employee groups and narrows component matches", () =
   assert.deepEqual(componentMatch[0].components.map((item) => item.id), ["b"]);
 });
 
-test("salary components UI preserves accordion actions, group pagination, mobile layout, and read-only expansion", () => {
+test("salary components UI exposes history actions, group pagination, and read-only expansion", () => {
   const ui = fs.readFileSync(path.join(__dirname, "../app/dashboard/hr/page.tsx"), "utf8");
   assert.match(ui, /expandedSalaryEmployeeId === group\.employeeId/);
   assert.match(ui, /setExpandedSalaryEmployeeId\(isExpanded \? null : group\.employeeId\)/);
-  assert.match(ui, /openComprehensiveSalaryEdit\(comp\.employee_id\)/);
-  assert.match(ui, /handleDeleteSalaryComponent\(comp\.id\)/);
+  assert.match(ui, /SalaryComponentHistoryActions component=\{comp\}/);
+  assert.match(ui, /currentComponentCount/);
+  assert.match(ui, /Legacy date unknown/);
+  assert.match(ui, /Payroll Rules/);
   assert.match(ui, /salaryGroupsPerPage = 10/);
   assert.match(ui, /md:hidden/);
   assert.match(ui, /apiClient\.get<any>\("\/hr\/salary-components"\)/);

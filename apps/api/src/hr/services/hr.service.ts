@@ -15,6 +15,13 @@ import {
   safePayrollFeatureFlags,
   findOverlappingEffectivePeriods,
   payrollVarianceFlagged,
+  isValidIsoDate,
+  canHardDeleteSalaryComponent,
+  resolvePayrollRule,
+  HR_PAYROLL_RULE_KEYS,
+  isSupportedHrPayrollRuleKey,
+  validateHrPayrollRuleValue,
+  payrollProfileCapabilities,
   summarizePayrollBlockers,
   type PayrollBlocker,
 } from "../payroll-control.domain";
@@ -1255,7 +1262,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return result;
   }
 
-  async getAttendance(tenantId: string, employeeId?: string, month?: string) {
+  async getLegacyAttendanceRecords(tenantId: string, employeeId?: string, month?: string) {
     let query = this.supabase
       .from("attendance_records")
       .select("*")
@@ -1882,7 +1889,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   // Salary Components
-  async addSalaryComponent(tenantId: string, data: any) {
+  async addSalaryComponent(tenantId: string, data: any, actorId?: string) {
+    const flags = await this.getPayrollControlFlags(tenantId);
+    if (flags.PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED) {
+      if (!actorId) throw new BadRequestException("An authenticated actor is required for effective-dated salary changes.");
+      return this.createEffectiveDatedSalaryRevision(tenantId, String(data?.employee_id || ""), actorId, {
+        effective_from: data?.effective_from,
+        reason: data?.change_reason || data?.reason,
+        components: [data],
+      });
+    }
     await this.assertEmployeeBelongsToTenant(
       tenantId,
       String(data?.employee_id || ""),
@@ -1892,37 +1908,40 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         "This employee has payroll history. Add salary changes through an effective-dated revision.",
       );
     }
+    if (String(data?.component_type || "").toUpperCase() === "CTC" && !(await this.getHrPayrollProfile(tenantId)).supports_ctc_component) {
+      throw new BadRequestException("This tenant profile does not support a CTC salary component.");
+    }
 
     const componentData = {
       ...data,
       tenant_id: tenantId,
     };
-
-    // Some prod DBs were created without salary_components.tenant_id; fallback inserts without it.
-    const { data: result, error } = await this.supabase
-      .from("salary_components")
-      .insert([componentData])
-      .select();
-
-    if (error) {
-      if (
-        isMissingColumnError(error, "salary_components.tenant_id") ||
-        isMissingColumnError(error, "tenant_id")
-      ) {
-        const { tenant_id: _omit, ...withoutTenant } = componentData as any;
-        const { data: retryResult, error: retryError } = await this.supabase
-          .from("salary_components")
-          .insert([withoutTenant])
-          .select();
-        if (retryError) throw new Error(retryError.message);
-        return retryResult;
+    let candidate: any = { ...componentData };
+    let tenantColumnMissing = false, ctcDateMissing = false, effectiveDateMissing = false;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const { data: result, error } = await this.supabase.from("salary_components").insert([candidate]).select();
+      if (!error) return result;
+      if (!tenantColumnMissing && (isMissingColumnError(error, "salary_components.tenant_id") || isMissingColumnError(error, "tenant_id"))) {
+        tenantColumnMissing = true; const { tenant_id: _omitted, ...withoutTenant } = candidate; candidate = withoutTenant; continue;
+      }
+      if (!ctcDateMissing && isMissingColumnError(error, "salary_components.ctc_revised_date")) {
+        ctcDateMissing = true; const { ctc_revised_date: _omitted, ...withoutCtcDate } = candidate; candidate = withoutCtcDate; continue;
+      }
+      if (!effectiveDateMissing && (isMissingColumnError(error, "salary_components.effective_from") || isMissingColumnError(error, "salary_components.effective_to") || isMissingColumnError(error, "salary_components.effective_date_state"))) {
+        effectiveDateMissing = true; const { effective_from: _from, effective_to: _to, effective_date_state: _state, change_reason: _reason, created_by: _actor, supersedes_id: _supersedes, ...legacyColumns } = candidate; candidate = legacyColumns; continue;
       }
       throw new Error(error.message);
     }
-
-    return result;
+    throw new Error("Salary component could not be stored using this profile's available columns");
   }
   async getSalaryComponents(tenantId: string, employeeId?: string) {
+    const normalize = (rows: any[]) => (rows || []).map((row: any) => ({
+      ...row,
+      // A stored CTC revised date is authoritative legacy evidence for the CTC
+      // component only. Never infer dates from create time or employee tenure.
+      effective_from: row.effective_from || (String(row.component_type || "").toUpperCase() === "CTC" ? row.ctc_revised_date || null : null),
+      effective_date_state: row.effective_date_state || (!row.effective_from && !(String(row.component_type || "").toUpperCase() === "CTC" && row.ctc_revised_date) ? "LEGACY_EFFECTIVE_DATE_UNKNOWN" : "KNOWN"),
+    }));
     // Preferred: filter by tenant_id when column exists
     const query = this.supabase.from("salary_components").select("*");
 
@@ -1933,7 +1952,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       }
       const { data, error } = await q;
       if (error) throw new Error(error.message);
-      return data || [];
+      return normalize(data || []);
     } catch (err: any) {
       // Fallback: prod table missing tenant_id. Enforce tenant isolation via employees table.
       if (
@@ -1950,7 +1969,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           .select("*")
           .eq("employee_id", employeeId);
         if (error) throw new Error(error.message);
-        return data || [];
+        return normalize(data || []);
       }
 
       const { data: employees, error: empError } = await this.supabase
@@ -1966,7 +1985,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         .select("*")
         .in("employee_id", employeeIds);
       if (error) throw new Error(error.message);
-      return data || [];
+      return normalize(data || []);
     }
   }
 
@@ -1975,6 +1994,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     employeeId: string,
     components: any[] = [],
   ) {
+    const flags = await this.getPayrollControlFlags(tenantId);
+    if (flags.PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED) {
+      throw new ConflictException("Replacement is disabled while effective-dated salary control is enabled. Submit a dated revision with a reason.");
+    }
     await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
     if (!Array.isArray(components)) {
       throw new BadRequestException("Salary components must be an array");
@@ -2020,16 +2043,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   async deleteSalaryComponent(tenantId: string, id: string) {
     const { data: existingRow, error: existingError } = await this.supabase
       .from("salary_components")
-      .select("id,employee_id")
+      .select("*")
       .eq("id", id)
       .single();
     if (existingError) throw new Error(existingError.message);
     const employeeId = String((existingRow as any)?.employee_id || "");
     await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
-    if (await this.employeeHasPayrollHistory(tenantId, employeeId)) {
-      throw new ConflictException(
-        "This salary component is protected by payroll history. End-date it instead of deleting it.",
-      );
+    const dependency = await this.salaryComponentPayrollDependency(tenantId, employeeId, id);
+    const dependentResult = await this.supabase.from("salary_components").select("id").eq("supersedes_id", id).limit(1);
+    if (dependentResult.error) throw new ConflictException("Salary version dependencies could not be verified. End-date it instead of deleting it.");
+    const historyResult = await this.supabase.from("hr_payroll_salary_change_events").select("id").eq("salary_component_id", id).limit(1);
+    if (historyResult.error && !isMissingRelationError(historyResult.error, "hr_payroll_salary_change_events")) throw new ConflictException("Salary audit history could not be verified. End-date it instead of deleting it.");
+    const hasAuditHistory = Boolean((historyResult.data || []).length) || Boolean((existingRow as any)?.change_reason || (existingRow as any)?.created_by);
+    const today = new Date().toISOString().slice(0, 10);
+    if (!canHardDeleteSalaryComponent({ effectiveFrom: (existingRow as any)?.effective_from, today, payrollUsed: dependency.used || dependency.unknown, hasDependentVersion: Boolean((dependentResult.data || []).length), hasAuditHistory })) {
+      throw new ConflictException("Only an unused future salary draft with no history or dependencies can be deleted. End-date it to preserve history.");
     }
     const { error } = await this.supabase
       .from("salary_components")
@@ -2089,6 +2117,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     throw new Error(error.message);
   }
 
+  private async salaryComponentPayrollDependency(tenantId: string, employeeId: string, componentId: string): Promise<{ used: boolean; unknown: boolean }> {
+    let query = this.supabase.from("payslips").select("id,payroll_breakdown").eq("tenant_id", tenantId).eq("employee_id", employeeId);
+    let result = await query;
+    if (result.error && (isMissingColumnError(result.error, "payslips.tenant_id") || isMissingColumnError(result.error, "tenant_id"))) {
+      await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+      result = await this.supabase.from("payslips").select("id,payroll_breakdown").eq("employee_id", employeeId);
+    }
+    if (result.error) {
+      if (isMissingRelationError(result.error, "payslips")) return { used: false, unknown: true };
+      throw new ConflictException("Payroll dependency evidence could not be verified. Salary history is protected.");
+    }
+    let unknown = false;
+    let used = false;
+    for (const slip of result.data || []) {
+      const breakdown = (slip as any).payroll_breakdown;
+      const components = breakdown?.salary_components;
+      if (!Array.isArray(components)) { unknown = true; continue; }
+      if (components.some((component: any) => String(component.id || component.source_salary_component_id || "") === componentId)) used = true;
+    }
+    return { used, unknown };
+  }
+
   async getPayrollControlFlags(tenantId: string) {
     const { data, error } = await this.supabase
       .from("hr_payroll_feature_flags")
@@ -2105,6 +2155,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return safePayrollFeatureFlags(data || []);
   }
 
+  async getHrPayrollProfile(tenantId: string) {
+    const { data, error } = await this.supabase.from("tenants").select("market_profile,default_currency,tax_regime,locale,settings").eq("id", tenantId).single();
+    if (error) throw new Error(error.message);
+    const marketProfile = String((data as any)?.market_profile || "").toUpperCase();
+    const settings = (data as any)?.settings || {};
+    const capabilities = payrollProfileCapabilities(marketProfile, settings?.hr_payroll?.statutory_fields_enabled, settings?.hr_payroll?.supports_ctc_component);
+    return {
+      market_profile: capabilities.market_profile,
+      default_currency: (data as any)?.default_currency || null,
+      tax_regime: (data as any)?.tax_regime || null,
+      statutory_fields_enabled: capabilities.statutory_fields_enabled,
+      supports_ctc_component: capabilities.supports_ctc_component,
+      read_only: true,
+    };
+  }
+
   async createEffectiveDatedSalaryRevision(
     tenantId: string,
     employeeId: string,
@@ -2118,19 +2184,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
     const effectiveFrom = String(payload?.effective_from || "");
     const reason = String(payload?.reason || "").trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom) || !Number.isFinite(Date.parse(`${effectiveFrom}T00:00:00Z`))) {
+    if (!isValidIsoDate(effectiveFrom)) {
       throw new BadRequestException("An effective_from date in YYYY-MM-DD format is required.");
     }
     if (!reason) throw new BadRequestException("A reason is required for a salary revision.");
     if (!Array.isArray(payload?.components) || payload.components.length === 0) {
       throw new BadRequestException("Provide at least one salary component revision.");
     }
+    const supportsCtc = (await this.getHrPayrollProfile(tenantId)).supports_ctc_component;
     const components = payload.components.map((item: any) => {
+      if (String(item?.action || "").toUpperCase() === "END") {
+        if (!item?.component_id) throw new BadRequestException("A component ID is required to end a salary component.");
+        return { action: "END", component_id: String(item.component_id) };
+      }
       const amount = Number(item?.amount);
       const componentType = String(item?.component_type || "").trim().toUpperCase();
       const componentName = String(item?.component_name || "").trim();
-      if (!componentType || !componentName || !Number.isFinite(amount)) {
+      if (!componentType || !componentName || !Number.isFinite(amount) || amount < 0) {
         throw new BadRequestException("Each salary component needs a type, name, and numeric amount.");
+      }
+      if (componentType === "CTC" && !supportsCtc) {
+        throw new BadRequestException("This tenant profile does not support a CTC salary component.");
       }
       return {
         supersedes_id: item.supersedes_id || null,
@@ -2150,6 +2224,161 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     });
     if (error) throw new BadRequestException(error.message);
     return { employee_id: employeeId, effective_from: effectiveFrom, reason, components: data || [] };
+  }
+
+  async endEffectiveDatedSalaryComponent(tenantId: string, employeeId: string, componentId: string, actorId: string, payload: { effective_to?: string; reason?: string }) {
+    const flags = await this.getPayrollControlFlags(tenantId);
+    if (!flags.PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED) throw new ConflictException("Effective-dated salary changes are not enabled for this tenant.");
+    await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+    const effectiveTo = String(payload?.effective_to || "");
+    const reason = String(payload?.reason || "").trim();
+    if (!isValidIsoDate(effectiveTo)) throw new BadRequestException("A real end date in YYYY-MM-DD format is required.");
+    if (!reason) throw new BadRequestException("A reason is required to end a salary component.");
+    const { data, error } = await this.supabase.rpc("hr_end_salary_component", {
+      p_tenant_id: tenantId, p_employee_id: employeeId, p_actor_id: actorId,
+      p_component_id: componentId, p_effective_to: effectiveTo, p_reason: reason,
+    });
+    if (error) throw new BadRequestException(error.message);
+    return { employee_id: employeeId, component_id: componentId, effective_to: effectiveTo, reason, component: (data || [])[0] || null };
+  }
+
+  async getSalaryComponentHistory(tenantId: string, employeeId: string, componentId?: string) {
+    await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+    const rows = await this.getSalaryComponents(tenantId, employeeId);
+    let filtered = rows;
+    if (componentId) {
+      const ids = new Set<string>([componentId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const row of rows as any[]) {
+          const id = String(row.id), previousId = String(row.supersedes_id || "");
+          if (ids.has(previousId) && !ids.has(id)) { ids.add(id); changed = true; }
+          if (ids.has(id) && previousId && !ids.has(previousId)) { ids.add(previousId); changed = true; }
+        }
+      }
+      filtered = rows.filter((row: any) => ids.has(String(row.id)));
+    }
+    const supersededIds = new Set(filtered.map((row: any) => row.supersedes_id).filter(Boolean).map(String));
+    const today = new Date().toISOString().slice(0, 10);
+    return filtered.map((row: any) => {
+      const start = row.effective_from || null;
+      const end = row.effective_to || null;
+      const status = !start ? "LEGACY_EFFECTIVE_DATE_UNKNOWN" : start > today ? "FUTURE" : end && end < today ? "HISTORICAL" : "CURRENT";
+      return { ...row, effective_from: start, effective_to: end, effective_date_state: row.effective_date_state || (!start ? "LEGACY_EFFECTIVE_DATE_UNKNOWN" : "KNOWN"), status, superseded: supersededIds.has(String(row.id)), created_by_label: row.created_by || "Unknown" };
+    }).sort((a: any, b: any) => String(b.effective_from || "0000-00-00").localeCompare(String(a.effective_from || "0000-00-00")) || String(b.created_at || "").localeCompare(String(a.created_at || "")));
+  }
+
+  private async assertEffectiveRulesEnabled(tenantId: string) {
+    const flags = await this.getPayrollControlFlags(tenantId);
+    if (!flags.PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED) throw new ConflictException("Effective-dated HR and payroll rules are not enabled for this tenant.");
+  }
+
+  private async getProfileRuleDefaults(tenantId: string) {
+    const { data, error } = await this.supabase.from("tenants").select("settings,market_profile").eq("id", tenantId).single();
+    if (error) throw new Error(error.message);
+    const settings = (data as any)?.settings || {};
+    const profile = String((data as any)?.market_profile || "").toUpperCase();
+    const profileDefaults = settings?.profile_payroll_rule_defaults?.[profile] || {};
+    const tenantDefaults = settings?.payroll_rule_defaults || {};
+    return { profile, profileDefaults, tenantDefaults };
+  }
+
+  async getEffectivePayrollRule(tenantId: string, ruleKey: string, effectiveDate: string, employeeId?: string) {
+    if (!isSupportedHrPayrollRuleKey(ruleKey)) throw new BadRequestException("This HR/payroll rule is not supported.");
+    if (!isValidIsoDate(effectiveDate)) throw new BadRequestException("A real effective date in YYYY-MM-DD format is required.");
+    const [{ data: tenantRows, error: tenantError }, defaults] = await Promise.all([
+      this.supabase.from("hr_payroll_rule_versions").select("*").eq("tenant_id", tenantId).eq("rule_key", ruleKey).order("effective_from", { ascending: false }),
+      this.getProfileRuleDefaults(tenantId),
+    ]);
+    if (tenantError && !isMissingRelationError(tenantError, "hr_payroll_rule_versions")) throw new Error(tenantError.message);
+    let employeeRows: any[] = [];
+    if (employeeId) {
+      await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+      const { data, error } = await this.supabase.from("hr_employee_payroll_rule_overrides").select("*").eq("tenant_id", tenantId).eq("employee_id", employeeId).eq("rule_key", ruleKey).order("effective_from", { ascending: false });
+      if (error && !isMissingRelationError(error, "hr_employee_payroll_rule_overrides")) throw new Error(error.message);
+      employeeRows = data || [];
+    }
+    const profileDefault = defaults.profileDefaults?.[ruleKey];
+    const configuredTenantDefault = defaults.tenantDefaults?.[ruleKey];
+    const storedTenant = tenantRows || [];
+    const resolved = resolvePayrollRule({
+      ruleKey, effectiveDate,
+      profileDefault,
+      tenantDefault: configuredTenantDefault,
+      tenantRules: storedTenant,
+      employeeOverrides: employeeRows,
+    });
+    const companyResolved = resolvePayrollRule({
+      ruleKey, effectiveDate,
+      profileDefault,
+      tenantDefault: configuredTenantDefault,
+      tenantRules: storedTenant,
+    });
+    return {
+      rule_key: ruleKey, effective_date: effectiveDate, value: resolved.value, source: resolved.source,
+      version: resolved.version || null, profile: defaults.profile,
+      company_value: companyResolved.value, company_source: companyResolved.source,
+      history: storedTenant,
+      employee_overrides: employeeRows,
+    };
+  }
+
+  async getEffectivePayrollRuleCatalog(tenantId: string, effectiveDate: string, employeeId?: string) {
+    const results = await Promise.all(HR_PAYROLL_RULE_KEYS.map((ruleKey) => this.getEffectivePayrollRule(tenantId, ruleKey, effectiveDate, employeeId)));
+    return { effective_date: effectiveDate, employee_id: employeeId || null, rules: results };
+  }
+
+  async saveEffectivePayrollRule(tenantId: string, actorId: string, payload: { rule_key?: string; rule_value?: unknown; effective_from?: string; effective_to?: string | null; reason?: string; supersedes_id?: string | null }) {
+    await this.assertEffectiveRulesEnabled(tenantId);
+    if (!isSupportedHrPayrollRuleKey(payload.rule_key)) throw new BadRequestException("This HR/payroll rule is not supported.");
+    const effectiveFrom = String(payload.effective_from || ""), effectiveTo = payload.effective_to ? String(payload.effective_to) : null, reason = String(payload.reason || "").trim();
+    if (!isValidIsoDate(effectiveFrom) || (effectiveTo && !isValidIsoDate(effectiveTo)) || (effectiveTo && effectiveTo < effectiveFrom) || !reason) throw new BadRequestException("Provide a valid effective period and a reason.");
+    let ruleValue: unknown;
+    try { ruleValue = validateHrPayrollRuleValue(payload.rule_key, payload.rule_value); } catch (error: any) { throw new BadRequestException(error.message); }
+    const { data, error } = await this.supabase.rpc("hr_create_payroll_rule_version", {
+      p_tenant_id: tenantId, p_actor_id: actorId, p_rule_key: payload.rule_key, p_rule_value: ruleValue,
+      p_effective_from: effectiveFrom, p_effective_to: effectiveTo, p_reason: reason, p_supersedes_id: payload.supersedes_id || null,
+    });
+    if (error) throw new BadRequestException(error.message);
+    return (data || [])[0] || null;
+  }
+
+  async endEffectivePayrollRule(tenantId: string, actorId: string, ruleId: string, payload: { effective_to?: string; reason?: string }) {
+    await this.assertEffectiveRulesEnabled(tenantId);
+    const effectiveTo = String(payload.effective_to || ""), reason = String(payload.reason || "").trim();
+    if (!isValidIsoDate(effectiveTo) || !reason) throw new BadRequestException("Provide a valid end date and a reason.");
+    const { data, error } = await this.supabase.rpc("hr_end_payroll_rule_version", { p_tenant_id: tenantId, p_actor_id: actorId, p_rule_id: ruleId, p_effective_to: effectiveTo, p_reason: reason });
+    if (error) throw new BadRequestException(error.message);
+    return (data || [])[0] || null;
+  }
+
+  async saveEmployeePayrollOverride(tenantId: string, employeeId: string, actorId: string, payload: { rule_key?: string; rule_value?: unknown; effective_from?: string; effective_to?: string | null; reason?: string; supersedes_id?: string | null }) {
+    await this.assertEffectiveRulesEnabled(tenantId);
+    await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+    if (!isSupportedHrPayrollRuleKey(payload.rule_key)) throw new BadRequestException("This HR/payroll rule is not supported.");
+    const effectiveFrom = String(payload.effective_from || ""), effectiveTo = payload.effective_to ? String(payload.effective_to) : null, reason = String(payload.reason || "").trim();
+    if (!isValidIsoDate(effectiveFrom) || (effectiveTo && !isValidIsoDate(effectiveTo)) || (effectiveTo && effectiveTo < effectiveFrom) || !reason) throw new BadRequestException("Provide a valid effective period and a reason.");
+    let ruleValue: unknown;
+    try { ruleValue = validateHrPayrollRuleValue(payload.rule_key, payload.rule_value); } catch (error: any) { throw new BadRequestException(error.message); }
+    const { data, error } = await this.supabase.rpc("hr_create_employee_payroll_override", {
+      p_tenant_id: tenantId, p_employee_id: employeeId, p_actor_id: actorId, p_rule_key: payload.rule_key,
+      p_rule_value: ruleValue, p_effective_from: effectiveFrom, p_effective_to: effectiveTo, p_reason: reason, p_supersedes_id: payload.supersedes_id || null,
+    });
+    if (error) throw new BadRequestException(error.message);
+    return (data || [])[0] || null;
+  }
+
+  async endEmployeePayrollOverride(tenantId: string, employeeId: string, actorId: string, overrideId: string, payload: { effective_to?: string; reason?: string }) {
+    await this.assertEffectiveRulesEnabled(tenantId);
+    await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+    const effectiveTo = String(payload.effective_to || ""), reason = String(payload.reason || "").trim();
+    if (!isValidIsoDate(effectiveTo) || !reason) throw new BadRequestException("Provide a valid end date and a reason.");
+    const { data, error } = await this.supabase.rpc("hr_end_employee_payroll_override", {
+      p_tenant_id: tenantId, p_employee_id: employeeId, p_actor_id: actorId, p_override_id: overrideId, p_effective_to: effectiveTo, p_reason: reason,
+    });
+    if (error) throw new BadRequestException(error.message);
+    return (data || [])[0] || null;
   }
 
   async getPayrollMonthCockpit(tenantId: string, month: string) {

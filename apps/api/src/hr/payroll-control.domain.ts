@@ -74,11 +74,66 @@ export type EffectiveRule<T = unknown> = {
   id?: string;
 };
 
+export const HR_PAYROLL_RULE_KEYS = [
+  "weekly_working_days",
+  "overtime_rate",
+  "late_policy",
+  "sandwich_leave_behavior",
+  "payroll_close_day",
+  "approval_threshold",
+] as const;
+export type HrPayrollRuleKey = (typeof HR_PAYROLL_RULE_KEYS)[number];
+
+export function isSupportedHrPayrollRuleKey(value: unknown): value is HrPayrollRuleKey {
+  return typeof value === "string" && (HR_PAYROLL_RULE_KEYS as readonly string[]).includes(value);
+}
+
+export function payrollProfileCapabilities(profileValue: unknown, statutoryConfigured?: boolean, ctcConfigured?: boolean) {
+  const profile = String(profileValue || "").trim().toUpperCase();
+  return {
+    market_profile: profile || "UNKNOWN",
+    statutory_fields_enabled: typeof statutoryConfigured === "boolean" ? statutoryConfigured : profile === "INDIA",
+    // CTC is a component type in the current non-Egypt profiles. ARWA/Egypt's
+    // live enum does not contain it, so an explicit setting cannot add it.
+    supports_ctc_component: ["INDIA", "UAE"].includes(profile) && ctcConfigured !== false,
+  };
+}
+
+export function validateHrPayrollRuleValue(ruleKey: HrPayrollRuleKey, value: unknown) {
+  switch (ruleKey) {
+    case "weekly_working_days":
+      if (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 7) return value;
+      if (Array.isArray(value) && value.length >= 1 && value.length <= 7 && value.every((day) => Number.isInteger(day) && Number(day) >= 0 && Number(day) <= 6)) return [...new Set(value.map(Number))];
+      break;
+    case "overtime_rate":
+    case "approval_threshold":
+      if (typeof value === "number" && Number.isFinite(value) && value >= 0 && (ruleKey !== "overtime_rate" || value <= 10)) return value;
+      break;
+    case "payroll_close_day":
+      if (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 31) return value;
+      break;
+    case "sandwich_leave_behavior":
+      if (typeof value === "boolean" || ["INCLUDE_WEEKENDS", "EXCLUDE_WEEKENDS", "DISABLED"].includes(String(value))) return value;
+      break;
+    case "late_policy":
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const policy = value as Record<string, unknown>;
+        if (Object.keys(policy).every((key) => ["grace_minutes", "deduction_mode", "marks_per_half_day"].includes(key))
+          && (policy.grace_minutes === undefined || (Number.isInteger(policy.grace_minutes) && Number(policy.grace_minutes) >= 0 && Number(policy.grace_minutes) <= 240))
+          && (policy.deduction_mode === undefined || ["NONE", "PER_MINUTE", "HALF_DAY_AFTER_MARKS"].includes(String(policy.deduction_mode)))
+          && (policy.marks_per_half_day === undefined || (Number.isInteger(policy.marks_per_half_day) && Number(policy.marks_per_half_day) > 0))) return policy;
+      }
+      break;
+  }
+  throw new Error(`Invalid value for supported HR/payroll rule: ${ruleKey}`);
+}
+
 /** Resolves employee override > tenant version > profile default at a date. */
 export function resolvePayrollRule<T>(input: {
   ruleKey: string;
   effectiveDate: string;
   profileDefault?: T;
+  tenantDefault?: T;
   tenantRules?: EffectiveRule<T>[];
   employeeOverrides?: EffectiveRule<T>[];
 }): { value: T | undefined; source: "EMPLOYEE" | "TENANT" | "PROFILE" | "MISSING"; version?: EffectiveRule<T> } {
@@ -89,6 +144,7 @@ export function resolvePayrollRule<T>(input: {
   if (employee) return { value: employee.rule_value, source: "EMPLOYEE", version: employee };
   const tenant = applicable(input.tenantRules);
   if (tenant) return { value: tenant.rule_value, source: "TENANT", version: tenant };
+  if (input.tenantDefault !== undefined) return { value: input.tenantDefault, source: "TENANT" };
   return input.profileDefault === undefined
     ? { value: undefined, source: "MISSING" }
     : { value: input.profileDefault, source: "PROFILE" };
@@ -132,6 +188,35 @@ export function findOverlappingEffectivePeriods<T extends { id?: string; employe
     if (String(a.effective_from) <= String(b.effective_to || "9999-12-31") && String(b.effective_from) <= String(a.effective_to || "9999-12-31")) conflicts.push({ first: a, second: b });
   }
   return conflicts;
+}
+
+export function isValidIsoDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/** Select one historical version of each component for a payroll date. Unknown legacy starts are fallback evidence only. */
+export function resolveSalaryComponentsAtDate<T extends { id?: string; employee_id?: string; component_type?: string; component_name?: string; effective_from?: string | null; effective_to?: string | null; supersedes_id?: string | null }>(rows: T[], effectiveDate: string): T[] {
+  if (!isValidIsoDate(effectiveDate)) throw new Error("Payroll date must be a real YYYY-MM-DD date");
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const key = [row.employee_id || "", row.component_type || "", row.component_name || ""].join("\u0000");
+    groups.set(key, [...(groups.get(key) || []), row]);
+  }
+  const selected: T[] = [];
+  for (const versions of groups.values()) {
+    const eligible = versions.filter((row) => (!row.effective_to || row.effective_to >= effectiveDate) && (!row.effective_from || row.effective_from <= effectiveDate));
+    const known = eligible.filter((row) => Boolean(row.effective_from)).sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)));
+    const legacy = eligible.filter((row) => !row.effective_from).sort((a, b) => String(b.id || "").localeCompare(String(a.id || "")));
+    const chosen = known[0] || legacy[0];
+    if (chosen) selected.push(chosen);
+  }
+  return selected;
+}
+
+export function canHardDeleteSalaryComponent(input: { effectiveFrom?: string | null; payrollUsed: boolean; hasDependentVersion: boolean; hasAuditHistory: boolean; today: string }) {
+  return isValidIsoDate(input.effectiveFrom) && isValidIsoDate(input.today) && input.effectiveFrom > input.today && !input.payrollUsed && !input.hasDependentVersion && !input.hasAuditHistory;
 }
 
 export function monthContainsEffectiveDate(

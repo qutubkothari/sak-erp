@@ -13,6 +13,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { apiClient } from "../../../../lib/api-client";
 import { getTodayDateInputValue } from "@/lib/date";
 import { AttendanceDateCell } from "./AttendanceDateCell";
@@ -37,6 +38,7 @@ import {
   groupSalaryComponents,
   salaryComponentIsCurrent,
 } from "@/lib/salary-component-groups";
+import { SalaryComponentHistoryActions } from "@/components/hr/SalaryComponentHistoryActions";
 import {
   AlertTriangle,
   ArrowDownUp,
@@ -1061,18 +1063,38 @@ function HrPageContent() {
     );
   };
 
-  // Region configuration (INDIA or UAE)
-  const [complianceRegion, setComplianceRegion] = useState<"INDIA" | "UAE">(
-    "INDIA",
-  );
+  // The tenant market profile is authoritative. Unknown profile means no
+  // country-specific statutory defaults are applied.
+  const [complianceRegion, setComplianceRegion] = useState<"INDIA" | "UAE" | "EGYPT" | "UNKNOWN">("UNKNOWN");
   const [complianceState, setComplianceState] = useState("MH"); // For India PT calculation
+  const [statutoryFieldsEnabled, setStatutoryFieldsEnabled] = useState(false);
+  const [supportsCtcComponent, setSupportsCtcComponent] = useState(false);
+  const [effectiveSalaryEnabled, setEffectiveSalaryEnabled] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      apiClient.get<any>("/hr/payroll/control/profile").catch(() => null),
+      apiClient.get<any>("/hr/payroll/control/features").catch(() => null),
+    ]).then(([profileResponse, flagsResponse]) => {
+      if (!active) return;
+      const profile = profileResponse?.data || profileResponse || {};
+      const market = String(profile.market_profile || "").toUpperCase();
+      setComplianceRegion(["INDIA", "UAE", "EGYPT"].includes(market) ? market as "INDIA" | "UAE" | "EGYPT" : "UNKNOWN");
+      setStatutoryFieldsEnabled(profile.statutory_fields_enabled === true);
+      setSupportsCtcComponent(profile.supports_ctc_component === true);
+      const flags = flagsResponse?.data || flagsResponse || {};
+      setEffectiveSalaryEnabled(flags.PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED === true);
+    });
+    return () => { active = false; };
+  }, []);
 
   // Helper: Auto-calculate PF/ESI/PT based on salary
   const calculateStatutoryDeductions = (
     basicSalary: number,
     grossSalary: number,
   ) => {
-    if (complianceRegion === "INDIA") {
+    if (complianceRegion === "INDIA" && statutoryFieldsEnabled) {
       const pf = calculatePF(basicSalary);
       const esi = calculateESI(grossSalary);
       const pt = calculateProfessionalTax(grossSalary, complianceState);
@@ -2969,11 +2991,8 @@ function HrPageContent() {
           })),
       });
       setEditingSalaryEmployeeId(employeeId);
-      setSalaryRevisionEffectiveFrom(
-        ctcComponent?.ctc_revised_date
-          ? String(ctcComponent.ctc_revised_date).slice(0, 10)
-          : getTodayDateInputValue(),
-      );
+      // Do not reuse an old CTC revision date as the next salary change date.
+      setSalaryRevisionEffectiveFrom(getTodayDateInputValue());
       setSalaryRevisionReason("");
       setShowComprehensiveSalaryForm(true);
     } catch (error: any) {
@@ -3209,23 +3228,15 @@ function HrPageContent() {
     try {
       const components = [];
 
-      if (
-        comprehensiveSalaryForm.ctc > 0 &&
-        !comprehensiveSalaryForm.ctc_revised_date
-      ) {
-        alert("CTC revised date is required when CTC is entered");
-        setLoading(false);
-        return;
-      }
-
-      if (comprehensiveSalaryForm.ctc > 0) {
+      if (supportsCtcComponent && comprehensiveSalaryForm.ctc > 0) {
         components.push({
           employee_id: comprehensiveSalaryForm.employee_id,
           component_type: "CTC",
           component_name: "CTC",
           amount: comprehensiveSalaryForm.ctc,
           is_taxable: false,
-          ctc_revised_date: comprehensiveSalaryForm.ctc_revised_date,
+          ctc_revised_date: comprehensiveSalaryForm.ctc_revised_date || undefined,
+          effective_from: comprehensiveSalaryForm.ctc_revised_date || undefined,
         });
       }
 
@@ -3271,7 +3282,7 @@ function HrPageContent() {
       }
 
       // Add deductions
-      if (comprehensiveSalaryForm.pf_deduction > 0) {
+      if (statutoryFieldsEnabled && comprehensiveSalaryForm.pf_deduction > 0) {
         components.push({
           employee_id: comprehensiveSalaryForm.employee_id,
           component_type: "PF",
@@ -3282,7 +3293,7 @@ function HrPageContent() {
       }
 
       if (
-        comprehensiveSalaryForm.pf_enabled &&
+        statutoryFieldsEnabled && comprehensiveSalaryForm.pf_enabled &&
         comprehensiveSalaryForm.pf_employer_contribution > 0
       ) {
         components.push({
@@ -3294,7 +3305,7 @@ function HrPageContent() {
         });
       }
 
-      if (comprehensiveSalaryForm.esi_deduction > 0) {
+      if (statutoryFieldsEnabled && comprehensiveSalaryForm.esi_deduction > 0) {
         components.push({
           employee_id: comprehensiveSalaryForm.employee_id,
           component_type: "ESI",
@@ -3306,7 +3317,7 @@ function HrPageContent() {
 
 
       if (
-        comprehensiveSalaryForm.esi_enabled &&
+        statutoryFieldsEnabled && comprehensiveSalaryForm.esi_enabled &&
         comprehensiveSalaryForm.esi_employer_contribution > 0
       ) {
         components.push({
@@ -3318,7 +3329,7 @@ function HrPageContent() {
         });
       }
 
-      if (comprehensiveSalaryForm.professional_tax > 0) {
+      if (statutoryFieldsEnabled && comprehensiveSalaryForm.professional_tax > 0) {
         components.push({
           employee_id: comprehensiveSalaryForm.employee_id,
           component_type: "TAX",
@@ -3354,42 +3365,46 @@ function HrPageContent() {
         }
       });
 
-      if (editingSalaryEmployeeId) {
-        const flagsResponse = await apiClient.get<any>("/hr/payroll/control/features");
-        const payrollFlags = flagsResponse?.data || flagsResponse;
-        if (payrollFlags?.PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED === true) {
-          if (!salaryRevisionReason.trim()) {
-            alert("Enter a reason for this salary revision");
-            setLoading(false);
-            return;
-          }
-          const existingResponse = await apiClient.get<any>(`/hr/salary/${editingSalaryEmployeeId}`);
-          const existingRows: SalaryComponent[] = Array.isArray(existingResponse) ? existingResponse : existingResponse?.data || [];
-          const usedIds = new Set<string>();
-          const revisions = components.map((component: any) => {
-            const prior = existingRows.find((row) =>
-              !usedIds.has(row.id) &&
-              row.component_type === component.component_type &&
-              row.component_name === component.component_name,
-            );
-            if (prior) usedIds.add(prior.id);
-            return { ...component, supersedes_id: prior?.id || null };
-          });
-          await apiClient.post(`/hr/salary/${editingSalaryEmployeeId}/revisions`, {
-            effective_from: salaryRevisionEffectiveFrom,
-            reason: salaryRevisionReason.trim(),
-            components: revisions,
-          });
-        } else {
-          await apiClient.put(
-            `/hr/salary/employee/${editingSalaryEmployeeId}`,
-            { components },
+      const flagsResponse = await apiClient.get<any>("/hr/payroll/control/features");
+      const payrollFlags = flagsResponse?.data || flagsResponse;
+      if (payrollFlags?.PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED === true) {
+        if (!salaryRevisionEffectiveFrom || !salaryRevisionReason.trim()) {
+          alert("Enter an effective date and reason for this salary revision");
+          setLoading(false);
+          return;
+        }
+        const employeeId = editingSalaryEmployeeId || comprehensiveSalaryForm.employee_id;
+        const existingResponse = editingSalaryEmployeeId
+          ? await apiClient.get<any>(`/hr/salary/${employeeId}`)
+          : [];
+        const existingRows: SalaryComponent[] = Array.isArray(existingResponse) ? existingResponse : existingResponse?.data || [];
+        const usedIds = new Set<string>();
+        const targetDate = salaryRevisionEffectiveFrom;
+        const eligibleExisting = existingRows.filter((row) => {
+          const start = row.effective_from || row.ctc_revised_date || null;
+          return Boolean(start) && start! < targetDate && (!row.effective_to || row.effective_to >= targetDate);
+        });
+        const revisions = components.map((component: any) => {
+          const prior = eligibleExisting.find((row) =>
+            !usedIds.has(row.id) &&
+            row.component_type === component.component_type &&
+            row.component_name === component.component_name,
           );
+          if (prior) usedIds.add(prior.id);
+          return { ...component, supersedes_id: prior?.id || null };
+        });
+        for (const prior of eligibleExisting) {
+          if (!usedIds.has(prior.id)) revisions.push({ action: "END", component_id: prior.id });
         }
+        await apiClient.post(`/hr/salary/${employeeId}/revisions`, {
+          effective_from: salaryRevisionEffectiveFrom,
+          reason: salaryRevisionReason.trim(),
+          components: revisions,
+        });
+      } else if (editingSalaryEmployeeId) {
+        await apiClient.put(`/hr/salary/employee/${editingSalaryEmployeeId}`, { components });
       } else {
-        for (const comp of components) {
-          await apiClient.post("/hr/salary", comp);
-        }
+        for (const comp of components) await apiClient.post("/hr/salary", comp);
       }
 
       setShowComprehensiveSalaryForm(false);
@@ -9794,6 +9809,7 @@ function HrPageContent() {
                     </p>
                   </div>
                   <div>
+                    <Link href="/dashboard/hr/payroll/rules" className="mr-3 inline-flex min-h-10 items-center rounded-lg border border-[#D8C4A8] px-4 text-sm font-semibold text-[#6F4E37] hover:bg-[#FAF9F6]">Payroll Rules</Link>
                     {(canCreateHR || canEditHR) && (
                       <button
                         onClick={openComprehensiveSalaryCreate}
@@ -9840,8 +9856,9 @@ function HrPageContent() {
                                 <span className="block truncate text-sm font-bold text-[#2F1B12]">{group.employeeName}</span>
                                 <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#6F5A49]">
                                   <span>CTC: {group.ctc ? `${formatCurrency(group.ctc.amount)} / year` : "Not set"}</span>
-                                  <span>{group.componentCount} {group.componentCount === 1 ? "component" : "components"}</span>
-                                  {group.lastRevisedDate && <span>Revised: {new Date(`${group.lastRevisedDate.slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN")}</span>}
+                                  <span>{group.currentComponentCount} current / {group.componentCount} total components</span>
+                                  {group.currentEffectiveDate && <span>Current from: {new Date(`${group.currentEffectiveDate.slice(0, 10)}T00:00:00`).toLocaleDateString()}</span>}
+                                  {group.lastRevisedDate && <span>Last dated revision: {new Date(`${group.lastRevisedDate.slice(0, 10)}T00:00:00`).toLocaleDateString()}</span>}
                                 </span>
                               </span>
                               {isExpanded ? <ChevronDown className="h-5 w-5 shrink-0 text-[#8B6F47]" /> : <ChevronRight className="h-5 w-5 shrink-0 text-[#8B6F47]" />}
@@ -9861,15 +9878,14 @@ function HrPageContent() {
                                         const isCurrent = salaryComponentIsCurrent(comp);
                                         return <tr key={comp.id}>
                                           <td className="px-3 py-3"><span className="inline-flex rounded-full bg-[#EFF8FF] px-2.5 py-1 text-xs font-bold text-[#175CD3]">{comp.component_type}</span></td>
-                                          <td className="px-3 py-3">{revised ? new Date(`${String(revised).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN") : "-"}</td>
-                                          <td className="px-3 py-3">{comp.effective_to ? new Date(`${String(comp.effective_to).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN") : "-"}</td>
+                                          <td className="px-3 py-3">{revised ? new Date(`${String(revised).slice(0, 10)}T00:00:00`).toLocaleDateString() : "Legacy date unknown"}</td>
+                                          <td className="px-3 py-3">{comp.effective_to ? new Date(`${String(comp.effective_to).slice(0, 10)}T00:00:00`).toLocaleDateString() : "-"}</td>
                                           <td className="px-3 py-3 font-medium text-[#4A3426]">{comp.component_name}</td>
                                           <td className="px-3 py-3 text-right font-bold">{formatCurrency(comp.amount)}</td>
                                           <td className="px-3 py-3">{comp.is_taxable ? "Yes" : "No"}</td>
                                           <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${isCurrent ? "bg-emerald-50 text-emerald-800" : "bg-stone-100 text-stone-600"}`}>{isCurrent ? "Current" : "Historical"}</span>{comp.effective_date_state === "LEGACY_EFFECTIVE_DATE_UNKNOWN" && <span className="ml-2 text-xs text-amber-700">Legacy date unknown</span>}</td>
                                           <td className="whitespace-nowrap px-3 py-3">
-                                            {canEditHR && <button onClick={() => openComprehensiveSalaryEdit(comp.employee_id)} className="mr-3 font-semibold text-[#175CD3] hover:underline">Edit</button>}
-                                            {canDeleteHR && <button onClick={() => handleDeleteSalaryComponent(comp.id)} className="font-semibold text-[#B42318] hover:underline">Delete</button>}
+                                            <SalaryComponentHistoryActions component={comp} enabled={effectiveSalaryEnabled} canEdit={canEditHR} onChanged={() => void fetchData()} />
                                           </td>
                                         </tr>;
                                       })}
@@ -9886,8 +9902,7 @@ function HrPageContent() {
                                         <div className="shrink-0 text-right"><div className="font-bold text-[#2F1B12]">{formatCurrency(comp.amount)}</div><div className="text-xs text-[#6F5A49]">Taxable: {comp.is_taxable ? "Yes" : "No"}</div></div>
                                       </div>
                                       <div className="mt-3 flex gap-4 border-t border-[#F0E8DC] pt-2 text-sm">
-                                        {canEditHR && <button onClick={() => openComprehensiveSalaryEdit(comp.employee_id)} className="font-semibold text-[#175CD3]">Edit</button>}
-                                        {canDeleteHR && <button onClick={() => handleDeleteSalaryComponent(comp.id)} className="font-semibold text-[#B42318]">Delete</button>}
+                                        <SalaryComponentHistoryActions component={comp} enabled={effectiveSalaryEnabled} canEdit={canEditHR} onChanged={() => void fetchData()} />
                                       </div>
                                     </article>;
                                   })}
@@ -13134,7 +13149,7 @@ function HrPageContent() {
               onSubmit={handleSaveComprehensiveSalary}
               className="space-y-6"
             >
-              {editingSalaryEmployeeId && <div className="grid gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:grid-cols-2">
+              {effectiveSalaryEnabled && <div className="grid gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-stone-800">Change effective from</label>
                   <input type="date" value={salaryRevisionEffectiveFrom} onChange={(event) => setSalaryRevisionEffectiveFrom(event.target.value)} className="w-full rounded border border-stone-300 px-3 py-2" required />
@@ -13145,42 +13160,11 @@ function HrPageContent() {
                 </div>
                 <p className="text-xs text-amber-900 sm:col-span-2">A revision taking effect in a past paid month must go through a correction version. Legacy salary rows keep their effective date marked unknown until confirmed.</p>
               </div>}
-              {/* Region Selector */}
+              {/* Profile is tenant-scoped; the operator cannot switch it in a salary form. */}
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-4">
-                <label className="block text-sm font-semibold mb-2">
-                  Compliance Region
-                </label>
-                <div className="flex space-x-4">
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      value="INDIA"
-                      checked={complianceRegion === "INDIA"}
-                      onChange={(e) =>
-                        setComplianceRegion(e.target.value as "INDIA" | "UAE")
-                      }
-                      className="w-4 h-4"
-                    />
-                    <span className="font-medium">
-                      India (PF, ESI, PT, TDS)
-                    </span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      value="UAE"
-                      checked={complianceRegion === "UAE"}
-                      onChange={(e) =>
-                        setComplianceRegion(e.target.value as "INDIA" | "UAE")
-                      }
-                      className="w-4 h-4"
-                    />
-                    <span className="font-medium">
-                      UAE (WPS, Gratuity, ESB)
-                    </span>
-                  </label>
-                </div>
-                {complianceRegion === "INDIA" && (
+                <label className="block text-sm font-semibold mb-2">Tenant payroll profile</label>
+                <p className="text-sm text-stone-700">{complianceRegion === "UNKNOWN" ? "Profile unavailable; country-specific defaults are disabled." : complianceRegion}</p>
+                {statutoryFieldsEnabled && complianceRegion === "INDIA" && (
                   <div className="mt-3">
                     <label className="block text-xs font-medium mb-1">
                       State (for Professional Tax)
@@ -13235,7 +13219,7 @@ function HrPageContent() {
                 </select>
               </div>
 
-              <div className="border-t pt-4">
+              {supportsCtcComponent && <div className="border-t pt-4">
                 <h4 className="font-semibold mb-3 text-[#8B6F47]">
                   Cost to Company
                 </h4>
@@ -13276,7 +13260,7 @@ function HrPageContent() {
                     />
                   </div>
                 </div>
-              </div>
+              </div>}
 
               <div className="border-t pt-4">
                 <h4 className="font-semibold mb-3 text-green-600">
@@ -13362,9 +13346,9 @@ function HrPageContent() {
               <div className="border-t pt-4">
                 <h4 className="font-semibold mb-3 text-red-600">
                   Deductions{" "}
-                  {complianceRegion === "INDIA" && "(Auto-calculated)"}
+                  {statutoryFieldsEnabled && complianceRegion === "INDIA" && "(Auto-calculated)"}
                 </h4>
-                {complianceRegion === "INDIA" && (
+                {statutoryFieldsEnabled && complianceRegion === "INDIA" && (
                   <div className="bg-green-50 border border-green-200 rounded p-3 mb-4 text-sm">
                     <p className="font-semibold text-green-700 mb-1">
                       Statutory Compliance (India)
@@ -13399,7 +13383,7 @@ function HrPageContent() {
                     </p>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-4">
+                {statutoryFieldsEnabled ? <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="mb-2 flex items-center gap-2 text-sm font-medium">
                       <input
@@ -13533,7 +13517,7 @@ function HrPageContent() {
                         : "Manual entry"}
                     </p>
                   </div>
-                </div>
+                </div> : <p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">No country-specific statutory salary fields are configured for this tenant profile.</p>}
               </div>
 
               <div className="border-t pt-4">

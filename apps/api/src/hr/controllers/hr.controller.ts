@@ -12,7 +12,6 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
-  BadRequestException,
   Logger,
   Res,
 } from "@nestjs/common";
@@ -402,7 +401,7 @@ export class HrController {
   @Post("salary")
   @RequireCreate("hr")
   addSalaryComponent(@Request() req: any, @Body() body: any) {
-    return this.hrService.addSalaryComponent(req.user.tenantId, body);
+    return this.hrService.addSalaryComponent(req.user.tenantId, body, req.user.userId);
   }
   @Get("salary-components")
   @RequireRead("hr")
@@ -415,6 +414,12 @@ export class HrController {
     @Param("employeeId") employeeId: string,
   ) {
     return this.hrService.getSalaryComponents(req.user.tenantId, employeeId);
+  }
+
+  @Get("salary/:employeeId/history")
+  @RequireRead("hr")
+  getSalaryComponentHistory(@Request() req: any, @Param("employeeId") employeeId: string, @Query("componentId") componentId?: string) {
+    return this.hrService.getSalaryComponentHistory(req.user.tenantId, employeeId, componentId);
   }
 
   @Post("salary/:employeeId/revisions")
@@ -430,6 +435,12 @@ export class HrController {
       req.user.userId,
       body,
     );
+  }
+
+  @Put("salary/:employeeId/components/:componentId/end")
+  @RequireUpdate("hr")
+  endSalaryComponent(@Request() req: any, @Param("employeeId") employeeId: string, @Param("componentId") componentId: string, @Body() body: any) {
+    return this.hrService.endEffectiveDatedSalaryComponent(req.user.tenantId, employeeId, componentId, req.user.userId, body);
   }
 
   @Put("salary/employee/:employeeId")
@@ -471,6 +482,48 @@ export class HrController {
   @RequireRead("hr")
   getPayrollControlFeatures(@Request() req: any) {
     return this.hrService.getPayrollControlFlags(req.user.tenantId);
+  }
+
+  @Get("payroll/control/profile")
+  @RequireRead("hr")
+  getHrPayrollProfile(@Request() req: any) {
+    return this.hrService.getHrPayrollProfile(req.user.tenantId);
+  }
+
+  @Get("payroll/control/rules")
+  @RequireRead("hr")
+  getEffectivePayrollRuleCatalog(@Request() req: any, @Query("effectiveDate") effectiveDate?: string, @Query("employeeId") employeeId?: string) {
+    return this.hrService.getEffectivePayrollRuleCatalog(req.user.tenantId, effectiveDate || new Date().toISOString().slice(0, 10), employeeId);
+  }
+
+  @Post("payroll/control/rules")
+  @RequireUpdate("hr")
+  saveEffectivePayrollRule(@Request() req: any, @Body() body: any) {
+    return this.hrService.saveEffectivePayrollRule(req.user.tenantId, req.user.userId, body);
+  }
+
+  @Put("payroll/control/rules/:id/end")
+  @RequireUpdate("hr")
+  endEffectivePayrollRule(@Request() req: any, @Param("id") id: string, @Body() body: any) {
+    return this.hrService.endEffectivePayrollRule(req.user.tenantId, req.user.userId, id, body);
+  }
+
+  @Get("employees/:employeeId/payroll-rule-overrides")
+  @RequireRead("hr")
+  getEmployeePayrollRuleOverrides(@Request() req: any, @Param("employeeId") employeeId: string, @Query("effectiveDate") effectiveDate?: string) {
+    return this.hrService.getEffectivePayrollRuleCatalog(req.user.tenantId, effectiveDate || new Date().toISOString().slice(0, 10), employeeId);
+  }
+
+  @Post("employees/:employeeId/payroll-rule-overrides")
+  @RequireUpdate("hr")
+  saveEmployeePayrollOverride(@Request() req: any, @Param("employeeId") employeeId: string, @Body() body: any) {
+    return this.hrService.saveEmployeePayrollOverride(req.user.tenantId, employeeId, req.user.userId, body);
+  }
+
+  @Put("employees/:employeeId/payroll-rule-overrides/:id/end")
+  @RequireUpdate("hr")
+  endEmployeePayrollOverride(@Request() req: any, @Param("employeeId") employeeId: string, @Param("id") id: string, @Body() body: any) {
+    return this.hrService.endEmployeePayrollOverride(req.user.tenantId, employeeId, req.user.userId, id, body);
   }
 
   @Get("payroll/control/month/:month")

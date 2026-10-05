@@ -7,6 +7,9 @@ import {
   calculatePayrollDifferential,
   payrollVarianceFlagged,
   findOverlappingEffectivePeriods,
+  resolveSalaryComponentsAtDate,
+  canHardDeleteSalaryComponent,
+  payrollProfileCapabilities,
   monthContainsEffectiveDate,
   safePayrollFeatureFlags,
   summarizePayrollBlockers,
@@ -67,6 +70,33 @@ describe("payroll control domain", () => {
       { id: "other", employee_id: "e", component_type: "ALLOWANCE", component_name: "Meal", effective_from: "2026-01-01", effective_to: null },
     ];
     expect(findOverlappingEffectivePeriods(rows).map(({ first, second }) => [first.id, second.id])).toEqual([["a", "b"]]);
+  });
+
+  it("resolves historical, current, and future salary versions without inventing legacy dates", () => {
+    const rows = [
+      { id: "legacy", employee_id: "e", component_type: "BASIC", component_name: "Basic", amount: 100, effective_from: null, effective_to: "2026-03-31" },
+      { id: "april", employee_id: "e", component_type: "BASIC", component_name: "Basic", amount: 150, effective_from: "2026-04-01", effective_to: null, supersedes_id: "legacy" },
+      { id: "future", employee_id: "e", component_type: "HRA", component_name: "HRA", amount: 30, effective_from: "2027-01-01", effective_to: null },
+    ];
+    expect(resolveSalaryComponentsAtDate(rows, "2026-02-28").map((row) => [row.id, row.amount])).toEqual([["legacy", 100]]);
+    expect(resolveSalaryComponentsAtDate(rows, "2026-04-01").map((row) => [row.id, row.amount])).toEqual([["april", 150]]);
+    expect(() => resolveSalaryComponentsAtDate(rows, "2026-02-30")).toThrow("real YYYY-MM-DD");
+  });
+
+  it("allows hard deletion only for unused future records without history or dependencies", () => {
+    const safe = { effectiveFrom: "2027-01-01", today: "2026-10-05", payrollUsed: false, hasDependentVersion: false, hasAuditHistory: false };
+    expect(canHardDeleteSalaryComponent(safe)).toBe(true);
+    expect(canHardDeleteSalaryComponent({ ...safe, effectiveFrom: null })).toBe(false);
+    expect(canHardDeleteSalaryComponent({ ...safe, payrollUsed: true })).toBe(false);
+    expect(canHardDeleteSalaryComponent({ ...safe, hasDependentVersion: true })).toBe(false);
+    expect(canHardDeleteSalaryComponent({ ...safe, hasAuditHistory: true })).toBe(false);
+  });
+
+  it("keeps Egypt payroll free of India-only defaults and unsupported CTC values", () => {
+    expect(payrollProfileCapabilities("EGYPT")).toEqual({ market_profile: "EGYPT", statutory_fields_enabled: false, supports_ctc_component: false });
+    expect(payrollProfileCapabilities("EGYPT", true, true)).toEqual({ market_profile: "EGYPT", statutory_fields_enabled: true, supports_ctc_component: false });
+    expect(payrollProfileCapabilities("INDIA")).toEqual({ market_profile: "INDIA", statutory_fields_enabled: true, supports_ctc_component: true });
+    expect(payrollProfileCapabilities("UNKNOWN", false, true).supports_ctc_component).toBe(false);
   });
 
   it("preserves undated legacy salary and selects explicit effective periods", () => {

@@ -19,6 +19,8 @@ export interface SalaryComponentEmployeeGroup {
   employeeName: string;
   components: SalaryComponentRow[];
   componentCount: number;
+  currentComponentCount: number;
+  currentEffectiveDate: string | null;
   ctc: SalaryComponentRow | null;
   lastRevisedDate: string | null;
 }
@@ -68,9 +70,15 @@ export function groupSalaryComponents(
       });
       const ctc = components
         .filter((component) => String(component.component_type).toUpperCase() === "CTC")
+        .filter((component) => Boolean(revisedDate(component)))
         .filter((component) => dateValue(revisedDate(component)) <= todayValue)
         .filter((component) => !component.effective_to || dateValue(component.effective_to) >= todayValue)
         .sort((a, b) => dateValue(revisedDate(b)) - dateValue(revisedDate(a)))[0] || null;
+      const currentComponents = components.filter((component) => salaryComponentIsCurrent(component, today));
+      const currentEffectiveDate = currentComponents
+        .map(revisedDate)
+        .filter((date): date is string => Boolean(date))
+        .sort((a, b) => dateValue(b) - dateValue(a))[0] || null;
       const dates = components
         .map(revisedDate)
         .filter((date): date is string => Boolean(date) && dateValue(date) <= todayValue);
@@ -80,6 +88,8 @@ export function groupSalaryComponents(
         employeeName: components.find((component) => component.employee_name)?.employee_name || "N/A",
         components: sorted,
         componentCount: sorted.length,
+        currentComponentCount: currentComponents.length,
+        currentEffectiveDate,
         ctc,
         lastRevisedDate,
       };
@@ -108,5 +118,7 @@ export function salaryComponentIsCurrent(component: SalaryComponentRow, today = 
   const currentDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   const start = revisedDate(component);
   const end = component.effective_to || null;
-  return (!start || dateValue(start) <= currentDay) && (!end || dateValue(end) >= currentDay);
+  // Legacy rows with no effective date remain visible as unknown, but must not
+  // be silently treated as current salary.
+  return Boolean(start) && dateValue(start) <= currentDay && (!end || dateValue(end) >= currentDay);
 }
