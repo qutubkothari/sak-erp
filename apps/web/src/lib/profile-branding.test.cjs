@@ -23,6 +23,7 @@ test('ARWA, MIZANTRA, and SAIFSEAS retain profile-specific names and marks', () 
 });
 test('unknown profile falls back to generic Mizantra configuration, never Saif', () => {
   const source = read('apps/web/src/lib/profile-branding.ts');
+  assert.match(source, /NEXT_PUBLIC_ERP_TENANT_PROFILE \|\| process\.env\.ERP_TENANT_PROFILE/);
   assert.match(source, /brand: 'Mizantra'[\s\S]*?companyName: 'Mizantra ERP'/);
   assert.doesNotMatch(source.slice(source.indexOf('return {', source.indexOf('export function getProfileBranding')), source.indexOf('\n  };', source.indexOf('export function getProfileBranding'))), /Saif/);
 });

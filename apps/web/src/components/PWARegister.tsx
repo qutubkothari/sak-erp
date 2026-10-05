@@ -10,7 +10,7 @@ export default function PWARegister() {
 
     const register = async () => {
       try {
-        const profile = process.env.ERP_TENANT_PROFILE || 'MIZANTRA';
+        const profile = process.env.NEXT_PUBLIC_ERP_TENANT_PROFILE || process.env.ERP_TENANT_PROFILE || 'MIZANTRA';
         // The profile key keeps installed app shell caches isolated between
         // deployments on a shared domain and forces upgrades of old workers.
         const registration = await navigator.serviceWorker.register(

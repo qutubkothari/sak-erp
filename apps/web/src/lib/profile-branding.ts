@@ -16,7 +16,9 @@ const BRANDING: Record<TenantProfile, ProfileBranding> = {
   ARWA: { brand: profiles.ARWA.brand, companyName: profiles.ARWA.companyName, logo: profiles.ARWA.shellLogo, icon: profiles.ARWA.appIcon, manifest: profiles.ARWA.manifest, shortName: profiles.ARWA.shortName },
 };
 
-export function getProfileBranding(profile = process.env.ERP_TENANT_PROFILE): ProfileBranding {
+export function getProfileBranding(
+  profile = process.env.NEXT_PUBLIC_ERP_TENANT_PROFILE || process.env.ERP_TENANT_PROFILE,
+): ProfileBranding {
   if (profile && profile in BRANDING) return BRANDING[profile as TenantProfile];
   return {
     brand: 'Mizantra',
