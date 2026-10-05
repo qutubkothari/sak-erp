@@ -175,6 +175,21 @@ describe("payroll control domain", () => {
     expect(buildArrearsEvidence({ employeeId: "employee-1", payrollPeriod: "2026-08", sourcePayslip, correctedPayslip: { ...correctedPayslip, payroll_breakdown: { ...correctedPayslip.payroll_breakdown, salary_components: [{ id: "basic-v2" }] } }, sourceCorrectionId: "correction-1", calculationChecksum: "sha256" }).classification).toBe("EVIDENCE_INCOMPLETE");
   });
 
+  it("treats an empty historical payroll breakdown as valid but incomplete evidence", () => {
+    const evidence = buildArrearsEvidence({
+      employeeId: "employee-1",
+      payrollPeriod: "2026-08",
+      sourcePayslip: { id: "v1", net_salary: 80000, payroll_breakdown: {} },
+      correctedPayslip: { id: "v2", net_salary: 84250, payroll_breakdown: {} },
+      sourceCorrectionId: "correction-1",
+      calculationChecksum: "sha256",
+    });
+
+    expect(evidence.classification).toBe("EVIDENCE_INCOMPLETE");
+    expect(evidence.old_entitlement).toBe(80000);
+    expect(evidence.new_entitlement).toBe(84250);
+  });
+
   it("reconstructs the approved payroll checksum from material lines, sources and correction links", () => {
     const input = { tenant_id: "tenant", month: "2026-08", control_id: "control", version: 2, input_checksum: "inputs", run_id: "run", slips: [{ id: "slip", employee_id: "employee", gross_salary: 100, total_deductions: 5, net_salary: 95, payroll_breakdown: { calculation_lines: [{ amount: 100, source: { salary_component_id: "salary-v1" } }] } }] };
     const expected = payrollRunCalculationChecksum(input);
