@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "../../components/Sidebar";
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
@@ -20,6 +21,8 @@ import { captureBrainRoute } from "@/lib/brain-context";
 import { ProactiveAttentionIndicator } from '@/components/MizantraProactiveOperations';
 import { UnifiedAskEntry } from '@/components/MizantraUnifiedAi';
 import { getProfileBranding } from '@/lib/profile-branding';
+
+const appBranding = getProfileBranding();
 
 // A module's overview can be disabled independently of its operational
 // workspaces.  Preserve the owner's feature controls, but do not strand a
@@ -300,6 +303,12 @@ export default function DashboardLayout({
         <GovernanceRequiredNotice />
 
         <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
+        <div className="flex items-center gap-2 border-b border-[#E8DCC4] bg-white px-3 py-2 md:hidden">
+          <Link href="/dashboard" aria-label={`${appBranding.brand} home`} className="flex items-center gap-2">
+            <img src={appBranding.logo} alt={`${appBranding.brand} logo`} className="h-7 w-7 object-contain" />
+            <span className="text-sm font-bold text-[#4A3426]">{appBranding.brand}</span>
+          </Link>
+        </div>
         <main
           id="main-content"
           tabIndex={-1}

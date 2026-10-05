@@ -37,6 +37,9 @@ test('desktop and collapsed desktop sidebar consume the same profile logo/name p
 test('mobile navigation stays in the same sidebar component and uses profile branding', () => {
   assert.match(sidebar, /appBranding\.logo/);
   assert.match(sidebar, /hideGlobalMobileNavigation/);
+  assert.match(dashboardLayout, /md:hidden/);
+  assert.match(dashboardLayout, /appBranding\.brand/);
+  assert.match(dashboardLayout, /src=\{appBranding\.logo\}/);
 });
 test('login host resolution and profile fallback use shared branding configuration', () => {
   assert.match(login, /resolveProfileLoginBrand/);
