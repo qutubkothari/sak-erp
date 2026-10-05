@@ -223,13 +223,26 @@ CREATE TABLE IF NOT EXISTS public.hr_payroll_feature_flags (
     'PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED',
     'HR_TEAM_DESK_ENABLED',
     'PAYROLL_WORKING_ENABLED',
-    'PAYROLL_CORRECTION_VERSIONS_ENABLED'
+    'PAYROLL_CORRECTION_VERSIONS_ENABLED',
+    'PAYROLL_STATE_TRANSITIONS_ENABLED'
   )),
   is_enabled BOOLEAN NOT NULL DEFAULT false,
   updated_by UUID,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_id, feature_key)
 );
+
+ALTER TABLE public.hr_payroll_feature_flags
+  DROP CONSTRAINT IF EXISTS hr_payroll_feature_flags_feature_key_check;
+ALTER TABLE public.hr_payroll_feature_flags
+  ADD CONSTRAINT hr_payroll_feature_flags_feature_key_check CHECK (feature_key IN (
+    'PAYROLL_MONTH_COCKPIT_ENABLED',
+    'PAYROLL_EFFECTIVE_DATED_SALARY_ENABLED',
+    'HR_TEAM_DESK_ENABLED',
+    'PAYROLL_WORKING_ENABLED',
+    'PAYROLL_CORRECTION_VERSIONS_ENABLED',
+    'PAYROLL_STATE_TRANSITIONS_ENABLED'
+  ));
 
 CREATE TABLE IF NOT EXISTS public.hr_payroll_month_controls (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -312,6 +325,25 @@ LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'PAYROLL_AUDIT_EVENTS_ARE_APPEND_ON
 DROP TRIGGER IF EXISTS hr_payroll_control_events_no_mutation ON public.hr_payroll_control_events;
 CREATE TRIGGER hr_payroll_control_events_no_mutation BEFORE UPDATE OR DELETE ON public.hr_payroll_control_events
   FOR EACH ROW EXECUTE FUNCTION public.hr_payroll_control_events_immutable();
+
+CREATE OR REPLACE FUNCTION public.hr_guard_finalized_payroll_control_mutation() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER AS $$ BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.stage IN ('APPROVED','PAID') THEN RAISE EXCEPTION 'Finalized payroll control evidence cannot be deleted; open a correction version'; END IF;
+    RETURN OLD;
+  END IF;
+  IF OLD.stage IN ('APPROVED','PAID') AND ROW(NEW.version,NEW.payroll_month,NEW.payroll_run_id,NEW.input_checksum,NEW.calculation_checksum,NEW.resolution_snapshot,NEW.maker_checker_snapshot)
+    IS DISTINCT FROM ROW(OLD.version,OLD.payroll_month,OLD.payroll_run_id,OLD.input_checksum,OLD.calculation_checksum,OLD.resolution_snapshot,OLD.maker_checker_snapshot) THEN
+    RAISE EXCEPTION 'Finalized payroll calculation checksum and control evidence are immutable; open a correction version';
+  END IF;
+  IF OLD.stage IN ('APPROVED','PAID') AND NEW.stage IS DISTINCT FROM OLD.stage AND NOT (OLD.stage='APPROVED' AND NEW.stage='PAID') THEN
+    RAISE EXCEPTION 'Finalized payroll control cannot leave its final stage except to record payment';
+  END IF;
+  RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS hr_payroll_controls_finalized_immutable ON public.hr_payroll_month_controls;
+CREATE TRIGGER hr_payroll_controls_finalized_immutable BEFORE UPDATE OR DELETE ON public.hr_payroll_month_controls
+  FOR EACH ROW EXECUTE FUNCTION public.hr_guard_finalized_payroll_control_mutation();
 
 -- Tenant-scoped, compare-and-set workflow transitions. Callers must still
 -- enforce their dedicated permission; this function provides atomic stage,

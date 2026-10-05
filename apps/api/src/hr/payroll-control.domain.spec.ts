@@ -18,14 +18,25 @@ import {
   classifyPayrollEvidence,
   reconcilePayrollTotals,
   explainPayrollVariance,
+  buildArrearsEvidence,
+  payrollRunCalculationChecksum,
+  isSupportedPayrollDeploymentProfile,
 } from "./payroll-control.domain";
 
 describe("payroll control domain", () => {
+  it("fails closed for unknown deployment profiles", () => {
+    expect(isSupportedPayrollDeploymentProfile("SAIFSEAS")).toBe(true);
+    expect(isSupportedPayrollDeploymentProfile("MIZANTRA")).toBe(true);
+    expect(isSupportedPayrollDeploymentProfile("ARWA")).toBe(true);
+    expect(isSupportedPayrollDeploymentProfile("UNKNOWN")).toBe(false);
+    expect(isSupportedPayrollDeploymentProfile(undefined)).toBe(false);
+  });
   it("keeps every new tenant flag off unless explicitly enabled", () => {
     const flags = safePayrollFeatureFlags([{ feature_key: "HR_TEAM_DESK_ENABLED", is_enabled: true }]);
     expect(flags.HR_TEAM_DESK_ENABLED).toBe(true);
     expect(flags.PAYROLL_MONTH_COCKPIT_ENABLED).toBe(false);
     expect(flags.PAYROLL_CORRECTION_VERSIONS_ENABLED).toBe(false);
+    expect(flags.PAYROLL_STATE_TRANSITIONS_ENABLED).toBe(false);
   });
 
   it("derives the compatible read stage from existing payroll run statuses", () => {
@@ -154,6 +165,22 @@ describe("payroll control domain", () => {
     const previous = { calculation_lines: [{ label: "Basic", amount: 100, source: { salary_component_id: "basic-v1" } }, { label: "Overtime", amount: 10, source: { overtime_hours: 1 } }], payable_days: 20, overtime_hours: 1, overtime_amount: 10, total_deductions: 0, arrears: 0 };
     const current = { calculation_lines: [{ label: "Basic", amount: 120, source: { salary_component_id: "basic-v2" } }, { label: "Arrears", amount: 5, source: { arrear_id: "arr-1" } }], payable_days: 19, overtime_hours: 0, overtime_amount: 0, total_deductions: 2, arrears: 5 };
     expect(explainPayrollVariance(previous, current).map(item => item.key)).toEqual(expect.arrayContaining(["SALARY_COMPONENT_CHANGE", "ATTENDANCE_CHANGE", "OVERTIME_CHANGE", "ARREARS_CHANGE", "DEDUCTION_CHANGE", "COMPONENT_STARTED", "COMPONENT_ENDED"]));
+  });
+
+  it("builds deterministic correction arrears evidence and marks missing revision lineage incomplete", () => {
+    const sourcePayslip = { id: "v1", payroll_run_id: "run-1", salary_month: "2026-08", net_salary: 80000, payroll_breakdown: { salary_components: [{ id: "basic-v1" }], calculation_lines: [{ kind: "EARNING", amount: 80000, source: { salary_component_id: "basic-v1" } }] } };
+    const correctedPayslip = { id: "v2", payroll_run_id: "run-2", salary_month: "2026-08", net_salary: 84250, payroll_breakdown: { salary_components: [{ id: "basic-v2", supersedes_id: "basic-v1", effective_from: "2026-08-01", change_reason: "Approved salary revision" }], calculation_lines: [{ kind: "EARNING", amount: 84250, source: { salary_component_id: "basic-v2", rule_version_id: "rule-1" } }] } };
+    const evidence = buildArrearsEvidence({ employeeId: "employee-1", payrollPeriod: "2026-08", sourcePayslip, correctedPayslip, sourceCorrectionId: "correction-1", calculationChecksum: "sha256" });
+    expect(evidence).toMatchObject({ classification: "STORED_EVIDENCE", origin_periods: ["2026-08"], old_entitlement: 80000, new_entitlement: 84250, difference: 4250, effective_date: "2026-08-01", source_correction_id: "correction-1", calculation_checksum: "sha256", payroll_rule_version_ids: ["rule-1"] });
+    expect(buildArrearsEvidence({ employeeId: "employee-1", payrollPeriod: "2026-08", sourcePayslip, correctedPayslip: { ...correctedPayslip, payroll_breakdown: { ...correctedPayslip.payroll_breakdown, salary_components: [{ id: "basic-v2" }] } }, sourceCorrectionId: "correction-1", calculationChecksum: "sha256" }).classification).toBe("EVIDENCE_INCOMPLETE");
+  });
+
+  it("reconstructs the approved payroll checksum from material lines, sources and correction links", () => {
+    const input = { tenant_id: "tenant", month: "2026-08", control_id: "control", version: 2, input_checksum: "inputs", run_id: "run", slips: [{ id: "slip", employee_id: "employee", gross_salary: 100, total_deductions: 5, net_salary: 95, payroll_breakdown: { calculation_lines: [{ amount: 100, source: { salary_component_id: "salary-v1" } }] } }] };
+    const expected = payrollRunCalculationChecksum(input);
+    expect(payrollRunCalculationChecksum(input)).toBe(expected);
+    expect(payrollRunCalculationChecksum({ ...input, slips: [{ ...input.slips[0], payroll_breakdown: { calculation_lines: [{ amount: 100, source: { salary_component_id: "salary-v2" } }] } }] })).not.toBe(expected);
+    expect(payrollRunCalculationChecksum({ ...input, slips: [{ ...input.slips[0], supersedes_payslip_id: "old-slip", version: 3 }] })).not.toBe(expected);
   });
 
   it("counts blocker severities independently", () => {

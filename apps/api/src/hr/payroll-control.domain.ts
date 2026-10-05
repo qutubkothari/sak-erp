@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export type PayrollStage =
   | "OPEN"
   | "READY_TO_CLOSE"
@@ -28,6 +30,7 @@ export const PAYROLL_CONTROL_FEATURES = [
   "HR_TEAM_DESK_ENABLED",
   "PAYROLL_WORKING_ENABLED",
   "PAYROLL_CORRECTION_VERSIONS_ENABLED",
+  "PAYROLL_STATE_TRANSITIONS_ENABLED",
 ] as const;
 
 export type PayrollControlFeature = (typeof PAYROLL_CONTROL_FEATURES)[number];
@@ -112,6 +115,10 @@ export type HrPayrollRuleKey = (typeof HR_PAYROLL_RULE_KEYS)[number];
 
 export function isSupportedHrPayrollRuleKey(value: unknown): value is HrPayrollRuleKey {
   return typeof value === "string" && (HR_PAYROLL_RULE_KEYS as readonly string[]).includes(value);
+}
+
+export function isSupportedPayrollDeploymentProfile(value: unknown) {
+  return ["SAIFSEAS", "MIZANTRA", "ARWA"].includes(String(value || "").trim().toUpperCase());
 }
 
 export function payrollProfileCapabilities(profileValue: unknown, statutoryConfigured?: boolean, ctcConfigured?: boolean) {
@@ -279,7 +286,7 @@ export function classifyPayrollEvidence(line: Record<string, unknown>, hasStored
   return hasStoredBreakdown ? "STORED_EVIDENCE" : "RECONSTRUCTED_DETERMINISTICALLY";
 }
 
-export function reconcilePayrollTotals(lines: Array<{ kind?: string; amount?: unknown }>, totals: { gross?: unknown; deductions?: unknown; net?: unknown }) {
+export function reconcilePayrollTotals(lines: Array<{ kind?: string; amount?: unknown; source?: Record<string, unknown> }>, totals: { gross?: unknown; deductions?: unknown; net?: unknown }) {
   const earningLines = lines.filter(line => line.kind === "EARNING");
   const earnings = earningLines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
   const salaryComponentEarnings = earningLines.filter(line => !!(line as any).source?.salary_component_id).reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
@@ -288,6 +295,60 @@ export function reconcilePayrollTotals(lines: Array<{ kind?: string; amount?: un
   const storedGross = Number(totals.gross), storedDeductions = Number(totals.deductions), storedNet = Number(totals.net);
   const round = (value: number) => Math.round(value * 100) / 100;
   return { earnings: round(earnings), salary_component_earnings: round(salaryComponentEarnings), deductions: round(deductions), expected_net: expectedNet, stored_gross: storedGross, stored_deductions: storedDeductions, stored_net: storedNet, reconciles: Math.abs(round(salaryComponentEarnings) - round(storedGross)) <= 0.01 && Math.abs(round(deductions) - round(storedDeductions)) <= 0.01 && Math.abs(expectedNet - round(storedNet)) <= 0.01 };
+}
+
+export function payrollRunCalculationChecksum(input: { tenant_id: string; month: string; control_id: string; version: number; input_checksum: string; run_id: string; slips: Array<Record<string, unknown>> }) {
+  const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+  const slips = [...input.slips].map((row: any) => ({
+    id: row.id, employee_id: row.employee_id, salary_month: row.salary_month || input.month,
+    version: row.version ?? 1, supersedes_payslip_id: row.supersedes_payslip_id || null,
+    correction_reason: row.correction_reason || null,
+    gross_salary: row.gross_salary, total_deductions: row.total_deductions, net_salary: row.net_salary,
+    attendance_days: row.attendance_days ?? null, leave_days: row.leave_days ?? null, working_days: row.working_days ?? null,
+    absent_days: row.absent_days ?? null, overtime_hours: row.overtime_hours ?? null, overtime_amount: row.overtime_amount ?? null,
+    attendance_deduction: row.attendance_deduction ?? null, late_deduction: row.late_deduction ?? null,
+    payroll_breakdown: row.payroll_breakdown,
+  })).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
+  const material = canonical({ tenant_id: input.tenant_id, month: input.month, control_id: input.control_id, version: input.version, input_checksum: input.input_checksum, run_id: input.run_id, slips });
+  return createHash("sha256").update(JSON.stringify(material)).digest("hex");
+}
+
+export function buildArrearsEvidence(input: { employeeId: string; payrollPeriod: string; sourcePayslip: Record<string, any>; correctedPayslip: Record<string, any>; sourceCorrectionId: string; calculationChecksum: string; payrollRuleVersions?: Array<Record<string, any>> }) {
+  const sourceBreakdown = input.sourcePayslip?.payroll_breakdown;
+  const correctedBreakdown = input.correctedPayslip?.payroll_breakdown;
+  const sourceComponents = Array.isArray(sourceBreakdown?.salary_components) ? sourceBreakdown.salary_components : [];
+  const correctedComponents = Array.isArray(correctedBreakdown?.salary_components) ? correctedBreakdown.salary_components : [];
+  const sourceLines = Array.isArray(sourceBreakdown?.calculation_lines) ? sourceBreakdown.calculation_lines : [];
+  const correctedLines = Array.isArray(correctedBreakdown?.calculation_lines) ? correctedBreakdown.calculation_lines : [];
+  const revisions = correctedComponents.filter((component: any) => component.supersedes_id).map((component: any) => ({ prior_component_id: String(component.supersedes_id), revised_component_id: String(component.id || ""), effective_date: component.effective_from || null, reason: component.change_reason || null }));
+  const sourceRuleVersionIds = new Set(sourceLines.map((line: any) => line.source?.rule_version_id).filter(Boolean).map(String));
+  const ruleVersionIds = [...new Set(correctedLines.map((line: any) => line.source?.rule_version_id).filter(Boolean).map(String))].sort();
+  const ruleRevisions = ruleVersionIds.filter(id => !sourceRuleVersionIds.has(id)).map(id => {
+    const version = (input.payrollRuleVersions || []).find((candidate: any) => String(candidate.id) === id);
+    return { rule_version_id: id, effective_date: version?.effective_from || null, reason: version?.reason || null };
+  });
+  const oldEntitlement = Number(input.sourcePayslip?.net_salary);
+  const newEntitlement = Number(input.correctedPayslip?.net_salary);
+  const complete = Boolean(input.employeeId && input.payrollPeriod && input.sourceCorrectionId && input.calculationChecksum && input.sourcePayslip?.id && input.correctedPayslip?.id && sourceBreakdown && correctedBreakdown && sourceLines.length && correctedLines.length && Number.isFinite(oldEntitlement) && Number.isFinite(newEntitlement));
+  const effectiveDates = [...revisions, ...ruleRevisions].map((revision: any) => revision.effective_date).filter(Boolean).sort();
+  return {
+    classification: complete && (revisions.length > 0 || ruleRevisions.some((revision: any) => Boolean(revision.effective_date))) ? "STORED_EVIDENCE" : "EVIDENCE_INCOMPLETE",
+    employee_id: input.employeeId,
+    payroll_period: input.payrollPeriod,
+    origin_periods: [String(input.sourcePayslip?.salary_month || input.payrollPeriod)],
+    salary_rule_revisions: revisions,
+    payroll_rule_revisions: ruleRevisions,
+    payroll_rule_version_ids: ruleVersionIds,
+    old_entitlement: Number.isFinite(oldEntitlement) ? oldEntitlement : null,
+    new_entitlement: Number.isFinite(newEntitlement) ? newEntitlement : null,
+    difference: Number.isFinite(oldEntitlement) && Number.isFinite(newEntitlement) ? Math.round((newEntitlement - oldEntitlement) * 100) / 100 : null,
+    effective_date: effectiveDates[0] || null,
+    source_correction_id: input.sourceCorrectionId,
+    source_payslip_id: input.sourcePayslip?.id || null,
+    corrected_payslip_id: input.correctedPayslip?.id || null,
+    source_payroll_run_id: input.sourcePayslip?.payroll_run_id || null,
+    calculation_checksum: input.calculationChecksum || null,
+  };
 }
 
 export function explainPayrollVariance(previous: Record<string, any> | null, current: Record<string, any>) {

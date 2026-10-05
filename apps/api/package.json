@@ -14,6 +14,7 @@
     "autoheal:worker": "node dist/support-autofix/worker-main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
+    "test:integration": "jest --runInBand src/intelligence/action-operator.integration.spec.ts src/hr/payroll-migration.integration.spec.ts",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json"

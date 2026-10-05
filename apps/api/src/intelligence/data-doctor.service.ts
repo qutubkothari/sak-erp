@@ -143,6 +143,7 @@ export class DataDoctorService {
       await Promise.all([
         load("salaryComponents", "doctor_payroll_components", { employee_id: employeeId }),
         load("monthSlips", "doctor_payroll_slips", { employee_id: employeeId, salary_month: month }),
+        load("runSlips", "doctor_payroll_slips", { payroll_run_id: String(root.payroll_run_id || "") }),
         load("corrections", "doctor_payroll_corrections", { payroll_month: month }),
         load("differences", "doctor_payroll_differences", { employee_id: employeeId }),
         load("controls", "doctor_payroll_controls", { payroll_run_id: String(root.payroll_run_id || "") }),

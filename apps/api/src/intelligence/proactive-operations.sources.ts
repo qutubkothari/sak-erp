@@ -168,7 +168,8 @@ export class ProactiveOperationsSources {
           if (process.env.MIZANTRA_SMART_APPROVAL_ENABLED === 'true' && process.env['MIZANTRA_SMART_APPROVAL_' + type] === 'true') {
             const entityType = type === 'PO' ? 'purchase_order' : type === 'PR' ? 'purchase_requisition' : 'grn';
             const review = await this.approval.review(scope.user, { brain_context: this.context(scope, entityType, document.id) });
-            if (review.attention_points > 0) results.push(this.pending('SMART_APPROVAL_REVIEW_POINTS', { ...document, reference: document[number] }, 'Purchasing', type, `${document[number]} has ${review.attention_points} review points`, 'Smart Approval has recorded attention points; these are review facts, not an approve/reject recommendation.', resource + ':approve', `/dashboard/active-planner?attention_review=${entityType}&attention_id=${document.id}`, { source_state: document.status, required_read: resource + ':read', review_points: review.attention_points, reviewed_at: review.reviewed_at }));
+            const attentionPoints = Number(review.attention_points || 0);
+            if (attentionPoints > 0) results.push(this.pending('SMART_APPROVAL_REVIEW_POINTS', { ...document, reference: document[number] }, 'Purchasing', type, `${document[number]} has ${attentionPoints} review points`, 'Smart Approval has recorded attention points; these are review facts, not an approve/reject recommendation.', resource + ':approve', `/dashboard/active-planner?attention_review=${entityType}&attention_id=${document.id}`, { source_state: document.status, required_read: resource + ':read', review_points: attentionPoints, reviewed_at: review.reviewed_at }));
           }
         }
       }
