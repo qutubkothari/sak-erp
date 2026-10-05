@@ -96,7 +96,7 @@ export class AuditInterceptor implements NestInterceptor {
     const resourceType = auditMetadata?.resourceType || this.inferResourceType(routePath);
     const action = error
       ? `FAILED_${auditMetadata?.action || this.inferAction(method, routePath)}`
-      : auditMetadata?.action || this.inferAction(method, routePath);
+      : request.auditSnapshot?.action || auditMetadata?.action || this.inferAction(method, routePath);
 
     const responsePayload = this.extractPayload(responseBody);
     const resourceId = this.toUuidOrNull(this.pickFirstString(
@@ -114,16 +114,26 @@ export class AuditInterceptor implements NestInterceptor {
       responsePayload?.so_number,
       responsePayload?.quotation_number,
       responsePayload?.item_code,
+      responsePayload?.employee_code,
+      request.body?.employee_code,
+      request.body?.employeeCode,
+      request.auditSnapshot?.employee_code,
       responsePayload?.code,
+      responsePayload?.employee?.employee_code,
       responsePayload?.data?.po_number,
       responsePayload?.data?.code,
     );
     const resourceName = this.pickFirstString(
       responsePayload?.name,
       responsePayload?.item_name,
+      responsePayload?.employee_name,
+      request.body?.employee_name,
+      request.body?.employeeName,
+      request.auditSnapshot?.employee_name,
       responsePayload?.title,
       responsePayload?.subject,
       responsePayload?.data?.name,
+      responsePayload?.employee?.name,
       resourceCode,
     );
 
@@ -135,8 +145,12 @@ export class AuditInterceptor implements NestInterceptor {
       resourceId,
       resourceCode,
       resourceName,
-      oldValue: null,
-      newValue: {
+      // The interceptor cannot safely infer a prior business state from a
+      // request body. Services that have loaded the prior row should pass it
+      // explicitly to AuditService; absent that, the UI reports history as
+      // unavailable instead of inventing a before value.
+      oldValue: request.auditSnapshot?.oldValue ?? null,
+      newValue: request.auditSnapshot ? request.auditSnapshot.newValue : {
         request: this.sanitize(request.body),
         response: this.sanitize(responsePayload),
       },
@@ -144,6 +158,24 @@ export class AuditInterceptor implements NestInterceptor {
       userAgent: request.headers?.['user-agent'] || null,
       metadata: {
         audit_source: 'AuditInterceptor',
+        source: this.pickFirstString(request.auditSnapshot?.source, request.body?.source, request.body?.attendance_source, request.body?.manual ? 'manual' : null, 'web'),
+        status: error ? 'failed' : 'successful',
+        actor_email: user.email || user.username || null,
+        tenant_profile: user.tenantProfile || user.tenant_profile || user.profile || null,
+        correlation_id: this.pickFirstString(
+          request.headers?.['x-request-id'],
+          request.headers?.['x-correlation-id'],
+          request.headers?.['traceparent'],
+        ),
+        affected_record: resourceType.includes('attendance') ? {
+          employee_name: this.pickFirstString(request.auditSnapshot?.employee_name, responsePayload?.employee_name, responsePayload?.employee?.name, request.body?.employee_name, request.body?.employeeName),
+          employee_code: this.pickFirstString(request.auditSnapshot?.employee_code, responsePayload?.employee_code, responsePayload?.employee?.employee_code, request.body?.employee_code, request.body?.employeeCode),
+          attendance_date: this.pickFirstString(request.auditSnapshot?.attendance_date, responsePayload?.attendance_date, responsePayload?.date, request.body?.attendance_date, request.body?.date),
+          reason: this.pickFirstString(request.auditSnapshot?.reason, request.body?.remarks, request.body?.notes),
+        } : undefined,
+        employee_code: resourceType.includes('attendance') ? this.pickFirstString(request.auditSnapshot?.employee_code, responsePayload?.employee_code, responsePayload?.employee?.employee_code, request.body?.employee_code, request.body?.employeeCode) : undefined,
+        employee_name: resourceType.includes('attendance') ? this.pickFirstString(request.auditSnapshot?.employee_name, responsePayload?.employee_name, responsePayload?.employee?.name, request.body?.employee_name, request.body?.employeeName) : undefined,
+        document_reference: resourceCode || resourceName || undefined,
         method,
         path: routePath,
         params: this.sanitize(request.params || {}),

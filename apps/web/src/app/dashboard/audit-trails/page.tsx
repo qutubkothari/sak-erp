@@ -37,6 +37,8 @@ type AuditResponse = {
 type FilterOptions = {
   actions: string[];
   resourceTypes: string[];
+  sources: string[];
+  users: Array<{ id: string; name: string; email: string }>;
 };
 
 const PAGE_SIZE = 50;
@@ -60,6 +62,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
+  hr_attendance: 'HR Attendance',
   purchase_order: 'Purchase Order',
   purchase_requisition: 'Purchase Requisition',
   purchase_vendor: 'Vendor',
@@ -220,6 +223,11 @@ function toIsoFromDateInput(value: string, endOfDay = false): string {
 }
 
 function summarizeChange(log: AuditLog): string {
+  const employee = log.metadata?.affected_record || {};
+  const attendanceLabel = [employee.employee_name, employee.employee_code].filter(Boolean).join(' · ');
+  const date = employee.attendance_date;
+  if (attendanceLabel && date) return `${attendanceLabel} · ${new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+  if (attendanceLabel) return attendanceLabel;
   const documentRef = getDocumentReference(log);
   const amount = getLogAmount(log);
   const itemCount = getItemCount(log);
@@ -227,19 +235,52 @@ function summarizeChange(log: AuditLog): string {
   return bits.length > 0 ? bits.join(' | ') : getAreaName(log);
 }
 
+function getChangeRows(log: AuditLog): Array<{ field: string; before: any; after: any }> {
+  const recorded = log.metadata?.changed_fields;
+  if (Array.isArray(recorded) && recorded.length) return recorded.filter((row) => !/gps|latitude|longitude|coordinates|device.?fingerprint/i.test(String(row.field)));
+  if (String(log.action).toUpperCase() === 'CREATE') {
+    const payload = log.new_value || {};
+    const created = { ...(payload.request || {}), ...(payload.response || payload) };
+    const hidden = /gps|latitude|longitude|coordinates|device.?fingerprint|authorization|password|token|secret/i;
+    return Object.entries(created).filter(([key, value]) => !hidden.test(key) && value !== undefined && typeof value !== 'object').slice(0, 40).map(([field, after]) => ({ field, before: null, after }));
+  }
+  const before = log.old_value;
+  const after = log.new_value;
+  if (before && !after && ['DELETE', 'DELETED', 'SOFT_DELETE', 'HARD_DELETE', 'REVERSED', 'REVERSAL'].includes(String(log.action).toUpperCase())) {
+    return Object.entries(before).filter(([key]) => !/^(id|tenant_id|created_at|updated_at)$/i.test(key) && !/gps|latitude|longitude|coordinates|device.?fingerprint/i.test(key)).slice(0, 40).map(([field, value]) => ({ field, before: value, after: null }));
+  }
+  if (!before || !after || typeof before !== 'object' || typeof after !== 'object' || before.request || after.request || before.response || after.response) return [];
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  return Array.from(keys).filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key])).map((field) => ({ field, before: before[field] ?? null, after: after[field] ?? null }));
+}
+
+function displayValue(value: any): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
 function getPlainDetails(log: AuditLog): Array<{ label: string; value: string }> {
   const request = getRequestPayload(log);
+  const reference = log.metadata?.affected_record;
+  const humanReference = [reference?.employee_name, reference?.employee_code, reference?.attendance_date]
+    .filter(Boolean)
+    .join(' · ') || getDocumentReference(log);
   const details = [
+    { label: 'Who', value: `${getUserName(log)}${log.user?.email ? ` (${log.user.email})` : ''}` },
+    { label: 'When', value: formatDate(log.created_at) },
     { label: 'Area', value: getAreaName(log) },
-    { label: 'Document', value: getDocumentReference(log) || formatResourceType(log.resource_type) },
+    { label: 'What record', value: humanReference || formatResourceType(log.resource_type) },
     { label: 'Action', value: formatAction(log.action) },
-    { label: 'Status', value: String(log.metadata?.status_code || '').startsWith('2') ? 'Successful' : log.action?.startsWith('FAILED_') ? 'Failed' : 'Completed' },
+    { label: 'Status', value: log.metadata?.status || (String(log.metadata?.status_code || '').startsWith('2') ? 'Successful' : log.action?.startsWith('FAILED_') ? 'Failed' : 'Completed') },
     { label: 'Amount', value: getLogAmount(log) },
     { label: 'Items', value: getItemCount(log) },
-    { label: 'Remarks', value: isReadableValue(request.remarks) ? request.remarks : '' },
+    { label: 'Reason / Remarks', value: isReadableValue(reference?.reason || request.remarks || request.notes) ? String(reference?.reason || request.remarks || request.notes) : '' },
+    { label: 'Source', value: formatLabel(log.metadata?.source || log.metadata?.audit_source) },
     { label: 'Project', value: isReadableValue(request.projectName) ? request.projectName : '' },
     { label: 'Attachments', value: getAttachmentNames(log).join(', ') },
     { label: 'IP Address', value: log.ip_address || '' },
+    { label: 'Correlation ID', value: log.metadata?.correlation_id || '' },
   ];
 
   return details.filter((detail) => !!detail.value && detail.value !== '-');
@@ -247,12 +288,15 @@ function getPlainDetails(log: AuditLog): Array<{ label: string; value: string }>
 
 export default function AuditTrailsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [filters, setFilters] = useState<FilterOptions>({ actions: [], resourceTypes: [] });
+  const [filters, setFilters] = useState<FilterOptions>({ actions: [], resourceTypes: [], sources: [], users: [] });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [action, setAction] = useState('');
   const [resourceType, setResourceType] = useState('');
+  const [source, setSource] = useState('');
+  const [userId, setUserId] = useState('');
+  const [status, setStatus] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [offset, setOffset] = useState(0);
@@ -269,13 +313,16 @@ export default function AuditTrailsPage() {
     if (search.trim()) params.set('search', search.trim());
     if (action) params.set('action', action);
     if (resourceType) params.set('resourceType', resourceType);
+    if (source) params.set('source', source);
+    if (userId) params.set('userId', userId);
+    if (status) params.set('status', status);
 
     const fromIso = toIsoFromDateInput(fromDate);
     const toIso = toIsoFromDateInput(toDate, true);
     if (fromIso) params.set('from', fromIso);
     if (toIso) params.set('to', toIso);
     return params.toString();
-  }, [action, fromDate, offset, resourceType, search, toDate]);
+  }, [action, fromDate, offset, resourceType, search, source, status, toDate, userId]);
 
   const loadFilters = useCallback(async () => {
     const token = localStorage.getItem('accessToken');
@@ -287,6 +334,8 @@ export default function AuditTrailsPage() {
       setFilters({
         actions: Array.isArray(data.actions) ? data.actions : [],
         resourceTypes: Array.isArray(data.resourceTypes) ? data.resourceTypes : [],
+        sources: Array.isArray(data.sources) ? data.sources : [],
+        users: Array.isArray(data.users) ? data.users : [],
       });
     }
   }, []);
@@ -329,6 +378,9 @@ export default function AuditTrailsPage() {
     setSearch('');
     setAction('');
     setResourceType('');
+    setSource('');
+    setUserId('');
+    setStatus('');
     setFromDate('');
     setToDate('');
     setOffset(0);
@@ -383,13 +435,13 @@ export default function AuditTrailsPage() {
         </div>
       </div>
 
-      <details className="rounded-md border border-gray-200 bg-white" open={Boolean(search || action || resourceType || fromDate || toDate)}>
+      <details className="rounded-md border border-gray-200 bg-white" open={Boolean(search || action || resourceType || source || userId || status || fromDate || toDate)}>
         <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-semibold text-gray-800">
           <Filter className="h-4 w-4" />
-          Filters{search || action || resourceType || fromDate || toDate ? ' (active)' : ''}
+          Filters{search || action || resourceType || source || userId || status || fromDate || toDate ? ' (active)' : ''}
         </summary>
         <div className="space-y-3 border-t border-gray-100 p-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-8">
           <label className="block xl:col-span-2">
             <span className="text-xs font-medium text-gray-600">Search</span>
             <div className="mt-1 flex items-center rounded-md border border-gray-300 bg-white px-2">
@@ -397,10 +449,17 @@ export default function AuditTrailsPage() {
               <input
                 value={search}
                 onChange={(event) => { setSearch(event.target.value); setOffset(0); }}
-                placeholder="PO number, document, user, action"
+                placeholder="Employee/code, PO, GRN, item, reference"
                 className="w-full px-2 py-2 text-sm outline-none"
               />
             </div>
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600">User</span>
+            <select value={userId} onChange={(event) => { setUserId(event.target.value); setOffset(0); }} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-2 text-sm">
+              <option value="">All Users</option>
+              {filters.users.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
           </label>
           <label className="block">
             <span className="text-xs font-medium text-gray-600">Action</span>
@@ -410,10 +469,23 @@ export default function AuditTrailsPage() {
             </select>
           </label>
           <label className="block">
+            <span className="text-xs font-medium text-gray-600">Status</span>
+            <select value={status} onChange={(event) => { setStatus(event.target.value); setOffset(0); }} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-2 text-sm">
+              <option value="">All Statuses</option><option value="successful">Successful</option><option value="failed">Failed</option>
+            </select>
+          </label>
+          <label className="block">
             <span className="text-xs font-medium text-gray-600">Resource</span>
             <select value={resourceType} onChange={(event) => { setResourceType(event.target.value); setOffset(0); }} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-2 text-sm">
               <option value="">All Resources</option>
               {filters.resourceTypes.map((item) => <option key={item} value={item}>{formatResourceType(item)}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600">Source</span>
+            <select value={source} onChange={(event) => { setSource(event.target.value); setOffset(0); }} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-2 text-sm">
+              <option value="">All Sources</option>
+              {filters.sources.map((item) => <option key={item} value={item}>{formatLabel(item)}</option>)}
             </select>
           </label>
           <label className="block">
@@ -465,7 +537,7 @@ export default function AuditTrailsPage() {
                       <div className="break-words text-sm font-semibold text-gray-900">{formatResourceType(log.resource_type)}</div>
                       <div className="break-words text-xs text-gray-500">{summarizeChange(log)}</div>
                     </div>
-                    <div className="break-words text-xs text-gray-500">{getAreaName(log)}</div>
+                    <div className="break-words text-xs text-gray-500">{formatLabel(log.metadata?.source || log.metadata?.audit_source || getAreaName(log))}</div>
                   </button>
 
                   {expanded && (
@@ -478,6 +550,22 @@ export default function AuditTrailsPage() {
                             <div className="mt-1 break-words text-sm font-medium text-gray-900">{detail.value}</div>
                           </div>
                         ))}
+                      </div>
+                      {log.resource_id && <details className="mt-3 rounded border border-gray-200 bg-white px-3 py-2"><summary className="cursor-pointer text-xs font-semibold text-gray-600">Technical details</summary><div className="mt-2 break-all font-mono text-xs text-gray-500">Record ID: {log.resource_id}</div></details>}
+                      <div className="mt-3 rounded border border-gray-200 bg-white p-3">
+                        <div className="font-semibold text-gray-900">What changed</div>
+                        {getChangeRows(log).length ? (
+                          <div className="mt-2 divide-y divide-gray-100">
+                            {getChangeRows(log).map((change) => (
+                              <div key={change.field} className="grid grid-cols-1 gap-2 py-2 sm:grid-cols-[minmax(120px,1fr)_2fr_2fr]">
+                                <div className="font-medium text-gray-800">{formatLabel(change.field)}</div>
+                                <div><div className="text-[11px] font-semibold uppercase text-gray-500">Before</div><div className="break-words">{displayValue(change.before)}</div></div>
+                                <div><div className="text-[11px] font-semibold uppercase text-gray-500">After</div><div className="break-words">{displayValue(change.after)}</div></div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : <p className="mt-1 text-sm text-gray-500">Detailed field history unavailable for this historical event.</p>}
+                        {log.metadata?.correlation_id && <div className="mt-2 text-xs text-gray-500">Correlation ID: {log.metadata.correlation_id}</div>}
                       </div>
                     </div>
                   )}

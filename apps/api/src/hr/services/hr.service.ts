@@ -1179,7 +1179,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   // Attendance
-  async recordAttendance(tenantId: string, data: any) {
+  async recordAttendance(tenantId: string, data: any, auditContext?: any) {
     const attendanceDate = isNonEmptyString(data?.attendance_date)
       ? String(data.attendance_date).slice(0, 10)
       : getIndiaBusinessDate();
@@ -1193,6 +1193,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .eq("id", employeeId)
       .single();
     if (employeeError) throw new Error(employeeError.message);
+    let priorRecord: any = null;
+    let priorReadCompleted = false;
+    try {
+      const { data: existing, error: priorError } = await this.supabase
+        .from("attendance")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("employee_id", employeeId)
+        .eq("attendance_date", attendanceDate)
+        .maybeSingle();
+      if (!priorError) {
+        priorRecord = existing;
+        priorReadCompleted = true;
+      }
+    } catch {
+      // The create route may be an upsert. Do not claim a CREATE snapshot if
+      // the prior row could not be checked safely.
+    }
     const checkIn = toIndiaAttendanceDateTime(
       attendanceDate,
       data.check_in_time,
@@ -1242,6 +1260,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       })
       .select();
     if (error) throw new Error(error.message);
+    if (auditContext && priorReadCompleted && result?.length) {
+      auditContext.auditSnapshot = {
+        ...await this.buildAttendanceAuditSnapshot(tenantId, priorRecord, result[0], data),
+        action: priorRecord ? "UPDATE" : "CREATE",
+      };
+    }
     return result;
   }
 
@@ -1265,7 +1289,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return data || [];
   }
 
-  async updateAttendance(tenantId: string, id: string, data: any) {
+  async updateAttendance(tenantId: string, id: string, data: any, auditContext?: any) {
+    let priorRecord: any = null;
+    try {
+      const { data: existingAttendance } = await this.supabase
+        .from("attendance")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("id", id)
+        .maybeSingle();
+      priorRecord = existingAttendance;
+      if (!priorRecord) {
+        const { data: existingLegacy } = await this.supabase
+        .from("attendance_records")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("id", id)
+        .maybeSingle();
+        priorRecord = existingLegacy;
+      }
+    } catch {
+      // Preserve the attendance operation if a best-effort audit pre-read is
+      // temporarily unavailable; in that case no before/after diff is claimed.
+    }
     const attendanceDate = isNonEmptyString(data?.attendance_date)
       ? String(data.attendance_date).slice(0, 10)
       : getIndiaBusinessDate();
@@ -1342,8 +1388,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       currentError = retryResult.error;
     }
 
-    if (!currentError && currentResult && currentResult.length > 0)
+    if (!currentError && currentResult && currentResult.length > 0) {
+      if (auditContext) {
+        auditContext.auditSnapshot = await this.buildAttendanceAuditSnapshot(tenantId, priorRecord, currentResult[0], data);
+      }
       return currentResult;
+    }
 
     const legacyData: any = {
       ...data,
@@ -1385,7 +1435,42 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
     if (legacyError)
       throw new Error(currentError?.message || legacyError.message);
+    if (auditContext && legacyResult?.length) {
+      auditContext.auditSnapshot = await this.buildAttendanceAuditSnapshot(tenantId, priorRecord, legacyResult[0], data);
+    }
     return legacyResult;
+  }
+
+  private async buildAttendanceAuditSnapshot(tenantId: string, before: any, after: any, request: any) {
+    const employeeId = after?.employee_id || before?.employee_id || request?.employee_id;
+    let employee: any = null;
+    if (employeeId) {
+      try {
+        const { data } = await this.supabase
+          .from("employees")
+          .select("id, first_name, last_name, employee_code")
+          .eq("tenant_id", tenantId)
+          .eq("id", employeeId)
+          .maybeSingle();
+        employee = data;
+      } catch {
+        // A display-label lookup must not turn a completed attendance update
+        // into an apparent API failure. The record ID/date are still logged.
+      }
+    }
+    const employeeName = [employee?.first_name, employee?.last_name].filter(Boolean).join(" ") || null;
+    const businessSnapshot = (record: any) => record && Object.fromEntries(
+      Object.entries(record).filter(([key]) => !/gps|latitude|longitude|coordinates|accuracy|device|photo|image/i.test(key)),
+    );
+    return {
+      oldValue: businessSnapshot(before),
+      newValue: businessSnapshot(after),
+      employee_name: employeeName,
+      employee_code: employee?.employee_code || null,
+      attendance_date: after?.attendance_date || before?.attendance_date || null,
+      reason: request?.remarks || request?.notes || null,
+      source: request?.source || request?.attendance_source || "manual",
+    };
   }
 
   /** Self-service: an employee may declare outstation travel / per diem on their own attendance day, nothing else. */

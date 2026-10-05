@@ -297,7 +297,7 @@ export class HrController {
   @Post("attendance")
   @RequireCreate("hr")
   recordAttendance(@Request() req: any, @Body() body: any) {
-    return this.hrService.recordAttendance(req.user.tenantId, body);
+    return this.hrService.recordAttendance(req.user.tenantId, body, req);
   }
 
   @Post("attendance/import")
@@ -313,7 +313,7 @@ export class HrController {
     @Param("id") id: string,
     @Body() body: any,
   ) {
-    return this.hrService.updateAttendance(req.user.tenantId, id, body);
+    return this.hrService.updateAttendance(req.user.tenantId, id, body, req);
   }
 
   // Self-service: any employee may declare outstation travel / per diem on their own attendance day.
