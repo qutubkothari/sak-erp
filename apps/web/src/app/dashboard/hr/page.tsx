@@ -396,7 +396,9 @@ interface MonthlyPayrollAttendancePreview {
   source: string;
   days_in_month: number;
   eligible_calendar_days: number;
-  working_days: number;
+  attendance_records: number;
+  working_days: number | null;
+  working_day_schedule_available: boolean;
   present_days: number;
   half_days: number;
   paid_leave_days: number;
@@ -410,10 +412,14 @@ interface MonthlyPayrollAttendancePreview {
   payable_days: number | null;
   formula: string;
   unresolved_policy_days: number;
+  unresolved_schedule_days: number;
   unresolved_derived_metrics_days: number;
+  monthly_salary_uses_late_minutes: boolean;
+  monthly_salary_uses_overtime_hours: boolean;
   review_required: boolean;
   review_code: string | null;
   review_reasons: string[];
+  warnings: string[];
   attendance_checksum: string;
   attendance_summary: Record<string, unknown>;
 }
@@ -13085,8 +13091,12 @@ function HrPageContent() {
                     <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
                       {[
                         [
-                          "Working Days",
-                          monthlyPayrollAttendancePreview.working_days,
+                          "Calendar Days",
+                          monthlyPayrollAttendancePreview.days_in_month,
+                        ],
+                        [
+                          "Attendance Records",
+                          monthlyPayrollAttendancePreview.attendance_records,
                         ],
                         [
                           "Present",
@@ -13104,8 +13114,20 @@ function HrPageContent() {
                           "Unpaid Leave",
                           monthlyPayrollAttendancePreview.unpaid_leave_days,
                         ],
-                        ["Absent", monthlyPayrollAttendancePreview.absent_days],
-                        ["Travel", monthlyPayrollAttendancePreview.travel_days],
+                        [
+                          "Absent",
+                          monthlyPayrollAttendancePreview.absent_days,
+                        ],
+                        [
+                          "Scheduled Working Days",
+                          monthlyPayrollAttendancePreview.working_day_schedule_available
+                            ? monthlyPayrollAttendancePreview.working_days
+                            : "Working-day schedule unavailable for part of this month",
+                        ],
+                        [
+                          "Travel",
+                          monthlyPayrollAttendancePreview.travel_days,
+                        ],
                         [
                           "Comp-Off",
                           monthlyPayrollAttendancePreview.comp_off_days,
@@ -13161,6 +13183,18 @@ function HrPageContent() {
                           {monthlyPayrollAttendancePreview.review_reasons.map(
                             (reason) => (
                               <li key={reason}>{reason}</li>
+                            ),
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                    {monthlyPayrollAttendancePreview.warnings.length > 0 && (
+                      <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        <strong>Attendance metrics notice</strong>
+                        <ul className="mt-1 list-disc pl-5">
+                          {monthlyPayrollAttendancePreview.warnings.map(
+                            (warning) => (
+                              <li key={warning}>{warning}</li>
                             ),
                           )}
                         </ul>

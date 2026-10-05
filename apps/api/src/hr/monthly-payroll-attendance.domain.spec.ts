@@ -109,30 +109,30 @@ const preview = (
 };
 
 describe("monthly payroll attendance derivation", () => {
-  it("does not substitute 30 calendar days when a resolved absence exists", () => {
+  it("uses all calendar days and subtracts an authoritative absence", () => {
     const value = preview([
       dailyRow("2026-09-01", "PRESENT"),
       dailyRow("2026-09-02", "ABSENT"),
     ]);
     expect(value.days_in_month).toBe(30);
     expect(value.absent_days).toBe(1);
-    expect(value.payable_days).toBe(1);
+    expect(value.payable_days).toBe(29);
   });
 
   it("credits a present calendar day as one day", () => {
-    expect(preview([dailyRow("2026-09-01", "PRESENT")]).payable_days).toBe(1);
+    expect(preview([dailyRow("2026-09-01", "PRESENT")]).payable_days).toBe(30);
   });
 
   it("credits a half-day as one half day", () => {
     const value = preview([dailyRow("2026-09-01", "HALF_DAY")]);
     expect(value.half_days).toBe(1);
-    expect(value.payable_days).toBe(0.5);
+    expect(value.payable_days).toBe(29.5);
   });
 
   it("does not pay a resolved absent day", () => {
     const value = preview([dailyRow("2026-09-01", "ABSENT")]);
     expect(value.absent_days).toBe(1);
-    expect(value.payable_days).toBe(0);
+    expect(value.payable_days).toBe(29);
   });
 
   it("counts only approved paid leave as paid leave and payable", () => {
@@ -140,7 +140,7 @@ describe("monthly payroll attendance derivation", () => {
       dailyRow("2026-09-01", "PAID_LEAVE", { leave_type: "CASUAL" }),
     ]);
     expect(value.paid_leave_days).toBe(1);
-    expect(value.payable_days).toBe(1);
+    expect(value.payable_days).toBe(30);
   });
 
   it("keeps unpaid leave separate and unpaid", () => {
@@ -149,7 +149,7 @@ describe("monthly payroll attendance derivation", () => {
     ]);
     expect(value.unpaid_leave_days).toBe(1);
     expect(value.paid_leave_days).toBe(0);
-    expect(value.payable_days).toBe(0);
+    expect(value.payable_days).toBe(29);
   });
 
   it("counts only eligible authoritative travel markers", () => {
@@ -173,7 +173,7 @@ describe("monthly payroll attendance derivation", () => {
     ]);
     expect(value.comp_off_days).toBe(1);
     expect(value.paid_leave_days).toBe(0);
-    expect(value.payable_days).toBe(1);
+    expect(value.payable_days).toBe(30);
   });
 
   it("uses the calendar-day basis already implemented by the monthly form", () => {
@@ -183,7 +183,7 @@ describe("monthly payroll attendance derivation", () => {
       dailyRow("2026-09-03", "UNPAID_LEAVE"),
     ]);
     expect(value.payroll_basis).toBe("CALENDAR_DAY");
-    expect(value.payable_days).toBe(1.5);
+    expect(value.payable_days).toBe(28.5);
     expect(value.formula).toContain("half days × 0.5");
   });
 
@@ -197,7 +197,7 @@ describe("monthly payroll attendance derivation", () => {
     expect(value.formula).toContain("Attendance Register Payable Days");
   });
 
-  it("requires review when unresolved historical metrics could affect pay", () => {
+  it("keeps calendar-day salary preview usable when historical metrics are unresolved", () => {
     const value = preview(
       [
         dailyRow("2026-09-01", "PRESENT", {
@@ -208,10 +208,13 @@ describe("monthly payroll attendance derivation", () => {
       ],
       { policy: { overtime_enabled: true } },
     );
-    expect(value.review_required).toBe(true);
-    expect(value.review_code).toBe(
-      "ATTENDANCE_DERIVED_METRICS_REVIEW_REQUIRED",
+    expect(value.review_required).toBe(false);
+    expect(value.payable_days).toBe(30);
+    expect(value.warnings.join(" ")).toContain(
+      "unverified historical late/overtime metrics",
     );
+    expect(value.monthly_salary_uses_late_minutes).toBe(false);
+    expect(value.monthly_salary_uses_overtime_hours).toBe(false);
   });
 
   it("does not count unresolved overtime as payable attendance credit", () => {
@@ -225,9 +228,10 @@ describe("monthly payroll attendance derivation", () => {
       ],
       { policy: { overtime_enabled: true } },
     );
-    expect(value.payable_days).toBe(1);
-    expect(value.review_required).toBe(true);
+    expect(value.payable_days).toBe(30);
+    expect(value.review_required).toBe(false);
     expect(value.attendance_summary).not.toHaveProperty("overtime_credit_days");
+    expect(value.monthly_salary_uses_overtime_hours).toBe(false);
   });
 
   it("does not block when unresolved metrics have no payroll effect", () => {
@@ -240,20 +244,42 @@ describe("monthly payroll attendance derivation", () => {
       { policy: { overtime_enabled: false, late_deduction_mode: "NONE" } },
     );
     expect(value.review_required).toBe(false);
-    expect(value.payable_days).toBe(1);
+    expect(value.payable_days).toBe(30);
   });
 
-  it("does not fabricate payable days when historical policy cannot resolve the date", () => {
+  it("does not deduct an unknown-schedule date from calendar-day pay", () => {
     const value = preview([
       dailyRow("2026-09-01", "POLICY_FOR_DATE_NOT_FOUND", {
         attendance_id: null,
+        scheduled: null,
         policy_resolution_status: "POLICY_FOR_DATE_NOT_FOUND",
         payable_days: 0,
       }),
     ]);
+    expect(value.payable_days).toBe(30);
+    expect(value.review_required).toBe(false);
+    expect(value.unresolved_policy_days).toBe(1);
+    expect(value.working_days).toBeNull();
+    expect(value.warnings.join(" ")).toContain(
+      "Working-day schedule unavailable",
+    );
+  });
+
+  it("blocks only a working-day calculation when the historical schedule is unknown", () => {
+    const value = preview(
+      [
+        dailyRow("2026-09-01", "POLICY_FOR_DATE_NOT_FOUND", {
+          attendance_id: null,
+          scheduled: null,
+          policy_resolution_status: "POLICY_FOR_DATE_NOT_FOUND",
+          payable_days: 0,
+        }),
+      ],
+      { basis: "WORKING_DAY" },
+    );
     expect(value.payable_days).toBeNull();
     expect(value.review_required).toBe(true);
-    expect(value.unresolved_policy_days).toBe(1);
+    expect(value.review_code).toBe("ATTENDANCE_SCHEDULE_REVIEW_REQUIRED");
   });
 
   it("invalidates a preview when authoritative attendance changes", () => {
@@ -279,7 +305,8 @@ describe("monthly payroll attendance derivation", () => {
     expect(value.employee_code).toBe("SAS-10055");
     expect(value.source).toBe("September Attendance");
     expect(value.absent_days).toBe(1);
-    expect(value.payable_days).toBe(1);
+    expect(value.payable_days).toBe(29);
+    expect(value.attendance_records).toBe(2);
   });
 
   it("builds a September preview for another employee without reusing Abdul's counts", () => {
@@ -314,7 +341,7 @@ describe("monthly payroll attendance derivation", () => {
       month: "2026-09",
     });
     expect(value.employee_name).toBe("NVS Padmavathi");
-    expect(value.payable_days).toBe(0.5);
+    expect(value.payable_days).toBe(29.5);
   });
 
   it("scopes the read-only preview query by tenant and employee and creates no payroll row", async () => {
@@ -393,7 +420,7 @@ describe("monthly payroll attendance derivation", () => {
     });
     expect(value.employee_code).toBe("ARWA-1");
     expect(value.payroll_basis).toBe("CALENDAR_DAY");
-    expect(value.payable_days).toBe(0);
+    expect(value.payable_days).toBe(30);
     expect(value.review_required).toBe(false);
   });
 });

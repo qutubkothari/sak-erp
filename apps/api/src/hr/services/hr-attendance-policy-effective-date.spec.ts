@@ -161,6 +161,68 @@ describe("attendance policy effective dates", () => {
     ).toBe(false);
   });
 
+  it("marks a late metric pay-relevant only when the effective policy deducts lateness", () => {
+    const unresolved = {
+      derived_metrics_status: "HISTORICAL_POLICY_UNAVAILABLE",
+    };
+    expect(
+      requiresAttendanceDerivedMetricsReview(
+        unresolved,
+        policy("tenant-1", {
+          late_deduction_mode: "NONE",
+          overtime_enabled: false,
+        }),
+        { overtime_eligible: false },
+      ),
+    ).toBe(false);
+    expect(
+      requiresAttendanceDerivedMetricsReview(
+        unresolved,
+        policy("tenant-1", {
+          late_deduction_mode: "PER_MINUTE",
+          overtime_enabled: false,
+        }),
+        { overtime_eligible: false },
+      ),
+    ).toBe(true);
+  });
+
+  it("marks overtime pay-relevant only when the effective policy enables it for the employee", () => {
+    const unresolved = {
+      derived_metrics_status: "HISTORICAL_POLICY_UNAVAILABLE",
+    };
+    expect(
+      requiresAttendanceDerivedMetricsReview(
+        unresolved,
+        policy("tenant-1", {
+          late_deduction_mode: "NONE",
+          overtime_enabled: true,
+        }),
+        { overtime_eligible: true },
+      ),
+    ).toBe(true);
+    expect(
+      requiresAttendanceDerivedMetricsReview(
+        unresolved,
+        policy("tenant-1", {
+          late_deduction_mode: "NONE",
+          overtime_enabled: true,
+        }),
+        { overtime_eligible: false },
+      ),
+    ).toBe(false);
+    expect(
+      requiresAttendanceDerivedMetricsReview(
+        unresolved,
+        policy("tenant-1", {
+          late_deduction_mode: "NONE",
+          overtime_enabled: false,
+        }),
+        { overtime_eligible: true },
+      ),
+    ).toBe(false);
+  });
+
   it.each(["MIZANTRA", "SAIFSEAS", "ARWA"])(
     "keeps the shared date resolver tenant-scoped for %s",
     async (profile) => {

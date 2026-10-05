@@ -1,5 +1,4 @@
 import { createHash } from "crypto";
-import { requiresAttendanceDerivedMetricsReview } from "./services/hr-attendance-control.service";
 
 export type MonthlyPayrollBasis = "CALENDAR_DAY" | "WORKING_DAY";
 
@@ -11,7 +10,9 @@ export type MonthlyPayrollAttendancePreview = {
   source: string;
   days_in_month: number;
   eligible_calendar_days: number;
-  working_days: number;
+  attendance_records: number;
+  working_days: number | null;
+  working_day_schedule_available: boolean;
   present_days: number;
   half_days: number;
   paid_leave_days: number;
@@ -25,10 +26,14 @@ export type MonthlyPayrollAttendancePreview = {
   payable_days: number | null;
   formula: string;
   unresolved_policy_days: number;
+  unresolved_schedule_days: number;
   unresolved_derived_metrics_days: number;
+  monthly_salary_uses_late_minutes: boolean;
+  monthly_salary_uses_overtime_hours: boolean;
   review_required: boolean;
   review_code: string | null;
   review_reasons: string[];
+  warnings: string[];
   attendance_checksum: string;
   attendance_summary: Record<string, unknown>;
 };
@@ -111,62 +116,67 @@ export function buildMonthlyPayrollAttendancePreview(input: {
       row.policy_resolution_status === "POLICY_FOR_DATE_NOT_FOUND" &&
       !row.attendance_id,
   ).length;
+  const unresolvedScheduleDays = rows.filter(
+    (row) => row.policy_resolution_status === "POLICY_FOR_DATE_NOT_FOUND",
+  ).length;
   const unresolvedDerivedMetricsDays = Number(
     sourceSummary.unresolved_derived_metrics_days || 0,
   );
+  const attendanceRecords = rows.filter((row) => Boolean(row.attendance_id))
+    .length;
+  const workingDayScheduleAvailable = unresolvedScheduleDays === 0;
 
   const reasons: string[] = [];
-  if (unresolvedPolicyDays > 0) {
-    reasons.push(
-      `${unresolvedPolicyDays} date(s) have no effective attendance policy, so their working-day/pay status cannot be resolved.`,
-    );
-  }
-  if (
-    requiresAttendanceDerivedMetricsReview(
-      sourceSummary,
-      register.policy,
-      employee,
-    )
-  ) {
-    reasons.push(
-      `${unresolvedDerivedMetricsDays} date(s) have historical attendance metrics that may affect payroll; review is required.`,
-    );
-  }
   if (pendingDays + rejectedDays > 0) {
     reasons.push(
       `${pendingDays + rejectedDays} outside-zone attendance decision(s) are not approved for payroll.`,
     );
   }
 
-  let payableDays: number | null = null;
+  const warnings: string[] = [];
+  if (unresolvedScheduleDays > 0) {
+    warnings.push(
+      `Working-day schedule unavailable for part of this month (${unresolvedScheduleDays} date(s) have no effective attendance policy).`,
+    );
+  }
+  if (unresolvedDerivedMetricsDays > 0) {
+    warnings.push(
+      `${unresolvedDerivedMetricsDays} date(s) have unverified historical late/overtime metrics. The calendar-day monthly salary calculation does not use late minutes or overtime hours; those metrics remain unavailable for any separate payroll-run calculation.`,
+    );
+  }
+
+  let payableDays: number | null;
   let formula: string;
-  if (unresolvedPolicyDays === 0) {
-    if (basis === "WORKING_DAY") {
+  if (basis === "WORKING_DAY") {
+    if (!workingDayScheduleAvailable) {
+      payableDays = null;
+      formula =
+        "Unresolved: the historical working-day schedule is unavailable for part of this month.";
+      reasons.push(
+        "A working-day payroll basis cannot be calculated because the effective schedule is missing for one or more dates.",
+      );
+    } else {
       payableDays = roundDays(Number(sourceSummary.payable_days || 0));
       formula =
         "Attendance Register Payable Days (uses the register's approved daily credits, including half-day fractions, paid leave, travel and comp-off where eligible).";
-    } else {
-      // The existing monthly salary form prorates monthly components by
-      // payable calendar days / calendar days in month. Rest days and holidays
-      // remain payable; only a resolved absence, unpaid leave, half-day shortfall
-      // or unapproved outside attendance reduces calendar pay.
-      payableDays = roundDays(
-        Math.max(
-          0,
-          rows.length -
-            absentDays -
-            unpaidLeaveDays -
-            halfDays * 0.5 -
-            pendingDays -
-            rejectedDays,
-        ),
-      );
-      formula =
-        "Eligible calendar days − absent days − unpaid leave days − (half days × 0.5) − unapproved outside attendance days.";
     }
   } else {
+    // Calendar-day salary includes rest days, holidays, paid leave, and dates
+    // whose historical schedule is unknown. Only authoritative unpaid states
+    // and fractional half days reduce the full calendar-month entitlement.
+    payableDays = roundDays(
+      Math.max(
+        0,
+        daysInMonth -
+          absentDays -
+          unpaidLeaveDays -
+          halfDays * 0.5 -
+          pendingDays -
+          rejectedDays,
+      ),
+    );
     formula =
-      "Unresolved: an effective attendance policy is missing for one or more dates; payable days require review.";
+      "Calendar days − unpaid absences − unpaid leave − (half days × 0.5) − unapproved outside-attendance days; approved paid leave remains paid.";
   }
 
   const travelDays = rows.filter(isEligibleTravelDay).length;
@@ -203,8 +213,12 @@ export function buildMonthlyPayrollAttendancePreview(input: {
     source: `${monthName} Attendance`,
     source_service: "attendance/register and attendance/export.xlsx",
     days_in_month: daysInMonth,
-    eligible_calendar_days: rows.length,
-    working_days: Number(sourceSummary.working_days || 0),
+    eligible_calendar_days: daysInMonth,
+    attendance_records: attendanceRecords,
+    working_days: workingDayScheduleAvailable
+      ? Number(sourceSummary.working_days || 0)
+      : null,
+    working_day_schedule_available: workingDayScheduleAvailable,
     present_days: Number(sourceSummary.present_days || 0),
     half_days: halfDays,
     paid_leave_days: paidLeaveDays,
@@ -219,12 +233,19 @@ export function buildMonthlyPayrollAttendancePreview(input: {
     payable_days: payableDays,
     formula,
     unresolved_policy_days: unresolvedPolicyDays,
+    unresolved_schedule_days: unresolvedScheduleDays,
     unresolved_derived_metrics_days: unresolvedDerivedMetricsDays,
+    // The calendar-day monthly salary calculator below uses neither metric.
+    monthly_salary_uses_late_minutes: false,
+    monthly_salary_uses_overtime_hours: false,
     review_required: reasons.length > 0,
     review_code: reasons.length
-      ? "ATTENDANCE_DERIVED_METRICS_REVIEW_REQUIRED"
+      ? basis === "WORKING_DAY" && !workingDayScheduleAvailable
+        ? "ATTENDANCE_SCHEDULE_REVIEW_REQUIRED"
+        : "OUTSIDE_ATTENDANCE_APPROVAL_REVIEW_REQUIRED"
       : null,
     review_reasons: reasons,
+    warnings,
   };
 
   return {
