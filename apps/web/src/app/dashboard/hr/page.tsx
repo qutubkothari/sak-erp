@@ -33,6 +33,10 @@ import {
 } from "@/lib/rbac";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import {
+  filterSalaryComponentGroups,
+  groupSalaryComponents,
+} from "@/lib/salary-component-groups";
+import {
   AlertTriangle,
   ArrowDownUp,
   ArrowRight,
@@ -1500,6 +1504,9 @@ function HrPageContent() {
   const [salaryComponents, setSalaryComponents] = useState<SalaryComponent[]>(
     [],
   );
+  const [salaryComponentSearch, setSalaryComponentSearch] = useState("");
+  const [salaryComponentPage, setSalaryComponentPage] = useState(1);
+  const [expandedSalaryEmployeeId, setExpandedSalaryEmployeeId] = useState<string | null>(null);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [monthlyPayrolls, setMonthlyPayrolls] = useState<MonthlyPayroll[]>([]);
   const [payrollSubTab, setPayrollSubTab] = useState<
@@ -2516,22 +2523,19 @@ function HrPageContent() {
           : empData.data || [];
 
         if (payrollSubTab === "salary") {
-          const salaryPromises = allEmployees.map(async (emp: Employee) => {
-            try {
-              const salData = await apiClient.get<any>(`/hr/salary/${emp.id}`);
-              const records = Array.isArray(salData)
-                ? salData
-                : salData.data || [];
-              return records.map((comp: any) => ({
-                ...comp,
-                employee_name: emp.employee_name,
-              }));
-            } catch {
-              return [];
-            }
-          });
-          const allSalary = await Promise.all(salaryPromises);
-          setSalaryComponents(allSalary.flat());
+          const salaryData = await apiClient.get<any>("/hr/salary-components");
+          const allSalary = Array.isArray(salaryData)
+            ? salaryData
+            : salaryData.data || [];
+          const employeeNames = new Map(
+            allEmployees.map((employee: Employee) => [employee.id, employee.employee_name]),
+          );
+          setSalaryComponents(
+            allSalary.map((component: SalaryComponent) => ({
+              ...component,
+              employee_name: employeeNames.get(component.employee_id) || component.employee_name || "N/A",
+            })),
+          );
         } else if (payrollSubTab === "runs") {
           const runsData = await apiClient.get<any>("/hr/payroll/runs");
           setPayrollRuns(
@@ -5712,6 +5716,25 @@ function HrPageContent() {
 
   const formatCurrency = (value: number) =>
     `Rs. ${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+  const filteredSalaryGroups = useMemo(
+    () => filterSalaryComponentGroups(groupSalaryComponents(salaryComponents), salaryComponentSearch),
+    [salaryComponents, salaryComponentSearch],
+  );
+  const salaryGroupsPerPage = 10;
+  const salaryGroupPageCount = Math.max(1, Math.ceil(filteredSalaryGroups.length / salaryGroupsPerPage));
+  const visibleSalaryGroups = filteredSalaryGroups.slice(
+    (salaryComponentPage - 1) * salaryGroupsPerPage,
+    salaryComponentPage * salaryGroupsPerPage,
+  );
+
+  useEffect(() => {
+    setSalaryComponentPage(1);
+  }, [salaryComponentSearch]);
+
+  useEffect(() => {
+    if (salaryComponentPage > salaryGroupPageCount) setSalaryComponentPage(salaryGroupPageCount);
+  }, [salaryComponentPage, salaryGroupPageCount]);
 
   const todayPunches = todayAttendance?.punches || [];
   const isCurrentlyInOffice =
@@ -9742,101 +9765,105 @@ function HrPageContent() {
                   </div>
                 </div>
                 <div className="overflow-hidden rounded-2xl border border-[#E8DCC4] bg-white shadow-sm">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-[#E8DCC4]">
-                      <thead className="bg-[#F7F3EA]">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
-                            Employee
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
-                            Component Type
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
-                            Component Name
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
-                            Amount
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
-                            Taxable
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
-                            CTC Revised
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#EFE3CF] bg-white">
-                        {salaryComponents.length === 0 && (
-                          <tr>
-                            <td
-                              colSpan={7}
-                              className="px-6 py-10 text-center text-sm text-[#7A6555]"
-                            >
-                              No salary components configured yet.
-                            </td>
-                          </tr>
-                        )}
-                        {salaryComponents.map((comp) => (
-                          <tr key={comp.id} className="hover:bg-[#FAF9F6]">
-                            <td className="whitespace-nowrap px-6 py-4 text-sm font-bold text-[#2F1B12]">
-                              {comp.employee_name || "N/A"}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm">
-                              <span className="inline-flex rounded-full bg-[#EFF8FF] px-2.5 py-1 text-xs font-bold text-[#175CD3]">
-                                {comp.component_type}
-                              </span>
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm text-[#6F5A49]">
-                              {comp.ctc_revised_date
-                                ? new Date(
-                                    `${String(comp.ctc_revised_date).slice(0, 10)}T00:00:00`,
-                                  ).toLocaleDateString("en-IN")
-                                : "-"}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-[#4A3426]">
-                              {comp.component_name}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-bold text-[#2F1B12]">
-                              {formatCurrency(comp.amount)}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm">
-                              <span
-                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${comp.is_taxable ? "bg-[#ECFDF3] text-[#027A48]" : "bg-[#F7F3EA] text-[#6F5A49]"}`}
-                              >
-                                {comp.is_taxable ? "Yes" : "No"}
-                              </span>
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 text-sm">
-                              {canEditHR && (
-                                <button
-                                  onClick={() =>
-                                    openComprehensiveSalaryEdit(comp.employee_id)
-                                  }
-                                  className="mr-3 font-semibold text-[#175CD3] hover:underline"
-                                >
-                                  Edit
-                                </button>
-                              )}
-                              {canDeleteHR && (
-                                <button
-                                  onClick={() =>
-                                    handleDeleteSalaryComponent(comp.id)
-                                  }
-                                  className="font-semibold text-[#B42318] hover:underline"
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="border-b border-[#E8DCC4] bg-[#FFFEFC] p-3 sm:p-4">
+                    <label className="block">
+                      <span className="sr-only">Search employees or salary components</span>
+                      <input
+                        type="search"
+                        value={salaryComponentSearch}
+                        onChange={(event) => setSalaryComponentSearch(event.target.value)}
+                        placeholder="Search employee or component"
+                        className="min-h-11 w-full rounded-lg border border-[#D8C4A8] px-3 text-sm outline-none focus:border-[#8B6F47] focus:ring-2 focus:ring-[#8B6F47]/15"
+                      />
+                    </label>
                   </div>
+                  {filteredSalaryGroups.length === 0 ? (
+                    <div className="px-4 py-10 text-center text-sm text-[#7A6555]">
+                      {salaryComponents.length ? "No employees or components match this search." : "No salary components configured yet."}
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[#EFE3CF]">
+                      {visibleSalaryGroups.map((group) => {
+                        const isExpanded = expandedSalaryEmployeeId === group.employeeId;
+                        const toggleExpanded = () =>
+                          setExpandedSalaryEmployeeId(isExpanded ? null : group.employeeId);
+                        return (
+                          <section key={group.employeeId}>
+                            <button
+                              type="button"
+                              aria-expanded={isExpanded}
+                              onClick={toggleExpanded}
+                              className="flex min-h-[76px] w-full items-center gap-3 px-4 py-3 text-left hover:bg-[#FAF9F6] sm:px-6"
+                            >
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm font-bold text-[#2F1B12]">{group.employeeName}</span>
+                                <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#6F5A49]">
+                                  <span>CTC: {group.ctc ? `${formatCurrency(group.ctc.amount)} / year` : "Not set"}</span>
+                                  <span>{group.componentCount} {group.componentCount === 1 ? "component" : "components"}</span>
+                                  {group.lastRevisedDate && <span>Revised: {new Date(`${group.lastRevisedDate.slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN")}</span>}
+                                </span>
+                              </span>
+                              {isExpanded ? <ChevronDown className="h-5 w-5 shrink-0 text-[#8B6F47]" /> : <ChevronRight className="h-5 w-5 shrink-0 text-[#8B6F47]" />}
+                            </button>
+                            {isExpanded && (
+                              <div className="border-t border-[#EFE3CF] bg-[#FFFEFC] px-3 py-3 sm:px-5">
+                                <div className="hidden overflow-x-auto md:block">
+                                  <table className="min-w-full text-left text-sm">
+                                    <thead className="bg-[#F7F3EA] text-[11px] font-bold uppercase tracking-wide text-[#6F5A49]">
+                                      <tr>
+                                        <th className="px-3 py-2">Component Type</th><th className="px-3 py-2">Effective / Revised Date</th><th className="px-3 py-2">Component Name</th><th className="px-3 py-2 text-right">Amount</th><th className="px-3 py-2">Taxable</th><th className="px-3 py-2">CTC Revised</th><th className="px-3 py-2">Actions</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-[#EFE3CF]">
+                                      {group.components.map((comp) => {
+                                        const revised = comp.ctc_revised_date || (comp as SalaryComponent & { effective_date?: string }).effective_date || null;
+                                        return <tr key={comp.id}>
+                                          <td className="px-3 py-3"><span className="inline-flex rounded-full bg-[#EFF8FF] px-2.5 py-1 text-xs font-bold text-[#175CD3]">{comp.component_type}</span></td>
+                                          <td className="px-3 py-3">{revised ? new Date(`${String(revised).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN") : "-"}</td>
+                                          <td className="px-3 py-3 font-medium text-[#4A3426]">{comp.component_name}</td>
+                                          <td className="px-3 py-3 text-right font-bold">{formatCurrency(comp.amount)}</td>
+                                          <td className="px-3 py-3">{comp.is_taxable ? "Yes" : "No"}</td>
+                                          <td className="px-3 py-3">{revised ? "Yes" : "No"}</td>
+                                          <td className="whitespace-nowrap px-3 py-3">
+                                            {canEditHR && <button onClick={() => openComprehensiveSalaryEdit(comp.employee_id)} className="mr-3 font-semibold text-[#175CD3] hover:underline">Edit</button>}
+                                            {canDeleteHR && <button onClick={() => handleDeleteSalaryComponent(comp.id)} className="font-semibold text-[#B42318] hover:underline">Delete</button>}
+                                          </td>
+                                        </tr>;
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <div className="space-y-2 md:hidden">
+                                  {group.components.map((comp) => {
+                                    const revised = comp.ctc_revised_date || (comp as SalaryComponent & { effective_date?: string }).effective_date || null;
+                                    return <article key={comp.id} className="rounded-xl border border-[#E8DCC4] bg-white p-3">
+                                      <div className="flex flex-wrap items-start justify-between gap-2">
+                                        <div className="min-w-0"><div className="font-semibold text-[#2F1B12]">{comp.component_name}</div><div className="mt-1 text-xs text-[#6F5A49]">{comp.component_type} · {revised ? new Date(`${String(revised).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN") : "No date"}</div></div>
+                                        <div className="shrink-0 text-right"><div className="font-bold text-[#2F1B12]">{formatCurrency(comp.amount)}</div><div className="text-xs text-[#6F5A49]">Taxable: {comp.is_taxable ? "Yes" : "No"}</div></div>
+                                      </div>
+                                      <div className="mt-3 flex gap-4 border-t border-[#F0E8DC] pt-2 text-sm">
+                                        {canEditHR && <button onClick={() => openComprehensiveSalaryEdit(comp.employee_id)} className="font-semibold text-[#175CD3]">Edit</button>}
+                                        {canDeleteHR && <button onClick={() => handleDeleteSalaryComponent(comp.id)} className="font-semibold text-[#B42318]">Delete</button>}
+                                      </div>
+                                    </article>;
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </section>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {filteredSalaryGroups.length > salaryGroupsPerPage && (
+                    <div className="flex items-center justify-between gap-3 border-t border-[#E8DCC4] px-4 py-3 text-sm">
+                      <span className="text-[#6F5A49]">Page {salaryComponentPage} of {salaryGroupPageCount} · {filteredSalaryGroups.length} employees</span>
+                      <div className="flex gap-2">
+                        <button type="button" disabled={salaryComponentPage <= 1} onClick={() => setSalaryComponentPage((page) => Math.max(1, page - 1))} className="min-h-9 rounded-lg border border-[#D8C4A8] px-3 font-semibold disabled:opacity-40">Previous</button>
+                        <button type="button" disabled={salaryComponentPage >= salaryGroupPageCount} onClick={() => setSalaryComponentPage((page) => Math.min(salaryGroupPageCount, page + 1))} className="min-h-9 rounded-lg border border-[#D8C4A8] px-3 font-semibold disabled:opacity-40">Next</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}

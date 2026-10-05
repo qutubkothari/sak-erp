@@ -404,6 +404,11 @@ export class HrController {
   addSalaryComponent(@Request() req: any, @Body() body: any) {
     return this.hrService.addSalaryComponent(req.user.tenantId, body);
   }
+  @Get("salary-components")
+  @RequireRead("hr")
+  getAllSalaryComponents(@Request() req: any) {
+    return this.hrService.getSalaryComponents(req.user.tenantId);
+  }
   @Get("salary/:employeeId")
   getSalaryComponents(
     @Request() req: any,
