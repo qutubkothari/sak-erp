@@ -81,6 +81,8 @@ type NavigationItem = {
   children?: NavigationChild[];
 };
 
+type TenantShellBranding = { name?: string; logo_url?: string };
+
 const navigation: NavigationItem[] = [
   {
     name: "Dashboard",
@@ -930,12 +932,28 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const [darkMode, setDarkMode] = useState(false);
   const [showMobileMore, setShowMobileMore] = useState(false);
   const [reportingFlags, setReportingFlags] = useState({ enabled: false, dashboard_enabled: false });
+  const [tenantShellBranding, setTenantShellBranding] = useState<TenantShellBranding | null>(null);
 
   // Use global auth store
   const { user: currentUser, hydrate, clearUser } = useAuthStore();
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (currentUser) {
+      void apiClient.get<TenantShellBranding>("/tenant/current")
+        .then((company) => { if (!cancelled) setTenantShellBranding(company); })
+        .catch(() => { if (!cancelled) setTenantShellBranding(null); });
+    } else {
+      setTenantShellBranding(null);
+    }
+    return () => { cancelled = true; };
+  }, [currentUser]);
+
+  const shellCompanyName = tenantShellBranding?.name?.trim() || appBranding.companyName;
+  const shellLogo = tenantShellBranding?.logo_url?.trim() || appBranding.logo;
 
   useEffect(() => {
     let cancelled = false;
@@ -1164,8 +1182,8 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           className={`h-14 flex items-center border-b-2 border-[#8B6F47]/40 ${collapsed ? "justify-center px-2" : "justify-between px-3"}`}
         >
           <Link href={homeHref} aria-label={`${appBranding.brand} home`} className={`flex min-w-0 items-center gap-2 ${collapsed ? "justify-center" : ""}`}>
-            <img src={appBranding.logo} alt={`${appBranding.brand} logo`} className={`object-contain ${collapsed ? "h-8 w-8" : appBranding.brand === "SaifSeas" ? "h-8 w-[150px] shrink-0" : "h-8 w-9 shrink-0"}`} />
-            {!collapsed && appBranding.brand !== "SaifSeas" && <span className="font-bold text-sm text-[#FFFDF8] truncate max-w-[132px]" title={appBranding.companyName}>{appBranding.companyName}</span>}
+            <img src={shellLogo} alt={`${shellCompanyName} logo`} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = appBranding.logo; }} className={`object-contain ${collapsed ? "h-8 w-8" : appBranding.brand === "SaifSeas" ? "h-8 w-[150px] shrink-0" : "h-8 w-9 shrink-0"}`} />
+            {!collapsed && appBranding.brand !== "SaifSeas" && <span className="font-bold text-sm text-[#FFFDF8] truncate max-w-[132px]" title={shellCompanyName}>{shellCompanyName}</span>}
           </Link>
           <button
             onClick={onToggle}

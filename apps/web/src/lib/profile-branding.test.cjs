@@ -30,7 +30,10 @@ test('unknown profile falls back to generic Mizantra configuration, never Saif',
 });
 test('desktop and collapsed desktop sidebar consume the same profile logo/name provider', () => {
   assert.match(sidebar, /const appBranding = getProfileBranding\(\)/);
-  assert.match(sidebar, /src=\{appBranding\.logo\}/);
+  assert.match(sidebar, /apiClient\.get<TenantShellBranding>\("\/tenant\/current"\)/);
+  assert.match(sidebar, /tenantShellBranding\?\.name\?\.trim\(\) \|\| appBranding\.companyName/);
+  assert.match(sidebar, /tenantShellBranding\?\.logo_url\?\.trim\(\) \|\| appBranding\.logo/);
+  assert.match(sidebar, /src=\{shellLogo\}/);
   assert.match(sidebar, /appBranding\.companyName/);
   assert.match(sidebar, /collapsed \? "h-8 w-8"/);
 });
