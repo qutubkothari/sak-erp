@@ -8,24 +8,22 @@ import ModalEnhancer from '@/components/ModalEnhancer';
 import VersionRefreshNotice from '@/components/VersionRefreshNotice';
 import PWARegister from '@/components/PWARegister';
 import PWAStatus from '@/components/PWAStatus';
-import { buildDocumentBranding } from '@/lib/document-branding';
+import { getProfileBranding } from '@/lib/profile-branding';
 import GlobalSmartSelect from '@/components/GlobalSmartSelect';
 
 const inter = Inter({ subsets: ['latin'] });
-const appBranding = buildDocumentBranding(null);
-const isSaifSeas = process.env.ERP_TENANT_PROFILE === 'SAIFSEAS';
-const manifestPath = isSaifSeas ? '/saifseas.webmanifest' : '/manifest.webmanifest';
-const iconPath = isSaifSeas ? '/branding/saif-seas-icon.svg' : '/pwa-icon-192.png';
+const appBranding = getProfileBranding();
+const profile = process.env.ERP_TENANT_PROFILE || 'MIZANTRA';
 
 export const metadata: Metadata = {
-  title: isSaifSeas ? 'SaifSeas ERP' : `Mizantra ERP | ${appBranding.companyName}`,
-  description: isSaifSeas ? 'SaifSeas ERP' : `Mizantra ERP by ${appBranding.companyName} with multi-tenant, multi-plant, and traceability support`,
-  manifest: manifestPath,
-  applicationName: isSaifSeas ? 'SaifSeas ERP' : 'Mizantra ERP',
+  title: `${appBranding.brand} ERP`,
+  description: `${appBranding.companyName} with multi-tenant, multi-plant, and traceability support`,
+  manifest: appBranding.manifest,
+  applicationName: `${appBranding.brand} ERP`,
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: isSaifSeas ? 'SaifSeas ERP' : 'Mizantra ERP',
+    title: `${appBranding.brand} ERP`,
   },
   other: {
     'mobile-web-app-capable': 'yes',
@@ -34,8 +32,8 @@ export const metadata: Metadata = {
     telephone: false,
   },
   icons: {
-    icon: iconPath,
-    apple: isSaifSeas ? '/branding/saif-seas-icon-192.png' : '/pwa-icon-192.png',
+    icon: appBranding.icon,
+    apple: appBranding.icon,
   },
 };
 
@@ -53,9 +51,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en-GB" data-tenant-profile={isSaifSeas ? 'SAIFSEAS' : undefined} suppressHydrationWarning>
+    <html lang="en-GB" data-tenant-profile={profile} suppressHydrationWarning>
       <head>
-        <link rel="manifest" href={manifestPath} />
+        <link rel="manifest" href={appBranding.manifest} />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
       </head>

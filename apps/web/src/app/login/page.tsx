@@ -1,29 +1,19 @@
 import { headers } from 'next/headers';
 import LoginForm, { LoginBrand } from './LoginForm';
 import profiles from '../../../../../tenant/profiles.json';
+import { resolveProfileLoginBrand, type TenantProfile } from '@/lib/profile-branding';
 
 export const dynamic = 'force-dynamic';
 
-const SAK_SOLUTIONS_BRAND: LoginBrand = {
-  logoSrc: '/branding/sak-solutions-mark.png',
-  logoAlt: 'SAK Solutions logo',
-  companyName: 'SAK Solutions',
-  systemLabel: 'Mizantra ERP',
-};
-
 function resolveBrandForHost(host: string): LoginBrand {
   const normalizedHost = host.toLowerCase();
-  for (const profile of Object.values(profiles)) {
+  for (const [profileName, profile] of Object.entries(profiles)) {
     if (normalizedHost.includes(profile.loginHostContains)) {
-      return {
-        logoSrc: profile.loginLogo,
-        logoAlt: `${profile.brand} logo`,
-        companyName: profile.brand,
-        systemLabel: 'Mizantra ERP',
-      };
+      return resolveProfileLoginBrand(profileName as TenantProfile);
     }
   }
-  return SAK_SOLUTIONS_BRAND;
+  const configuredProfile = process.env.ERP_TENANT_PROFILE;
+  return resolveProfileLoginBrand((configuredProfile && configuredProfile in profiles ? configuredProfile : 'MIZANTRA') as TenantProfile);
 }
 
 export default async function LoginPage() {

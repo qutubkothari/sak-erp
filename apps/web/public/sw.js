@@ -1,15 +1,12 @@
 // Keep this version in step with the registration URL in PWARegister.  A new
 // worker clears bundles from previous releases before it takes control.
-const CACHE_NAME = 'saif-erp-shell-v7';
+const profile = new URL(self.location.href).searchParams.get('profile') || 'MIZANTRA';
+const CACHE_NAME = `erp-shell-v8-${profile.toLowerCase()}`;
 const SHELL_ASSETS = [
   '/',
   '/login',
   '/offline.html',
-  '/favicon.svg',
-  '/pwa-icon.svg',
-  '/pwa-icon-192.png',
-  '/pwa-icon-512.png',
-  '/manifest.webmanifest'
+  '/offline.html'
 ];
 
 self.addEventListener('install', (event) => {

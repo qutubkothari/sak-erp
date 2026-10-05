@@ -10,10 +10,11 @@ export default function PWARegister() {
 
     const register = async () => {
       try {
-        // Version the worker URL so browsers running the former cache-first
-        // worker cannot keep intercepting its own update request.
+        const profile = process.env.ERP_TENANT_PROFILE || 'MIZANTRA';
+        // The profile key keeps installed app shell caches isolated between
+        // deployments on a shared domain and forces upgrades of old workers.
         const registration = await navigator.serviceWorker.register(
-          '/sw.js?v=20260927-attendance-weekday-fix',
+          `/sw.js?v=20261005-profile-branding&profile=${encodeURIComponent(profile)}`,
           { scope: '/' },
         );
         registration.waiting?.postMessage({ type: 'SKIP_WAITING' });

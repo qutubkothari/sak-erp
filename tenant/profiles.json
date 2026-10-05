@@ -1,6 +1,11 @@
 {
   "SAIFSEAS": {
     "brand": "SaifSeas",
+    "companyName": "Saif Automations Services LLP",
+    "shellLogo": "/branding/saif-seas-logo.png",
+    "appIcon": "/branding/saif-seas-icon.svg",
+    "manifest": "/saifseas.webmanifest",
+    "shortName": "SaifSeas",
     "loginHostContains": "saifseas",
     "loginLogo": "/branding/saif-seas-logo.png",
     "country": "IN",
@@ -12,6 +17,11 @@
   },
   "MIZANTRA": {
     "brand": "Mizantra",
+    "companyName": "Mizantra ERP by SAK Solutions",
+    "shellLogo": "/branding/sak-solutions-mark.png",
+    "appIcon": "/pwa-icon-192.png",
+    "manifest": "/manifest-mizantra.webmanifest",
+    "shortName": "Mizantra ERP",
     "loginHostContains": "mizantra.saksolution.com",
     "loginLogo": "/branding/sak-solutions-mark.png",
     "country": "IN",
@@ -23,6 +33,11 @@
   },
   "ARWA": {
     "brand": "Arwa",
+    "companyName": "Arwa",
+    "shellLogo": "/branding/arwa-logo.png",
+    "appIcon": "/branding/arwa-logo.png",
+    "manifest": "/manifest-arwa.webmanifest",
+    "shortName": "Arwa",
     "loginHostContains": "arwa.mizantra.ae",
     "loginLogo": "/branding/arwa-logo.png",
     "country": "EG",

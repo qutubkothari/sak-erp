@@ -40,7 +40,7 @@ import {
   getUserInitials,
 } from "@/stores/auth.store";
 import { openCommandPalette } from "@/components/CommandPalette";
-import { buildDocumentBranding } from "@/lib/document-branding";
+import { getProfileBranding } from "@/lib/profile-branding";
 import { isPathAllowedForUser } from "@/lib/rbac";
 import { SCREEN_DEFINITIONS } from "@/lib/permission-config";
 import { useLocale } from "@/lib/locale";
@@ -64,7 +64,7 @@ function captureAskMizantraSourceRoute() {
   } catch {}
 }
 
-const appBranding = buildDocumentBranding(null);
+const appBranding = getProfileBranding();
 
 type NavigationChild = {
   name: string;
@@ -1163,26 +1163,10 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <div
           className={`h-14 flex items-center border-b-2 border-[#8B6F47]/40 ${collapsed ? "justify-center px-2" : "justify-between px-3"}`}
         >
-          {!collapsed && (
-            <Link href={homeHref} className="flex items-center gap-2">
-              <img
-                src="/branding/saif-seas-logo.png"
-                alt="SaifSeas"
-                className="sidebar-saifseas-brand hidden h-8 w-[150px] object-contain"
-              />
-              <span className="sidebar-default-brand flex items-center gap-2">
-                <span className="w-8 h-8 bg-[#8B6F47] rounded-lg flex items-center justify-center shadow-md">
-                  <span className="text-white font-bold text-sm">SAK</span>
-                </span>
-                <span
-                  className="font-bold text-sm text-[#FFFDF8] truncate max-w-[132px]"
-                  title={appBranding.companyName}
-                >
-                  {appBranding.companyName}
-                </span>
-              </span>
-            </Link>
-          )}
+          <Link href={homeHref} aria-label={`${appBranding.brand} home`} className={`flex min-w-0 items-center gap-2 ${collapsed ? "justify-center" : ""}`}>
+            <img src={appBranding.logo} alt={`${appBranding.brand} logo`} className={`object-contain ${collapsed ? "h-8 w-8" : appBranding.brand === "SaifSeas" ? "h-8 w-[150px] shrink-0" : "h-8 w-9 shrink-0"}`} />
+            {!collapsed && appBranding.brand !== "SaifSeas" && <span className="font-bold text-sm text-[#FFFDF8] truncate max-w-[132px]" title={appBranding.companyName}>{appBranding.companyName}</span>}
+          </Link>
           <button
             onClick={onToggle}
             className="p-1.5 rounded-lg hover:bg-[#6F4E37] hover:text-white transition-colors text-[#D8C8AA]"

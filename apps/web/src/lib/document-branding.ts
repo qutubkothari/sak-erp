@@ -21,16 +21,6 @@ export interface WebDocumentBranding {
   contactLine: string;
 }
 
-function getStandardBrandAssetUrl(fileName: string): string {
-  const assetPath = `/branding/${fileName}`;
-
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}${assetPath}`;
-  }
-
-  return assetPath;
-}
-
 function getDocumentImageUrl(url: string, fallback: string): string {
   const candidate = String(url || '').trim();
   if (!candidate) return fallback;
@@ -128,6 +118,8 @@ function hasStructuredBranding(company?: BrandingCompanyInput | null): boolean {
 }
 
 export function buildDocumentBranding(company?: TenantCompanyProfile | null): WebDocumentBranding {
+  const profileBranding = getProfileBranding();
+  const isSaifProfile = process.env.ERP_TENANT_PROFILE === 'SAIFSEAS';
   const companyInput = company as BrandingCompanyInput | null | undefined;
   const letterhead = getLetterheadSettings(companyInput);
   const useCompanyBranding = hasStructuredBranding(companyInput) || Object.keys(letterhead).length > 0 || Boolean(companyInput?.name);
@@ -138,34 +130,34 @@ export function buildDocumentBranding(company?: TenantCompanyProfile | null): We
     useCompanyBranding ? companyInput?.companyName : '',
     useCompanyBranding ? companyInput?.company_name : '',
     useCompanyBranding ? companyInput?.name : '',
-    getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_NAME', 'COMPANY_NAME', 'Saif Automations Services LLP'),
+    isSaifProfile ? getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_NAME', 'COMPANY_NAME', profileBranding.companyName) : profileBranding.companyName,
   ));
   const address = getFirstNonEmptyValue(
     letterhead.address,
     useCompanyBranding ? companyInput?.address : '',
-    getDefaultBrandingValue(
+    isSaifProfile ? getDefaultBrandingValue(
       'NEXT_PUBLIC_COMPANY_ADDRESS',
       'COMPANY_ADDRESS',
       '1st Floor, Sunrise Incubation Hub, Hill No. 3, Rushikonda, Visakhapatnam - 530045',
-    ),
+    ) : '',
   );
   const phone = getFirstNonEmptyValue(
     letterhead.phone,
     useCompanyBranding ? companyInput?.phone : '',
     useCompanyBranding ? companyInput?.phoneNumber : '',
-    getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_PHONE', 'COMPANY_PHONE', '0891-6662153'),
+    isSaifProfile ? getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_PHONE', 'COMPANY_PHONE', '0891-6662153') : '',
   );
   const email = getFirstNonEmptyValue(
     letterhead.email,
     useCompanyBranding ? companyInput?.email : '',
-    getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_EMAIL', 'COMPANY_EMAIL', 'info@mizantra.ae'),
+    isSaifProfile ? getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_EMAIL', 'COMPANY_EMAIL', 'info@mizantra.ae') : '',
   );
   const websiteSource = getFirstNonEmptyValue(
     letterhead.website,
     useCompanyBranding ? companyInput?.website : '',
     useCompanyBranding ? companyInput?.domain : '',
     useCompanyBranding ? companyInput?.subdomain : '',
-    getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_WEBSITE', 'COMPANY_WEBSITE', ''),
+    isSaifProfile ? getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_WEBSITE', 'COMPANY_WEBSITE', '') : '',
   );
   const website = websiteSource
     ? /^https?:\/\//i.test(websiteSource)
@@ -179,14 +171,14 @@ export function buildDocumentBranding(company?: TenantCompanyProfile | null): We
     letterhead.tax_id,
     useCompanyBranding ? companyInput?.tax_id : '',
     useCompanyBranding ? companyInput?.taxId : '',
-    getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_TAX_ID', 'COMPANY_TAX_ID', ''),
+    isSaifProfile ? getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_TAX_ID', 'COMPANY_TAX_ID', '') : '',
   );
   const logoUrl = getFirstNonEmptyValue(
     letterhead.logoUrl,
     letterhead.logo_url,
     useCompanyBranding ? companyInput?.logo_url : '',
     useCompanyBranding ? companyInput?.logoUrl : '',
-    getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_LOGO_URL', 'COMPANY_LOGO_URL', ''),
+    isSaifProfile ? getDefaultBrandingValue('NEXT_PUBLIC_COMPANY_LOGO_URL', 'COMPANY_LOGO_URL', profileBranding.logo) : profileBranding.logo,
   );
   const addressLines = address
     .split(/\r?\n|,(?=\s*[A-Za-z0-9])/)
@@ -217,7 +209,7 @@ export function buildDocumentBranding(company?: TenantCompanyProfile | null): We
 }
 
 export function renderStandardLetterheadHtml(branding: WebDocumentBranding, generatedOn: string): string {
-  const fallbackLogoUrl = getStandardBrandAssetUrl('saif-seas-logo.png');
+  const fallbackLogoUrl = getProfileBranding().logo;
   const brandLogoUrl = getDocumentImageUrl(branding.logoUrl, fallbackLogoUrl);
   const headerAddressLines = branding.addressLines.length > 3
     ? [branding.addressLines.slice(0, 3).join(', '), branding.addressLines.slice(3).join(', ')]
@@ -232,7 +224,7 @@ export function renderStandardLetterheadHtml(branding: WebDocumentBranding, gene
         <img
           class="brand-logo"
           src="${escapeHtml(brandLogoUrl)}"
-          alt="SaifSeas logo"
+          alt="${escapeHtml(branding.companyName)} logo"
           onerror="this.onerror=null;this.src='${escapeHtml(fallbackLogoUrl)}';"
           style="height:60px; width:165px; object-fit:contain; flex:none;"
         />
@@ -245,3 +237,5 @@ export function renderStandardLetterheadHtml(branding: WebDocumentBranding, gene
     </div>
   `;
 }
+
+import { getProfileBranding } from './profile-branding';
