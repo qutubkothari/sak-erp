@@ -2648,12 +2648,38 @@ function HrPageContent() {
 
   const handleRecordAttendance = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canCreateHR) {
-      alert("You do not have permission to record attendance");
+    if (!canCorrectAttendance) {
+      alert("You do not have permission to add or correct attendance");
       return;
     }
     try {
-      await apiClient.post("/hr/attendance", attendanceForm);
+      const query = new URLSearchParams({
+        fromDate: attendanceForm.attendance_date,
+        toDate: attendanceForm.attendance_date,
+        employeeId: attendanceForm.employee_id,
+      });
+      const existingResult = await apiClient.get<any>(
+        `/hr/attendance?${query.toString()}`,
+      );
+      const existingRows = Array.isArray(existingResult)
+        ? existingResult
+        : existingResult?.data || [];
+      const existing = existingRows.find(
+        (row: any) =>
+          row.employee_id === attendanceForm.employee_id &&
+          String(row.attendance_date).slice(0, 10) ===
+            attendanceForm.attendance_date,
+      );
+      if (existing) {
+        setShowAttendanceForm(false);
+        openAttendanceCorrection(existing);
+        return;
+      }
+
+      const result = await apiClient.post<any>("/hr/attendance/manual", {
+        ...attendanceForm,
+        attendance_source: "MANUAL_HR_ENTRY",
+      });
       setShowAttendanceForm(false);
       setAttendanceForm({
         employee_id: "",
@@ -2670,9 +2696,13 @@ function HrPageContent() {
         travel_evidence_name: "",
       });
       fetchData();
-      alert("Attendance recorded successfully");
-    } catch (error) {
-      alert("Failed to record attendance");
+      alert(
+        result?.payroll_review_required
+          ? "Manual attendance added. Payroll review is required for this month."
+          : "Manual attendance added successfully.",
+      );
+    } catch (error: any) {
+      alert(error?.message || "Failed to add manual attendance");
     }
   };
 
@@ -5954,14 +5984,14 @@ function HrPageContent() {
             )}
             {!isEmployeePortal && activeTab === "attendance" && (
               <>
-                {canManageAttendance && (
+                {canCorrectAttendance && (
                   <>
                     <button
                       onClick={() => setShowAttendanceForm(true)}
                       className="inline-flex min-h-10 items-center gap-2 bg-[#8B6F47] px-4 text-sm font-semibold text-white hover:bg-[#6F4E37]"
                     >
                       <Plus className="h-4 w-4" />
-                      Record Manual Attendance
+                      Add Manual Attendance
                     </button>
                     <button
                       onClick={() => {
@@ -7626,7 +7656,7 @@ function HrPageContent() {
                   </div>
                   {!isEmployeePortal && (
                     <div className="flex flex-wrap items-center gap-2">
-                      {canManageAttendance ? (
+                      {canCorrectAttendance ? (
                         <>
                           <button
                             type="button"
@@ -7634,7 +7664,7 @@ function HrPageContent() {
                             className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#8B6F47] px-4 text-sm font-semibold text-white hover:bg-[#6F4E37]"
                           >
                             <Plus className="h-4 w-4" />
-                            Record Attendance
+                            Add Attendance
                           </button>
                           <button
                             type="button"
@@ -10627,11 +10657,11 @@ function HrPageContent() {
                   Time Office
                 </div>
                 <h2 className="mt-3 text-2xl font-bold text-[#2F1B12]">
-                  Record Attendance
+                  Add Manual Attendance
                 </h2>
                 <p className="mt-1 max-w-xl text-sm leading-6 text-[#6F5A49]">
-                  Use this for HR-entered corrections, biometric exceptions, and
-                  approved manual attendance records.
+                  Add attendance only when this employee has no record for the
+                  selected date. Existing records open in Correct Attendance.
                 </p>
               </div>
               <button
@@ -10655,9 +10685,9 @@ function HrPageContent() {
                       Manual attendance entry
                     </div>
                     <p className="mt-1 text-sm leading-6 text-[#6F5A49]">
-                      Select the employee, attendance date, punch times, and
-                      final day status. This entry updates HR attendance
-                      records.
+                      Enter the employee, date, times, status, and required
+                      reason. Manual entries are marked as HR evidence and do
+                      not create GPS, photo, or device evidence.
                     </p>
                   </div>
                 </div>
@@ -10752,6 +10782,26 @@ function HrPageContent() {
                 </div>
               </div>
 
+              {attendanceForm.check_in_time && attendanceForm.check_out_time && (
+                <div className="mt-3 rounded-lg border border-[#D8C4A8] bg-[#FAF9F6] px-3 py-2 text-sm text-[#4A3426]">
+                  Working hours: {(() => {
+                    const [inHours, inMinutes] = attendanceForm.check_in_time
+                      .split(":")
+                      .map(Number);
+                    const [outHours, outMinutes] = attendanceForm.check_out_time
+                      .split(":")
+                      .map(Number);
+                    const minutes = outHours * 60 + outMinutes - (inHours * 60 + inMinutes);
+                    return minutes < 0
+                      ? "Check Out must be after Check In"
+                      : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+                  })()}
+                  <span className="ml-2 text-xs text-[#6F5A49]">
+                    Final late and overtime values use the attendance policy when saved.
+                  </span>
+                </div>
+              )}
+
               <div className="mt-4">
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
                   Status *
@@ -10778,7 +10828,7 @@ function HrPageContent() {
 
               <div className="mt-4">
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
-                  Remarks
+                  Reason / Remarks *
                 </label>
                 <textarea
                   value={attendanceForm.remarks}
@@ -10790,6 +10840,9 @@ function HrPageContent() {
                   }
                   className="w-full rounded-lg border border-[#D8C4A8] bg-white px-3 py-2 text-sm font-semibold text-[#2F1B12] outline-none focus:border-[#8B6F47] focus:ring-2 focus:ring-[#E8DCC4]"
                   rows={2}
+                  required
+                  maxLength={1000}
+                  placeholder="Why is this attendance being entered manually?"
                 />
               </div>
 
@@ -12200,7 +12253,7 @@ function HrPageContent() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  Correction Reason / Remarks
+                  Correction Reason / Remarks *
                 </label>
                 <textarea
                   value={attendanceForm.remarks}
@@ -12213,6 +12266,8 @@ function HrPageContent() {
                   className="w-full border rounded px-3 py-2"
                   rows={3}
                   placeholder="Reason for correction (audit note)"
+                  required
+                  maxLength={1000}
                 />
               </div>
               <div className="rounded-xl border border-[#FEDF89] bg-[#FFFAEB] p-4">

@@ -295,9 +295,25 @@ export class HrController {
 
   // Legacy attendance endpoints
   @Post("attendance")
-  @RequireCreate("hr")
+  @RequireUpdate("hr")
   recordAttendance(@Request() req: any, @Body() body: any) {
-    return this.hrService.recordAttendance(req.user.tenantId, body);
+    return this.hrService.createManualAttendance(
+      req.user.tenantId,
+      req.user,
+      body,
+      req,
+    );
+  }
+
+  @Post("attendance/manual")
+  @RequireUpdate("hr")
+  createManualAttendance(@Request() req: any, @Body() body: any) {
+    return this.hrService.createManualAttendance(
+      req.user.tenantId,
+      req.user,
+      body,
+      req,
+    );
   }
 
   @Post("attendance/import")
@@ -313,7 +329,13 @@ export class HrController {
     @Param("id") id: string,
     @Body() body: any,
   ) {
-    return this.hrService.updateAttendance(req.user.tenantId, id, body);
+    return this.hrService.correctManualAttendance(
+      req.user.tenantId,
+      req.user,
+      id,
+      body,
+      req,
+    );
   }
 
   // Self-service: any employee may declare outstation travel / per diem on their own attendance day.
