@@ -88,7 +88,7 @@ export class AuditService {
     if (query.action) request = request.eq('action', query.action);
     if (query.resourceType) request = request.eq('resource_type', query.resourceType);
     if (query.userId) request = request.eq('user_id', query.userId);
-    if (query.source) request = request.eq('metadata->>source', query.source);
+    if (query.source) request = request.eq(query.source === 'AuditInterceptor' ? 'metadata->>audit_source' : 'metadata->>source', query.source);
     if (query.status) request = request.eq('metadata->>status', query.status);
     if (query.from) request = request.gte('created_at', query.from);
     if (query.to) request = request.lte('created_at', query.to);

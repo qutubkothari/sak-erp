@@ -104,4 +104,32 @@ describe('AuditService', () => {
     expect(mockSelect).toHaveBeenCalledWith('*', { count: 'exact' });
     expect(tenantFilter).toHaveBeenCalledWith('tenant_id', 'tenant-a');
   });
+
+  it('applies user, action, status, source, date, and document search filters', async () => {
+    const request: any = {
+      select: jest.fn(() => request),
+      eq: jest.fn(() => request),
+      order: jest.fn(() => request),
+      range: jest.fn(() => request),
+      gte: jest.fn(() => request),
+      lte: jest.fn(() => request),
+      or: jest.fn(() => request),
+      then: (resolve: any) => resolve({ data: [], error: null, count: 0 }),
+    };
+    (service as any).supabase = { from: jest.fn(() => request) };
+
+    await service.listActivityLogs('tenant-a', {
+      userId: 'user-a', action: 'UPDATE', status: 'successful', source: 'AuditInterceptor',
+      from: '2026-10-05T00:00:00Z', to: '2026-10-05T23:59:59Z', search: 'PO-2026-09-293',
+    });
+
+    expect(request.eq).toHaveBeenCalledWith('tenant_id', 'tenant-a');
+    expect(request.eq).toHaveBeenCalledWith('user_id', 'user-a');
+    expect(request.eq).toHaveBeenCalledWith('action', 'UPDATE');
+    expect(request.eq).toHaveBeenCalledWith('metadata->>status', 'successful');
+    expect(request.eq).toHaveBeenCalledWith('metadata->>audit_source', 'AuditInterceptor');
+    expect(request.gte).toHaveBeenCalledWith('created_at', '2026-10-05T00:00:00Z');
+    expect(request.lte).toHaveBeenCalledWith('created_at', '2026-10-05T23:59:59Z');
+    expect(request.or).toHaveBeenCalledWith(expect.stringContaining('resource_code.ilike.%PO-2026-09-293%'));
+  });
 });
