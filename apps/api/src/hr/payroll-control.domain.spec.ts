@@ -2,6 +2,11 @@ import {
   assertPayrollTransition,
   calculateNetVariance,
   derivePayrollStage,
+  resolvePayrollRule,
+  assertPayrollMakerChecker,
+  calculatePayrollDifferential,
+  payrollVarianceFlagged,
+  findOverlappingEffectivePeriods,
   monthContainsEffectiveDate,
   safePayrollFeatureFlags,
   summarizePayrollBlockers,
@@ -22,9 +27,46 @@ describe("payroll control domain", () => {
   });
 
   it("allows only forward lifecycle transitions", () => {
-    expect(() => assertPayrollTransition("OPEN", "CLOSED")).not.toThrow();
+    expect(() => assertPayrollTransition("OPEN", "READY_TO_CLOSE")).not.toThrow();
+    expect(() => assertPayrollTransition("READY_TO_CLOSE", "CLOSED")).not.toThrow();
+    expect(() => assertPayrollTransition("OPEN", "CLOSED")).toThrow("Invalid payroll transition");
     expect(() => assertPayrollTransition("OPEN", "PAID")).toThrow("Invalid payroll transition");
     expect(() => assertPayrollTransition("CALCULATED", "PAID")).toThrow("Invalid payroll transition");
+  });
+
+  it("resolves effective rules by employee, tenant, then profile precedence", () => {
+    const tenantRules = [{ rule_key: "ot_rate", rule_value: 1.5, effective_from: "2026-01-01" }];
+    expect(resolvePayrollRule({ ruleKey: "ot_rate", effectiveDate: "2026-02-01", profileDefault: 1.25, tenantRules })).toMatchObject({ value: 1.5, source: "TENANT" });
+    expect(resolvePayrollRule({ ruleKey: "ot_rate", effectiveDate: "2025-12-31", profileDefault: 1.25, tenantRules })).toMatchObject({ value: 1.25, source: "PROFILE" });
+    expect(resolvePayrollRule({ ruleKey: "ot_rate", effectiveDate: "2026-02-01", profileDefault: 1.25, tenantRules, employeeOverrides: [{ rule_key: "ot_rate", rule_value: 2, effective_from: "2026-02-01" }] })).toMatchObject({ value: 2, source: "EMPLOYEE" });
+  });
+
+  it("enforces payroll separation of duties and configured second approval", () => {
+    expect(() => assertPayrollMakerChecker({ enabled: true, preparerId: "maker", approverId: "maker" })).toThrow("cannot approve");
+    expect(() => assertPayrollMakerChecker({ enabled: true, approverId: "approver", secondApprovalRequired: true })).toThrow("second approval");
+    expect(() => assertPayrollMakerChecker({ enabled: true, approverId: "approver", countersignerId: "approver" })).toThrow("must be different");
+    expect(() => assertPayrollMakerChecker({ enabled: true, preparerId: "maker", approverId: "approver", countersignerId: "checker", secondApprovalRequired: true })).not.toThrow();
+  });
+
+  it("calculates a reviewed differential without automatic recovery", () => {
+    expect(calculatePayrollDifferential(90, 100)).toEqual({ correct_amount: 90, already_posted_amount: 100, difference: -10, direction: "REVIEW_RECOVERY", automatic_recovery: false });
+    expect(calculatePayrollDifferential(110, 100).direction).toBe("PAY");
+  });
+
+  it("flags variances only against an explicit threshold", () => {
+    expect(payrollVarianceFlagged(10, 10)).toBe(true);
+    expect(payrollVarianceFlagged(9.99, 10)).toBe(false);
+    expect(payrollVarianceFlagged(null, 0)).toBe(false);
+  });
+
+  it("detects only known overlapping versions of the same employee component", () => {
+    const rows = [
+      { id: "a", employee_id: "e", component_type: "BASIC", component_name: "Basic", effective_from: "2026-01-01", effective_to: "2026-06-30" },
+      { id: "b", employee_id: "e", component_type: "BASIC", component_name: "Basic", effective_from: "2026-06-01", effective_to: null },
+      { id: "legacy", employee_id: "e", component_type: "BASIC", component_name: "Basic", effective_from: null, effective_to: null },
+      { id: "other", employee_id: "e", component_type: "ALLOWANCE", component_name: "Meal", effective_from: "2026-01-01", effective_to: null },
+    ];
+    expect(findOverlappingEffectivePeriods(rows).map(({ first, second }) => [first.id, second.id])).toEqual([["a", "b"]]);
   });
 
   it("preserves undated legacy salary and selects explicit effective periods", () => {

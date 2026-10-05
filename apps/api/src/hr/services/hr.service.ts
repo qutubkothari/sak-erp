@@ -13,6 +13,8 @@ import {
   calculateNetVariance,
   monthContainsEffectiveDate,
   safePayrollFeatureFlags,
+  findOverlappingEffectivePeriods,
+  payrollVarianceFlagged,
   summarizePayrollBlockers,
   type PayrollBlocker,
 } from "../payroll-control.domain";
@@ -2172,6 +2174,33 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     );
     const salaryRows = await this.getSalaryComponents(tenantId);
     const employeeNames = new Map((employees || []).map((employee: any) => [String(employee.id), employee.employee_name || employee.employee_code || "Employee"]));
+    const conflictingPeriods = findOverlappingEffectivePeriods(salaryRows).filter(({ first, second }) =>
+      monthContainsEffectiveDate(first.effective_from, first.effective_to, month) && monthContainsEffectiveDate(second.effective_from, second.effective_to, month),
+    );
+    for (const { first, second } of conflictingPeriods) {
+      blockers.push({
+        key: `salary-overlap:${first.id}:${second.id}`,
+        entity_id: String(first.employee_id),
+        employee_name: employeeNames.get(String(first.employee_id)) || "Employee",
+        reason: `Overlapping effective salary periods exist for ${first.component_name || first.component_type}.`,
+        responsible: "HR",
+        fix_href: "/dashboard/hr/management?section=management&tab=payroll",
+        evidence: { first_component_id: first.id, second_component_id: second.id, effective_from: [first.effective_from, second.effective_from], effective_to: [first.effective_to || null, second.effective_to || null] },
+        severity: "BLOCKER",
+      });
+    }
+    for (const row of salaryRows.filter((component: any) => Number(component.amount) < 0 && monthContainsEffectiveDate(component.effective_from, component.effective_to, month))) {
+      blockers.push({
+        key: `salary-negative:${row.id}`,
+        entity_id: String(row.employee_id),
+        employee_name: employeeNames.get(String(row.employee_id)) || "Employee",
+        reason: `Salary component ${row.component_name || row.component_type} has a negative amount.`,
+        responsible: "HR / Payroll",
+        fix_href: "/dashboard/hr/management?section=management&tab=payroll",
+        evidence: { component_id: row.id, amount: row.amount, component_type: row.component_type },
+        severity: "BLOCKER",
+      });
+    }
     const salaryByEmployee = new Set(
       salaryRows.filter((row: any) => monthContainsEffectiveDate(row.effective_from, row.effective_to, month)).map((row: any) => String(row.employee_id)),
     );
@@ -2269,7 +2298,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         difference: diff?.difference ?? null,
         difference_percent: diff?.difference_percent ?? null,
         known_reasons: reasons,
-        flagged: !(currentBreakdown.calculation_lines?.length),
+        flagged: payrollVarianceFlagged(
+          diff?.difference_percent ?? null,
+          Number(currentBreakdown.variance_threshold_percent),
+        ),
       };
     });
     const counts = summarizePayrollBlockers(blockers);

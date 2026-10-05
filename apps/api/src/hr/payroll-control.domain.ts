@@ -1,5 +1,6 @@
 export type PayrollStage =
   | "OPEN"
+  | "READY_TO_CLOSE"
   | "CLOSED"
   | "CALCULATED"
   | "APPROVAL_PENDING"
@@ -41,6 +42,7 @@ export function safePayrollFeatureFlags(
 
 export function derivePayrollStage(runStatus?: string | null): PayrollStage {
   const status = String(runStatus || "").toUpperCase();
+  if (status === "READY_TO_CLOSE") return "READY_TO_CLOSE";
   if (status === "PAID") return "PAID";
   if (status === "APPROVED") return "APPROVED";
   if (["COMPLETED", "CALCULATED", "LOCKED"].includes(status)) return "CALCULATED";
@@ -49,7 +51,8 @@ export function derivePayrollStage(runStatus?: string | null): PayrollStage {
 
 export function assertPayrollTransition(from: PayrollStage, to: PayrollStage) {
   const allowed: Record<PayrollStage, PayrollStage[]> = {
-    OPEN: ["CLOSED"],
+    OPEN: ["READY_TO_CLOSE"],
+    READY_TO_CLOSE: ["CLOSED"],
     CLOSED: ["CALCULATED"],
     CALCULATED: ["APPROVAL_PENDING"],
     APPROVAL_PENDING: ["APPROVED"],
@@ -60,6 +63,75 @@ export function assertPayrollTransition(from: PayrollStage, to: PayrollStage) {
   if (!allowed[from].includes(to)) {
     throw new Error(`Invalid payroll transition: ${from} -> ${to}`);
   }
+}
+
+export type EffectiveRule<T = unknown> = {
+  rule_key: string;
+  rule_value: T;
+  effective_from: string;
+  effective_to?: string | null;
+  created_at?: string;
+  id?: string;
+};
+
+/** Resolves employee override > tenant version > profile default at a date. */
+export function resolvePayrollRule<T>(input: {
+  ruleKey: string;
+  effectiveDate: string;
+  profileDefault?: T;
+  tenantRules?: EffectiveRule<T>[];
+  employeeOverrides?: EffectiveRule<T>[];
+}): { value: T | undefined; source: "EMPLOYEE" | "TENANT" | "PROFILE" | "MISSING"; version?: EffectiveRule<T> } {
+  const applicable = <R extends EffectiveRule<T>>(rows: R[] = []) => rows
+    .filter((row) => row.rule_key === input.ruleKey && row.effective_from <= input.effectiveDate && (!row.effective_to || row.effective_to >= input.effectiveDate))
+    .sort((a, b) => b.effective_from.localeCompare(a.effective_from) || String(b.created_at || "").localeCompare(String(a.created_at || "")) || String(b.id || "").localeCompare(String(a.id || "")))[0];
+  const employee = applicable(input.employeeOverrides);
+  if (employee) return { value: employee.rule_value, source: "EMPLOYEE", version: employee };
+  const tenant = applicable(input.tenantRules);
+  if (tenant) return { value: tenant.rule_value, source: "TENANT", version: tenant };
+  return input.profileDefault === undefined
+    ? { value: undefined, source: "MISSING" }
+    : { value: input.profileDefault, source: "PROFILE" };
+}
+
+export function assertPayrollMakerChecker(input: {
+  enabled: boolean;
+  preparerId?: string | null;
+  calculatorId?: string | null;
+  approverId: string;
+  countersignerId?: string | null;
+  secondApprovalRequired?: boolean;
+}) {
+  if (!input.enabled) return;
+  const makerIds = [input.preparerId, input.calculatorId].filter(Boolean);
+  if (makerIds.includes(input.approverId)) throw new Error("A payroll preparer or calculator cannot approve the same version");
+  if (input.secondApprovalRequired && !input.countersignerId) throw new Error("A second approval is required for this payroll version");
+  if (input.countersignerId && (input.countersignerId === input.approverId || makerIds.includes(input.countersignerId))) {
+    throw new Error("Payroll approver and countersigner must be different from each other and the maker");
+  }
+}
+
+export function calculatePayrollDifferential(correctAmount: number, alreadyPostedAmount: number) {
+  const corrected = Number(correctAmount), posted = Number(alreadyPostedAmount);
+  if (!Number.isFinite(corrected) || !Number.isFinite(posted)) throw new Error("Payroll differential amounts must be finite numbers");
+  const difference = Math.round((corrected - posted) * 100) / 100;
+  return { correct_amount: corrected, already_posted_amount: posted, difference, direction: difference > 0 ? "PAY" as const : difference < 0 ? "REVIEW_RECOVERY" as const : "NONE" as const, automatic_recovery: false as const };
+}
+
+export function payrollVarianceFlagged(differencePercent: number | null, thresholdPercent: number) {
+  if (differencePercent === null || !Number.isFinite(thresholdPercent) || thresholdPercent < 0) return false;
+  return Math.abs(differencePercent) >= thresholdPercent;
+}
+
+export function findOverlappingEffectivePeriods<T extends { id?: string; employee_id?: string; component_type?: string; component_name?: string; amount?: number; effective_from?: string | null; effective_to?: string | null }>(rows: T[]) {
+  const known = rows.filter((row) => row.effective_from && Number.isFinite(Date.parse(`${row.effective_from}T00:00:00Z`)));
+  const conflicts: Array<{ first: T; second: T }> = [];
+  for (let i = 0; i < known.length; i += 1) for (let j = i + 1; j < known.length; j += 1) {
+    const a = known[i], b = known[j];
+    if (a.employee_id !== b.employee_id || a.component_type !== b.component_type || a.component_name !== b.component_name) continue;
+    if (String(a.effective_from) <= String(b.effective_to || "9999-12-31") && String(b.effective_from) <= String(a.effective_to || "9999-12-31")) conflicts.push({ first: a, second: b });
+  }
+  return conflicts;
 }
 
 export function monthContainsEffectiveDate(

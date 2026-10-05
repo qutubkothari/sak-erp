@@ -109,8 +109,9 @@ export default function PayrollMonthlyProcessingPage() {
             {cockpit.read_only && <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800">READ ONLY PREVIEW</span>}
           </div>
           <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {["OPEN", "CLOSED", "CALCULATED", "APPROVED", "PAID"].map((stage) => {
-              const done = ["CLOSED", "CALCULATED", "APPROVAL_PENDING", "APPROVED", "PAID"].indexOf(cockpit.stage || "OPEN") >= ["CLOSED", "CALCULATED", "APPROVAL_PENDING", "APPROVED", "PAID"].indexOf(stage);
+            {["OPEN", "READY_TO_CLOSE", "CLOSED", "CALCULATED", "APPROVAL_PENDING", "APPROVED", "PAID"].map((stage) => {
+              const stages = ["OPEN", "READY_TO_CLOSE", "CLOSED", "CALCULATED", "APPROVAL_PENDING", "APPROVED", "PAID"];
+              const done = stages.indexOf(cockpit.stage || "OPEN") >= stages.indexOf(stage);
               return <div key={stage} className={`rounded-xl border px-3 py-3 text-center text-xs font-bold sm:text-sm ${done ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-stone-200 bg-stone-50 text-stone-500"}`}>{stage}</div>;
             })}
           </div>

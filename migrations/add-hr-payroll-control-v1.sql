@@ -7,7 +7,9 @@ ALTER TABLE public.salary_components
   ADD COLUMN IF NOT EXISTS change_reason TEXT,
   ADD COLUMN IF NOT EXISTS created_by UUID,
   ADD COLUMN IF NOT EXISTS supersedes_id UUID REFERENCES public.salary_components(id) ON DELETE SET NULL,
-  ADD COLUMN IF NOT EXISTS effective_date_state TEXT NOT NULL DEFAULT 'LEGACY_EFFECTIVE_DATE_UNKNOWN';
+  -- Nullable on purpose: adding the metadata must not rewrite historical salary rows.
+  -- A NULL value is treated as LEGACY_EFFECTIVE_DATE_UNKNOWN by readers.
+  ADD COLUMN IF NOT EXISTS effective_date_state TEXT;
 
 DO $$ BEGIN
   ALTER TABLE public.salary_components
@@ -125,7 +127,7 @@ CREATE TABLE IF NOT EXISTS public.hr_payroll_month_controls (
   payroll_month VARCHAR(7) NOT NULL CHECK (payroll_month ~ '^\d{4}-(0[1-9]|1[0-2])$'),
   version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
   stage TEXT NOT NULL DEFAULT 'OPEN' CHECK (stage IN (
-    'OPEN','CLOSED','CALCULATED','APPROVAL_PENDING','APPROVED','PAID','CORRECTION_OPEN'
+    'OPEN','READY_TO_CLOSE','CLOSED','CALCULATED','APPROVAL_PENDING','APPROVED','PAID','CORRECTION_OPEN'
   )),
   payroll_run_id UUID REFERENCES public.payroll_runs(id) ON DELETE SET NULL,
   opened_by UUID NOT NULL,
@@ -210,6 +212,40 @@ CREATE TABLE IF NOT EXISTS public.hr_payroll_corrections (
   paid_at TIMESTAMPTZ,
   evidence JSONB NOT NULL DEFAULT '{}'::JSONB
 );
+
+-- Versioned evidence tables are additive and start empty. They do not rewrite
+-- historic payroll runs or payslips and never calculate payroll themselves.
+CREATE TABLE IF NOT EXISTS public.hr_payroll_correction_employee_differences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL,
+  correction_id UUID NOT NULL REFERENCES public.hr_payroll_corrections(id) ON DELETE RESTRICT,
+  employee_id UUID NOT NULL REFERENCES public.employees(id) ON DELETE RESTRICT,
+  source_payslip_id UUID REFERENCES public.payslips(id) ON DELETE RESTRICT,
+  correction_payslip_id UUID REFERENCES public.payslips(id) ON DELETE RESTRICT,
+  posted_amount NUMERIC(15,2) NOT NULL,
+  corrected_amount NUMERIC(15,2) NOT NULL,
+  difference NUMERIC(15,2) NOT NULL,
+  review_status TEXT NOT NULL DEFAULT 'PENDING' CHECK (review_status IN ('PENDING','APPROVED','REJECTED','PAID','RECOVERY_REVIEW')),
+  evidence JSONB NOT NULL DEFAULT '{}'::JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (correction_id, employee_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.hr_payroll_maker_checker_config (
+  tenant_id UUID PRIMARY KEY,
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  second_approval_threshold NUMERIC(15,2),
+  updated_by UUID,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (second_approval_threshold IS NULL OR second_approval_threshold >= 0)
+);
+
+-- Payslip history is opt-in metadata. NULL version means legacy v1; no old row
+-- is updated by installation of this migration.
+ALTER TABLE public.payslips
+  ADD COLUMN IF NOT EXISTS version INTEGER,
+  ADD COLUMN IF NOT EXISTS supersedes_payslip_id UUID REFERENCES public.payslips(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS is_current BOOLEAN;
 
 CREATE INDEX IF NOT EXISTS idx_hr_payroll_corrections_tenant_month
   ON public.hr_payroll_corrections (tenant_id, payroll_month, opened_at DESC);
