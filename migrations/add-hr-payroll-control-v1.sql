@@ -719,7 +719,7 @@ BEGIN
     WHERE id=v_control.id AND tenant_id=p_tenant_id;
   PERFORM public.hr_payroll_control_transition(p_tenant_id,v_control.id,'CORRECTION_OPEN','CALCULATED',p_actor_id,'CORRECTION_CALCULATED',v_correction.reason,jsonb_build_object('correction_id',p_correction_id,'source_version',v_correction.source_version,'correction_version',v_correction.correction_version,'run_id',p_run_id,'checksum',p_calculation_checksum,'differentials',p_differences),p_calculation_checksum,false,false);
   SELECT COALESCE(sum(difference),0) INTO v_total FROM public.hr_payroll_correction_employee_differences WHERE tenant_id=p_tenant_id AND correction_id=p_correction_id;
-  UPDATE public.hr_payroll_corrections SET status='CALCULATED',difference_total=v_total,updated_at=now(),evidence=evidence || jsonb_build_object('calculated_by',p_actor_id,'calculation_checksum',p_calculation_checksum,'run_id',p_run_id) WHERE id=p_correction_id RETURNING to_jsonb(*) INTO v_saved;
+  UPDATE public.hr_payroll_corrections SET status='CALCULATED',difference_total=v_total,updated_at=now(),evidence=evidence || jsonb_build_object('calculated_by',p_actor_id,'calculation_checksum',p_calculation_checksum,'run_id',p_run_id) WHERE id=p_correction_id RETURNING to_jsonb(hr_payroll_corrections) INTO v_saved;
   RETURN v_saved;
 END; $$;
 
@@ -735,14 +735,14 @@ BEGIN
   IF NOT FOUND OR v_control.stage NOT IN ('APPROVAL_PENDING','SECOND_APPROVAL_REQUIRED') THEN RAISE EXCEPTION 'PAYROLL_STATE_CHANGED'; END IF;
   v_from := v_control.stage; v_checksum := v_control.calculation_checksum; v_run := v_control.payroll_run_id;
   FOR v_diff IN SELECT * FROM public.hr_payroll_correction_employee_differences WHERE tenant_id=p_tenant_id AND correction_id=p_correction_id LOOP
+    DELETE FROM public.hr_payroll_correction_employee_differences WHERE id=v_diff.id AND tenant_id=p_tenant_id AND correction_id=p_correction_id;
     DELETE FROM public.payslips WHERE id=v_diff.correction_payslip_id AND tenant_id=p_tenant_id AND is_current=false;
     IF NOT FOUND THEN RAISE EXCEPTION 'CORRECTION_PAYSLIP_CANNOT_BE_RETURNED'; END IF;
   END LOOP;
-  DELETE FROM public.hr_payroll_correction_employee_differences WHERE tenant_id=p_tenant_id AND correction_id=p_correction_id;
   IF v_run IS NOT NULL THEN UPDATE public.payroll_runs SET status='REJECTED' WHERE id=v_run AND tenant_id=p_tenant_id; END IF;
   PERFORM public.hr_payroll_control_transition(p_tenant_id,v_control.id,v_from,'CORRECTION_OPEN',p_actor_id,'CORRECTION_RETURNED',trim(p_reason),jsonb_build_object('correction_id',p_correction_id,'source_version',v_correction.source_version,'correction_version',v_correction.correction_version,'previous_differential_total',v_correction.difference_total,'previous_run_id',v_run,'previous_checksum',v_checksum),v_checksum,false,false);
   UPDATE public.hr_payroll_month_controls SET payroll_run_id=NULL,input_checksum=NULL,calculation_checksum=NULL,calculated_by=NULL,calculated_at=NULL,submitted_by=NULL,submitted_at=NULL,first_approved_by=NULL,first_approved_at=NULL,countersigned_by=NULL,countersigned_at=NULL,maker_checker_snapshot='{}'::jsonb WHERE id=v_control.id AND tenant_id=p_tenant_id;
-  UPDATE public.hr_payroll_corrections SET status='OPEN',difference_total=NULL,approved_by=NULL,approved_at=NULL,updated_at=now(),evidence=evidence || jsonb_build_object('last_returned_by',p_actor_id,'last_returned_at',now(),'last_return_reason',trim(p_reason),'previous_checksum',v_checksum,'previous_difference_total',v_correction.difference_total) WHERE id=p_correction_id RETURNING to_jsonb(*) INTO v_correction;
+  UPDATE public.hr_payroll_corrections SET status='OPEN',difference_total=NULL,approved_by=NULL,approved_at=NULL,updated_at=now(),evidence=evidence || jsonb_build_object('last_returned_by',p_actor_id,'last_returned_at',now(),'last_return_reason',trim(p_reason),'previous_checksum',v_checksum,'previous_difference_total',v_correction.difference_total) WHERE id=p_correction_id RETURNING * INTO v_correction;
   RETURN jsonb_build_object('correction',to_jsonb(v_correction),'returned',true,'payment_executed',false);
 END; $$;
 
