@@ -8,6 +8,7 @@ const profiles = JSON.parse(fs.readFileSync(path.join(root, 'tenant/profiles.jso
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const sidebar = read('apps/web/src/components/Sidebar.tsx');
 const layout = read('apps/web/src/app/layout.tsx');
+const dashboardLayout = read('apps/web/src/app/dashboard/layout.tsx');
 const login = read('apps/web/src/app/login/page.tsx');
 const pwa = read('apps/web/src/components/PWARegister.tsx');
 const worker = read('apps/web/public/sw.js');
@@ -47,6 +48,8 @@ test('metadata title, favicon, and manifest are profile aware', () => {
   assert.match(layout, /title: `\$\{appBranding\.brand\} ERP`/);
   assert.match(layout, /manifest: appBranding\.manifest/);
   assert.match(layout, /icon: appBranding\.icon/);
+  assert.match(dashboardLayout, /document\.title = `\$\{pageTitle\} \| \$\{getProfileBranding\(\)\.brand\} ERP`/);
+  assert.doesNotMatch(dashboardLayout, /document\.title = `\$\{pageTitle\} \| SAK ERP`/);
 });
 test('each profile has a separate PWA manifest and service-worker cache identity', () => {
   assert.equal(profiles.ARWA.manifest, '/manifest-arwa.webmanifest');

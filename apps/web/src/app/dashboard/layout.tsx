@@ -19,6 +19,7 @@ import GovernanceRequiredNotice from "../../components/GovernanceRequiredNotice"
 import { captureBrainRoute } from "@/lib/brain-context";
 import { ProactiveAttentionIndicator } from '@/components/MizantraProactiveOperations';
 import { UnifiedAskEntry } from '@/components/MizantraUnifiedAi';
+import { getProfileBranding } from '@/lib/profile-branding';
 
 // A module's overview can be disabled independently of its operational
 // workspaces.  Preserve the owner's feature controls, but do not strand a
@@ -279,7 +280,7 @@ export default function DashboardLayout({
     };
 
     const pageTitle = getPageTitle(pathname);
-    document.title = `${pageTitle} | SAK ERP`;
+    document.title = `${pageTitle} | ${getProfileBranding().brand} ERP`;
   }, [pathname]);
 
   return (
