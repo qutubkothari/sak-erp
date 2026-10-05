@@ -1179,6 +1179,312 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   // Attendance
+  private validateManualAttendanceInput(data: any) {
+    const attendanceDate = String(data?.attendance_date || "").slice(0, 10);
+    const date = new Date(`${attendanceDate}T00:00:00.000Z`);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(attendanceDate) ||
+      Number.isNaN(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== attendanceDate
+    ) {
+      throw new BadRequestException("A valid attendance date is required");
+    }
+    if (attendanceDate > getIndiaBusinessDate()) {
+      throw new BadRequestException("Future attendance cannot be recorded");
+    }
+
+    const reason = String(data?.remarks || data?.reason || "").trim();
+    if (!reason) {
+      throw new BadRequestException("A reason is required for manual attendance");
+    }
+    if (reason.length > 1000) {
+      throw new BadRequestException("Reason must be 1000 characters or fewer");
+    }
+
+    const checkInTime = String(data?.check_in_time || "").trim();
+    const checkOutTime = String(data?.check_out_time || "").trim();
+    for (const [label, value] of [["Check In", checkInTime], ["Check Out", checkOutTime]]) {
+      if (value && !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value)) {
+        throw new BadRequestException(`${label} must be a valid time`);
+      }
+    }
+    if (checkInTime && checkOutTime && checkOutTime < checkInTime) {
+      throw new BadRequestException("Check Out cannot be earlier than Check In");
+    }
+
+    const requestedStatus = String(data?.status || "PRESENT").toUpperCase();
+    const status = requestedStatus === "WORK_FROM_HOME" ? "WFH" : requestedStatus;
+    if (!["PRESENT", "ABSENT", "LEAVE", "LATE", "HALF_DAY", "WFH", "ON_DUTY"].includes(status)) {
+      throw new BadRequestException("Unsupported attendance status");
+    }
+    return { attendanceDate, checkInTime, checkOutTime, reason, status };
+  }
+
+  private async getAttendancePeriodState(
+    tenantId: string,
+    employeeId: string,
+    attendanceDate: string,
+  ) {
+    const payrollMonth = attendanceDate.slice(0, 7);
+    const [runs, payroll] = await Promise.all([
+      this.supabase
+        .from("payroll_runs")
+        .select("status")
+        .eq("tenant_id", tenantId)
+        .eq("payroll_month", payrollMonth),
+      this.supabase
+        .from("monthly_payroll")
+        .select("status")
+        .eq("tenant_id", tenantId)
+        .eq("employee_id", employeeId)
+        .eq("payroll_month", payrollMonth),
+    ]);
+    if (runs.error) throw new Error(runs.error.message);
+    if (payroll.error) throw new Error(payroll.error.message);
+
+    const statuses = [
+      ...(runs.data || []).map((row: any) => String(row.status || "").toUpperCase()),
+      ...(payroll.data || []).map((row: any) => String(row.status || "").toUpperCase()),
+    ];
+    const locked = statuses.some((status) =>
+      ["APPROVED", "PAID", "LOCKED", "COMPLETED"].includes(status),
+    );
+    if (locked) {
+      throw new ConflictException({
+        code: "ATTENDANCE_PERIOD_LOCKED",
+        message:
+          "Attendance cannot be changed in an approved, paid, or locked payroll period. Use the approved payroll correction workflow.",
+      });
+    }
+    return {
+      payrollReviewRequired: statuses.some((status) =>
+        ["PROCESSED", "PENDING", "IN_PROGRESS"].includes(status),
+      ),
+    };
+  }
+
+  async createManualAttendance(
+    tenantId: string,
+    user: any,
+    data: any,
+    auditContext?: any,
+  ) {
+    const { attendanceDate, checkInTime, checkOutTime, reason, status } =
+      this.validateManualAttendanceInput(data);
+    const employeeId = String(data?.employee_id || "").trim();
+    if (!employeeId) throw new BadRequestException("Employee is required");
+
+    // Reuse report scoping so an employee login cannot create another
+    // employee's entry and supervisors retain their existing attendance scope.
+    await this.attendanceControl.buildRegisterForUser(
+      user,
+      attendanceDate,
+      attendanceDate,
+      employeeId,
+    );
+
+    const { data: employee, error: employeeError } = await this.supabase
+      .from("employees")
+      .select("id,user_id,employee_name,employee_code")
+      .eq("tenant_id", tenantId)
+      .eq("id", employeeId)
+      .maybeSingle();
+    if (employeeError) throw new Error(employeeError.message);
+    if (!employee) throw new NotFoundException("Employee not found for this tenant");
+
+    const payrollState = await this.getAttendancePeriodState(
+      tenantId,
+      employeeId,
+      attendanceDate,
+    );
+    const [canonical, legacy] = await Promise.all([
+      this.supabase
+        .from("attendance")
+        .select("id,employee_id,attendance_date")
+        .eq("tenant_id", tenantId)
+        .eq("employee_id", employeeId)
+        .eq("attendance_date", attendanceDate)
+        .maybeSingle(),
+      this.supabase
+        .from("attendance_records")
+        .select("id,employee_id,attendance_date")
+        .eq("tenant_id", tenantId)
+        .eq("employee_id", employeeId)
+        .eq("attendance_date", attendanceDate)
+        .maybeSingle(),
+    ]);
+    if (canonical.error) throw new Error(canonical.error.message);
+    if (legacy.error) throw new Error(legacy.error.message);
+    const existing = canonical.data || legacy.data;
+    if (existing) {
+      throw new ConflictException({
+        code: "ATTENDANCE_ALREADY_EXISTS",
+        message: "Attendance already exists for this employee and date. Open it to correct the existing record.",
+        attendance_id: existing.id,
+      });
+    }
+
+    const checkIn = toIndiaAttendanceDateTime(attendanceDate, checkInTime);
+    const checkOut = toIndiaAttendanceDateTime(attendanceDate, checkOutTime);
+    const workHours =
+      checkIn && checkOut
+        ? Math.max(0, (Date.parse(checkOut) - Date.parse(checkIn)) / 3_600_000)
+        : null;
+    const timing = await this.attendanceControl.calculateAttendanceMetrics(
+      tenantId,
+      checkIn,
+      workHours || 0,
+    );
+    const result = await this.supabase
+      .from("attendance")
+      .insert({
+        ...withAttendanceTravelFields(data),
+        tenant_id: tenantId,
+        employee_id: employee.id,
+        user_id: employee.user_id || null,
+        attendance_date: attendanceDate,
+        check_in_time: checkIn,
+        check_out_time: checkOut,
+        check_in_notes: reason,
+        check_out_notes: reason,
+        status:
+          timing.lateMinutes > 0 && status === "PRESENT" ? "LATE" : status,
+        work_hours: workHours === null ? null : roundCurrency(workHours),
+        late_minutes: timing.lateMinutes,
+        overtime_hours: timing.overtimeHours,
+        approval_status: "NOT_REQUIRED",
+        metadata: {
+          attendance_source: "MANUAL_HR_ENTRY",
+          manual_reason: reason,
+        },
+      })
+      .select("*")
+      .single();
+    if (result.error) {
+      if (result.error.code === "23505") {
+        throw new ConflictException({
+          code: "ATTENDANCE_ALREADY_EXISTS",
+          message: "Attendance already exists for this employee and date. Refresh and correct the existing record.",
+        });
+      }
+      throw new Error(result.error.message);
+    }
+
+    if (auditContext) {
+      auditContext.auditSnapshot = {
+        action: "CREATE",
+        oldValue: null,
+        newValue: {
+          attendance_date: attendanceDate,
+          check_in_time: checkIn,
+          check_out_time: checkOut,
+          status: result.data.status,
+          work_hours: result.data.work_hours,
+          late_minutes: result.data.late_minutes,
+          overtime_hours: result.data.overtime_hours,
+          reason,
+          source: "MANUAL_HR_ENTRY",
+        },
+        employee_name: employee.employee_name,
+        employee_code: employee.employee_code,
+        attendance_date: attendanceDate,
+        reason,
+        source: "MANUAL_HR_ENTRY",
+      };
+    }
+    return { ...result.data, payroll_review_required: payrollState.payrollReviewRequired };
+  }
+
+  async correctManualAttendance(
+    tenantId: string,
+    user: any,
+    id: string,
+    data: any,
+    auditContext?: any,
+  ) {
+    const { attendanceDate, reason } = this.validateManualAttendanceInput({
+      ...data,
+      remarks: data?.remarks || data?.reason,
+    });
+    const { data: canonicalPrior, error: priorError } = await this.supabase
+      .from("attendance")
+      .select("id,employee_id,attendance_date")
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
+      .maybeSingle();
+    if (priorError) throw new Error(priorError.message);
+    let prior = canonicalPrior;
+    const priorIsCanonical = Boolean(canonicalPrior);
+    if (!prior) {
+      const legacy = await this.supabase
+        .from("attendance_records")
+        .select("id,employee_id,attendance_date")
+        .eq("tenant_id", tenantId)
+        .eq("id", id)
+        .maybeSingle();
+      if (legacy.error) throw new Error(legacy.error.message);
+      prior = legacy.data;
+    }
+    if (!prior) throw new NotFoundException("Attendance record not found");
+    if (data?.employee_id && data.employee_id !== prior.employee_id) {
+      throw new BadRequestException("Attendance employee cannot be changed");
+    }
+
+    await this.attendanceControl.buildRegisterForUser(
+      user,
+      attendanceDate,
+      attendanceDate,
+      prior.employee_id,
+    );
+    const payrollStates = await Promise.all(
+      [...new Set([String(prior.attendance_date).slice(0, 10), attendanceDate])].map(
+        (date) =>
+          this.getAttendancePeriodState(tenantId, prior.employee_id, date),
+      ),
+    );
+    const payrollReviewRequired = payrollStates.some(
+      (state) => state.payrollReviewRequired,
+    );
+    let duplicateQuery = this.supabase
+        .from("attendance")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("employee_id", prior.employee_id)
+        .eq("attendance_date", attendanceDate);
+    if (priorIsCanonical) duplicateQuery = duplicateQuery.neq("id", id);
+    let legacyDuplicateQuery = this.supabase
+        .from("attendance_records")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("employee_id", prior.employee_id)
+        .eq("attendance_date", attendanceDate);
+    if (!priorIsCanonical) legacyDuplicateQuery = legacyDuplicateQuery.neq("id", id);
+    const [duplicate, legacyDuplicate] = await Promise.all([
+      duplicateQuery.maybeSingle(),
+      legacyDuplicateQuery.maybeSingle(),
+    ]);
+    if (duplicate.error) throw new Error(duplicate.error.message);
+    if (legacyDuplicate.error) throw new Error(legacyDuplicate.error.message);
+    if (duplicate.data || legacyDuplicate.data) {
+      throw new ConflictException({
+        code: "ATTENDANCE_ALREADY_EXISTS",
+        message: "Another attendance record already exists for this employee and date.",
+      });
+    }
+
+    const updated = await this.updateAttendance(
+      tenantId,
+      id,
+      { ...data, employee_id: prior.employee_id, attendance_date: attendanceDate, remarks: reason, attendance_source: "MANUAL_HR_ENTRY" },
+      auditContext,
+    );
+    if (auditContext?.auditSnapshot) {
+      auditContext.auditSnapshot.source = "MANUAL_HR_ENTRY";
+      auditContext.auditSnapshot.reason = reason;
+    }
+    return { ...(updated?.[0] || {}), payroll_review_required: payrollReviewRequired };
+  }
+
   async recordAttendance(tenantId: string, data: any, auditContext?: any) {
     const attendanceDate = isNonEmptyString(data?.attendance_date)
       ? String(data.attendance_date).slice(0, 10)
@@ -1331,6 +1637,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       check_in_notes: data.remarks || data.notes || null,
       ...withAttendanceTravelFields(data),
     };
+    if (data?.attendance_source === "MANUAL_HR_ENTRY") {
+      attendanceData.metadata = {
+        ...(priorRecord?.metadata && typeof priorRecord.metadata === "object"
+          ? priorRecord.metadata
+          : {}),
+        attendance_source: "MANUAL_HR_ENTRY",
+        manual_reason: String(data?.remarks || data?.notes || "").trim(),
+      };
+    }
 
     if (attendanceData.check_in_time && attendanceData.check_out_time) {
       const inTime = new Date(attendanceData.check_in_time);
@@ -1448,7 +1763,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       try {
         const { data } = await this.supabase
           .from("employees")
-          .select("id, first_name, last_name, employee_code")
+        .select("id, employee_name, employee_code")
           .eq("tenant_id", tenantId)
           .eq("id", employeeId)
           .maybeSingle();
@@ -1458,7 +1773,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         // into an apparent API failure. The record ID/date are still logged.
       }
     }
-    const employeeName = [employee?.first_name, employee?.last_name].filter(Boolean).join(" ") || null;
+    const employeeName = employee?.employee_name || null;
     const businessSnapshot = (record: any) => record && Object.fromEntries(
       Object.entries(record).filter(([key]) => !/gps|latitude|longitude|coordinates|accuracy|device|photo|image/i.test(key)),
     );
