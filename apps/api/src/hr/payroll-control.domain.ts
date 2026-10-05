@@ -106,6 +106,7 @@ export const HR_PAYROLL_RULE_KEYS = [
   "sandwich_leave_behavior",
   "payroll_close_day",
   "approval_threshold",
+  "PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT",
 ] as const;
 export type HrPayrollRuleKey = (typeof HR_PAYROLL_RULE_KEYS)[number];
 
@@ -132,6 +133,7 @@ export function validateHrPayrollRuleValue(ruleKey: HrPayrollRuleKey, value: unk
       break;
     case "overtime_rate":
     case "approval_threshold":
+    case "PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT":
       if (typeof value === "number" && Number.isFinite(value) && value >= 0 && (ruleKey !== "overtime_rate" || value <= 10)) return value;
       break;
     case "payroll_close_day":
@@ -268,6 +270,45 @@ export function calculateNetVariance(previous: number, current: number) {
     difference,
     difference_percent: before === 0 ? (after === 0 ? 0 : null) : Math.round((difference / Math.abs(before)) * 10000) / 100,
   };
+}
+
+export type PayrollEvidenceClass = "STORED_EVIDENCE" | "RECONSTRUCTED_DETERMINISTICALLY" | "EVIDENCE_INCOMPLETE";
+export function classifyPayrollEvidence(line: Record<string, unknown>, hasStoredBreakdown: boolean): PayrollEvidenceClass {
+  if (line.evidence_class === "STORED_EVIDENCE" || line.evidence_class === "RECONSTRUCTED_DETERMINISTICALLY" || line.evidence_class === "EVIDENCE_INCOMPLETE") return line.evidence_class;
+  if (!line.source || typeof line.source !== "object" || !Object.keys(line.source as object).length) return "EVIDENCE_INCOMPLETE";
+  return hasStoredBreakdown ? "STORED_EVIDENCE" : "RECONSTRUCTED_DETERMINISTICALLY";
+}
+
+export function reconcilePayrollTotals(lines: Array<{ kind?: string; amount?: unknown }>, totals: { gross?: unknown; deductions?: unknown; net?: unknown }) {
+  const earningLines = lines.filter(line => line.kind === "EARNING");
+  const earnings = earningLines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+  const salaryComponentEarnings = earningLines.filter(line => !!(line as any).source?.salary_component_id).reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+  const deductions = lines.filter(line => line.kind === "DEDUCTION").reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+  const expectedNet = Math.max(0, Math.round((earnings - deductions) * 100) / 100);
+  const storedGross = Number(totals.gross), storedDeductions = Number(totals.deductions), storedNet = Number(totals.net);
+  const round = (value: number) => Math.round(value * 100) / 100;
+  return { earnings: round(earnings), salary_component_earnings: round(salaryComponentEarnings), deductions: round(deductions), expected_net: expectedNet, stored_gross: storedGross, stored_deductions: storedDeductions, stored_net: storedNet, reconciles: Math.abs(round(salaryComponentEarnings) - round(storedGross)) <= 0.01 && Math.abs(round(deductions) - round(storedDeductions)) <= 0.01 && Math.abs(expectedNet - round(storedNet)) <= 0.01 };
+}
+
+export function explainPayrollVariance(previous: Record<string, any> | null, current: Record<string, any>) {
+  if (!previous) return [] as Array<{ key: string; reason: string; difference?: number }>;
+  const priorLines = Array.isArray(previous.calculation_lines) ? previous.calculation_lines : [];
+  const currentLines = Array.isArray(current.calculation_lines) ? current.calculation_lines : [];
+  const reasons: Array<{ key: string; reason: string; difference?: number }> = [];
+  const salaryBefore = new Map(priorLines.filter((line: any) => line.source?.salary_component_id).map((line: any) => [String(line.source.salary_component_id), Number(line.amount) || 0]));
+  const salaryAfter = new Map(currentLines.filter((line: any) => line.source?.salary_component_id).map((line: any) => [String(line.source.salary_component_id), Number(line.amount) || 0]));
+  const salaryDiff = [...new Set([...salaryBefore.keys(), ...salaryAfter.keys()])].reduce((sum, id) => sum + (Number(salaryAfter.get(id) || 0) - Number(salaryBefore.get(id) || 0)), 0);
+  if (salaryDiff) reasons.push({ key: "SALARY_COMPONENT_CHANGE", reason: "Effective salary component values or versions changed.", difference: Math.round(salaryDiff * 100) / 100 });
+  if (Number(previous.payable_days ?? previous.present_days ?? 0) !== Number(current.payable_days ?? current.present_days ?? 0) || Number(previous.absent_days || 0) !== Number(current.absent_days || 0)) reasons.push({ key: "ATTENDANCE_CHANGE", reason: "Recorded attendance or payable days changed." });
+  if (Number(previous.leave_days || 0) !== Number(current.leave_days || 0)) reasons.push({ key: "LEAVE_CHANGE", reason: "Recorded paid or unpaid leave days changed." });
+  const beforeOt = Number(previous.overtime_hours || 0), afterOt = Number(current.overtime_hours || 0);
+  if (beforeOt !== afterOt || Number(previous.overtime_amount || 0) !== Number(current.overtime_amount || 0)) reasons.push({ key: "OVERTIME_CHANGE", reason: "Recorded overtime hours or calculated amount changed.", difference: Math.round((Number(current.overtime_amount || 0) - Number(previous.overtime_amount || 0)) * 100) / 100 });
+  if (Number(previous.arrears || 0) !== Number(current.arrears || 0)) reasons.push({ key: "ARREARS_CHANGE", reason: "Recorded arrears changed.", difference: Math.round((Number(current.arrears || 0) - Number(previous.arrears || 0)) * 100) / 100 });
+  const beforeDeductions = Number(previous.total_deductions ?? previous.totals?.deductions ?? 0), afterDeductions = Number(current.total_deductions ?? current.totals?.deductions ?? 0);
+  if (beforeDeductions !== afterDeductions) reasons.push({ key: "DEDUCTION_CHANGE", reason: "Recorded deduction total changed.", difference: Math.round((afterDeductions - beforeDeductions) * 100) / 100 });
+  for (const line of currentLines) if (line.source?.salary_component_id && !salaryBefore.has(String(line.source.salary_component_id))) reasons.push({ key: "COMPONENT_STARTED", reason: `${String(line.label || "Salary component")} is present in the current payroll only.` });
+  for (const line of priorLines) if (line.source?.salary_component_id && !salaryAfter.has(String(line.source.salary_component_id))) reasons.push({ key: "COMPONENT_ENDED", reason: `${String(line.label || "Salary component")} was present in the previous payroll only.` });
+  return [...new Map(reasons.map(reason => [reason.key, reason])).values()];
 }
 
 export function summarizePayrollBlockers(blockers: PayrollBlocker[]) {

@@ -581,6 +581,7 @@ export class HrAttendanceControlService {
           }
         }
         daily.push({
+          attendance_id: attendance?.id || null,
           employee_id: employee.id,
           employee_code: employee.employee_code,
           employee_name: employee.employee_name,

@@ -1,4 +1,4 @@
-export type ReviewDocument = "purchase_requisition" | "purchase_order" | "grn";
+export type ReviewDocument = "purchase_requisition" | "purchase_order" | "grn" | "payslip";
 type Row = Record<string, any>;
 export type ReviewItem = { check_key: string; category: string; severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO"; title: string; business_explanation: string; evidence: Row; related_entities: Row[]; confidence: "CONFIRMED" | "LIKELY" | "POSSIBLE" | "INSUFFICIENT_EVIDENCE"; source: string; timestamp: string; outcome: "NO_ISSUE_DETECTED" | "INFORMATION" | "ATTENTION_REQUIRED" | "CRITICAL_DATA_INCONSISTENCY" };
 export type ReviewSnapshot = { type: ReviewDocument; root: Row; datasets: Record<string, Row[] | undefined>; receipt?: Row; doctor?: Row[]; qa?: Row[]; related: Row[]; timestamp: string };

@@ -4,12 +4,15 @@ import { BrainContext, BrainDiagnosticEvidence, BrainService } from "./brain.ser
 import { BRAIN_REGISTRY, brainEntitySummary } from "./brain-registry";
 import { DATA_DOCTOR_RULES, DoctorModule, DoctorSnapshot, evaluateDoctor } from "./data-doctor.rules";
 
+type Row = Record<string, any>;
+
 export function dataDoctorIntent(message: string) {
   return /\b(diagnos(?:e|is)|reconcile|reconciles?|data issues)\b/i.test(message) || /\b(?:check|find)\b.*\b(?:problems?|issues?|wrong|batch)\b/i.test(message) || /^why\b.*\b(?:wrong|incorrect|doesn['\u2019]?t.*match|does not.*match)\b/i.test(message);
 }
 const supported: Record<string, DoctorModule[]> = {
   item: ["INVENTORY", "ITEM", "DRAWING"], purchase_order: ["PO"], grn: ["GRN"], item_drawing: ["DRAWING"],
   employee: ["ATTENDANCE"], attendance: ["ATTENDANCE"], smart_import_batch: ["SMART_IMPORT"], autoqa_finding: ["AUTO_QA"],
+  payslip: ["PAYROLL"],
   supplier: ["ITEM"],
 };
 
@@ -134,6 +137,23 @@ export class DataDoctorService {
       const since = type === "attendance" ? String(root.attendance_date).slice(0, 10) : new Date(Date.now() - 31 * 86_400_000).toISOString().slice(0, 10);
       await Promise.all([load("attendance", "attendance", { employee_id: employeeId }, { since: { field: "attendance_date", value: since } }), load("punches", "doctor_punches", { employee_id: employeeId }, { since: { field: "punch_at", value: since } })]);
       datasets.period = [{ since, employee_id: employeeId }];
+    }
+    if (type === "payslip") {
+      const employeeId = String(root.employee_id || ""), month = String(root.salary_month || "");
+      await Promise.all([
+        load("salaryComponents", "doctor_payroll_components", { employee_id: employeeId }),
+        load("monthSlips", "doctor_payroll_slips", { employee_id: employeeId, salary_month: month }),
+        load("corrections", "doctor_payroll_corrections", { payroll_month: month }),
+        load("differences", "doctor_payroll_differences", { employee_id: employeeId }),
+        load("controls", "doctor_payroll_controls", { payroll_run_id: String(root.payroll_run_id || "") }),
+        load("payrollRules", "doctor_payroll_rules", { tenant_id: String(root.tenant_id || "") }),
+      ]);
+      datasets.payrollRules = (datasets.payrollRules || []).filter(rule => {
+        const ids = (Array.isArray(root.payroll_breakdown?.calculation_lines) ? root.payroll_breakdown.calculation_lines : []).map((line: Row) => String(line.source?.rule_version_id || "")).filter(Boolean);
+        return ids.includes(String(rule.id));
+      });
+      await load("checker", "doctor_payroll_checker", { tenant_id: String(root.tenant_id || "") });
+      datasets.period = [{ employee_id: employeeId, payroll_month: month }];
     }
     if (type === "smart_import_batch") await Promise.all([load("batchDetails", "doctor_batch", { id: root.id }), load("importRows", "doctor_import_rows", { batch_id: root.id })]);
     if (type === "autoqa_finding") {

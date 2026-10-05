@@ -15,6 +15,9 @@ import {
   summarizePayrollBlockers,
   payrollAttentionGroup,
   validatePayrollAttendancePolicy,
+  classifyPayrollEvidence,
+  reconcilePayrollTotals,
+  explainPayrollVariance,
 } from "./payroll-control.domain";
 
 describe("payroll control domain", () => {
@@ -115,6 +118,7 @@ describe("payroll control domain", () => {
     expect(payrollProfileCapabilities("EGYPT", true, true)).toEqual({ market_profile: "EGYPT", statutory_fields_enabled: true, supports_ctc_component: false });
     expect(payrollProfileCapabilities("INDIA")).toEqual({ market_profile: "INDIA", statutory_fields_enabled: true, supports_ctc_component: true });
     expect(payrollProfileCapabilities("UNKNOWN", false, true).supports_ctc_component).toBe(false);
+    expect(payrollProfileCapabilities("ARWA")).toEqual({ market_profile: "ARWA", statutory_fields_enabled: false, supports_ctc_component: false });
   });
 
   it("preserves undated legacy salary and selects explicit effective periods", () => {
@@ -132,6 +136,24 @@ describe("payroll control domain", () => {
       difference_percent: 25,
     });
     expect(calculateNetVariance(0, 400).difference_percent).toBeNull();
+  });
+
+  it("classifies stored, reconstructed, and incomplete payroll evidence", () => {
+    expect(classifyPayrollEvidence({ source: { salary_component_id: "sc-1" } }, true)).toBe("STORED_EVIDENCE");
+    expect(classifyPayrollEvidence({ source: { salary_component_id: "sc-1" } }, false)).toBe("RECONSTRUCTED_DETERMINISTICALLY");
+    expect(classifyPayrollEvidence({ source: {} }, true)).toBe("EVIDENCE_INCOMPLETE");
+  });
+
+  it("reconciles line totals with the existing non-negative net and cents rounding semantics", () => {
+    expect(reconcilePayrollTotals([{ kind: "EARNING", amount: 100.004, source: { salary_component_id: "sc" } }, { kind: "EARNING", amount: 20 }, { kind: "DEDUCTION", amount: 10 }], { gross: 100, deductions: 10, net: 110 })).toMatchObject({ earnings: 120, salary_component_earnings: 100, deductions: 10, expected_net: 110, reconciles: true });
+    expect(reconcilePayrollTotals([{ kind: "EARNING", amount: 10, source: { salary_component_id: "sc" } }, { kind: "DEDUCTION", amount: 20 }], { gross: 10, deductions: 20, net: 0 }).reconciles).toBe(true);
+    expect(reconcilePayrollTotals([{ kind: "EARNING", amount: 100, source: { salary_component_id: "sc" } }], { gross: 99, deductions: 0, net: 100 }).reconciles).toBe(false);
+  });
+
+  it("explains supported variance reasons from stored lines only", () => {
+    const previous = { calculation_lines: [{ label: "Basic", amount: 100, source: { salary_component_id: "basic-v1" } }, { label: "Overtime", amount: 10, source: { overtime_hours: 1 } }], payable_days: 20, overtime_hours: 1, overtime_amount: 10, total_deductions: 0, arrears: 0 };
+    const current = { calculation_lines: [{ label: "Basic", amount: 120, source: { salary_component_id: "basic-v2" } }, { label: "Arrears", amount: 5, source: { arrear_id: "arr-1" } }], payable_days: 19, overtime_hours: 0, overtime_amount: 0, total_deductions: 2, arrears: 5 };
+    expect(explainPayrollVariance(previous, current).map(item => item.key)).toEqual(expect.arrayContaining(["SALARY_COMPONENT_CHANGE", "ATTENDANCE_CHANGE", "OVERTIME_CHANGE", "ARREARS_CHANGE", "DEDUCTION_CHANGE", "COMPONENT_STARTED", "COMPONENT_ENDED"]));
   });
 
   it("counts blocker severities independently", () => {

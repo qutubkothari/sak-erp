@@ -1,0 +1,31 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { apiClient } from "../../../../../../../lib/api-client";
+
+type Working = { enabled: boolean; employee_name: string; month: string; payslip_number: string; lines: Array<{ kind: string; label: string; amount: number; evidence_class: string; why?: { formula: string | null; inputs: Record<string, unknown> } }>; totals: { gross: number; deductions: number; net: number }; reconciliation?: { reconciles: boolean | null; expected_net: number | null; stored_net: number }; evidence_message?: string | null; version?: { number: number; current: boolean; history: Array<{ version: number; status: string; correction_reason?: string | null; net_salary: number }> }; variance?: { previous_month: string; difference: number; difference_percent: number | null; reasons: Array<{ reason: string }> } | null };
+const money = (value: number) => new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value || 0));
+
+export default function PayrollWorkingPage() {
+  const params = useParams<{ payslipId: string }>();
+  const [data, setData] = useState<Working | null>(null);
+  const [error, setError] = useState("");
+  const [why, setWhy] = useState<number | null>(null);
+  useEffect(() => { let active = true; apiClient.get<any>(`/hr/payroll/control/working/${encodeURIComponent(params.payslipId)}`).then((response: any) => { if (active) setData(response?.data || response); }).catch((reason: any) => { if (active) setError(reason?.message || "Payroll working evidence is unavailable."); }); return () => { active = false; }; }, [params.payslipId]);
+  return <main className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
+    <Link href="/dashboard/hr" className="text-sm font-semibold text-amber-800 hover:underline">HR / Payslips</Link>
+    {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+    {data && <>
+      <header><p className="text-xs font-bold uppercase tracking-widest text-amber-800">Payroll Working · Version {data.version?.number || 1}</p><h1 className="mt-1 text-2xl font-bold text-stone-900">{data.employee_name} · {data.month}</h1><p className="mt-1 text-sm text-stone-600">Payslip {data.payslip_number} · {data.version?.current === false ? "Correction pending approval" : "Current version"}</p></header>
+      {data.evidence_message && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">{data.evidence_message}</div>}
+      {data.reconciliation && <div className={`rounded-lg border p-4 text-sm ${data.reconciliation.reconciles === null ? "border-amber-200 bg-amber-50 text-amber-950" : data.reconciliation.reconciles ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`}>{data.reconciliation.reconciles === null ? "Detailed total reconciliation is unavailable for this historical payslip." : `Totals ${data.reconciliation.reconciles ? "reconcile" : "do not reconcile"}. Recorded net ${money(data.reconciliation.stored_net)} · line-derived net ${data.reconciliation.expected_net === null ? "unavailable" : money(data.reconciliation.expected_net)}.`} Values are shown as recorded; nothing was repaired.</div>}
+      <section className="overflow-hidden rounded-xl border border-stone-200 bg-white"><div className="divide-y divide-stone-100">{data.lines.map((line, index) => <article key={`${line.kind}:${line.label}:${index}`} className="p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><span className="mr-2 rounded bg-stone-100 px-2 py-1 text-[10px] font-bold text-stone-600">{line.kind}</span><span className="font-semibold text-stone-900">{line.label}</span><span className="ml-2 rounded-full bg-sky-50 px-2 py-1 text-[10px] font-semibold text-sky-800">{line.evidence_class.replace(/_/g, " ")}</span></div><div className="flex items-center gap-3"><strong className="tabular-nums text-stone-900">{money(line.amount)}</strong><button onClick={() => setWhy(why === index ? null : index)} className="text-sm font-semibold text-blue-700 hover:underline">Why?</button></div></div>{why === index && <div className="mt-3 rounded-lg bg-stone-50 p-3 text-xs text-stone-700"><p><strong>Formula:</strong> {line.why?.formula || "Not stored"}</p><pre className="mt-2 overflow-x-auto">{JSON.stringify(line.why?.inputs || {}, null, 2)}</pre></div>}</article>)}</div>
+        <div className="grid grid-cols-3 gap-2 border-t border-stone-200 bg-stone-50 p-4 text-right text-sm"><div className="text-left font-bold">Totals</div><div>Gross {money(data.totals.gross)}</div><div>Deductions {money(data.totals.deductions)}</div><div className="col-span-3 font-bold">Net Pay {money(data.totals.net)}</div></div>
+      </section>
+      {data.variance && <section className="rounded-xl border border-stone-200 bg-white p-4"><h2 className="font-bold text-stone-900">Month on month change</h2><p className="mt-1 text-sm text-stone-700">Compared with {data.variance.previous_month}: {money(data.variance.difference)}{data.variance.difference_percent === null ? "" : ` (${data.variance.difference_percent}%)`}</p><ul className="mt-2 list-disc pl-5 text-sm text-stone-600">{data.variance.reasons.map((reason, i) => <li key={i}>{reason.reason}</li>)}</ul></section>}
+      <section className="rounded-xl border border-stone-200 bg-white p-4"><h2 className="font-bold text-stone-900">Payslip versions</h2><ul className="mt-2 space-y-1 text-sm text-stone-700">{data.version?.history.map(version => <li key={version.version}>Version {version.version} · {version.status} · net {money(version.net_salary)}{version.correction_reason ? ` · ${version.correction_reason}` : ""}</li>)}</ul></section>
+    </>}
+  </main>;
+}

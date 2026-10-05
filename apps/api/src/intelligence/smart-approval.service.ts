@@ -6,8 +6,9 @@ import { brainEntitySummary } from "./brain-registry";
 import { DataDoctorService } from "./data-doctor.service";
 import { DocumentAnalysisService } from "./document-analysis.service";
 import { evaluateApproval, ReviewDocument, ReviewSnapshot, SMART_APPROVAL_CHECKS } from "./smart-approval.rules";
-const resources: Record<ReviewDocument, string> = { purchase_order: "purchase_orders", purchase_requisition: "purchase_requisitions", grn: "grns" };
-export function smartApprovalIntent(message: string) { return /\breview\b.*\b(?:approv|this|before)/i.test(message) || /what should I look at here/i.test(message) || /anything unusual.*\b(?:PO|PR|GRN)\b/i.test(message) || /^check this (?:GRN|PO|PR)[.!?]?$/i.test(message.trim()); }
+const resources: Record<ReviewDocument, string> = { purchase_order: "purchase_orders", purchase_requisition: "purchase_requisitions", grn: "grns", payslip: "PAYROLL_APPROVE" };
+type SmartApprovalResponse = { [key: string]: any; items: any[]; checks_executed?: string[]; attention_points?: number; status: string; intent_type: string; provider: string };
+export function smartApprovalIntent(message: string) { return /\breview\b.*\b(?:approv|this|before)/i.test(message) || (/\bpayroll\b/i.test(message) && /\b(?:review|evidence|approval)\b/i.test(message)) || /what should I look at here/i.test(message) || /anything unusual.*\b(?:PO|PR|GRN)\b/i.test(message) || /^check this (?:GRN|PO|PR)[.!?]?$/i.test(message.trim()); }
 function currencyFromTerms(value: unknown): string | null {
   if (typeof value !== "string") return null;
   try { const parsed = JSON.parse(value); const currency = parsed.supplierCurrency; return typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? currency : null; } catch { return null; }
@@ -21,16 +22,17 @@ export class SmartApprovalService {
   constructor(private readonly brain: BrainService, private readonly doctor: DataDoctorService, @Optional() private readonly documents?: DocumentAnalysisService) {}
   configuration(user: any) {
     const brain = this.brain.configuration(user);
-    const supported_document_types = (Object.keys(resources) as ReviewDocument[]).filter(type => hasPermission(user, `${resources[type]}:approve`) && process.env[`MIZANTRA_SMART_APPROVAL_${type === "purchase_order" ? "PO" : type === "purchase_requisition" ? "PR" : "GRN"}`] !== "false");
+    const supported_document_types = (Object.keys(resources) as ReviewDocument[]).filter(type => type === "payslip" ? hasPermission(user, "PAYROLL_APPROVE") && hasPermission(user, "hr:read") : hasPermission(user, `${resources[type]}:approve`) && process.env[`MIZANTRA_SMART_APPROVAL_${type === "purchase_order" ? "PO" : type === "purchase_requisition" ? "PR" : "GRN"}`] !== "false");
     return { enabled: process.env.MIZANTRA_SMART_APPROVAL_ENABLED === "true" && brain.enabled && brain.contextEnabled && brain.graphEnabled, supported_document_types, profile: brain.profile, tenant_id: brain.tenant_id };
   }
-  async review(user: any, body: any) {
+  async review(user: any, body: any): Promise<SmartApprovalResponse> {
     const configuration = this.configuration(user);
     if (!configuration.enabled) throw new ForbiddenException("Mizantra Review is not enabled.");
     const type = body?.brain_context?.entity_type as ReviewDocument;
     if (!Object.prototype.hasOwnProperty.call(resources, type)) throw new BadRequestException("This document type has no Smart Approval review in V1.");
     if (!configuration.supported_document_types.includes(type)) throw new ForbiddenException("Document approval-review permission is required.");
     const start = Date.now(); let error = false, checks: string[] = [], count = 0, context: any = {};
+    if (type === "payslip") return this.reviewPayroll(user, body);
     try { return await this.brain.withDiagnosticEvidence(user, body.brain_context, async evidence => {
       context = evidence.context;
       const snapshot = await this.snapshot(evidence, type);
@@ -44,6 +46,34 @@ export class SmartApprovalService {
       const key = `${configuration.profile}:${configuration.tenant_id}`; const previous = this.metrics.get(key) || { count: 0, duration: 0, errors: 0 }; const duration = Date.now() - start; previous.count++; previous.duration += duration; previous.errors += Number(error); if (this.metrics.size >= 1000 && !this.metrics.has(key)) this.metrics.delete(this.metrics.keys().next().value!); this.metrics.set(key, previous);
       this.logger.log(JSON.stringify({ event: "SMART_APPROVAL_REVIEW", profile: configuration.profile, tenant: configuration.tenant_id, user: user.userId || user.id, entity_type: type, entity_id: context.entity_id || null, reviewed_at: new Date().toISOString(), checks_executed: checks, result_count: count, duration_ms: duration, error }));
     }
+  }
+
+  private async reviewPayroll(user: any, body: any): Promise<SmartApprovalResponse> {
+    return this.brain.withDiagnosticEvidence(user, body.brain_context, async evidence => {
+      const root = evidence.nodes[0].row;
+      const slips = evidence.canRead("doctor_payroll_slips") ? await evidence.read("doctor_payroll_slips", { payroll_run_id: String(root.payroll_run_id || "") }).catch(() => []) : [];
+      const controls = evidence.canRead("doctor_payroll_controls") ? await evidence.read("doctor_payroll_controls", { payroll_run_id: String(root.payroll_run_id || "") }).catch(() => []) : [];
+      const correctionRows = evidence.canRead("doctor_payroll_corrections") ? await evidence.read("doctor_payroll_corrections", { payroll_month: String(root.salary_month || "") }).catch(() => []) : [];
+      const control = controls.slice().sort((a: any, b: any) => Number(b.version || 0) - Number(a.version || 0))[0] || null;
+      const activeSlips = slips.filter((slip: any) => slip.is_current !== false);
+      const aggregate = { employee_count: activeSlips.length, gross: activeSlips.reduce((sum: number, slip: any) => sum + (Number(slip.gross_salary) || 0), 0), deductions: activeSlips.reduce((sum: number, slip: any) => sum + (Number(slip.total_deductions) || 0), 0), net: activeSlips.reduce((sum: number, slip: any) => sum + (Number(slip.net_salary) || 0), 0) };
+      const monthDate = new Date(`${String(root.salary_month || "").slice(0, 7)}-01T00:00:00Z`);
+      monthDate.setUTCMonth(monthDate.getUTCMonth() - 1);
+      const previousMonth = monthDate.toISOString().slice(0, 7);
+      const previousSlipsRaw = evidence.canRead("doctor_payroll_slips") ? await evidence.read("doctor_payroll_slips", { salary_month: previousMonth }).catch(() => []) : [];
+      const previousSlips = previousSlipsRaw.filter((slip: any) => slip.is_current !== false);
+      const previousNet = previousSlips.reduce((sum: number, slip: any) => sum + (Number(slip.net_salary) || 0), 0);
+      const thresholdRows = evidence.canRead("doctor_payroll_rules") ? await evidence.read("doctor_payroll_rules", { rule_key: "PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT" }).catch(() => []) : [];
+      const currentMonth = String(root.salary_month).slice(0, 7);
+      const currentMonthEnd = new Date(Date.UTC(Number(currentMonth.slice(0, 4)), Number(currentMonth.slice(5, 7)), 0)).toISOString().slice(0, 10);
+      const thresholdRule = thresholdRows.filter((rule: any) => String(rule.effective_from) <= currentMonthEnd && (!rule.effective_to || rule.effective_to >= `${currentMonth}-01`)).sort((a: any, b: any) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
+      const thresholdPercent = Number(thresholdRule?.rule_value);
+      const previousByEmployee = new Map<string, number>(previousSlips.map((slip: any) => [String(slip.employee_id), Number(slip.net_salary) || 0] as [string, number]));
+      const flagged = Number.isFinite(thresholdPercent) && thresholdPercent >= 0 ? activeSlips.flatMap((slip: any) => { const before = previousByEmployee.get(String(slip.employee_id)); if (before === undefined || before === 0) return []; const changePercent = ((Number(slip.net_salary || 0) - before) / Math.abs(before)) * 100; return Math.abs(changePercent) >= thresholdPercent ? [{ employee_id: slip.employee_id, payslip_id: slip.id, difference_percent: Math.round(changePercent * 100) / 100, threshold_percent: thresholdPercent, rule_version_id: thresholdRule?.id || null, status: "FLAGGED_FOR_REVIEW" }] : []; }) : [];
+      const answer = `Payroll evidence review for ${root.salary_month}: ${aggregate.employee_count} current employee payslip(s), gross ${aggregate.gross}, deductions ${aggregate.deductions}, net ${aggregate.net}.`;
+      const review_version = createHash("sha256").update(JSON.stringify(stable({ root, aggregate, previous_net: previousNet, control, flagged, corrections: correctionRows }))).digest("hex");
+      return { status: "SMART_APPROVAL_READ_ONLY", intent_type: "PAYROLL_REVIEW_EVIDENCE", provider: "DETERMINISTIC_SMART_APPROVAL_V1", brain_context: evidence.context, answer, evidence: { ...aggregate, previous_net: previousNet, month_over_month_difference: Math.round((aggregate.net - previousNet) * 100) / 100, flagged_employees: flagged, blockers: control?.blocker_snapshot || [], correction_state: correctionRows.map((row: any) => ({ version: row.correction_version, status: row.status, difference_total: row.difference_total })), maker_identity: control?.opened_by || null, calculator_identity: control?.calculated_by || null, workflow_stage: control?.stage || null }, items: [], review_version, reviewed_at: new Date().toISOString(), attention_points: flagged.length + (Array.isArray(control?.blocker_snapshot) ? control.blocker_snapshot.length : 0), recommendation: "Review the listed deterministic evidence with the authorized payroll owner.", safety: { read_only: true, executable: false, workflow_mutation: false, ai_verdict: false, can_approve: false } };
+    });
   }
   private async snapshot(evidence: BrainDiagnosticEvidence, type: ReviewDocument): Promise<ReviewSnapshot> {
     const root = evidence.nodes[0].row;
@@ -93,7 +123,7 @@ export class SmartApprovalService {
   }
   async interpret(user: any, body: any) {
     if (!smartApprovalIntent(String(body?.message || ""))) return null;
-    if (!body?.brain_context) return { status: "SMART_APPROVAL_READ_ONLY", intent_type: "SMART_APPROVAL_REVIEW", provider: "DETERMINISTIC_SMART_APPROVAL_V1", assistant_message: "Which PR, PO or GRN should I review? Open the authorized document first.", extracted: {}, resolved: {}, questions: ["Which document should I review?"], context_token: "", safety: { read_only: true, executable: false } };
+    if (!body?.brain_context) return { status: "SMART_APPROVAL_READ_ONLY", intent_type: "SMART_APPROVAL_REVIEW", provider: "DETERMINISTIC_SMART_APPROVAL_V1", assistant_message: "Which PR, PO, GRN or payroll version should I review? Open the authorized record first.", extracted: {}, resolved: {}, questions: ["Which authorized record should I review?"], context_token: "", safety: { read_only: true, executable: false } };
     const review = await this.review(user, body);
     return { ...review, assistant_message: `I found ${review.attention_points} points that may deserve your attention. ${review.items.filter(item => item.confidence === "INSUFFICIENT_EVIDENCE").length} checks have incomplete evidence.`, extracted: {}, resolved: {}, questions: [], context_token: "" };
   }

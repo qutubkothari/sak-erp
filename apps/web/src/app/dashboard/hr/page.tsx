@@ -252,6 +252,10 @@ interface Payslip {
   attendance_deduction?: number;
   late_deduction?: number;
   payroll_breakdown?: Record<string, unknown>;
+  version?: number | null;
+  is_current?: boolean | null;
+  supersedes_payslip_id?: string | null;
+  correction_reason?: string | null;
 }
 
 interface SalaryComponent {
@@ -10096,6 +10100,8 @@ function HrPageContent() {
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-sm text-[#4A3426]">
                               {slip.salary_month}
+                              <div className="mt-1 text-xs font-semibold text-[#6F5A49]">Version {slip.version || 1} · {slip.is_current === false ? (slip.correction_reason ? "Correction pending approval" : "Superseded") : "Current"}</div>
+                              {slip.correction_reason && <div className="mt-1 max-w-48 whitespace-normal text-xs text-[#6F5A49]">{slip.correction_reason}</div>}
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-bold text-[#2F1B12]">
                               {formatCurrency(slip.gross_salary)}
@@ -10127,6 +10133,7 @@ function HrPageContent() {
                               </div>
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-sm">
+                              <Link href={`/dashboard/hr/payroll/working/${encodeURIComponent(slip.id)}`} className="mr-3 font-semibold text-amber-800 hover:underline">Why?</Link>
                               <button
                                 onClick={() => handlePrintPayslip(slip)}
                                 className="font-semibold text-[#175CD3] hover:underline"

@@ -15,6 +15,7 @@ import { AiProviderService } from "../ai/ai-provider.service";
 import { CrossModuleExceptionService } from "./cross-module-exception.service";
 import { HrService } from "../hr/services/hr.service";
 import { hasPermission } from "../auth/utils/permission-utils";
+import { calculateNetVariance } from "../hr/payroll-control.domain";
 
 type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
@@ -1385,6 +1386,56 @@ export class IntelligenceService {
         "Ask Mizantra requires a question up to 500 characters.",
       );
     const lower = question.toLowerCase();
+    if ((/payroll|payslip|salary/.test(lower) && /explain|why|changed|different|originally paid|correction|more than\s*\d+%|over\s*\d+%/.test(lower)) || /originally paid|correction version\s*\d+|which employees? changed by more than\s*\d+%/.test(lower)) {
+      if (!hasPermission(user, "hr:read")) throw new ForbiddenException("HR read permission is required to inspect payroll evidence.");
+      const slips = await this.hrService.getPayslips(tenantId);
+      if (!slips?.length) {
+        const answer = "There is no payroll or payslip data available for this tenant.";
+        return { intent: "PAYROLL_EXPLANATION_READ_ONLY", answer, evidence: [], financial_impact: null, recommended_action: "No payroll evidence is available to explain.", confidence: "HIGH", provider: "DETERMINISTIC", model: "payroll-control", fallback_used: false, executive_brief: answer, risk_if_ignored: null, follow_up_questions: [], read_only: true, generated_at: new Date().toISOString() };
+      }
+      const employees = await this.hrService.getEmployees(tenantId);
+      const employee = (employees || []).find((row: any) => {
+        const name = String(row.employee_name || row.employee_code || "").toLowerCase();
+        return name.length > 2 && lower.includes(name);
+      });
+      const monthName = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"].findIndex(name => lower.includes(name));
+      const year = lower.match(/\b20\d{2}\b/)?.[0] || String(new Date().getFullYear());
+      const month = monthName >= 0 ? `${year}-${String(monthName + 1).padStart(2, "0")}` : String(slips.slice().sort((a: any, b: any) => String(b.salary_month).localeCompare(String(a.salary_month)))[0]?.salary_month || "");
+      const personSlips = slips.filter((row: any) => (!employee || String(row.employee_id) === String(employee.id)) && String(row.salary_month) === month);
+      if (!personSlips.length) {
+        const answer = employee ? `No payroll record is available for ${employee.employee_name || employee.employee_code} in ${month}.` : `Payroll records exist, but no employee could be matched to the name in the question for ${month}.`;
+        return { intent: "PAYROLL_EXPLANATION_READ_ONLY", answer, evidence: [], financial_impact: null, recommended_action: "Review the employee name and payroll month against the tenant payslip list.", confidence: "HIGH", provider: "DETERMINISTIC", model: "payroll-control", fallback_used: false, executive_brief: answer, risk_if_ignored: null, follow_up_questions: [], read_only: true, generated_at: new Date().toISOString() };
+      }
+      const correctionVersion = Number(lower.match(/correction version\s*(\d+)/)?.[1] || 0);
+      if (correctionVersion) {
+        const correctionSlips = personSlips.filter((row: any) => Number(row.version || 1) === correctionVersion && row.supersedes_payslip_id);
+        const changes = correctionSlips.map((slip: any) => {
+          const original: any = slips.find((row: any) => String(row.id) === String(slip.supersedes_payslip_id));
+          return { employee_id: slip.employee_id, payslip_id: slip.id, source_payslip_id: original?.id || null, source_version: Number(original?.version || 1), correction_version: Number(slip.version), reason: slip.correction_reason || null, original_net: original ? Number(original.net_salary || 0) : null, corrected_net: Number(slip.net_salary || 0), difference: original ? calculateNetVariance(Number(original.net_salary || 0), Number(slip.net_salary || 0)).difference : null, current: slip.is_current === true };
+        });
+        const answer = changes.length ? `${month} correction version ${correctionVersion} contains ${changes.length} employee payslip change(s). Recorded reasons and net differences are listed in the evidence.` : `No correction version ${correctionVersion} is recorded for ${month}.`;
+        return { intent: "PAYROLL_EXPLANATION_READ_ONLY", answer, evidence: changes, financial_impact: null, recommended_action: "Review the linked source and correction payslips. This explanation does not calculate, submit, approve or pay a correction.", confidence: "HIGH", provider: "DETERMINISTIC", model: "payroll-control", fallback_used: false, executive_brief: answer, risk_if_ignored: null, follow_up_questions: [], read_only: true, generated_at: new Date().toISOString() };
+      }
+      const requestedThreshold = Number(lower.match(/(?:more than|over)\s*(\d+(?:\.\d+)?)\s*%/)?.[1] || 0);
+      if (!employee && requestedThreshold > 0) {
+        const currentRows = personSlips.filter((row: any) => row.is_current !== false).reduce((byEmployee: Map<string, any>, row: any) => { const prior = byEmployee.get(String(row.employee_id)); if (!prior || Number(row.version || 1) > Number(prior.version || 1)) byEmployee.set(String(row.employee_id), row); return byEmployee; }, new Map<string, any>());
+        const date = new Date(`${month}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() - 1); const previousMonth = date.toISOString().slice(0, 7);
+        const priorRows = slips.filter((row: any) => String(row.salary_month) === previousMonth && row.is_current !== false);
+        const priorByEmployee = new Map(priorRows.map((row: any) => [String(row.employee_id), Number(row.net_salary || 0)]));
+        const changedEmployees = [...currentRows.values()].flatMap((row: any) => { const before = priorByEmployee.get(String(row.employee_id)); if (before === undefined || before === 0) return []; const variance = calculateNetVariance(before, Number(row.net_salary || 0)); return variance.difference_percent !== null && Math.abs(variance.difference_percent) > requestedThreshold ? [{ employee_id: row.employee_id, employee_name: (employees || []).find((candidate: any) => String(candidate.id) === String(row.employee_id))?.employee_name || "Employee", previous_month: previousMonth, previous_net: variance.previous_net, current_net: variance.current_net, difference: variance.difference, difference_percent: variance.difference_percent, threshold_percent: requestedThreshold, status: "FLAGGED_FOR_REVIEW" }] : []; });
+        const answer = changedEmployees.length ? `${changedEmployees.length} employee(s) changed by more than ${requestedThreshold}% between ${previousMonth} and ${month}.` : `No employee with a comparable prior-month payslip changed by more than ${requestedThreshold}% between ${previousMonth} and ${month}.`;
+        return { intent: "PAYROLL_VARIANCE_READ_ONLY", answer, evidence: changedEmployees, financial_impact: null, recommended_action: "Review the cited payslips and stored variance evidence. The threshold is informational and does not block payroll.", confidence: "HIGH", provider: "DETERMINISTIC", model: "payroll-control", fallback_used: false, executive_brief: answer, risk_if_ignored: null, follow_up_questions: [], read_only: true, generated_at: new Date().toISOString() };
+      }
+      const selectedVersion = /originally paid/.test(lower) ? Math.min(...personSlips.map((row: any) => Number(row.version || 1))) : Math.max(...personSlips.map((row: any) => Number(row.version || 1)));
+      const currentSlip = personSlips.find((row: any) => Number(row.version || 1) === selectedVersion) || personSlips[0];
+      if (/originally paid/.test(lower)) {
+        const answer = `${employee?.employee_name || employee?.employee_code || "Employee"} was originally paid ${Number(currentSlip.net_salary || 0)} for ${month} (payslip version ${Number(currentSlip.version || 1)}).`;
+        return { intent: "PAYROLL_EXPLANATION_READ_ONLY", answer, evidence: [{ payslip_id: currentSlip.id, payslip_number: currentSlip.payslip_number, version: Number(currentSlip.version || 1), net_paid: Number(currentSlip.net_salary || 0), month }], financial_impact: null, recommended_action: "Review the retained original payslip document.", confidence: "HIGH", provider: "DETERMINISTIC", model: "payroll-control", fallback_used: false, executive_brief: answer, risk_if_ignored: null, follow_up_questions: [], read_only: true, generated_at: new Date().toISOString() };
+      }
+      const working = await this.hrService.getPayrollWorking(tenantId, String(currentSlip.id));
+      const answer = working.evidence_message || `${working.employee_name} ${month} net pay is ${Number(working.totals?.net || 0)}. The explanation uses stored payroll evidence; no AI calculation was performed.`;
+      return { intent: "PAYROLL_EXPLANATION_READ_ONLY", answer, evidence: [{ payslip_id: currentSlip.id, month, version: working.version, lines: working.lines, totals: working.totals, reconciliation: working.reconciliation, variance: working.variance }], financial_impact: null, recommended_action: working.reconciliation?.reconciles === false ? "Review the payroll total mismatch and use the controlled correction process." : "Review the cited stored calculation lines and their source evidence.", confidence: working.evidence_complete ? "HIGH" : "LIMITED", provider: "DETERMINISTIC", model: "payroll-control", fallback_used: false, executive_brief: answer, risk_if_ignored: null, follow_up_questions: [], read_only: true, generated_at: new Date().toISOString() };
+    }
     if ((/payroll/.test(lower) && /stopping|blocker|waiting.*approval|approval|who needs to fix|payroll blockers/.test(lower)) || /what.{0,25}(?:waiting|needs).{0,20}my approval/.test(lower)) {
       if (!hasPermission(user, "hr:read")) throw new ForbiddenException("HR read permission is required to inspect payroll workflow evidence.");
       const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
@@ -1394,6 +1445,10 @@ export class IntelligenceService {
       if (!cockpit.enabled) {
         const answer = "Payroll Month Cockpit is not enabled for this tenant, so Brain cannot inspect payroll workflow evidence.";
         return { intent: "PAYROLL_CONTROL_READ_ONLY", answer, evidence: [], financial_impact: null, recommended_action: "Ask an authorized administrator to enable the tenant payroll control feature after migration and data validation.", confidence: "HIGH", provider: "DETERMINISTIC", model: "payroll-control", fallback_used: false, executive_brief: answer, risk_if_ignored: null, follow_up_questions: [], read_only: true, generated_at: new Date().toISOString() };
+      }
+      if (!cockpit.legacy_run && !Number(cockpit.employee_count || 0) && !Number(cockpit.payroll_employee_count || 0)) {
+        const answer = `There is no payroll data available for ${month} in this tenant.`;
+        return { intent: "PAYROLL_CONTROL_READ_ONLY", answer, evidence: [], financial_impact: null, recommended_action: "No payroll data is available to inspect for this period.", confidence: "HIGH", provider: "DETERMINISTIC", model: "payroll-control", fallback_used: false, executive_brief: answer, risk_if_ignored: null, follow_up_questions: [], read_only: true, generated_at: new Date().toISOString() };
       }
       const approvalQuestion = /approval/.test(lower);
       const approvalEligible = cockpit.stage === "APPROVAL_PENDING" ? hasPermission(user, "PAYROLL_APPROVE") : cockpit.stage === "SECOND_APPROVAL_REQUIRED" ? hasPermission(user, "PAYROLL_COUNTERSIGN") : false;

@@ -65,6 +65,26 @@ export class ProactiveOperationsSources {
       }
       return candidates;
     });
+    if (can('PAYROLL_APPROVE') || can('hr:read')) await source(['PAYROLL_CORRECTION_AWAITING_APPROVAL', 'PAYROLL_CORRECTION_RECOVERY_REVIEW', 'PAYROLL_EVIDENCE_INCOMPLETE'], true, async () => {
+      const flags = await this.read(scope, 'hr_payroll_feature_flags', 'tenant_id,feature_key,is_enabled', query => query.in('feature_key', ['PAYROLL_MONTH_COCKPIT_ENABLED', 'PAYROLL_CORRECTION_VERSIONS_ENABLED', 'PAYROLL_WORKING_ENABLED']));
+      const enabled = new Set(flags.filter(row => row.is_enabled === true).map(row => row.feature_key));
+      const candidates: AttentionCandidate[] = [];
+      if (enabled.has('PAYROLL_CORRECTION_VERSIONS_ENABLED')) {
+        const corrections = await this.read(scope, 'hr_payroll_corrections', 'id,tenant_id,payroll_month,source_version,correction_version,status,reason,difference_total,opened_at', query => query.in('status', ['APPROVAL_PENDING', 'CALCULATED']));
+        for (const correction of corrections) {
+          if (correction.status === 'APPROVAL_PENDING' && can('PAYROLL_APPROVE')) candidates.push(this.pending('PAYROLL_CORRECTION_AWAITING_APPROVAL', { ...correction, reference: correction.id }, 'HR', 'PAYROLL_CORRECTION', `${correction.payroll_month} correction V${correction.correction_version} awaiting review`, `${correction.reason}. Recorded differential: ${correction.difference_total ?? 'not calculated'}. No payment is executed by this attention item.`, 'PAYROLL_APPROVE', `/dashboard/hr/payroll/monthly-processing?month=${correction.payroll_month}`, { month: correction.payroll_month, source_version: correction.source_version, correction_version: correction.correction_version, difference_total: correction.difference_total, read_only: true }));
+        }
+        if (can('PAYROLL_APPROVE')) {
+          const differences = await this.read(scope, 'hr_payroll_correction_employee_differences', 'id,tenant_id,correction_id,employee_id,difference,review_status', query => query.eq('review_status', 'RECOVERY_REVIEW'));
+          for (const difference of differences) candidates.push(this.pending('PAYROLL_CORRECTION_RECOVERY_REVIEW', { ...difference, reference: difference.id }, 'HR', 'PAYROLL_CORRECTION', 'Payroll correction requires recovery review', 'A negative correction differential is awaiting human review. No salary deduction or recovery is automatic.', 'PAYROLL_APPROVE', '/dashboard/hr/team-desk?lane=PAYROLL', { correction_id: difference.correction_id, employee_id: difference.employee_id, difference: difference.difference, recovery_automatic: false, read_only: true }));
+        }
+      }
+      if (enabled.has('PAYROLL_WORKING_ENABLED') && can('hr:read')) {
+        const slips = await this.read(scope, 'payslips', 'id,tenant_id,employee_id,salary_month,payslip_number,payroll_breakdown', query => query.limit(2000));
+        for (const slip of slips.filter(row => !Array.isArray(row.payroll_breakdown?.calculation_lines) || row.payroll_breakdown.calculation_lines.some((line: any) => !line.source || !Object.keys(line.source).length))) candidates.push(this.pending('PAYROLL_EVIDENCE_INCOMPLETE', { ...slip, reference: slip.id }, 'HR', 'PAYSLIP', `${slip.payslip_number} has incomplete historical calculation evidence`, 'Detailed calculation evidence is unavailable for this historical payroll. Review only the evidence that is stored.', 'hr:read', `/dashboard/hr/payroll/control/working/${slip.id}`, { month: slip.salary_month, payslip_id: slip.id, read_only: true }));
+      }
+      return candidates;
+    });
     await source(['OVERDUE_OPEN_PO', 'OPEN_PO_WITH_REJECTION'], can('purchase_orders:read') && can('grns:read'), async () => {
       const headers = await this.read(scope, 'purchase_orders', 'id,tenant_id,po_number,status,delivery_date');
       const summaries: any[] = [];

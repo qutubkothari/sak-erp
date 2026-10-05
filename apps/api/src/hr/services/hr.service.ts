@@ -11,6 +11,10 @@ import { HrAttendanceControlService } from "./hr-attendance-control.service";
 import {
   derivePayrollStage,
   calculateNetVariance,
+  calculatePayrollDifferential,
+  classifyPayrollEvidence,
+  explainPayrollVariance,
+  reconcilePayrollTotals,
   monthContainsEffectiveDate,
   resolveSalaryComponentsAtDate,
   safePayrollFeatureFlags,
@@ -2433,6 +2437,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         severity: "BLOCKER",
       });
     }
+    const { start: monthStart, end: monthEnd } = monthToRange(month);
     const salaryByEmployee = new Set<string>();
     for (const employee of eligibleEmployees) {
       const resolved = resolveSalaryComponentsAtDate(salaryRows.filter((row: any) => String(row.employee_id) === String(employee.id)), monthEnd);
@@ -2457,7 +2462,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       });
     }
 
-    const { start: monthStart, end: monthEnd } = monthToRange(month);
     const { data: attendance, error: attendanceError } = await this.supabase
       .from("attendance")
       .select("id,employee_id,attendance_date,approval_status,status")
@@ -2508,6 +2512,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
     const allSlips = run ? await this.getPayslips(tenantId) : [];
     const slips = allSlips.filter((slip: any) => String(slip.payroll_run_id) === String(run?.id));
+    const payrollRange = monthToRange(month);
+    const { data: varianceRules, error: varianceRuleError } = await this.supabase.from("hr_payroll_rule_versions").select("id,rule_value,effective_from,effective_to").eq("tenant_id", tenantId).eq("rule_key", "PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT").lte("effective_from", payrollRange.end).or(`effective_to.is.null,effective_to.gte.${payrollRange.start}`).order("effective_from", { ascending: false }).limit(1);
+    if (varianceRuleError && !isMissingRelationError(varianceRuleError, "hr_payroll_rule_versions")) throw new ConflictException(varianceRuleError.message);
+    const varianceThreshold = varianceRules?.[0] || null;
     const totals = slips.reduce((sum: any, slip: any) => ({
       gross: sum.gross + Number(slip.gross_salary || 0),
       deductions: sum.deductions + Number(slip.total_deductions || 0),
@@ -2515,20 +2523,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     }), { gross: 0, deductions: 0, net: 0 });
     const variance = slips.map((slip: any) => {
       const previous = allSlips
-        .filter((candidate: any) => String(candidate.employee_id) === String(slip.employee_id) && String(candidate.salary_month || "") < month)
-        .sort((a: any, b: any) => String(b.salary_month || "").localeCompare(String(a.salary_month || "")))[0];
+        .filter((candidate: any) => String(candidate.employee_id) === String(slip.employee_id) && String(candidate.salary_month || "") < month && candidate.is_current !== false)
+        .sort((a: any, b: any) => String(b.salary_month || "").localeCompare(String(a.salary_month || "")) || Number(b.version || 1) - Number(a.version || 1))[0];
       const diff = previous ? calculateNetVariance(Number(previous.net_salary || 0), Number(slip.net_salary || 0)) : null;
       const oldBreakdown = previous?.payroll_breakdown || {};
       const currentBreakdown = slip.payroll_breakdown || {};
-      const oldComponents = new Map((oldBreakdown.salary_components || []).map((item: any) => [String(item.id), Number(item.amount || 0)]));
-      const salaryChanged = (currentBreakdown.salary_components || []).some((item: any) => oldComponents.has(String(item.id)) && oldComponents.get(String(item.id)) !== Number(item.amount || 0));
-      const reasons = [
-        salaryChanged ? "Salary revision" : null,
-        previous && Number(previous.attendance_days || 0) !== Number(slip.attendance_days || 0) ? "Attendance days changed" : null,
-        previous && Number(previous.overtime_amount || 0) !== Number(slip.overtime_amount || 0) ? "Overtime changed" : null,
-        previous && Number(previous.total_deductions || 0) !== Number(slip.total_deductions || 0) ? "Deductions changed" : null,
-        !previous ? "No earlier payslip found" : null,
-      ].filter(Boolean);
+      const reasons = previous ? explainPayrollVariance({ ...oldBreakdown, leave_days: previous.leave_days }, { ...currentBreakdown, leave_days: slip.leave_days }).map(item => item.reason) : ["No earlier payslip found"];
       return {
         employee_id: slip.employee_id,
         employee_name: employeeNames.get(String(slip.employee_id)) || "Employee",
@@ -2538,10 +2538,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         difference: diff?.difference ?? null,
         difference_percent: diff?.difference_percent ?? null,
         known_reasons: reasons,
-        flagged: payrollVarianceFlagged(
-          diff?.difference_percent ?? null,
-          Number(currentBreakdown.variance_threshold_percent),
-        ),
+        flagged: varianceThreshold ? payrollVarianceFlagged(diff?.difference_percent ?? null, Number(varianceThreshold.rule_value)) : false,
+        variance_threshold_percent: varianceThreshold?.rule_value ?? null,
+        variance_threshold_rule_version_id: varianceThreshold?.id ?? null,
       };
     });
     const { data: attendancePolicy, error: attendancePolicyError } = await this.supabase.from("hr_attendance_policies").select("standard_daily_hours,half_day_hours,overtime_after_hours,overtime_multiplier,overtime_calculation_mode,late_deduction_mode,working_weekdays").eq("tenant_id", tenantId).maybeSingle();
@@ -2555,6 +2554,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     const control = await this.payrollControl(tenantId, month);
     const { data: makerCheckerConfig, error: makerCheckerError } = await this.supabase.from("hr_payroll_maker_checker_config").select("enabled,second_approval_threshold,updated_by,updated_at").eq("tenant_id", tenantId).maybeSingle();
     if (makerCheckerError) throw new ConflictException(makerCheckerError.message);
+    const { data: correctionsData, error: correctionsError } = await this.supabase.from("hr_payroll_corrections").select("id,source_control_id,correction_control_id,payroll_month,source_version,correction_version,reason,status,difference_total,opened_by,approved_by,opened_at,approved_at").eq("tenant_id", tenantId).eq("payroll_month", month).order("opened_at", { ascending: false });
+    if (correctionsError && !isMissingRelationError(correctionsError, "hr_payroll_corrections")) throw new ConflictException(correctionsError.message);
     return {
       enabled: true,
       month,
@@ -2576,6 +2577,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       legacy_run: run,
       flags,
       control,
+      corrections: (correctionsData || []).map((row: any) => ({ ...row, control_stage: row.correction_control_id === control?.id ? control.stage : row.status })),
       maker_checker: makerCheckerConfig || { enabled: false, second_approval_threshold: null },
       read_only: false,
     };
@@ -2691,7 +2693,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     let runId = cockpit.legacy_run?.id;
     if (!runId) {
       const created = await this.createPayrollRun(tenantId, { payroll_month: month, status: "PENDING" }, actorId);
-      runId = Array.isArray(created) ? created[0]?.id : created?.id;
+      runId = String(Array.isArray(created) ? (created as any)[0]?.id || "" : (created as any)?.id || "");
     }
     if (!runId) throw new ConflictException("Could not resolve a payroll run for this month.");
     await this.generatePayslip(tenantId, { run_id: runId }, actorId);
@@ -2759,6 +2761,117 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return this.transitionPayrollControl({ tenantId, month, actorId, expected: "APPROVED", next: "PAID", action: "MARK_PAID", evidence: { payment_executed: false } });
   }
 
+  async openPayrollCorrection(tenantId: string, actorId: string, input: { month: string; source_control_id: string; reason: string }) {
+    const flags = await this.getPayrollControlFlags(tenantId);
+    if (!flags.PAYROLL_CORRECTION_VERSIONS_ENABLED) throw new ConflictException("Payroll correction versions are not enabled for this tenant.");
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(input?.month || "") || !input?.source_control_id || !String(input?.reason || "").trim()) throw new BadRequestException("Payroll month, source payroll version, and correction reason are required.");
+    const { data, error } = await this.supabase.rpc("hr_open_payroll_correction", { p_tenant_id: tenantId, p_month: input.month, p_source_control_id: input.source_control_id, p_actor_id: actorId, p_reason: String(input.reason).trim() });
+    if (error) {
+      if (/function .*hr_open_payroll_correction.* does not exist/i.test(error.message)) throw new ConflictException("Payroll correction migration is not installed for this tenant.");
+      throw new ConflictException(error.message);
+    }
+    return { ...data, business_effect: false, read_only_payment: true };
+  }
+
+  async calculatePayrollCorrection(tenantId: string, actorId: string, correctionId: string) {
+    if (!(await this.getPayrollControlFlags(tenantId)).PAYROLL_CORRECTION_VERSIONS_ENABLED) throw new ConflictException("Payroll correction versions are not enabled for this tenant.");
+    const { data: correction, error } = await this.supabase.from("hr_payroll_corrections").select("*").eq("tenant_id", tenantId).eq("id", correctionId).maybeSingle();
+    if (error || !correction) throw new NotFoundException("Payroll correction was not found for this tenant.");
+    if (correction.status !== "OPEN") throw new ConflictException("Only an open correction can be calculated.");
+    const { data: source, error: sourceError } = await this.supabase.from("hr_payroll_month_controls").select("id,version,stage,payroll_run_id").eq("tenant_id", tenantId).eq("id", correction.source_control_id).maybeSingle();
+    if (sourceError || !source || !["APPROVED", "PAID"].includes(source.stage) || !source.payroll_run_id) throw new ConflictException("The correction source must retain an approved or paid payroll run.");
+    const sourceSlips = (await this.getPayslips(tenantId)).filter((slip: any) => String(slip.payroll_run_id) === String(source.payroll_run_id));
+    if (!sourceSlips.length) throw new ConflictException("Original payslip evidence is unavailable; correction calculation cannot proceed.");
+    const inputChecksumBefore = await this.payrollInputChecksum(tenantId, correction.payroll_month);
+    const runResult = await this.createPayrollRun(tenantId, { payroll_month: correction.payroll_month, status: "PENDING", remarks: `Correction V${correction.correction_version} for source V${correction.source_version}` }, actorId);
+    const runId = String(Array.isArray(runResult) ? (runResult as any)[0]?.id || "" : (runResult as any)?.id || "");
+    if (!runId) throw new ConflictException("Could not create an isolated payroll correction calculation run.");
+    const generated = await this.generatePayslip(tenantId, { run_id: runId, _internalCorrection: true, _correctionVersion: Number(correction.correction_version) }, actorId);
+    const correctedSlips = generated.payslips || [];
+    const sourceByEmployee = new Map(sourceSlips.map((slip: any) => [String(slip.employee_id), slip]));
+    if (!correctedSlips.length || correctedSlips.length !== sourceSlips.length || correctedSlips.some((slip: any) => !sourceByEmployee.has(String(slip.employee_id)))) throw new ConflictException("Correction calculation did not produce a complete source-matched employee set.");
+    const differences = correctedSlips.map((slip: any) => {
+      const original: any = sourceByEmployee.get(String(slip.employee_id));
+      const differential = calculatePayrollDifferential(Number(slip.net_salary || 0), Number(original.net_salary || 0));
+      return { employee_id: slip.employee_id, source_payslip_id: original.id, correction_payslip_id: slip.id, posted_amount: differential.already_posted_amount, corrected_amount: differential.correct_amount, difference: differential.difference, evidence: { direction: differential.direction, automatic_recovery: false, source_version: correction.source_version, correction_version: correction.correction_version } };
+    });
+    const control = await this.payrollControl(tenantId, correction.payroll_month);
+    if (!control || String(control.id) !== String(correction.correction_control_id) || control.stage !== "CORRECTION_OPEN") throw new ConflictException("Correction control state changed; review the generated calculation before retrying.");
+    const inputChecksum = await this.payrollInputChecksum(tenantId, correction.payroll_month);
+    if (inputChecksum !== inputChecksumBefore) throw new ConflictException("Correction source inputs changed while calculating; the new draft run was not finalized.");
+    const makerChecker = await this.supabase.from("hr_payroll_maker_checker_config").select("enabled,second_approval_threshold").eq("tenant_id", tenantId).maybeSingle();
+    if (makerChecker.error && !isMissingRelationError(makerChecker.error, "hr_payroll_maker_checker_config")) throw new ConflictException(makerChecker.error.message);
+    const thresholdEnd = monthToRange(correction.payroll_month).end;
+    const ruleResult = await this.supabase.from("hr_payroll_rule_versions").select("id,rule_key,rule_value,effective_from,effective_to").eq("tenant_id", tenantId).eq("rule_key", "approval_threshold").lte("effective_from", thresholdEnd).or(`effective_to.is.null,effective_to.gte.${monthToRange(correction.payroll_month).start}`);
+    if (ruleResult.error && !isMissingRelationError(ruleResult.error, "hr_payroll_rule_versions")) throw new ConflictException(ruleResult.error.message);
+    const rule = resolvePayrollRule({ ruleKey: "approval_threshold", effectiveDate: thresholdEnd, tenantRules: ruleResult.data || [] });
+    const makerSnapshot = { enabled: makerChecker.data?.enabled === true, second_approval_threshold: makerChecker.data?.second_approval_threshold ?? rule.value ?? null, threshold_rule_version_id: rule.version?.id || null, maker_id: correction.opened_by };
+    const updated = await this.supabase.from("hr_payroll_month_controls").update({ maker_checker_snapshot: makerSnapshot, input_checksum: inputChecksum }).eq("tenant_id", tenantId).eq("id", control.id).eq("stage", "CORRECTION_OPEN");
+    if (updated.error) throw new ConflictException(updated.error.message);
+    const calculationChecksum = await this.payrollCalculationChecksum(tenantId, correction.payroll_month, { ...control, input_checksum: inputChecksum }, runId);
+    const { data: finalized, error: finalizeError } = await this.supabase.rpc("hr_finalize_payroll_correction_calculation", { p_tenant_id: tenantId, p_correction_id: correctionId, p_actor_id: actorId, p_run_id: runId, p_input_checksum: inputChecksum, p_calculation_checksum: calculationChecksum, p_differences: differences });
+    if (finalizeError) throw new ConflictException(finalizeError.message);
+    return { correction: finalized, run_id: runId, source_version: correction.source_version, correction_version: correction.correction_version, differences, payment_executed: false, automatic_recovery: false };
+  }
+
+  async submitPayrollCorrection(tenantId: string, actorId: string, correctionId: string) {
+    const { data: correction, error } = await this.supabase.from("hr_payroll_corrections").select("*").eq("tenant_id", tenantId).eq("id", correctionId).maybeSingle();
+    if (error || !correction || correction.status !== "CALCULATED") throw new ConflictException("A calculated correction is required before submission.");
+    const control = await this.payrollControl(tenantId, correction.payroll_month);
+    if (!control || control.id !== correction.correction_control_id || !control.calculation_checksum) throw new ConflictException("Calculated correction checksum is unavailable.");
+    if (await this.payrollInputChecksum(tenantId, correction.payroll_month) !== control.input_checksum || await this.payrollCalculationChecksum(tenantId, correction.payroll_month, control, String(control.payroll_run_id)) !== control.calculation_checksum) throw new ConflictException("Correction evidence changed after calculation; recalculate before submission.");
+    const result = await this.transitionPayrollControl({ tenantId, month: correction.payroll_month, actorId, expected: "CALCULATED", next: "APPROVAL_PENDING", action: "CORRECTION_SUBMITTED", checksum: control.calculation_checksum, evidence: { correction_id: correctionId, difference_total: correction.difference_total, payment_executed: false } });
+    const update = await this.supabase.from("hr_payroll_corrections").update({ status: "APPROVAL_PENDING", updated_at: new Date().toISOString() }).eq("tenant_id", tenantId).eq("id", correctionId).eq("status", "CALCULATED");
+    if (update.error) throw new ConflictException(update.error.message);
+    return result;
+  }
+
+  async returnPayrollCorrection(tenantId: string, actorId: string, correctionId: string, reason: string) {
+    if (!String(reason || "").trim()) throw new BadRequestException("A reason is required to return a payroll correction.");
+    const { data, error } = await this.supabase.rpc("hr_return_payroll_correction", { p_tenant_id: tenantId, p_correction_id: correctionId, p_actor_id: actorId, p_reason: String(reason).trim() });
+    if (error) throw new ConflictException(error.message);
+    return data;
+  }
+
+  async approvePayrollCorrection(tenantId: string, actorId: string, correctionId: string) {
+    const { data: correction, error } = await this.supabase.from("hr_payroll_corrections").select("*").eq("tenant_id", tenantId).eq("id", correctionId).maybeSingle();
+    if (error || !correction || correction.status !== "APPROVAL_PENDING") throw new ConflictException("A submitted payroll correction is required.");
+    const control = await this.payrollControl(tenantId, correction.payroll_month);
+    if (!control || control.id !== correction.correction_control_id || await this.payrollInputChecksum(tenantId, correction.payroll_month) !== control.input_checksum || await this.payrollCalculationChecksum(tenantId, correction.payroll_month, control, String(control.payroll_run_id)) !== control.calculation_checksum) throw new ConflictException("Correction evidence changed; return it for recalculation before approval.");
+    const { data: differences, error: diffError } = await this.supabase.from("hr_payroll_correction_employee_differences").select("difference").eq("tenant_id", tenantId).eq("correction_id", correctionId);
+    if (diffError) throw new ConflictException(diffError.message);
+    const positiveDifferential = (differences || []).reduce((sum: number, row: any) => sum + Math.max(0, Number(row.difference) || 0), 0);
+    const snapshot = control.maker_checker_snapshot || {};
+    const threshold = snapshot.second_approval_threshold;
+    const second = threshold !== null && threshold !== undefined && positiveDifferential > Number(threshold);
+    const result = await this.transitionPayrollControl({ tenantId, month: correction.payroll_month, actorId, expected: "APPROVAL_PENDING", next: second ? "SECOND_APPROVAL_REQUIRED" : "APPROVED", action: second ? "CORRECTION_FIRST_APPROVAL" : "CORRECTION_APPROVED", checksum: control.calculation_checksum, makerChecker: snapshot.enabled === true, secondApproval: second, evidence: { correction_id: correctionId, positive_differential: positiveDifferential, threshold, recovery_review_required: (differences || []).some((row: any) => Number(row.difference) < 0), automatic_recovery: false } });
+    if (!second) {
+      const finalized = await this.supabase.rpc("hr_finalize_payroll_correction_approval", { p_tenant_id: tenantId, p_correction_id: correctionId, p_actor_id: actorId });
+      if (finalized.error) throw new ConflictException(finalized.error.message);
+    }
+    return result;
+  }
+
+  async countersignPayrollCorrection(tenantId: string, actorId: string, correctionId: string) {
+    const { data: correction, error } = await this.supabase.from("hr_payroll_corrections").select("*").eq("tenant_id", tenantId).eq("id", correctionId).maybeSingle();
+    if (error || !correction || correction.status !== "APPROVAL_PENDING") throw new ConflictException("A payroll correction awaiting second approval is required.");
+    const result = await this.countersignControlledPayroll(tenantId, correction.payroll_month, actorId);
+    const finalized = await this.supabase.rpc("hr_finalize_payroll_correction_approval", { p_tenant_id: tenantId, p_correction_id: correctionId, p_actor_id: actorId });
+    if (finalized.error) throw new ConflictException(finalized.error.message);
+    return result;
+  }
+
+  async markPayrollCorrectionRecorded(tenantId: string, actorId: string, correctionId: string) {
+    const { data: correction, error } = await this.supabase.from("hr_payroll_corrections").select("*").eq("tenant_id", tenantId).eq("id", correctionId).maybeSingle();
+    if (error || !correction || correction.status !== "APPROVED") throw new ConflictException("Only an approved payroll correction can be recorded as paid.");
+    const result = await this.transitionPayrollControl({ tenantId, month: correction.payroll_month, actorId, expected: "APPROVED", next: "PAID", action: "CORRECTION_DIFFERENTIAL_RECORDED", evidence: { correction_id: correctionId, payment_executed: false, positive_differentials_only: true, negative_differentials_remain_recovery_review: true } });
+    const update = await this.supabase.from("hr_payroll_corrections").update({ status: "PAID", paid_by: actorId, paid_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("tenant_id", tenantId).eq("id", correctionId);
+    if (update.error) throw new ConflictException(update.error.message);
+    const differencesUpdate = await this.supabase.from("hr_payroll_correction_employee_differences").update({ review_status: "PAID" }).eq("tenant_id", tenantId).eq("correction_id", correctionId).eq("review_status", "PENDING").gt("difference", 0);
+    if (differencesUpdate.error) throw new ConflictException(differencesUpdate.error.message);
+    return { control: result, payment_executed: false, negative_differential_action: "RECOVERY_REVIEW_REQUIRED" };
+  }
+
   async getPayrollWorking(tenantId: string, payslipId: string) {
     const flags = await this.getPayrollControlFlags(tenantId);
     if (!flags.PAYROLL_WORKING_ENABLED) {
@@ -2770,9 +2883,35 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     const employees = await this.getEmployees(tenantId);
     const employee = (employees || []).find((row: any) => String(row.id) === String(current.employee_id));
     const previous = slips
-      .filter((slip: any) => String(slip.employee_id) === String(current.employee_id) && String(slip.salary_month || "") < String(current.salary_month || ""))
-      .sort((a: any, b: any) => String(b.salary_month || "").localeCompare(String(a.salary_month || "")))[0] || null;
+      .filter((slip: any) => String(slip.employee_id) === String(current.employee_id) && String(slip.salary_month || "") < String(current.salary_month || "") && slip.is_current !== false)
+      .sort((a: any, b: any) => String(b.salary_month || "").localeCompare(String(a.salary_month || "")) || Number(b.version || 1) - Number(a.version || 1))[0] || null;
     const breakdown = current.payroll_breakdown || {};
+    const hasStoredBreakdown = !!(current.payroll_breakdown && typeof current.payroll_breakdown === "object");
+    let lines: any[] = Array.isArray(breakdown.calculation_lines) ? breakdown.calculation_lines.map((line: any) => {
+      const evidenceClass = classifyPayrollEvidence(line, hasStoredBreakdown);
+      return { ...line, evidence_class: evidenceClass, why: { formula: line.formula || null, inputs: line.source || {}, source_class: evidenceClass } };
+    }) : [];
+    if (!lines.length) lines = [
+      { kind: "EARNING", label: "Recorded gross salary", amount: Number(current.gross_salary || 0), source: {}, evidence_class: "EVIDENCE_INCOMPLETE", why: { formula: null, inputs: {}, source_class: "EVIDENCE_INCOMPLETE" } },
+      { kind: "DEDUCTION", label: "Recorded deductions", amount: Number(current.total_deductions || 0), source: {}, evidence_class: "EVIDENCE_INCOMPLETE", why: { formula: null, inputs: {}, source_class: "EVIDENCE_INCOMPLETE" } },
+    ];
+    const totals = { gross: Number(current.gross_salary || 0), deductions: Number(current.total_deductions || 0), net: Number(current.net_salary || 0) };
+    const hasDetailedCalculation = Array.isArray(breakdown.calculation_lines) && breakdown.calculation_lines.length > 0;
+    const reconciliation = hasDetailedCalculation ? reconcilePayrollTotals(lines, totals) : { earnings: null, salary_component_earnings: null, deductions: null, expected_net: null, stored_gross: totals.gross, stored_deductions: totals.deductions, stored_net: totals.net, reconciles: null, status: "EVIDENCE_INCOMPLETE" };
+    const comparisonLines = previous?.payroll_breakdown?.calculation_lines ? previous.payroll_breakdown : null;
+    const varianceReasons = explainPayrollVariance(comparisonLines ? { ...comparisonLines, leave_days: previous?.leave_days } : null, { ...breakdown, leave_days: current.leave_days });
+    let varianceThreshold: any = null;
+    const monthStart = `${String(current.salary_month || "").slice(0, 7)}-01`;
+    const monthEnd = /^\d{4}-\d{2}$/.test(String(current.salary_month || "")) ? monthToRange(String(current.salary_month)).end : monthStart;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(monthStart)) {
+      const { data: thresholdRows, error: thresholdError } = await this.supabase.from("hr_payroll_rule_versions").select("id,rule_key,rule_value,effective_from,effective_to").eq("tenant_id", tenantId).eq("rule_key", "PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT").lte("effective_from", monthEnd).or(`effective_to.is.null,effective_to.gte.${monthStart}`).order("effective_from", { ascending: false }).limit(1);
+      if (thresholdError && !isMissingRelationError(thresholdError, "hr_payroll_rule_versions")) throw new ConflictException(thresholdError.message);
+      varianceThreshold = thresholdRows?.[0] || null;
+    }
+    const currentVersion = Number(current.version || 1);
+    const versionHistory = slips.filter((slip: any) => String(slip.employee_id) === String(current.employee_id) && String(slip.salary_month) === String(current.salary_month))
+      .sort((a: any, b: any) => Number(a.version || 1) - Number(b.version || 1))
+      .map((slip: any) => ({ payslip_id: slip.id, version: Number(slip.version || 1), is_current: slip.is_current === true || slip.is_current == null, status: slip.is_current === false ? (slip.correction_reason ? "CORRECTION_PENDING_APPROVAL" : "SUPERSEDED") : "CURRENT", supersedes_payslip_id: slip.supersedes_payslip_id || null, correction_reason: slip.correction_reason || null, net_salary: Number(slip.net_salary || 0) }));
     return {
       enabled: true,
       employee_id: current.employee_id,
@@ -2780,7 +2919,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       month: current.salary_month,
       payslip_id: current.id,
       payslip_number: current.payslip_number,
-      lines: Array.isArray(breakdown.calculation_lines) ? breakdown.calculation_lines : [],
+      lines,
       evidence: {
         salary_components: Array.isArray(breakdown.salary_components) ? breakdown.salary_components : [],
         attendance: {
@@ -2795,17 +2934,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           overtime_credit_days: breakdown.overtime_credit_days || 0,
         },
       },
-      totals: breakdown.totals || {
-        gross: Number(current.gross_salary || 0),
-        deductions: Number(current.total_deductions || 0),
-        net: Number(current.net_salary || 0),
-      },
+      totals,
+      calculation_totals: breakdown.totals || null,
+      reconciliation,
+      evidence_message: lines.some((line: any) => line.evidence_class === "EVIDENCE_INCOMPLETE") ? "Detailed calculation evidence is unavailable for this historical payroll." : null,
+      version: { number: currentVersion, current: current.is_current !== false, supersedes_payslip_id: current.supersedes_payslip_id || null, history: versionHistory },
       variance: previous ? {
         previous_month: previous.salary_month,
         ...calculateNetVariance(Number(previous.net_salary || 0), Number(current.net_salary || 0)),
         prior_breakdown_available: Boolean(previous.payroll_breakdown?.calculation_lines),
+        reasons: varianceReasons,
+        threshold_percent: varianceThreshold?.rule_value ?? null,
+        threshold_rule_version_id: varianceThreshold?.id ?? null,
+        review_status: varianceThreshold && calculateNetVariance(Number(previous.net_salary || 0), Number(current.net_salary || 0)).difference_percent !== null && payrollVarianceFlagged(calculateNetVariance(Number(previous.net_salary || 0), Number(current.net_salary || 0)).difference_percent, Number(varianceThreshold.rule_value)) ? "FLAGGED_FOR_REVIEW" : "INFORMATIONAL",
       } : null,
-      evidence_complete: Array.isArray(breakdown.calculation_lines) && breakdown.calculation_lines.length > 0,
+      evidence_complete: lines.length > 0 && lines.every((line: any) => line.evidence_class !== "EVIDENCE_INCOMPLETE"),
       deterministic_only: true,
     };
   }
@@ -2839,6 +2982,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         if (!hasPermission(user, "hr:read") && !hasPermission(user, required)) continue;
         items.push({ id: `payroll:${row.id}`, type: "PAYROLL", employee: row.payroll_month, reason: `${row.stage.replace(/_/g, " ")} · ${row.blocker_count} close blockers`, requested_at: row.last_action_at, due_date: row.payroll_month + "-01", impact: row.blocker_count ? "Blocks payroll close" : "Payroll workflow action pending", owner: required.replace("PAYROLL_", "Payroll "), state: row.stage, href: `/dashboard/hr/payroll/monthly-processing?month=${row.payroll_month}`, evidence: row });
       }
+      const { data: corrections, error: correctionError } = await this.supabase.from("hr_payroll_corrections").select("id,payroll_month,source_version,correction_version,status,reason,difference_total,opened_at,opened_by").eq("tenant_id", tenantId).in("status", ["OPEN", "CALCULATED", "APPROVAL_PENDING"]);
+      if (correctionError && !isMissingRelationError(correctionError, "hr_payroll_corrections")) throw new Error(correctionError.message);
+      for (const row of corrections || []) items.push({ id: `payroll-correction:${row.id}`, type: "PAYROLL", employee: `${row.payroll_month} · Correction V${row.correction_version || "?"}`, reason: `${row.status.replace(/_/g, " ")} · ${row.reason}`, requested_at: row.opened_at, due_date: `${row.payroll_month}-01`, impact: "Payroll correction review; no payment executed", owner: row.status === "APPROVAL_PENDING" ? "Payroll approver" : "Payroll reviewer", state: row.status, href: `/dashboard/hr/payroll/monthly-processing?month=${row.payroll_month}`, evidence: { correction_id: row.id, difference_total: row.difference_total, source_version: row.source_version, correction_version: row.correction_version } });
     }
     return { enabled: true, items: items.map(item => ({ ...item, priority_group: payrollAttentionGroup({ severity: /blocks payroll close/i.test(`${item.reason} ${item.impact}`) ? "BLOCKER" : undefined, dueDate: item.due_date, today }) })), lanes: ["ALL", "ATTENDANCE", "LEAVE", "OVERTIME", "PAYROLL"], priority_groups: ["BLOCKS PAYROLL CLOSE", "TODAY", "THIS WEEK", "LATER"], read_only: true, tenant_id: tenantId };
   }
@@ -3131,6 +3277,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
       const summary: any =
         attendanceSummaryByEmployee.get(String(employee.id)) || {};
+      const attendanceEvidenceRows = (attendanceRegister.daily || []).filter((day: any) => String(day.employee_id) === String(employee.id)).map((day: any) => ({ attendance_id: day.attendance_id || null, date: day.date, status: day.status, payable_days: day.payable_days, overtime_hours: day.overtime_hours, approval_status: day.approval_status, leave_type: day.leave_type || null }));
       const workingDays = Number(summary.working_days || 0);
       const attendanceDays =
         Number(summary.present_days || 0) +
@@ -3222,6 +3369,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         tenant_id: tenantId,
         payroll_run_id: data.run_id,
         employee_id: employee.id,
+        version: data._internalCorrection === true ? Number(data._correctionVersion || 2) : 1,
+        is_current: data._internalCorrection !== true,
         payslip_number: `PAY-${payrollRun.payroll_month}-${runIdPrefix}-${String(index + 1).padStart(4, "0")}`,
         salary_month: payrollRun.payroll_month,
         gross_salary: grossSalary,
@@ -3269,10 +3418,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
               source: { salary_component_id: component.id, component_type: component.component_type, effective_from: component.effective_from || null, effective_to: component.effective_to || null },
               formula: "Configured salary component amount, effective for the payroll month",
             })),
-            { kind: "EARNING", label: "Overtime", amount: overtimeAmount, source: { overtime_hours: overtimeHours, overtime_credit_days: overtimeCreditDays, rate: attendanceRegister.policy.overtime_multiplier }, formula: "Tenant attendance policy overtime calculation" },
+            { kind: "EARNING", label: "Overtime", amount: overtimeAmount, source: { overtime_hours: overtimeHours, overtime_credit_days: overtimeCreditDays, attendance_records: attendanceEvidenceRows.filter((day: any) => Number(day.overtime_hours || 0) > 0), rate: effectiveOvertimeRate, rule_version_id: overtimeResolution.version?.id || null, rule_source: overtimeResolution.source, attendance_month: payrollRun.payroll_month, currency_rounding: "Math.round(value * 100) / 100" }, formula: "Tenant attendance policy overtime calculation" },
             { kind: "EARNING", label: "Travel per diem", amount: totalPerDiem, source: { travel_days: travelDays, per_diem_amount: perDiemAmount }, formula: "Approved travel days × employee per diem" },
-            { kind: "DEDUCTION", label: "Attendance deduction", amount: attendanceDeduction, source: { unpaid_attendance_days: unpaidAttendanceDays, daily_gross_rate: roundCurrency(dailyGrossRate) }, formula: "Daily gross rate × unpaid attendance days" },
-            { kind: "DEDUCTION", label: "Late deduction", amount: lateDeduction, source: { late_days: lateDays, late_minutes: lateMinutes, policy: attendanceRegister.policy.late_deduction_mode }, formula: "Tenant attendance policy late deduction" },
+            { kind: "DEDUCTION", label: "Attendance deduction", amount: attendanceDeduction, source: { unpaid_attendance_days: unpaidAttendanceDays, absent_days: absentDays + unapprovedOutsideDays, unpaid_leave_days: unpaidLeaveDays, half_days: Number(summary.half_days || 0), paid_days: attendanceDays + paidLeaveDays, attendance_month: payrollRun.payroll_month, attendance_records: attendanceEvidenceRows, daily_gross_rate: roundCurrency(dailyGrossRate), attendance_policy: attendanceRegister.policy, currency_rounding: "Math.round(value * 100) / 100" }, formula: "Daily gross rate × unpaid attendance days" },
+            { kind: "DEDUCTION", label: "Late deduction", amount: lateDeduction, source: { late_days: lateDays, late_minutes: lateMinutes, policy: attendanceRegister.policy.late_deduction_mode, attendance_policy: attendanceRegister.policy, attendance_records: attendanceEvidenceRows.filter((day: any) => Number(day.overtime_hours || 0) > 0 || String(day.status).toUpperCase() === "LATE"), currency_rounding: "Math.round(value * 100) / 100" }, formula: "Tenant attendance policy late deduction" },
           ],
           totals: { gross: grossSalary, deductions: totalDeductions, overtime: overtimeAmount, travel_per_diem: totalPerDiem, net: netSalary },
         },
@@ -3305,6 +3454,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         "attendance_deduction",
         "late_deduction",
         "payroll_breakdown",
+        "version",
+        "is_current",
       ];
       const missingTenant =
         isMissingColumnError(error, "payslips.tenant_id") ||
@@ -3351,7 +3502,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         sum + Math.max(0, Number(slip?.net_salary || 0)),
       0,
     );
-    if (payrollAmount > 0) {
+    if (payrollAmount > 0 && data._internalCorrection !== true) {
       await this.accountingService.queueAutomaticOperationalPosting(
         tenantId,
         userId || "",

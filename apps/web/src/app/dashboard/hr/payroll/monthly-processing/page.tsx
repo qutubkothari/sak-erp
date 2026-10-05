@@ -34,6 +34,8 @@ type Cockpit = {
   approval_state?: string;
   payment_state?: string;
   read_only?: boolean;
+  control?: { id: string; stage: string; version: number };
+  corrections?: Array<{ id: string; source_version: number; correction_version: number; reason: string; status: string; control_stage?: string; difference_total: number | null }>;
   variance?: Array<{
     employee_id: string;
     employee_name: string;
@@ -76,6 +78,29 @@ export default function PayrollMonthlyProcessingPage() {
       await apiClient.post(`/hr/payroll/control/month/${encodeURIComponent(month)}/${action}`, {});
       await refresh();
     } catch (e: any) { setError(e?.message || `Could not ${action.replace(/-/g, " ")} payroll.`); }
+    finally { setBusy(false); }
+  };
+
+  const correctionAct = async (id: string, action: string) => {
+    setBusy(true); setError("");
+    try { await apiClient.post(`/hr/payroll/control/corrections/${encodeURIComponent(id)}/${action}`, {}); await refresh(); }
+    catch (e: any) { setError(e?.message || `Could not ${action.replace(/-/g, " ")} payroll correction.`); }
+    finally { setBusy(false); }
+  };
+  const openCorrection = async () => {
+    const reason = window.prompt("Reason for opening a new payroll correction version:");
+    if (!reason?.trim() || !cockpit?.control?.id) return;
+    setBusy(true); setError("");
+    try { await apiClient.post("/hr/payroll/control/corrections", { month, source_control_id: cockpit.control.id, reason: reason.trim() }); await refresh(); }
+    catch (e: any) { setError(e?.message || "Could not open payroll correction."); }
+    finally { setBusy(false); }
+  };
+  const returnCorrection = async (id: string) => {
+    const reason = window.prompt("Reason for returning this payroll correction for recalculation:");
+    if (!reason?.trim()) return;
+    setBusy(true); setError("");
+    try { await apiClient.post(`/hr/payroll/control/corrections/${encodeURIComponent(id)}/return`, { reason: reason.trim() }); await refresh(); }
+    catch (e: any) { setError(e?.message || "Could not return payroll correction."); }
     finally { setBusy(false); }
   };
 
@@ -144,7 +169,7 @@ export default function PayrollMonthlyProcessingPage() {
             <div className="flex gap-1 rounded-lg bg-stone-100 p-1">{(["Everyone", "Changed", "Flagged"] as const).map((filter) => <button key={filter} onClick={() => setVarianceFilter(filter)} className={`rounded-md px-3 py-1.5 text-xs font-bold ${varianceFilter === filter ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"}`}>{filter}</button>)}</div>
           </div>
           <div className="divide-y divide-stone-100">{(cockpit.variance || []).filter((row) => varianceFilter === "Everyone" || (varianceFilter === "Flagged" ? row.flagged : row.difference !== 0)).map((row) => <div key={row.employee_id} className="grid gap-2 p-4 text-sm sm:grid-cols-[1.2fr_repeat(3,0.8fr)_1.8fr] sm:items-center">
-            <div className="font-semibold text-stone-900">{row.employee_name}</div><div><span className="text-xs text-stone-500">Previous</span><div>{row.previous_net === null ? "—" : fmt(row.previous_net)}</div></div><div><span className="text-xs text-stone-500">Current</span><div>{fmt(row.current_net)}</div></div><div><span className="text-xs text-stone-500">Difference</span><div className={Number(row.difference || 0) < 0 ? "font-semibold text-red-700" : "font-semibold text-stone-900"}>{row.difference === null ? "—" : `${fmt(row.difference)}${row.difference_percent === null ? "" : ` (${row.difference_percent}%)`}`}</div></div><div className="text-xs text-stone-600">{row.known_reasons.join(" · ")}{row.flagged && <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">Missing evidence</span>}</div>
+            <div className="font-semibold text-stone-900">{row.employee_name}</div><div><span className="text-xs text-stone-500">Previous</span><div>{row.previous_net === null ? "—" : fmt(row.previous_net)}</div></div><div><span className="text-xs text-stone-500">Current</span><div>{fmt(row.current_net)}</div></div><div><span className="text-xs text-stone-500">Difference</span><div className={Number(row.difference || 0) < 0 ? "font-semibold text-red-700" : "font-semibold text-stone-900"}>{row.difference === null ? "—" : `${fmt(row.difference)}${row.difference_percent === null ? "" : ` (${row.difference_percent}%)`}`}</div></div><div className="text-xs text-stone-600">{row.known_reasons.join(" · ")}{row.flagged && <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">Flagged for review · informational</span>}</div>
           </div>)}</div>
         </section>}
 
@@ -168,6 +193,13 @@ export default function PayrollMonthlyProcessingPage() {
               {item.fix_href && <Link href={item.fix_href} className="mt-3 inline-block text-sm font-semibold text-blue-700 hover:underline">Open / Fix</Link>}
             </article>)}</div>}
         </section>
+        {Boolean(cockpit.corrections?.length) && <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
+          <div className="border-b border-stone-100 p-4 sm:p-5"><h2 className="font-bold text-stone-900">Payroll correction versions</h2><p className="mt-1 text-sm text-stone-600">Source payslips remain accessible. Negative differences stay in human recovery review; no bank transfer or salary deduction is automatic.</p></div>
+          <div className="divide-y divide-stone-100">{cockpit.corrections!.map((correction) => <article key={correction.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div><div className="font-semibold text-stone-900">{month} · V{correction.source_version} → Correction V{correction.correction_version}</div><p className="text-sm text-stone-600">{correction.reason}</p><p className="mt-1 text-xs text-stone-500">{correction.status.replace(/_/g, " ")} · Difference {correction.difference_total === null ? "not calculated" : fmt(correction.difference_total)}</p></div>
+            <div className="flex flex-wrap gap-2">{correction.status === "OPEN" && <button disabled={busy} onClick={() => void correctionAct(correction.id, "calculate")} className="rounded-lg bg-stone-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Calculate correction</button>}{correction.status === "CALCULATED" && <button disabled={busy} onClick={() => void correctionAct(correction.id, "submit")} className="rounded-lg bg-stone-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Submit for review</button>}{correction.status === "APPROVAL_PENDING" && correction.control_stage === "APPROVAL_PENDING" && <button disabled={busy} onClick={() => void correctionAct(correction.id, "approve")} className="rounded-lg bg-stone-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Review correction</button>}{correction.status === "APPROVAL_PENDING" && correction.control_stage === "SECOND_APPROVAL_REQUIRED" && <button disabled={busy} onClick={() => void correctionAct(correction.id, "countersign")} className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-800 disabled:opacity-50">Countersign</button>}{correction.status === "APPROVAL_PENDING" && <button disabled={busy} onClick={() => void returnCorrection(correction.id)} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-950 disabled:opacity-50">Return for recalculation</button>}{correction.status === "APPROVED" && <button disabled={busy} onClick={() => void correctionAct(correction.id, "record-paid")} className="rounded-lg bg-stone-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Record differential paid</button>}</div>
+          </article>)}</div>
+        </section>}
         <div className="flex flex-wrap gap-2">
           {cockpit.stage === "READY_TO_CLOSE" && <button disabled={busy || (cockpit.counts?.blocker_count || 0) > 0} onClick={() => void act("close")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Close month</button>}
           {cockpit.stage === "CLOSED" && <button disabled={busy} onClick={() => void act("calculate")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Calculate</button>}
@@ -175,6 +207,7 @@ export default function PayrollMonthlyProcessingPage() {
           {cockpit.stage === "APPROVAL_PENDING" && <button disabled={busy} onClick={() => void act("approve")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Approve</button>}
           {cockpit.stage === "SECOND_APPROVAL_REQUIRED" && <button disabled={busy} onClick={() => void act("countersign")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Countersign</button>}
           {cockpit.stage === "APPROVED" && <button disabled={busy} onClick={() => void act("pay")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Mark paid</button>}
+          {(["APPROVED", "PAID"].includes(cockpit.stage || "") && !cockpit.corrections?.some((correction) => ["OPEN", "CALCULATED", "APPROVAL_PENDING"].includes(correction.status))) && <button disabled={busy || !cockpit.control?.id} onClick={() => void openCorrection()} className="rounded-lg border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-950 disabled:opacity-50">Correct as new version…</button>}
         </div>
         <p className="flex items-center gap-2 text-xs text-stone-500"><WalletCards className="h-4 w-4" />Mark paid records workflow status only. It does not initiate a payment.</p>
       </>}

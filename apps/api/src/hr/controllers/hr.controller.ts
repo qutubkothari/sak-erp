@@ -587,6 +587,48 @@ export class HrController {
     return this.hrService.getPayrollWorking(req.user.tenantId, payslipId);
   }
 
+  @Post("payroll/control/corrections")
+  @RequirePermissions("PAYROLL_CALCULATE")
+  openPayrollCorrection(@Request() req: any, @Body() body: any) {
+    return this.hrService.openPayrollCorrection(req.user.tenantId, req.user.userId, body);
+  }
+
+  @Post("payroll/control/corrections/:id/calculate")
+  @RequirePermissions("PAYROLL_CALCULATE")
+  calculatePayrollCorrection(@Request() req: any, @Param("id") id: string) {
+    return this.hrService.calculatePayrollCorrection(req.user.tenantId, req.user.userId, id);
+  }
+
+  @Post("payroll/control/corrections/:id/submit")
+  @RequirePermissions("PAYROLL_CALCULATE")
+  submitPayrollCorrection(@Request() req: any, @Param("id") id: string) {
+    return this.hrService.submitPayrollCorrection(req.user.tenantId, req.user.userId, id);
+  }
+
+  @Post("payroll/control/corrections/:id/return")
+  @RequirePermissions("PAYROLL_APPROVE")
+  returnPayrollCorrection(@Request() req: any, @Param("id") id: string, @Body() body: any) {
+    return this.hrService.returnPayrollCorrection(req.user.tenantId, req.user.userId, id, body?.reason);
+  }
+
+  @Post("payroll/control/corrections/:id/approve")
+  @RequirePermissions("PAYROLL_APPROVE")
+  approvePayrollCorrection(@Request() req: any, @Param("id") id: string) {
+    return this.hrService.approvePayrollCorrection(req.user.tenantId, req.user.userId, id);
+  }
+
+  @Post("payroll/control/corrections/:id/countersign")
+  @RequirePermissions("PAYROLL_COUNTERSIGN")
+  countersignPayrollCorrection(@Request() req: any, @Param("id") id: string) {
+    return this.hrService.countersignPayrollCorrection(req.user.tenantId, req.user.userId, id);
+  }
+
+  @Post("payroll/control/corrections/:id/record-paid")
+  @RequirePermissions("PAYROLL_PAY")
+  markPayrollCorrectionRecorded(@Request() req: any, @Param("id") id: string) {
+    return this.hrService.markPayrollCorrectionRecorded(req.user.tenantId, req.user.userId, id);
+  }
+
   @Get("team-desk")
   getTeamDesk(@Request() req: any) {
     return this.hrService.getTeamDesk(req.user);

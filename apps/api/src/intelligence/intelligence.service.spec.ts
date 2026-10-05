@@ -11,7 +11,7 @@ describe("IntelligenceService critical behaviour", () => {
   const audit = { logActivity: jest.fn().mockResolvedValue(undefined) };
   const events = { recent: jest.fn(), record: jest.fn() };
   const crossModuleExceptions = { collect: jest.fn().mockResolvedValue([]) };
-  const hrService = { getPayrollMonthCockpit: jest.fn() };
+  const hrService = { getPayrollMonthCockpit: jest.fn(), getPayslips: jest.fn(), getEmployees: jest.fn(), getPayrollWorking: jest.fn() };
   const tools = new GovernedToolRegistryService();
   const ai = {
     structuredJson: jest.fn(async (request: any) => ({
@@ -67,7 +67,7 @@ describe("IntelligenceService critical behaviour", () => {
   });
 
   it("answers payroll blocker questions from deterministic read-only cockpit evidence", async () => {
-    hrService.getPayrollMonthCockpit.mockResolvedValue({ enabled: true, month: "2026-09", stage: "OPEN", version: 1, blockers: [{ key: "salary-missing:e1", reason: "Salary missing", severity: "BLOCKER" }], counts: { blocker_count: 1 }, net: 0 });
+    hrService.getPayrollMonthCockpit.mockResolvedValue({ enabled: true, month: "2026-09", stage: "OPEN", version: 1, blockers: [{ key: "salary-missing:e1", reason: "Salary missing", severity: "BLOCKER" }], counts: { blocker_count: 1 }, net: 0, employee_count: 1 });
     const result = await service.ask("tenant-a", { id: "u", userId: "u", permissions: ["hr:read"] }, "What is stopping September payroll?", {});
     expect(result.intent).toBe("PAYROLL_CONTROL_READ_ONLY");
     expect(result.evidence[0].key).toBe("salary-missing:e1");
@@ -77,11 +77,43 @@ describe("IntelligenceService critical behaviour", () => {
   });
 
   it("limits the my-approval Brain response to the caller's payroll approval permission", async () => {
-    hrService.getPayrollMonthCockpit.mockResolvedValue({ enabled: true, month: "2026-10", stage: "APPROVAL_PENDING", version: 2, blockers: [], counts: { blocker_count: 0 }, net: 0 });
+    hrService.getPayrollMonthCockpit.mockResolvedValue({ enabled: true, month: "2026-10", stage: "APPROVAL_PENDING", version: 2, blockers: [], counts: { blocker_count: 0 }, net: 0, employee_count: 1 });
     const unauthorized = await service.ask("tenant-a", { id: "u", userId: "u", permissions: ["hr:read"] }, "What's waiting for my approval?", {});
     expect(unauthorized.evidence).toEqual([]);
     const authorized = await service.ask("tenant-a", { id: "u", userId: "u", permissions: ["hr:read", "PAYROLL_APPROVE"] }, "What's waiting for my approval?", {});
     expect(authorized.evidence).toMatchObject([{ stage: "APPROVAL_PENDING", version: 2 }]);
+    expect(ai.structuredJson).not.toHaveBeenCalled();
+  });
+
+  it("explains an employee's stored payslip lines without AI arithmetic", async () => {
+    hrService.getPayslips.mockResolvedValue([{ id: "slip", employee_id: "e1", salary_month: "2026-09", net_salary: 900, version: 1 }]);
+    hrService.getEmployees.mockResolvedValue([{ id: "e1", employee_name: "Abdul Muqtadir" }]);
+    hrService.getPayrollWorking.mockResolvedValue({ employee_name: "Abdul Muqtadir", month: "2026-09", totals: { net: 900 }, lines: [{ label: "Basic", amount: 1000, source: { salary_component_id: "sc1" } }], reconciliation: { reconciles: true }, evidence_complete: true, version: { number: 1 } });
+    const result = await service.ask("tenant-a", { id: "u", userId: "u", permissions: ["hr:read"] }, "Explain Abdul Muqtadir's September 2026 salary.", {});
+    expect(result.intent).toBe("PAYROLL_EXPLANATION_READ_ONLY");
+    expect(result.evidence[0].lines[0].source.salary_component_id).toBe("sc1");
+    expect(result.read_only).toBe(true);
+    expect(ai.structuredJson).not.toHaveBeenCalled();
+  });
+
+  it("answers that an empty payroll profile has no payroll data instead of a false blocker result", async () => {
+    hrService.getPayrollMonthCockpit.mockResolvedValue({ enabled: true, month: "2026-09", stage: "OPEN", blockers: [], employee_count: 0, payroll_employee_count: 0, legacy_run: null });
+    const result = await service.ask("tenant-arwa", { id: "u", userId: "u", permissions: ["hr:read"] }, "What is stopping September payroll?", {});
+    expect(result.answer).toContain("There is no payroll data available");
+    expect(result.evidence).toEqual([]);
+    expect(result.read_only).toBe(true);
+    expect(ai.structuredJson).not.toHaveBeenCalled();
+  });
+
+  it("lists employees over a requested variance threshold from month payslips", async () => {
+    hrService.getPayslips.mockResolvedValue([
+      { id: "old", employee_id: "e1", salary_month: "2026-08", net_salary: 1000, version: 1, is_current: true },
+      { id: "new", employee_id: "e1", salary_month: "2026-09", net_salary: 1200, version: 1, is_current: true },
+    ]);
+    hrService.getEmployees.mockResolvedValue([{ id: "e1", employee_name: "Abdul" }]);
+    const result = await service.ask("tenant-a", { id: "u", userId: "u", permissions: ["hr:read"] }, "Which employees changed by more than 10% in September 2026?", {});
+    expect(result.intent).toBe("PAYROLL_VARIANCE_READ_ONLY");
+    expect(result.evidence).toMatchObject([{ employee_name: "Abdul", difference_percent: 20, threshold_percent: 10, status: "FLAGGED_FOR_REVIEW" }]);
     expect(ai.structuredJson).not.toHaveBeenCalled();
   });
 
