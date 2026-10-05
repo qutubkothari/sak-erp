@@ -12,6 +12,8 @@ import {
 
 type Policy = {
   tenant_id: string;
+  effective_from: string;
+  effective_to: string | null;
   timezone: string;
   shift_start: string;
   shift_end: string;
@@ -32,6 +34,8 @@ type Policy = {
 };
 
 const DEFAULT_POLICY: Omit<Policy, "tenant_id"> = {
+  effective_from: "",
+  effective_to: null,
   timezone: "Asia/Kolkata",
   shift_start: "09:00:00",
   shift_end: "18:00:00",
@@ -79,6 +83,41 @@ const eachDate = (start: string, end: string) => {
   return dates;
 };
 
+export const isAttendancePolicyEffective = (
+  policy: any,
+  attendanceDate: string,
+) => {
+  const effectiveFrom = String(
+    policy?.effective_from || policy?.updated_at || policy?.created_at || "",
+  ).slice(0, 10);
+  const effectiveTo = policy?.effective_to
+    ? String(policy.effective_to).slice(0, 10)
+    : null;
+  return Boolean(
+    effectiveFrom &&
+    attendanceDate >= effectiveFrom &&
+    (!effectiveTo || attendanceDate <= effectiveTo),
+  );
+};
+
+export const hasAttendanceDerivedMetricsPayrollEffect = (
+  policy: any,
+  employee: any,
+) =>
+  Boolean(
+    policy &&
+    ((policy.late_deduction_mode && policy.late_deduction_mode !== "NONE") ||
+      (policy.overtime_enabled && employee?.overtime_eligible !== false)),
+  );
+
+export const requiresAttendanceDerivedMetricsReview = (
+  summary: any,
+  policy: any,
+  employee: any,
+) =>
+  summary?.derived_metrics_status === "HISTORICAL_POLICY_UNAVAILABLE" &&
+  hasAttendanceDerivedMetricsPayrollEffect(policy, employee);
+
 @Injectable()
 export class HrAttendanceControlService {
   private readonly supabase: SupabaseClient;
@@ -100,7 +139,11 @@ export class HrAttendanceControlService {
       throw new Error(`Unable to load attendance policy: ${error.message}`);
     if (data) return this.normalizePolicy(data);
 
-    const payload = { tenant_id: tenantId, ...DEFAULT_POLICY };
+    const payload = {
+      tenant_id: tenantId,
+      ...DEFAULT_POLICY,
+      effective_from: this.currentDateInZone("Asia/Kolkata"),
+    };
     const { data: created, error: createError } = await this.supabase
       .from("hr_attendance_policies")
       .insert(payload)
@@ -133,7 +176,11 @@ export class HrAttendanceControlService {
       "working_weekdays",
       "paid_leave_types",
     ];
-    const updates: any = { updated_at: new Date().toISOString() };
+    const updates: any = {
+      updated_at: new Date().toISOString(),
+      effective_from: this.currentDateInZone("Asia/Kolkata"),
+      effective_to: null,
+    };
     for (const key of allowed)
       if (body?.[key] !== undefined) updates[key] = body[key];
     await this.getPolicy(tenantId);
@@ -152,6 +199,12 @@ export class HrAttendanceControlService {
       ...DEFAULT_POLICY,
       ...row,
       tenant_id: String(row.tenant_id),
+      effective_from: String(
+        row.effective_from || row.updated_at || row.created_at || "",
+      ).slice(0, 10),
+      effective_to: row.effective_to
+        ? String(row.effective_to).slice(0, 10)
+        : null,
       late_grace_minutes: n(row.late_grace_minutes),
       standard_daily_hours: n(row.standard_daily_hours),
       half_day_hours: n(row.half_day_hours),
@@ -162,12 +215,8 @@ export class HrAttendanceControlService {
         "HOURLY"
           ? "HOURLY"
           : "DAY_CREDIT",
-      overtime_half_day_after_hours: n(
-        row.overtime_half_day_after_hours ?? 10,
-      ),
-      overtime_full_day_after_hours: n(
-        row.overtime_full_day_after_hours ?? 12,
-      ),
+      overtime_half_day_after_hours: n(row.overtime_half_day_after_hours ?? 10),
+      overtime_full_day_after_hours: n(row.overtime_full_day_after_hours ?? 12),
       holiday_overtime_min_hours: n(row.holiday_overtime_min_hours ?? 6),
       late_marks_per_half_day: Math.max(1, n(row.late_marks_per_half_day)),
       working_weekdays: Array.isArray(row.working_weekdays)
@@ -177,6 +226,20 @@ export class HrAttendanceControlService {
         ? row.paid_leave_types.map((x: any) => String(x).toUpperCase())
         : DEFAULT_POLICY.paid_leave_types,
     };
+  }
+
+  async getPolicyForDate(tenantId: string, attendanceDate: string) {
+    const policy = await this.getPolicy(tenantId);
+    if (!isAttendancePolicyEffective(policy, attendanceDate)) {
+      return {
+        policy: null,
+        error: {
+          code: "POLICY_FOR_DATE_NOT_FOUND" as const,
+          attendance_date: attendanceDate,
+        },
+      };
+    }
+    return { policy, error: null };
   }
 
   private localClockMinutes(timestamp: unknown, timezone: string) {
@@ -210,10 +273,21 @@ export class HrAttendanceControlService {
 
   async calculateAttendanceMetrics(
     tenantId: string,
+    attendanceDate: string,
     checkInTime: unknown,
     workHours = 0,
   ) {
-    const policy = await this.getPolicy(tenantId);
+    const resolved = await this.getPolicyForDate(tenantId, attendanceDate);
+    if (!resolved.policy) {
+      return {
+        lateMinutes: null,
+        overtimeHours: null,
+        policy: null,
+        derivedMetricsStatus: "HISTORICAL_POLICY_UNAVAILABLE" as const,
+        error: resolved.error,
+      };
+    }
+    const policy = resolved.policy;
     const checkInMinutes = this.localClockMinutes(checkInTime, policy.timezone);
     const lateMinutes =
       checkInMinutes === null
@@ -230,6 +304,8 @@ export class HrAttendanceControlService {
         ? round2(Math.max(0, n(workHours) - policy.overtime_after_hours))
         : 0,
       policy,
+      derivedMetricsStatus: null,
+      error: null,
     };
   }
 
@@ -494,7 +570,12 @@ export class HrAttendanceControlService {
             String(row.start_date).slice(0, 10) <= date &&
             String(row.end_date || row.start_date).slice(0, 10) >= date,
         );
-        const scheduled = policy.working_weekdays.includes(weekday) && !holiday;
+        const policyForDate = isAttendancePolicyEffective(policy, date)
+          ? policy
+          : null;
+        const scheduled = policyForDate
+          ? policyForDate.working_weekdays.includes(weekday) && !holiday
+          : null;
         const attendance = attendanceByKey.get(
           `${employee.id}::${date}`,
         ) as any;
@@ -510,48 +591,60 @@ export class HrAttendanceControlService {
         const approvalValid =
           approval === "NOT_REQUIRED" || approval === "APPROVED";
         const hours = n(attendance?.work_hours);
+        const metricsUnresolved = Boolean(attendance && !policyForDate);
         const checkInMinutes = this.localClockMinutes(
           attendance?.check_in_time,
-          policy.timezone,
+          policyForDate?.timezone || policy.timezone,
         );
-        const lateMinutes =
-          scheduled && approvalValid && checkInMinutes !== null
+        const lateMinutes = metricsUnresolved
+          ? null
+          : scheduled && approvalValid && checkInMinutes !== null
             ? Math.max(
                 0,
                 checkInMinutes -
-                  timeMinutes(policy.shift_start) -
-                  policy.late_grace_minutes,
+                  timeMinutes(policyForDate!.shift_start) -
+                  policyForDate!.late_grace_minutes,
               )
             : 0;
         const overtimeEligible = employee.overtime_eligible !== false;
-        const overtimeHours =
-          scheduled &&
-          approvalValid &&
-          policy.overtime_enabled &&
-          overtimeEligible
-            ? Math.max(0, hours - policy.overtime_after_hours)
+        const overtimeHours = metricsUnresolved
+          ? null
+          : scheduled &&
+              approvalValid &&
+              policyForDate!.overtime_enabled &&
+              overtimeEligible
+            ? Math.max(0, hours - policyForDate!.overtime_after_hours)
             : 0;
-        let overtimeCreditDays = 0;
+        let overtimeCreditDays: number | null = metricsUnresolved ? null : 0;
         if (
+          policyForDate &&
           attendance &&
           approvalValid &&
-          policy.overtime_enabled &&
+          policyForDate.overtime_enabled &&
           overtimeEligible &&
-          policy.overtime_calculation_mode === "DAY_CREDIT"
+          policyForDate.overtime_calculation_mode === "DAY_CREDIT"
         ) {
           if (!scheduled && hours > 0) {
             overtimeCreditDays =
-              hours >= policy.holiday_overtime_min_hours ? 1 : 0.5;
-          } else if (hours >= policy.overtime_full_day_after_hours) {
+              hours >= policyForDate.holiday_overtime_min_hours ? 1 : 0.5;
+          } else if (hours >= policyForDate.overtime_full_day_after_hours) {
             overtimeCreditDays = 1;
-          } else if (hours > policy.overtime_half_day_after_hours) {
+          } else if (hours > policyForDate.overtime_half_day_after_hours) {
             overtimeCreditDays = 0.5;
           }
         }
         const leaveType = String(leave?.leave_type || "").toUpperCase();
         const paidLeave =
-          Boolean(leave) && policy.paid_leave_types.includes(leaveType);
-        let dayStatus = scheduled ? "ABSENT" : holiday ? "HOLIDAY" : "WEEK_OFF";
+          Boolean(leave) &&
+          (policyForDate || policy).paid_leave_types.includes(leaveType);
+        let dayStatus =
+          scheduled === null
+            ? "POLICY_FOR_DATE_NOT_FOUND"
+            : scheduled
+              ? "ABSENT"
+              : holiday
+                ? "HOLIDAY"
+                : "WEEK_OFF";
         let payableDays = 0;
         if (scheduled && leave) {
           dayStatus = paidLeave ? "PAID_LEAVE" : "UNPAID_LEAVE";
@@ -559,6 +652,19 @@ export class HrAttendanceControlService {
         } else if (attendance && !approvalValid) {
           dayStatus =
             approval === "REJECTED" ? "OUTSIDE_REJECTED" : "OUTSIDE_PENDING";
+        } else if (attendance && approvalValid && !policyForDate) {
+          dayStatus = String(attendance.status || "PRESENT").toUpperCase();
+          payableDays = [
+            "PRESENT",
+            "LATE",
+            "WFH",
+            "WORK_FROM_HOME",
+            "ON_DUTY",
+          ].includes(dayStatus)
+            ? 1
+            : dayStatus === "HALF_DAY"
+              ? 0.5
+              : 0;
         } else if (attendance && approvalValid) {
           if (
             date === currentBusinessDate &&
@@ -573,7 +679,8 @@ export class HrAttendanceControlService {
             (!attendance.check_out_time &&
               String(attendance.status).toUpperCase() === "PRESENT")
           ) {
-            dayStatus = lateMinutes > 0 ? "LATE" : "PRESENT";
+            dayStatus =
+              lateMinutes !== null && lateMinutes > 0 ? "LATE" : "PRESENT";
             payableDays = 1;
           } else if (hours >= policy.half_day_hours) {
             dayStatus = "HALF_DAY";
@@ -598,8 +705,15 @@ export class HrAttendanceControlService {
           payable_days: payableDays,
           leave_type: leaveType || "",
           late_minutes: lateMinutes,
-          overtime_hours: round2(overtimeHours),
+          overtime_hours: overtimeHours === null ? null : round2(overtimeHours),
           overtime_credit_days: overtimeCreditDays,
+          derived_metrics_status: metricsUnresolved
+            ? "HISTORICAL_POLICY_UNAVAILABLE"
+            : null,
+          policy_resolution_status: policyForDate
+            ? "POLICY_FOR_DATE_FOUND"
+            : "POLICY_FOR_DATE_NOT_FOUND",
+          policy: policyForDate,
           approval_status: approval,
           is_outside_zone: attendance?.is_outside_zone === true,
           is_outstation_travel: attendance?.is_outstation_travel === true,
@@ -626,20 +740,37 @@ export class HrAttendanceControlService {
         paid_leave_days: count("PAID_LEAVE"),
         unpaid_leave_days: count("UNPAID_LEAVE"),
         absent_days: count("ABSENT"),
-        late_days: count("LATE"),
-        late_minutes: rows.reduce((sum, row) => sum + row.late_minutes, 0),
-        overtime_hours: round2(
-          rows.reduce((sum, row) => sum + row.overtime_hours, 0),
-        ),
-        overtime_credit_days: round2(
-          rows.reduce((sum, row) => sum + row.overtime_credit_days, 0),
-        ),
+        late_days: rows.some((row) => row.derived_metrics_status)
+          ? null
+          : count("LATE"),
+        late_minutes: rows.some((row) => row.derived_metrics_status)
+          ? null
+          : rows.reduce((sum, row) => sum + (row.late_minutes || 0), 0),
+        overtime_hours: rows.some((row) => row.derived_metrics_status)
+          ? null
+          : round2(
+              rows.reduce((sum, row) => sum + (row.overtime_hours || 0), 0),
+            ),
+        overtime_credit_days: rows.some((row) => row.derived_metrics_status)
+          ? null
+          : round2(
+              rows.reduce(
+                (sum, row) => sum + (row.overtime_credit_days || 0),
+                0,
+              ),
+            ),
         work_hours: round2(rows.reduce((sum, row) => sum + row.work_hours, 0)),
         payable_days: round2(
           rows.reduce((sum, row) => sum + row.payable_days, 0),
         ),
         outside_pending: count("OUTSIDE_PENDING"),
         outside_rejected: count("OUTSIDE_REJECTED"),
+        derived_metrics_status: rows.some((row) => row.derived_metrics_status)
+          ? "HISTORICAL_POLICY_UNAVAILABLE"
+          : null,
+        unresolved_derived_metrics_days: rows.filter(
+          (row) => row.derived_metrics_status,
+        ).length,
       };
     });
     return { policy, start, end, summary, daily };
@@ -710,6 +841,7 @@ export class HrAttendanceControlService {
       ["Late Minutes", "late_minutes", 13],
       ["Overtime Hours", "overtime_hours", 15],
       ["Overtime Credit Days", "overtime_credit_days", 20],
+      ["Derived Metrics Status", "derived_metrics_status", 32],
       ["Worked Hours", "work_hours", 14],
       ["Payable Days", "payable_days", 14],
       ["Outside Pending", "outside_pending", 16],
@@ -738,6 +870,7 @@ export class HrAttendanceControlService {
       ["Late Minutes", "late_minutes", 13],
       ["Overtime Hours", "overtime_hours", 15],
       ["Overtime Credit Days", "overtime_credit_days", 20],
+      ["Derived Metrics Status", "derived_metrics_status", 32],
       ["Outside Zone", "is_outside_zone", 13],
       ["Approval", "approval_status", 15],
       ["Holiday", "holiday", 24],
@@ -753,17 +886,24 @@ export class HrAttendanceControlService {
     daily.addRows(
       register.daily.map((row) => ({
         ...row,
-        day: new Intl.DateTimeFormat("en-IN", { weekday: "long", timeZone: "UTC" }).format(
-          new Date(`${row.date}T00:00:00Z`),
-        ),
+        day: new Intl.DateTimeFormat("en-IN", {
+          weekday: "long",
+          timeZone: "UTC",
+        }).format(new Date(`${row.date}T00:00:00Z`)),
         check_in_time: row.check_in_time
           ? new Date(row.check_in_time).toLocaleString("en-IN", {
-              timeZone: register.policy.timezone,
+              timeZone:
+                row.policy?.timezone ||
+                register.policy.timezone ||
+                "Asia/Kolkata",
             })
           : "",
         check_out_time: row.check_out_time
           ? new Date(row.check_out_time).toLocaleString("en-IN", {
-              timeZone: register.policy.timezone,
+              timeZone:
+                row.policy?.timezone ||
+                register.policy.timezone ||
+                "Asia/Kolkata",
             })
           : "",
         is_outside_zone: row.is_outside_zone ? "Yes" : "No",

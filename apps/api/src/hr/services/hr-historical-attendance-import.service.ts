@@ -153,13 +153,12 @@ export class HrHistoricalAttendanceImportService {
     const { start, end } = monthRange(month);
     const batchId = crypto.randomUUID();
     const employeeCodes = [...new Set(inputRows.map((row) => text(row["Employee Code"])).filter(Boolean))];
-    const [employeesResult, attendanceResult, legacyResult, leaveResult, holidayResult, policy, payrollResult] = await Promise.all([
+    const [employeesResult, attendanceResult, legacyResult, leaveResult, holidayResult, payrollResult] = await Promise.all([
       this.supabase.from("employees").select("id,employee_code,employee_name,department,user_id,date_of_joining").eq("tenant_id", tenantId).in("employee_code", employeeCodes),
       this.supabase.from("attendance").select("id,employee_id,attendance_date").eq("tenant_id", tenantId).gte("attendance_date", start).lte("attendance_date", end),
       this.supabase.from("attendance_records").select("id,employee_id,attendance_date").gte("attendance_date", start).lte("attendance_date", end),
       this.supabase.from("leave_requests").select("employee_id,leave_type,start_date,end_date,status").eq("tenant_id", tenantId).eq("status", "APPROVED").lte("start_date", end).gte("end_date", start),
       this.supabase.from("hr_holidays").select("start_date,end_date").eq("tenant_id", tenantId).lte("start_date", end),
-      this.control.getPolicy(tenantId),
       this.supabase.from("payroll_runs").select("payroll_month,status").eq("tenant_id", tenantId).eq("payroll_month", month).in("status", ["COMPLETED", "APPROVED", "LOCKED"]),
     ]);
     if (employeesResult.error) throw new Error(employeesResult.error.message);
@@ -169,6 +168,12 @@ export class HrHistoricalAttendanceImportService {
     const legacy = new Set((legacyResult.data || []).map((row: any) => `${row.employee_id}::${String(row.attendance_date).slice(0, 10)}`));
     const approvedPayroll = (payrollResult.data || []).length > 0;
     const seen = new Set<string>();
+    const attendanceDates = [...new Set(inputRows.map((row) => dateOnly(row.Date)).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)))];
+    const policyByDate = new Map<string, any>();
+    await Promise.all(attendanceDates.map(async (date) => {
+      const resolved = await this.control.getPolicyForDate(tenantId, date);
+      policyByDate.set(date, resolved.policy || null);
+    }));
     const normalized = inputRows.map((raw) => {
       const row: any = { row_number: raw.row_number, employee_code: text(raw["Employee Code"]), date: dateOnly(raw.Date), status: text(raw.Status).toUpperCase(), check_in: timeOnly(raw["Check In"]), check_out: timeOnly(raw["Check Out"]), leave_type: text(raw["Leave Type"]).toUpperCase() || null, outstation_travel: text(raw["Outstation Travel"]).toUpperCase() || "NO", travel_departure: timeOnly(raw["Travel Departure"]), travel_arrival: timeOnly(raw["Travel Arrival"]), remarks: text(raw.Remarks), classification: "READY" as Classification, issues: [] as string[] };
       const employee = employees.get(row.employee_code);
@@ -197,6 +202,16 @@ export class HrHistoricalAttendanceImportService {
       if (leave && ["PRESENT", "WFH", "ON_DUTY"].includes(row.status)) this.issue(row, "CONFLICT", "Approved leave conflicts with working attendance");
       if (row.status === "LEAVE" && !leave) this.issue(row, "WARNING", "No approved leave request exists; import will not create one");
       if (approvedPayroll) this.issue(row, "CONFLICT", "Payroll for this month is already finalized");
+      const policy = policyByDate.get(row.date) || null;
+      if (!policy) {
+        row.issues.push("No attendance policy was effective on this date; derived late and overtime metrics are unresolved.");
+        if (row.check_in_timestamp) {
+          row.derived_metrics_status = "HISTORICAL_POLICY_UNAVAILABLE";
+          row.late_minutes = null;
+          row.overtime_hours = null;
+        }
+        return row;
+      }
       const weekday = new Date(`${row.date}T00:00:00Z`).getUTCDay();
       const holiday = (holidayResult.data || []).some((entry: any) => String(entry.start_date) <= row.date && String(entry.end_date || entry.start_date) >= row.date);
       if (holiday || !policy.working_weekdays.includes(weekday)) this.issue(row, "WARNING", "Date is a holiday or week-off according to the ERP calendar");
@@ -210,7 +225,7 @@ export class HrHistoricalAttendanceImportService {
   }
 
   private toAttendancePayload(tenantId: string, userId: string, row: any, filename: string) {
-    return { tenant_id: tenantId, employee_id: row.employee_id, user_id: row.user_id || null, attendance_date: row.date, check_in_time: row.check_in_timestamp || null, check_out_time: row.check_out_timestamp || null, status: row.status === "PRESENT" && row.late_minutes > 0 ? "LATE" : row.status, work_hours: row.work_hours ?? null, late_minutes: row.late_minutes || 0, overtime_hours: row.overtime_hours || 0, approval_status: "NOT_REQUIRED", is_outstation_travel: row.outstation_travel === "YES", travel_departure_time: row.travel_departure || null, travel_arrival_time: row.travel_arrival || null, check_in_notes: row.remarks || null, metadata: { source: "HISTORICAL_IMPORT", import_batch_id: row.batch_id, original_filename: filename, imported_by: userId, imported_at: new Date().toISOString(), remarks: row.remarks || null, leave_type: row.leave_type, geofence_evaluated: false, mobile_evidence_present: false } };
+    return { tenant_id: tenantId, employee_id: row.employee_id, user_id: row.user_id || null, attendance_date: row.date, check_in_time: row.check_in_timestamp || null, check_out_time: row.check_out_timestamp || null, status: row.status === "PRESENT" && row.late_minutes > 0 ? "LATE" : row.status, work_hours: row.work_hours ?? null, late_minutes: row.late_minutes || 0, overtime_hours: row.overtime_hours || 0, approval_status: "NOT_REQUIRED", is_outstation_travel: row.outstation_travel === "YES", travel_departure_time: row.travel_departure || null, travel_arrival_time: row.travel_arrival || null, check_in_notes: row.remarks || null, metadata: { source: "HISTORICAL_IMPORT", import_batch_id: row.batch_id, original_filename: filename, imported_by: userId, imported_at: new Date().toISOString(), remarks: row.remarks || null, leave_type: row.leave_type, geofence_evaluated: false, mobile_evidence_present: false, ...(row.derived_metrics_status ? { derived_metrics_status: row.derived_metrics_status } : {}) } };
   }
   private minutes(value: string) { const parts = value.split(":").map(Number); return parts[0] * 60 + parts[1]; }
   private issue(row: any, classification: Classification, message: string) { row.issues.push(message); const priority = ["INVALID_EMPLOYEE", "INVALID_STATUS", "INVALID_TIME", "DUPLICATE_FILE_ROW", "ALREADY_EXISTS", "CONFLICT", "WARNING"]; if (row.classification === "READY" || priority.indexOf(classification) < priority.indexOf(row.classification)) row.classification = classification; }

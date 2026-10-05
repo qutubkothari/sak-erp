@@ -37,7 +37,7 @@ describe("HrHistoricalAttendanceImportService", () => {
     let inserted: any[] = [];
     const existing = options.existing || [];
     const employees = options.employees || [{ id: "employee", user_id: "user", employee_code: "E001", employee_name: "One", department: "HR" }];
-    service.control = { getPolicy: jest.fn().mockResolvedValue({ timezone: "Asia/Kolkata", shift_start: "09:00:00", late_grace_minutes: 15, overtime_enabled: true, overtime_after_hours: 9, working_weekdays: [1, 2, 3, 4, 5, 6] }) };
+    service.control = { getPolicyForDate: jest.fn().mockResolvedValue({ policy: { timezone: "Asia/Kolkata", effective_from: "2025-01-01", effective_to: null, shift_start: "09:00:00", late_grace_minutes: 15, overtime_enabled: true, overtime_after_hours: 9, working_weekdays: [1, 2, 3, 4, 5, 6] }, error: null }) };
     service.audit = { logActivity: jest.fn().mockResolvedValue(undefined) };
     service.supabase = {
       from: jest.fn((table: string) => {
@@ -121,6 +121,20 @@ describe("HrHistoricalAttendanceImportService", () => {
     const result = await instance.preview("tenant", { buffer: Buffer.from("xlsx"), originalname: "attendance.xlsx" }, "2025-01", "attendance.xlsx");
     expect(result.counts.READY).toBe(1);
     expect(instance.supabase.from).not.toHaveBeenCalledWith("attendance", expect.objectContaining({ insert: expect.anything() }));
+  });
+
+  it("keeps historical import facts and marks derived metrics unresolved without a policy", async () => {
+    const instance: any = makeService();
+    instance.control.getPolicyForDate.mockResolvedValue({ policy: null, error: { code: "POLICY_FOR_DATE_NOT_FOUND" } });
+    instance.rowsFromFile = jest.fn().mockResolvedValue([makeRow()]);
+    const result = await instance.preview("tenant", { buffer: Buffer.from("xlsx"), originalname: "attendance.xlsx" }, "2025-01", "attendance.xlsx");
+    expect(result.rows[0]).toMatchObject({ classification: "READY", status: "PRESENT", derived_metrics_status: "HISTORICAL_POLICY_UNAVAILABLE", late_minutes: null, overtime_hours: null });
+    expect(result.rows[0].issues).toContain("No attendance policy was effective on this date; derived late and overtime metrics are unresolved.");
+    const payload = instance.toAttendancePayload("tenant", "user", result.rows[0], "attendance.xlsx");
+    expect(payload.status).toBe("PRESENT");
+    expect(payload.late_minutes).toBe(0);
+    expect(payload.overtime_hours).toBe(0);
+    expect(payload.metadata.derived_metrics_status).toBe("HISTORICAL_POLICY_UNAVAILABLE");
   });
 
   it.each([

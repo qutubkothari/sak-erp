@@ -1,7 +1,9 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { HrService } from "./hr.service";
 
-function createService(options: { locked?: boolean; processed?: boolean } = {}) {
+function createService(
+  options: { locked?: boolean; processed?: boolean } = {},
+) {
   process.env.SUPABASE_URL ||= "https://example.supabase.co";
   process.env.SUPABASE_KEY ||= "test-key";
   const employee = {
@@ -11,7 +13,8 @@ function createService(options: { locked?: boolean; processed?: boolean } = {}) 
     employee_code: "SAS-10055",
   };
   const inserted: any[] = [];
-  const queries: Array<{ table: string; filters: Record<string, unknown> }> = [];
+  const queries: Array<{ table: string; filters: Record<string, unknown> }> =
+    [];
   const attendanceControl = {
     buildRegisterForUser: jest.fn().mockResolvedValue({ daily: [] }),
     calculateAttendanceMetrics: jest
@@ -19,7 +22,12 @@ function createService(options: { locked?: boolean; processed?: boolean } = {}) 
       .mockResolvedValue({ lateMinutes: 0, overtimeHours: 1.25 }),
   };
   const service = new HrService({} as any, attendanceControl as any);
-  const resolve = (table: string, mode: string, filters: Record<string, unknown>, payload: any) => {
+  const resolve = (
+    table: string,
+    mode: string,
+    filters: Record<string, unknown>,
+    payload: any,
+  ) => {
     if (mode === "insert") {
       inserted.push(payload);
       return { data: { id: "attendance-new", ...payload }, error: null };
@@ -30,7 +38,11 @@ function createService(options: { locked?: boolean; processed?: boolean } = {}) 
     }
     if (table === "payroll_runs") {
       return {
-        data: options.locked ? [{ status: "LOCKED" }] : options.processed ? [{ status: "PENDING" }] : [],
+        data: options.locked
+          ? [{ status: "LOCKED" }]
+          : options.processed
+            ? [{ status: "PENDING" }]
+            : [],
         error: null,
       };
     }
@@ -120,6 +132,7 @@ describe("controlled manual attendance", () => {
     expect(inserted[0]).not.toHaveProperty("check_in_photo_url");
     expect(attendanceControl.calculateAttendanceMetrics).toHaveBeenCalledWith(
       "tenant-1",
+      validEntry.attendance_date,
       expect.any(String),
       9.9,
     );

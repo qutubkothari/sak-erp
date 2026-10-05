@@ -7,7 +7,10 @@ import {
   hasPermission,
 } from "../../auth/utils/permission-utils";
 import { AccountingService } from "../../accounting/accounting.service";
-import { HrAttendanceControlService } from "./hr-attendance-control.service";
+import {
+  HrAttendanceControlService,
+  requiresAttendanceDerivedMetricsReview,
+} from "./hr-attendance-control.service";
 import {
   derivePayrollStage,
   calculateNetVariance,
@@ -264,11 +267,16 @@ const parseTimeMinutes = (value: unknown): number | null => {
 };
 
 const normalizeTimeOnly = (value: unknown): string | null => {
-  const minutes = parseTimeMinutes(value);
-  if (minutes === null) return null;
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:00`;
+  if (!isNonEmptyString(value)) return null;
+  const match = value
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})(?::(\d{2})(\.\d{1,6})?)?$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3] || 0);
+  if (hours > 23 || minutes > 59 || seconds > 59) return null;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}${match[4] || ""}`;
 };
 
 // Attendance corrections are entered as India business-clock times. Do not
@@ -499,7 +507,8 @@ const normalizeDateOnly = (value: unknown, fieldName: string): string => {
 const normalizeHolidayDate = (value: unknown, fieldName: string): string => {
   const dateOnly = normalizeDateOnly(value, fieldName);
   const match = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) throw new BadRequestException(`${fieldName} must be a valid date`);
+  if (!match)
+    throw new BadRequestException(`${fieldName} must be a valid date`);
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
@@ -777,7 +786,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         .select("*")
         .eq("tenant_id", tenantId);
       const storedById = new Map(
-        (storedHolidays || []).map((holiday: any) => [String(holiday.id), holiday]),
+        (storedHolidays || []).map((holiday: any) => [
+          String(holiday.id),
+          holiday,
+        ]),
       );
       const fallbackIds = new Set(
         DEFAULT_HR_HOLIDAYS_2026.map((_, index) =>
@@ -818,9 +830,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           const end = String(holiday.end_date || holiday.start_date || "");
           return start <= yearEnd && end >= yearStart;
         })
-        .sort((a: any, b: any) =>
-          String(a.start_date).localeCompare(String(b.start_date)) ||
-          String(a.holiday_name).localeCompare(String(b.holiday_name)),
+        .sort(
+          (a: any, b: any) =>
+            String(a.start_date).localeCompare(String(b.start_date)) ||
+            String(a.holiday_name).localeCompare(String(b.holiday_name)),
         )
         .map((holiday: any) => ({
           ...holiday,
@@ -861,11 +874,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       ? normalizeHolidayDate(data.end_date, "Holiday end date")
       : null;
     if (endDate && endDate < startDate) {
-      throw new BadRequestException("Holiday end date cannot be before its start date");
+      throw new BadRequestException(
+        "Holiday end date cannot be before its start date",
+      );
     }
-    const holidayType = String(data?.holiday_type || "PUBLIC").trim().toUpperCase();
+    const holidayType = String(data?.holiday_type || "PUBLIC")
+      .trim()
+      .toUpperCase();
     if (!["PUBLIC", "COMPANY", "OPTIONAL"].includes(holidayType)) {
-      throw new BadRequestException("Holiday type must be Public, Company, or Optional");
+      throw new BadRequestException(
+        "Holiday type must be Public, Company, or Optional",
+      );
     }
 
     // The production database already has hr_holidays. Avoid the legacy DDL
@@ -876,10 +895,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .eq("tenant_id", tenantId);
     if (readError) throw new Error(readError.message);
 
-    const defaultRows = DEFAULT_HR_HOLIDAYS_2026.map((holiday, index) =>
-      (storedHolidays || []).find(
-        (row: any) => String(row.id) === getDefaultHolidayId(tenantId, index),
-      ) || holiday,
+    const defaultRows = DEFAULT_HR_HOLIDAYS_2026.map(
+      (holiday, index) =>
+        (storedHolidays || []).find(
+          (row: any) => String(row.id) === getDefaultHolidayId(tenantId, index),
+        ) || holiday,
     );
     const configuredRows = [
       ...defaultRows,
@@ -888,11 +908,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       ),
     ];
     const candidateEnd = endDate || startDate;
-    if (configuredRows.some((holiday: any) => {
-      const otherStart = String(holiday.start_date || "").slice(0, 10);
-      const otherEnd = String(holiday.end_date || holiday.start_date || "").slice(0, 10);
-      return otherStart <= candidateEnd && otherEnd >= startDate;
-    })) {
+    if (
+      configuredRows.some((holiday: any) => {
+        const otherStart = String(holiday.start_date || "").slice(0, 10);
+        const otherEnd = String(
+          holiday.end_date || holiday.start_date || "",
+        ).slice(0, 10);
+        return otherStart <= candidateEnd && otherEnd >= startDate;
+      })
+    ) {
       throw new ConflictException("A holiday already exists for this date.");
     }
 
@@ -938,9 +962,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       (holiday: any) => String(holiday.id) === holidayId,
     );
     const fallback =
-      fallbackIndex >= 0
-        ? DEFAULT_HR_HOLIDAYS_2026[fallbackIndex]
-        : null;
+      fallbackIndex >= 0 ? DEFAULT_HR_HOLIDAYS_2026[fallbackIndex] : null;
     if (!existing && !fallback) {
       throw new NotFoundException("Holiday not found");
     }
@@ -962,7 +984,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       ? normalizeHolidayDate(rawEndDate, "Holiday end date")
       : null;
     if (endDate && endDate < startDate) {
-      throw new BadRequestException("Holiday end date cannot be before its start date");
+      throw new BadRequestException(
+        "Holiday end date cannot be before its start date",
+      );
     }
 
     const holidayType =
@@ -970,7 +994,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         ? String(current.holiday_type || "PUBLIC").trim()
         : String(data.holiday_type || "").trim();
     if (!["PUBLIC", "COMPANY", "OPTIONAL"].includes(holidayType)) {
-      throw new BadRequestException("Holiday type must be Public, Company, or Optional");
+      throw new BadRequestException(
+        "Holiday type must be Public, Company, or Optional",
+      );
     }
     const notes =
       data?.notes === undefined
@@ -1222,7 +1248,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
     const reason = String(data?.remarks || data?.reason || "").trim();
     if (!reason) {
-      throw new BadRequestException("A reason is required for manual attendance");
+      throw new BadRequestException(
+        "A reason is required for manual attendance",
+      );
     }
     if (reason.length > 1000) {
       throw new BadRequestException("Reason must be 1000 characters or fewer");
@@ -1230,18 +1258,37 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
     const checkInTime = String(data?.check_in_time || "").trim();
     const checkOutTime = String(data?.check_out_time || "").trim();
-    for (const [label, value] of [["Check In", checkInTime], ["Check Out", checkOutTime]]) {
-      if (value && !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value)) {
+    for (const [label, value] of [
+      ["Check In", checkInTime],
+      ["Check Out", checkOutTime],
+    ]) {
+      if (
+        value &&
+        !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?)?$/.test(value)
+      ) {
         throw new BadRequestException(`${label} must be a valid time`);
       }
     }
     if (checkInTime && checkOutTime && checkOutTime < checkInTime) {
-      throw new BadRequestException("Check Out cannot be earlier than Check In");
+      throw new BadRequestException(
+        "Check Out cannot be earlier than Check In",
+      );
     }
 
     const requestedStatus = String(data?.status || "PRESENT").toUpperCase();
-    const status = requestedStatus === "WORK_FROM_HOME" ? "WFH" : requestedStatus;
-    if (!["PRESENT", "ABSENT", "LEAVE", "LATE", "HALF_DAY", "WFH", "ON_DUTY"].includes(status)) {
+    const status =
+      requestedStatus === "WORK_FROM_HOME" ? "WFH" : requestedStatus;
+    if (
+      ![
+        "PRESENT",
+        "ABSENT",
+        "LEAVE",
+        "LATE",
+        "HALF_DAY",
+        "WFH",
+        "ON_DUTY",
+      ].includes(status)
+    ) {
       throw new BadRequestException("Unsupported attendance status");
     }
     return { attendanceDate, checkInTime, checkOutTime, reason, status };
@@ -1270,8 +1317,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (payroll.error) throw new Error(payroll.error.message);
 
     const statuses = [
-      ...(runs.data || []).map((row: any) => String(row.status || "").toUpperCase()),
-      ...(payroll.data || []).map((row: any) => String(row.status || "").toUpperCase()),
+      ...(runs.data || []).map((row: any) =>
+        String(row.status || "").toUpperCase(),
+      ),
+      ...(payroll.data || []).map((row: any) =>
+        String(row.status || "").toUpperCase(),
+      ),
     ];
     const locked = statuses.some((status) =>
       ["APPROVED", "PAID", "LOCKED", "COMPLETED"].includes(status),
@@ -1317,7 +1368,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .eq("id", employeeId)
       .maybeSingle();
     if (employeeError) throw new Error(employeeError.message);
-    if (!employee) throw new NotFoundException("Employee not found for this tenant");
+    if (!employee)
+      throw new NotFoundException("Employee not found for this tenant");
 
     const payrollState = await this.getAttendancePeriodState(
       tenantId,
@@ -1346,7 +1398,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (existing) {
       throw new ConflictException({
         code: "ATTENDANCE_ALREADY_EXISTS",
-        message: "Attendance already exists for this employee and date. Open it to correct the existing record.",
+        message:
+          "Attendance already exists for this employee and date. Open it to correct the existing record.",
         attendance_id: existing.id,
       });
     }
@@ -1359,6 +1412,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         : null;
     const timing = await this.attendanceControl.calculateAttendanceMetrics(
       tenantId,
+      attendanceDate,
       checkIn,
       workHours || 0,
     );
@@ -1375,14 +1429,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         check_in_notes: reason,
         check_out_notes: reason,
         status:
-          timing.lateMinutes > 0 && status === "PRESENT" ? "LATE" : status,
+          timing.lateMinutes !== null &&
+          timing.lateMinutes > 0 &&
+          status === "PRESENT"
+            ? "LATE"
+            : status,
         work_hours: workHours === null ? null : roundCurrency(workHours),
-        late_minutes: timing.lateMinutes,
-        overtime_hours: timing.overtimeHours,
+        late_minutes: timing.lateMinutes ?? 0,
+        overtime_hours: timing.overtimeHours ?? 0,
         approval_status: "NOT_REQUIRED",
         metadata: {
           attendance_source: "MANUAL_HR_ENTRY",
           manual_reason: reason,
+          ...(timing.derivedMetricsStatus
+            ? { derived_metrics_status: timing.derivedMetricsStatus }
+            : {}),
         },
       })
       .select("*")
@@ -1391,7 +1452,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       if (result.error.code === "23505") {
         throw new ConflictException({
           code: "ATTENDANCE_ALREADY_EXISTS",
-          message: "Attendance already exists for this employee and date. Refresh and correct the existing record.",
+          message:
+            "Attendance already exists for this employee and date. Refresh and correct the existing record.",
         });
       }
       throw new Error(result.error.message);
@@ -1419,7 +1481,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         source: "MANUAL_HR_ENTRY",
       };
     }
-    return { ...result.data, payroll_review_required: payrollState.payrollReviewRequired };
+    return {
+      ...result.data,
+      payroll_review_required: payrollState.payrollReviewRequired,
+    };
   }
 
   async correctManualAttendance(
@@ -1464,28 +1529,33 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       prior.employee_id,
     );
     const payrollStates = await Promise.all(
-      [...new Set([String(prior.attendance_date).slice(0, 10), attendanceDate])].map(
-        (date) =>
-          this.getAttendancePeriodState(tenantId, prior.employee_id, date),
+      [
+        ...new Set([
+          String(prior.attendance_date).slice(0, 10),
+          attendanceDate,
+        ]),
+      ].map((date) =>
+        this.getAttendancePeriodState(tenantId, prior.employee_id, date),
       ),
     );
     const payrollReviewRequired = payrollStates.some(
       (state) => state.payrollReviewRequired,
     );
     let duplicateQuery = this.supabase
-        .from("attendance")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .eq("employee_id", prior.employee_id)
-        .eq("attendance_date", attendanceDate);
+      .from("attendance")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("employee_id", prior.employee_id)
+      .eq("attendance_date", attendanceDate);
     if (priorIsCanonical) duplicateQuery = duplicateQuery.neq("id", id);
     let legacyDuplicateQuery = this.supabase
-        .from("attendance_records")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .eq("employee_id", prior.employee_id)
-        .eq("attendance_date", attendanceDate);
-    if (!priorIsCanonical) legacyDuplicateQuery = legacyDuplicateQuery.neq("id", id);
+      .from("attendance_records")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("employee_id", prior.employee_id)
+      .eq("attendance_date", attendanceDate);
+    if (!priorIsCanonical)
+      legacyDuplicateQuery = legacyDuplicateQuery.neq("id", id);
     const [duplicate, legacyDuplicate] = await Promise.all([
       duplicateQuery.maybeSingle(),
       legacyDuplicateQuery.maybeSingle(),
@@ -1495,21 +1565,40 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (duplicate.data || legacyDuplicate.data) {
       throw new ConflictException({
         code: "ATTENDANCE_ALREADY_EXISTS",
-        message: "Another attendance record already exists for this employee and date.",
+        message:
+          "Another attendance record already exists for this employee and date.",
       });
     }
 
     const updated = await this.updateAttendance(
       tenantId,
       id,
-      { ...data, employee_id: prior.employee_id, attendance_date: attendanceDate, remarks: reason, attendance_source: "MANUAL_HR_ENTRY" },
+      {
+        ...data,
+        employee_id: prior.employee_id,
+        attendance_date: attendanceDate,
+        remarks: reason,
+        attendance_source: "MANUAL_HR_ENTRY",
+      },
       auditContext,
     );
     if (auditContext?.auditSnapshot) {
       auditContext.auditSnapshot.source = "MANUAL_HR_ENTRY";
       auditContext.auditSnapshot.reason = reason;
+      if (
+        (updated?.[0] || {}).metadata?.derived_metrics_status ===
+        "HISTORICAL_POLICY_UNAVAILABLE"
+      ) {
+        auditContext.auditSnapshot.action =
+          "Historical attendance recalculation corrected";
+        auditContext.auditSnapshot.reason =
+          "Historical correction had incorrectly applied a policy that was not effective on the attendance date.";
+      }
     }
-    return { ...(updated?.[0] || {}), payroll_review_required: payrollReviewRequired };
+    return {
+      ...(updated?.[0] || {}),
+      payroll_review_required: payrollReviewRequired,
+    };
   }
 
   async recordAttendance(tenantId: string, data: any, auditContext?: any) {
@@ -1562,6 +1651,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         : null;
     const timing = await this.attendanceControl.calculateAttendanceMetrics(
       tenantId,
+      attendanceDate,
       checkIn,
       workHours || 0,
     );
@@ -1578,13 +1668,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       check_out_time: checkOut,
       check_in_notes: data.remarks || data.notes || null,
       status:
-        timing.lateMinutes > 0 && canonicalStatus === "PRESENT"
+        timing.lateMinutes !== null &&
+        timing.lateMinutes > 0 &&
+        canonicalStatus === "PRESENT"
           ? "LATE"
           : canonicalStatus,
       work_hours: workHours === null ? null : roundCurrency(workHours),
-      late_minutes: timing.lateMinutes,
-      overtime_hours: timing.overtimeHours,
+      late_minutes: timing.lateMinutes ?? 0,
+      overtime_hours: timing.overtimeHours ?? 0,
       approval_status: "NOT_REQUIRED",
+      ...(timing.derivedMetricsStatus
+        ? { metadata: { derived_metrics_status: timing.derivedMetricsStatus } }
+        : {}),
     };
     const { data: result, error } = await this.supabase
       .from("attendance")
@@ -1595,7 +1690,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (error) throw new Error(error.message);
     if (auditContext && priorReadCompleted && result?.length) {
       auditContext.auditSnapshot = {
-        ...await this.buildAttendanceAuditSnapshot(tenantId, priorRecord, result[0], data),
+        ...(await this.buildAttendanceAuditSnapshot(
+          tenantId,
+          priorRecord,
+          result[0],
+          data,
+        )),
         action: priorRecord ? "UPDATE" : "CREATE",
       };
     }
@@ -1622,7 +1722,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return data || [];
   }
 
-  async updateAttendance(tenantId: string, id: string, data: any, auditContext?: any) {
+  async updateAttendance(
+    tenantId: string,
+    id: string,
+    data: any,
+    auditContext?: any,
+  ) {
     let priorRecord: any = null;
     try {
       const { data: existingAttendance } = await this.supabase
@@ -1634,11 +1739,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       priorRecord = existingAttendance;
       if (!priorRecord) {
         const { data: existingLegacy } = await this.supabase
-        .from("attendance_records")
-        .select("*")
-        .eq("tenant_id", tenantId)
-        .eq("id", id)
-        .maybeSingle();
+          .from("attendance_records")
+          .select("*")
+          .eq("tenant_id", tenantId)
+          .eq("id", id)
+          .maybeSingle();
         priorRecord = existingLegacy;
       }
     } catch {
@@ -1661,7 +1766,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         data.check_out_time,
       ),
       status: data.status || "PRESENT",
-      check_in_notes: data.remarks || data.notes || null,
+      check_in_notes:
+        data.check_in_notes !== undefined
+          ? data.check_in_notes
+          : (priorRecord?.check_in_notes ?? data.remarks ?? data.notes ?? null),
+      check_out_notes:
+        data.check_out_notes !== undefined
+          ? data.check_out_notes
+          : (priorRecord?.check_out_notes ?? null),
       ...withAttendanceTravelFields(data),
     };
     if (data?.attendance_source === "MANUAL_HR_ENTRY") {
@@ -1683,12 +1795,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     }
     const timing = await this.attendanceControl.calculateAttendanceMetrics(
       tenantId,
+      attendanceDate,
       attendanceData.check_in_time,
       Number(attendanceData.work_hours || 0),
     );
-    attendanceData.late_minutes = timing.lateMinutes;
-    attendanceData.overtime_hours = timing.overtimeHours;
+    if (timing.derivedMetricsStatus) {
+      attendanceData.metadata = {
+        ...(priorRecord?.metadata && typeof priorRecord.metadata === "object"
+          ? priorRecord.metadata
+          : {}),
+        ...(attendanceData.metadata || {}),
+        derived_metrics_status: timing.derivedMetricsStatus,
+      };
+      // The numeric fields are non-nullable in older production schemas. Keep
+      // their stored values for audit, but metadata is authoritative.
+    } else {
+      attendanceData.late_minutes = timing.lateMinutes;
+      attendanceData.overtime_hours = timing.overtimeHours;
+      if (attendanceData.metadata) {
+        delete attendanceData.metadata.derived_metrics_status;
+      }
+    }
     if (
+      timing.lateMinutes !== null &&
       timing.lateMinutes > 0 &&
       String(attendanceData.status).toUpperCase() === "PRESENT"
     ) {
@@ -1732,7 +1861,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
     if (!currentError && currentResult && currentResult.length > 0) {
       if (auditContext) {
-        auditContext.auditSnapshot = await this.buildAttendanceAuditSnapshot(tenantId, priorRecord, currentResult[0], data);
+        auditContext.auditSnapshot = await this.buildAttendanceAuditSnapshot(
+          tenantId,
+          priorRecord,
+          currentResult[0],
+          data,
+        );
       }
       return currentResult;
     }
@@ -1778,19 +1912,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (legacyError)
       throw new Error(currentError?.message || legacyError.message);
     if (auditContext && legacyResult?.length) {
-      auditContext.auditSnapshot = await this.buildAttendanceAuditSnapshot(tenantId, priorRecord, legacyResult[0], data);
+      auditContext.auditSnapshot = await this.buildAttendanceAuditSnapshot(
+        tenantId,
+        priorRecord,
+        legacyResult[0],
+        data,
+      );
     }
     return legacyResult;
   }
 
-  private async buildAttendanceAuditSnapshot(tenantId: string, before: any, after: any, request: any) {
-    const employeeId = after?.employee_id || before?.employee_id || request?.employee_id;
+  private async buildAttendanceAuditSnapshot(
+    tenantId: string,
+    before: any,
+    after: any,
+    request: any,
+  ) {
+    const employeeId =
+      after?.employee_id || before?.employee_id || request?.employee_id;
     let employee: any = null;
     if (employeeId) {
       try {
         const { data } = await this.supabase
           .from("employees")
-        .select("id, employee_name, employee_code")
+          .select("id, employee_name, employee_code")
           .eq("tenant_id", tenantId)
           .eq("id", employeeId)
           .maybeSingle();
@@ -1801,15 +1946,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       }
     }
     const employeeName = employee?.employee_name || null;
-    const businessSnapshot = (record: any) => record && Object.fromEntries(
-      Object.entries(record).filter(([key]) => !/gps|latitude|longitude|coordinates|accuracy|device|photo|image/i.test(key)),
-    );
+    const businessSnapshot = (record: any) =>
+      record &&
+      Object.fromEntries(
+        Object.entries(record).filter(
+          ([key]) =>
+            !/gps|latitude|longitude|coordinates|accuracy|device|photo|image/i.test(
+              key,
+            ),
+        ),
+      );
     return {
       oldValue: businessSnapshot(before),
       newValue: businessSnapshot(after),
       employee_name: employeeName,
       employee_code: employee?.employee_code || null,
-      attendance_date: after?.attendance_date || before?.attendance_date || null,
+      attendance_date:
+        after?.attendance_date || before?.attendance_date || null,
       reason: request?.remarks || request?.notes || null,
       source: request?.source || request?.attendance_source || "manual",
     };
@@ -1878,7 +2031,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .eq("employee_id", employee.id)
       .select();
 
-    if (legacyError) throw new Error(currentError?.message || legacyError.message);
+    if (legacyError)
+      throw new Error(currentError?.message || legacyError.message);
     if (!legacyResult || legacyResult.length === 0) {
       throw new BadRequestException(
         "Attendance record not found for this employee",
@@ -1977,6 +2131,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           : null;
       const timing = await this.attendanceControl.calculateAttendanceMetrics(
         tenantId,
+        attendanceDate,
         checkIn,
         workHours || 0,
       );
@@ -1990,15 +2145,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         check_in_time: checkIn,
         check_out_time: checkOut,
         status:
-          timing.lateMinutes > 0 && requestedStatus === "PRESENT"
+          timing.lateMinutes !== null &&
+          timing.lateMinutes > 0 &&
+          requestedStatus === "PRESENT"
             ? "LATE"
             : requestedStatus === "WORK_FROM_HOME"
               ? "WFH"
               : requestedStatus,
         check_in_notes: r?.remarks || null,
         work_hours: workHours === null ? null : roundCurrency(workHours),
-        late_minutes: timing.lateMinutes,
-        overtime_hours: timing.overtimeHours,
+        late_minutes: timing.lateMinutes ?? 0,
+        overtime_hours: timing.overtimeHours ?? 0,
+        ...(timing.derivedMetricsStatus
+          ? {
+              metadata: { derived_metrics_status: timing.derivedMetricsStatus },
+            }
+          : {}),
         approval_status: "NOT_REQUIRED",
       });
     }
@@ -3678,7 +3840,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     }));
     const payableEmployees = payrollEmployees.filter(
       (employee: any) =>
-        !employeesWithoutSalary.some((missing: any) => missing.id === employee.id),
+        !employeesWithoutSalary.some(
+          (missing: any) => missing.id === employee.id,
+        ),
     );
     if (payableEmployees.length === 0) {
       const names = employeesWithoutSalary
@@ -3690,6 +3854,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       throw new BadRequestException(
         `Payroll blocked: salary structure is missing for ${employeesWithoutSalary.length} active employee(s): ${names}${employeesWithoutSalary.length > 10 ? ", …" : ""}`,
       );
+    }
+
+    const unresolvedPayrollMetrics = payableEmployees
+      .map((employee: any) => {
+        const summary: any =
+          attendanceSummaryByEmployee.get(String(employee.id)) || {};
+        if (
+          requiresAttendanceDerivedMetricsReview(
+            summary,
+            attendanceRegister.policy,
+            employee,
+          )
+        ) {
+          return {
+            employee_id: employee.id,
+            employee_code: employee.employee_code,
+            employee_name: employee.employee_name,
+            unresolved_days: summary.unresolved_derived_metrics_days || 0,
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+    if (unresolvedPayrollMetrics.length) {
+      throw new ConflictException({
+        code: "ATTENDANCE_DERIVED_METRICS_REVIEW_REQUIRED",
+        message:
+          "Attendance late or overtime metrics are unverified for this payroll period and could affect pay. Review the historical attendance policy before generating payslips.",
+        employees: unresolvedPayrollMetrics,
+      });
     }
 
     // Generate payslips from approved attendance, approved leave and the
@@ -3791,10 +3985,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           : 0;
       const employerPf = employeeSalaryComponents
         .filter((sc: any) => String(sc.component_type) === "PF_EMPLOYER")
-        .reduce((sum: number, sc: any) => sum + (parseFloat(sc.amount) || 0), 0);
+        .reduce(
+          (sum: number, sc: any) => sum + (parseFloat(sc.amount) || 0),
+          0,
+        );
       const employerEsi = employeeSalaryComponents
         .filter((sc: any) => String(sc.component_type) === "ESI_EMPLOYER")
-        .reduce((sum: number, sc: any) => sum + (parseFloat(sc.amount) || 0), 0);
+        .reduce(
+          (sum: number, sc: any) => sum + (parseFloat(sc.amount) || 0),
+          0,
+        );
       const totalDeductions = roundCurrency(
         recurringDeductions + attendanceDeduction + lateDeduction,
       );
@@ -3844,6 +4044,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           basic_hourly_rate: roundCurrency(baseHourlyRate),
           overtime_credit_days: overtimeCreditDays,
           overtime_eligible: employee.overtime_eligible !== false,
+          derived_metrics_status: summary.derived_metrics_status || null,
+          unresolved_derived_metrics_days:
+            summary.unresolved_derived_metrics_days || 0,
           employer_pf_contribution: roundCurrency(employerPf),
           employer_esi_contribution: roundCurrency(employerEsi),
           salary_components: employeeSalaryComponents.map((component: any) => ({
@@ -5139,6 +5342,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
     const timing = await this.attendanceControl.calculateAttendanceMetrics(
       tenantId,
+      today,
       now,
       0,
     );
@@ -5157,8 +5361,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       outside_zone_reason: outsideZone
         ? data.outsideZoneReason || data.notes
         : null,
-      status: timing.lateMinutes > 0 ? "LATE" : "PRESENT",
-      late_minutes: timing.lateMinutes,
+      status:
+        timing.lateMinutes !== null && timing.lateMinutes > 0
+          ? "LATE"
+          : "PRESENT",
+      late_minutes: timing.lateMinutes ?? 0,
+      ...(timing.derivedMetricsStatus
+        ? { metadata: { derived_metrics_status: timing.derivedMetricsStatus } }
+        : {}),
       approval_status: requiresOutsideEvidence ? "PENDING" : "NOT_REQUIRED",
     };
 
@@ -5298,6 +5508,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
     const timing = await this.attendanceControl.calculateAttendanceMetrics(
       String(existing.tenant_id || ""),
+      String(existing.attendance_date || today).slice(0, 10),
       existing.check_in_time,
       workHours,
     );
@@ -5315,8 +5526,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         ? data.notes
         : existing.outside_zone_reason,
       work_hours: workHours.toFixed(2),
-      late_minutes: timing.lateMinutes,
-      overtime_hours: timing.overtimeHours,
+      ...(timing.lateMinutes === null
+        ? {}
+        : { late_minutes: timing.lateMinutes }),
+      ...(timing.overtimeHours === null
+        ? {}
+        : { overtime_hours: timing.overtimeHours }),
+      ...(timing.derivedMetricsStatus
+        ? {
+            metadata: {
+              ...(existing.metadata && typeof existing.metadata === "object"
+                ? existing.metadata
+                : {}),
+              derived_metrics_status: timing.derivedMetricsStatus,
+            },
+          }
+        : {}),
     };
 
     const { data: result, error } = await this.supabase
