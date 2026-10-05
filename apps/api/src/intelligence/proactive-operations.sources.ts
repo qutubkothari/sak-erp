@@ -46,6 +46,25 @@ export class ProactiveOperationsSources {
     };
     const can = (permission: string) => hasPermission(scope.user, permission);
     const doctorTargets: Array<{ type: string; rows: any[]; rule: string; permission: string; module: string }> = [];
+    if (can('PAYROLL_CLOSE') || can('PAYROLL_APPROVE') || can('PAYROLL_COUNTERSIGN')) await source(['PAYROLL_CLOSE_BLOCKED', 'PAYROLL_READY_TO_CLOSE', 'PAYROLL_AWAITING_APPROVAL', 'PAYROLL_SECOND_APPROVAL_REQUIRED'], true, async () => {
+      const flags = await this.read(scope, 'hr_payroll_feature_flags', 'tenant_id,feature_key,is_enabled', query => query.eq('feature_key', 'PAYROLL_MONTH_COCKPIT_ENABLED'));
+      if (!flags.some(row => row.is_enabled === true)) return [];
+      const controls = await this.read(scope, 'hr_payroll_month_controls', 'id,tenant_id,payroll_month,version,stage,blocker_count,warning_count,last_action_at', query => query.in('stage', ['OPEN', 'READY_TO_CLOSE', 'APPROVAL_PENDING', 'SECOND_APPROVAL_REQUIRED']));
+      const candidates: AttentionCandidate[] = [];
+      for (const control of controls) {
+        const stage = String(control.stage);
+        const category = stage === 'OPEN' && Number(control.blocker_count) > 0 ? 'PAYROLL_CLOSE_BLOCKED'
+          : stage === 'READY_TO_CLOSE' ? 'PAYROLL_READY_TO_CLOSE'
+          : stage === 'APPROVAL_PENDING' ? 'PAYROLL_AWAITING_APPROVAL'
+          : stage === 'SECOND_APPROVAL_REQUIRED' ? 'PAYROLL_SECOND_APPROVAL_REQUIRED' : null;
+        if (!category) continue;
+        const permission = category === 'PAYROLL_CLOSE_BLOCKED' || category === 'PAYROLL_READY_TO_CLOSE' ? 'PAYROLL_CLOSE'
+          : category === 'PAYROLL_AWAITING_APPROVAL' ? 'PAYROLL_APPROVE' : 'PAYROLL_COUNTERSIGN';
+        if (!can(permission)) continue;
+        candidates.push(this.pending(category, { ...control, reference: control.payroll_month }, 'HR', 'PAYROLL_MONTH', `${control.payroll_month} payroll ${stage.toLowerCase().replace(/_/g, ' ')}`, `${Number(control.blocker_count) || 0} recorded close blockers and ${Number(control.warning_count) || 0} warnings. Review the month cockpit; this attention item does not change payroll state.`, permission, `/dashboard/hr/payroll/monthly-processing?month=${control.payroll_month}`, { month: control.payroll_month, version: control.version, stage, blocker_count: control.blocker_count, warning_count: control.warning_count, read_only: true }));
+      }
+      return candidates;
+    });
     await source(['OVERDUE_OPEN_PO', 'OPEN_PO_WITH_REJECTION'], can('purchase_orders:read') && can('grns:read'), async () => {
       const headers = await this.read(scope, 'purchase_orders', 'id,tenant_id,po_number,status,delivery_date');
       const summaries: any[] = [];

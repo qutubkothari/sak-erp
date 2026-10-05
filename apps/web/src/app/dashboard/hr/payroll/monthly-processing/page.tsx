@@ -70,6 +70,15 @@ export default function PayrollMonthlyProcessingPage() {
     }
   }, [month]);
 
+  const act = async (action: string) => {
+    setBusy(true); setError("");
+    try {
+      await apiClient.post(`/hr/payroll/control/month/${encodeURIComponent(month)}/${action}`, {});
+      await refresh();
+    } catch (e: any) { setError(e?.message || `Could not ${action.replace(/-/g, " ")} payroll.`); }
+    finally { setBusy(false); }
+  };
+
   useEffect(() => { void refresh(); }, [refresh]);
 
   return (
@@ -82,9 +91,10 @@ export default function PayrollMonthlyProcessingPage() {
           <p className="mt-2 max-w-2xl text-sm text-stone-600">Read the month’s existing payroll state and refresh deterministic close checks. Amounts use the tenant’s configured currency.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/dashboard/hr/team-desk" className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50">Team Desk</Link>
           <label className="text-sm font-semibold text-stone-700" htmlFor="payroll-month">Month</label>
           <input id="payroll-month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm" />
-          <button onClick={() => void refresh()} disabled={busy} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 disabled:opacity-50">
+          <button onClick={() => void act("check-again")} disabled={busy} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} /> Check Again
           </button>
         </div>
@@ -109,8 +119,8 @@ export default function PayrollMonthlyProcessingPage() {
             {cockpit.read_only && <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800">READ ONLY PREVIEW</span>}
           </div>
           <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {["OPEN", "READY_TO_CLOSE", "CLOSED", "CALCULATED", "APPROVAL_PENDING", "APPROVED", "PAID"].map((stage) => {
-              const stages = ["OPEN", "READY_TO_CLOSE", "CLOSED", "CALCULATED", "APPROVAL_PENDING", "APPROVED", "PAID"];
+            {["OPEN", "READY_TO_CLOSE", "CLOSED", "CALCULATED", "APPROVAL_PENDING", "SECOND_APPROVAL_REQUIRED", "APPROVED", "PAID"].map((stage) => {
+              const stages = ["OPEN", "READY_TO_CLOSE", "CLOSED", "CALCULATED", "APPROVAL_PENDING", "SECOND_APPROVAL_REQUIRED", "APPROVED", "PAID"];
               const done = stages.indexOf(cockpit.stage || "OPEN") >= stages.indexOf(stage);
               return <div key={stage} className={`rounded-xl border px-3 py-3 text-center text-xs font-bold sm:text-sm ${done ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-stone-200 bg-stone-50 text-stone-500"}`}>{stage}</div>;
             })}
@@ -158,7 +168,15 @@ export default function PayrollMonthlyProcessingPage() {
               {item.fix_href && <Link href={item.fix_href} className="mt-3 inline-block text-sm font-semibold text-blue-700 hover:underline">Open / Fix</Link>}
             </article>)}</div>}
         </section>
-        <p className="flex items-center gap-2 text-xs text-stone-500"><WalletCards className="h-4 w-4" />Calculate, approve, pay, and correction actions remain unavailable until their controlled workflow is validated and enabled.</p>
+        <div className="flex flex-wrap gap-2">
+          {cockpit.stage === "READY_TO_CLOSE" && <button disabled={busy || (cockpit.counts?.blocker_count || 0) > 0} onClick={() => void act("close")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Close month</button>}
+          {cockpit.stage === "CLOSED" && <button disabled={busy} onClick={() => void act("calculate")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Calculate</button>}
+          {cockpit.stage === "CALCULATED" && <button disabled={busy} onClick={() => void act("submit")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Send for approval</button>}
+          {cockpit.stage === "APPROVAL_PENDING" && <button disabled={busy} onClick={() => void act("approve")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Approve</button>}
+          {cockpit.stage === "SECOND_APPROVAL_REQUIRED" && <button disabled={busy} onClick={() => void act("countersign")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Countersign</button>}
+          {cockpit.stage === "APPROVED" && <button disabled={busy} onClick={() => void act("pay")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Mark paid</button>}
+        </div>
+        <p className="flex items-center gap-2 text-xs text-stone-500"><WalletCards className="h-4 w-4" />Mark paid records workflow status only. It does not initiate a payment.</p>
       </>}
     </main>
   );

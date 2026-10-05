@@ -13,6 +13,8 @@ import { OperatingEventsService } from "./operating-events.service";
 import { GovernedToolRegistryService } from "./governed-tool-registry.service";
 import { AiProviderService } from "../ai/ai-provider.service";
 import { CrossModuleExceptionService } from "./cross-module-exception.service";
+import { HrService } from "../hr/services/hr.service";
+import { hasPermission } from "../auth/utils/permission-utils";
 
 type Severity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
@@ -42,6 +44,7 @@ export class IntelligenceService {
     private readonly tools: GovernedToolRegistryService,
     private readonly ai: AiProviderService,
     private readonly crossModuleExceptions: CrossModuleExceptionService,
+    private readonly hrService: HrService,
   ) {}
 
   private hostWatchdog() {
@@ -1381,6 +1384,27 @@ export class IntelligenceService {
       throw new BadRequestException(
         "Ask Mizantra requires a question up to 500 characters.",
       );
+    const lower = question.toLowerCase();
+    if ((/payroll/.test(lower) && /stopping|blocker|waiting.*approval|approval|who needs to fix|payroll blockers/.test(lower)) || /what.{0,25}(?:waiting|needs).{0,20}my approval/.test(lower)) {
+      if (!hasPermission(user, "hr:read")) throw new ForbiddenException("HR read permission is required to inspect payroll workflow evidence.");
+      const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+      const requestedMonth = monthNames.findIndex(name => lower.includes(name));
+      const month = requestedMonth >= 0 ? `${new Date().getFullYear()}-${String(requestedMonth + 1).padStart(2, "0")}` : new Date().toISOString().slice(0, 7);
+      const cockpit = await this.hrService.getPayrollMonthCockpit(tenantId, month);
+      if (!cockpit.enabled) {
+        const answer = "Payroll Month Cockpit is not enabled for this tenant, so Brain cannot inspect payroll workflow evidence.";
+        return { intent: "PAYROLL_CONTROL_READ_ONLY", answer, evidence: [], financial_impact: null, recommended_action: "Ask an authorized administrator to enable the tenant payroll control feature after migration and data validation.", confidence: "HIGH", provider: "DETERMINISTIC", model: "payroll-control", fallback_used: false, executive_brief: answer, risk_if_ignored: null, follow_up_questions: [], read_only: true, generated_at: new Date().toISOString() };
+      }
+      const approvalQuestion = /approval/.test(lower);
+      const approvalEligible = cockpit.stage === "APPROVAL_PENDING" ? hasPermission(user, "PAYROLL_APPROVE") : cockpit.stage === "SECOND_APPROVAL_REQUIRED" ? hasPermission(user, "PAYROLL_COUNTERSIGN") : false;
+      const evidence = approvalQuestion
+        ? (approvalEligible ? [{ month, stage: cockpit.stage, responsible: "Authorized payroll approver", version: cockpit.version }] : [])
+        : (cockpit.blockers || []).slice(0, 6);
+      const answer = approvalQuestion
+        ? evidence.length ? `${month} payroll is waiting at ${cockpit.stage.replace(/_/g, " ")}.` : `${month} payroll has no recorded approval waiting in the current month cockpit.`
+        : evidence.length ? `${evidence.length} payroll close issue(s) are recorded for ${month}.` : `${month} payroll has no blockers in the current deterministic scan.`;
+      return { intent: "PAYROLL_CONTROL_READ_ONLY", answer, evidence, financial_impact: null, recommended_action: evidence.length ? "Open Monthly Processing and review the recorded evidence with the assigned HR or payroll owner." : "No payroll blocker action is indicated by the current scan.", confidence: "HIGH", provider: "DETERMINISTIC", model: "payroll-control", fallback_used: false, executive_brief: answer, risk_if_ignored: "Payroll workflow remains at its recorded stage until an authorized human action is taken.", follow_up_questions: [], read_only: true, generated_at: new Date().toISOString() };
+    }
     const [center, transformation] = await Promise.all([
       this.commandCenter(tenantId, user),
       this.transformationCockpit(tenantId),
@@ -1393,7 +1417,6 @@ export class IntelligenceService {
           ? scoped
           : transformationActions.filter((item: any) => item.domain === domain);
       });
-    const lower = question.toLowerCase();
     let intent = "PRIORITIES";
     let answer = "";
     let evidence: any[] = center.decision_inbox;

@@ -13,6 +13,7 @@ import {
   monthContainsEffectiveDate,
   safePayrollFeatureFlags,
   summarizePayrollBlockers,
+  payrollAttentionGroup,
 } from "./payroll-control.domain";
 
 describe("payroll control domain", () => {
@@ -35,6 +36,16 @@ describe("payroll control domain", () => {
     expect(() => assertPayrollTransition("OPEN", "CLOSED")).toThrow("Invalid payroll transition");
     expect(() => assertPayrollTransition("OPEN", "PAID")).toThrow("Invalid payroll transition");
     expect(() => assertPayrollTransition("CALCULATED", "PAID")).toThrow("Invalid payroll transition");
+    expect(() => assertPayrollTransition("APPROVAL_PENDING", "SECOND_APPROVAL_REQUIRED")).not.toThrow();
+    expect(() => assertPayrollTransition("SECOND_APPROVAL_REQUIRED", "APPROVED")).not.toThrow();
+    expect(() => assertPayrollTransition("APPROVAL_PENDING", "PAID")).toThrow("Invalid payroll transition");
+  });
+
+  it("groups payroll work by blocker severity and due date", () => {
+    expect(payrollAttentionGroup({ severity: "BLOCKER", today: "2026-10-05" })).toBe("BLOCKS PAYROLL CLOSE");
+    expect(payrollAttentionGroup({ dueDate: "2026-10-05", today: "2026-10-05" })).toBe("TODAY");
+    expect(payrollAttentionGroup({ dueDate: "2026-10-08", today: "2026-10-05" })).toBe("THIS WEEK");
+    expect(payrollAttentionGroup({ today: "2026-10-05" })).toBe("LATER");
   });
 
   it("resolves effective rules by employee, tenant, then profile precedence", () => {

@@ -11,3 +11,14 @@ describe("HR salary component collection read", () => {
     expect(hrService.getSalaryComponents).toHaveBeenCalledWith("tenant-1");
   });
 });
+
+describe("HR Team Desk read adapter", () => {
+  it("passes the authenticated user context into the scoped work queue", async () => {
+    const user = { tenantId: "tenant-1", userId: "user-1", permissions: ["hr:read"] };
+    const payload = { enabled: true, items: [], read_only: true };
+    const hrService = { getTeamDesk: jest.fn().mockResolvedValue(payload) };
+    const controller = new HrController(hrService as any, {} as any, {} as any);
+    await expect(controller.getTeamDesk({ user })).resolves.toBe(payload);
+    expect(hrService.getTeamDesk).toHaveBeenCalledWith(user);
+  });
+});

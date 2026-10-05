@@ -41,6 +41,20 @@ describe('Read-only attention source adapters', () => {
   it('detects overdue PO using existing receipt service', async () => { mockRows.purchase_orders = [row({ po_number: 'PO-1', status: 'APPROVED', delivery_date: '2026-10-01' })]; const result = await sources.scan(scope(['purchase_orders:read', 'grns:read']), '2026-10-03'); expect(result.items.map(item => item.category)).toEqual(['OVERDUE_OPEN_PO', 'OPEN_PO_WITH_REJECTION']); expect(receipt.reportingReceiptEvidence).toHaveBeenCalledWith(tenant, [entity], expect.any(AbortSignal)); });
   it('requires receipt permission, not just PO permission', async () => { await sources.scan(scope(['purchase_orders:read']), '2026-10-03'); expect(receipt.reportingReceiptEvidence).not.toHaveBeenCalled(); });
   it('requires successful complete source before resolving a rule', async () => { mockFailures.add('purchase_orders'); const result = await sources.scan(scope(['purchase_orders:read', 'grns:read']), '2026-10-03'); expect(result.complete_rules).not.toContain('OVERDUE_OPEN_PO'); expect(result.errors).not.toEqual([]); });
+  it('surfaces permission-scoped payroll attention using read-only control evidence', async () => {
+    mockRows.hr_payroll_feature_flags = [row({ feature_key: 'PAYROLL_MONTH_COCKPIT_ENABLED', is_enabled: true })];
+    mockRows.hr_payroll_month_controls = [row({ payroll_month: '2026-09', version: 2, stage: 'APPROVAL_PENDING', blocker_count: 0, warning_count: 1 })];
+    const result = await sources.scan(scope(['PAYROLL_APPROVE']), '2026-10-03');
+    expect(result.items.map(item => item.category)).toContain('PAYROLL_AWAITING_APPROVAL');
+    expect(result.items.find(item => item.category === 'PAYROLL_AWAITING_APPROVAL')?.evidence).toMatchObject({ month: '2026-09', read_only: true });
+    expect(mockWrites).not.toHaveBeenCalled();
+  });
+  it('does not expose payroll Attention without the matching workflow permission', async () => {
+    mockRows.hr_payroll_feature_flags = [row({ feature_key: 'PAYROLL_MONTH_COCKPIT_ENABLED', is_enabled: true })];
+    mockRows.hr_payroll_month_controls = [row({ payroll_month: '2026-09', version: 1, stage: 'SECOND_APPROVAL_REQUIRED', blocker_count: 0 })];
+    const result = await sources.scan(scope(['PAYROLL_APPROVE']), '2026-10-03');
+    expect(result.items.some(item => item.category.startsWith('PAYROLL_'))).toBe(false);
+  });
   it('scopes every database read to authenticated tenant', async () => { await sources.scan(scope(['items:read', 'inventory:read', 'purchase_orders:read', 'grns:read']), '2026-10-03'); expect(mockQueries.every(query => query.filters.some(([key, value]) => key === 'tenant_id' && value === tenant))).toBe(true); });
   it('does not return cross-tenant records', async () => { mockRows.items = [row({ tenant_id: 'foreign', code: 'SECRET', is_active: true, reorder_level: 5 })]; const result = await sources.scan(scope(['items:read', 'inventory:read']), '2026-10-03'); expect(result.items).toEqual([]); });
   it('does not return foreign-profile import', async () => { mockRows.smart_import_batches = [row({ profile: 'ARWA', requested_by: owner, original_filename: 'secret.xlsx', status: 'NEEDS_DATA' })]; expect((await sources.scan(scope([]), '2026-10-03')).items).toEqual([]); });

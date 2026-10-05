@@ -41,6 +41,10 @@ export const ATTENTION_RULES = [
   ['SMART_APPROVAL_REVIEW_POINTS', 'Purchasing', 'APPROVER'],
   ['ATTENDANCE_DATA_DOCTOR_ISSUE', 'HR', 'hr:approve'],
   ['SYSTEM_AUTOQA_HIGH', 'System', 'support_autofix:read'],
+  ['PAYROLL_CLOSE_BLOCKED', 'HR', 'PAYROLL_CLOSE'],
+  ['PAYROLL_READY_TO_CLOSE', 'HR', 'PAYROLL_CLOSE'],
+  ['PAYROLL_AWAITING_APPROVAL', 'HR', 'PAYROLL_APPROVE'],
+  ['PAYROLL_SECOND_APPROVAL_REQUIRED', 'HR', 'PAYROLL_COUNTERSIGN'],
 ] as const;
 
 export const severityOrder: Record<AttentionSeverity, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };

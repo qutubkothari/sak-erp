@@ -12,6 +12,7 @@ import {
   derivePayrollStage,
   calculateNetVariance,
   monthContainsEffectiveDate,
+  resolveSalaryComponentsAtDate,
   safePayrollFeatureFlags,
   findOverlappingEffectivePeriods,
   payrollVarianceFlagged,
@@ -23,6 +24,7 @@ import {
   validateHrPayrollRuleValue,
   payrollProfileCapabilities,
   summarizePayrollBlockers,
+  payrollAttentionGroup,
   type PayrollBlocker,
 } from "../payroll-control.domain";
 
@@ -2418,7 +2420,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         severity: "BLOCKER",
       });
     }
-    for (const row of salaryRows.filter((component: any) => Number(component.amount) < 0 && monthContainsEffectiveDate(component.effective_from, component.effective_to, month))) {
+    for (const row of salaryRows.filter((component: any) => (!Number.isFinite(Number(component.amount)) || Number(component.amount) < 0) && monthContainsEffectiveDate(component.effective_from, component.effective_to, month))) {
       blockers.push({
         key: `salary-negative:${row.id}`,
         entity_id: String(row.employee_id),
@@ -2430,9 +2432,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         severity: "BLOCKER",
       });
     }
-    const salaryByEmployee = new Set(
-      salaryRows.filter((row: any) => monthContainsEffectiveDate(row.effective_from, row.effective_to, month)).map((row: any) => String(row.employee_id)),
-    );
+    const salaryByEmployee = new Set<string>();
+    for (const employee of eligibleEmployees) {
+      const resolved = resolveSalaryComponentsAtDate(salaryRows.filter((row: any) => String(row.employee_id) === String(employee.id)), monthEnd);
+      if (resolved.some((row: any) => ["BASIC", "HRA", "ALLOWANCE", "BONUS"].includes(String(row.component_type).toUpperCase()) && Number(row.amount) > 0)) salaryByEmployee.add(String(employee.id));
+      if (resolved.some((row: any) => !row.effective_from)) blockers.push({
+        key: `salary-legacy-date:${employee.id}`, entity_id: String(employee.id), employee_name: employee.employee_name || employee.employee_code || "Employee",
+        reason: "A salary component has an unknown legacy effective start date; the current resolver retains it as fallback evidence.",
+        responsible: "HR / Payroll", fix_href: "/dashboard/hr/management?section=management&tab=payroll",
+        evidence: { component_ids: resolved.filter((row: any) => !row.effective_from).map((row: any) => row.id), payroll_effective_date: monthEnd }, severity: "WARNING",
+      });
+    }
     for (const employee of eligibleEmployees) {
       if (salaryByEmployee.has(String(employee.id))) continue;
       blockers.push({
@@ -2534,14 +2544,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       };
     });
     const counts = summarizePayrollBlockers(blockers);
+    const control = await this.payrollControl(tenantId, month);
+    const { data: makerCheckerConfig, error: makerCheckerError } = await this.supabase.from("hr_payroll_maker_checker_config").select("enabled,second_approval_threshold,updated_by,updated_at").eq("tenant_id", tenantId).maybeSingle();
+    if (makerCheckerError) throw new ConflictException(makerCheckerError.message);
     return {
       enabled: true,
       month,
-      version: 1,
-      stage: derivePayrollStage(run?.status),
+      version: control?.version || 1,
+      stage: control?.stage || derivePayrollStage(run?.status),
       responsible: "HR / Payroll",
-      last_action: run?.status || "OPEN",
-      last_action_at: run?.created_at || null,
+      last_action: control?.last_action || run?.status || "OPEN",
+      last_action_at: control?.last_action_at || run?.created_at || null,
       blockers,
       counts,
       variance,
@@ -2550,12 +2563,192 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       gross: totals.gross,
       deductions: totals.deductions,
       net: totals.net,
-      approval_state: run?.status === "APPROVED" ? "APPROVED" : "NOT_APPROVED",
-      payment_state: run?.status === "PAID" ? "PAID" : "NOT_PAID",
+      approval_state: ["APPROVED", "PAID"].includes(String(control?.stage || run?.status)) ? "APPROVED" : ["APPROVAL_PENDING", "SECOND_APPROVAL_REQUIRED"].includes(String(control?.stage)) ? String(control.stage) : "NOT_APPROVED",
+      payment_state: control?.stage === "PAID" || run?.status === "PAID" ? "PAID" : "NOT_PAID",
       legacy_run: run,
       flags,
-      read_only: true,
+      control,
+      maker_checker: makerCheckerConfig || { enabled: false, second_approval_threshold: null },
+      read_only: false,
     };
+  }
+
+  async setPayrollMakerCheckerConfig(tenantId: string, actorId: string, payload: { enabled?: boolean; second_approval_threshold?: number | null }) {
+    if (typeof payload.enabled !== "boolean") throw new BadRequestException("Maker/checker enabled must be a boolean.");
+    const threshold = payload.second_approval_threshold === null || payload.second_approval_threshold === undefined ? null : Number(payload.second_approval_threshold);
+    if (threshold !== null && (!Number.isFinite(threshold) || threshold < 0)) throw new BadRequestException("Second approval threshold must be a non-negative amount.");
+    const { data, error } = await this.supabase.from("hr_payroll_maker_checker_config").upsert({ tenant_id: tenantId, enabled: payload.enabled, second_approval_threshold: threshold, updated_by: actorId, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" }).select("tenant_id,enabled,second_approval_threshold,updated_by,updated_at").single();
+    if (error) throw new ConflictException(error.message);
+    return data;
+  }
+
+  private async payrollControl(tenantId: string, month: string) {
+    const { data, error } = await this.supabase.from("hr_payroll_month_controls").select("*")
+      .eq("tenant_id", tenantId).eq("payroll_month", month).order("version", { ascending: false }).limit(1).maybeSingle();
+    if (error) throw new ConflictException(error.message);
+    return data;
+  }
+
+  private async payrollInputChecksum(tenantId: string, month: string) {
+    const { start, end } = monthToRange(month);
+    const load = async (table: string, rangeColumn?: string) => {
+      let query: any = this.supabase.from(table).select("*").eq("tenant_id", tenantId);
+      if (rangeColumn) query = query.gte(rangeColumn, start).lte(rangeColumn, end);
+      let { data, error } = await query;
+      if (error && isMissingColumnError(error, `${table}.tenant_id`) && ["salary_components", "attendance", "attendance_records", "leave_requests"].includes(table)) {
+        const { data: employees, error: employeeError } = await this.supabase.from("employees").select("id").eq("tenant_id", tenantId);
+        if (employeeError) throw new ConflictException(`Could not scope ${table} payroll inputs to this tenant.`);
+        const ids = (employees || []).map((row: any) => row.id).filter(Boolean);
+        if (!ids.length) return [];
+        query = this.supabase.from(table).select("*").in("employee_id", ids);
+        if (rangeColumn) query = query.gte(rangeColumn, start).lte(rangeColumn, end);
+        ({ data, error } = await query);
+      }
+      if (error && isMissingRelationError(error, table)) return [];
+      if (error) throw new ConflictException(`Could not validate ${table} payroll inputs: ${error.message}`);
+      return (data || []).slice().sort((a: any, b: any) => String(a.id || "").localeCompare(String(b.id || "")));
+    };
+    const [employees, salaries, attendance, attendanceRecords, leaves, rules, overrides] = await Promise.all([
+      load("employees"), load("salary_components"), load("attendance", "attendance_date"),
+      load("attendance_records", "attendance_date"), load("leave_requests"),
+      load("hr_payroll_rule_versions"), load("hr_employee_payroll_rule_overrides"),
+    ]);
+    const monthLeaves = leaves.filter((row: any) => String(row.end_date || "") >= start && String(row.start_date || "") <= end);
+    const applicableRules = rules.filter((row: any) => String(row.effective_from || "") <= end && (!row.effective_to || String(row.effective_to) >= start));
+    const applicableOverrides = overrides.filter((row: any) => String(row.effective_from || "") <= end && (!row.effective_to || String(row.effective_to) >= start));
+    const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+    return createHash("sha256").update(JSON.stringify(canonical({ month, employees, salaries, attendance, attendanceRecords, leaves: monthLeaves, rules: applicableRules, overrides: applicableOverrides }))).digest("hex");
+  }
+
+  private async payrollCalculationChecksum(tenantId: string, month: string, control: any, runId: string) {
+    const slips = (await this.getPayslips(tenantId)).filter((row: any) => String(row.payroll_run_id) === runId).map((row: any) => ({ id: row.id, employee_id: row.employee_id, gross_salary: row.gross_salary, total_deductions: row.total_deductions, net_salary: row.net_salary, payroll_breakdown: row.payroll_breakdown })).sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
+    const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+    return createHash("sha256").update(JSON.stringify(canonical({ tenant_id: tenantId, month, control_id: control.id, version: control.version, input_checksum: control.input_checksum, run_id: runId, slips }))).digest("hex");
+  }
+
+  private async payrollResolutionReferences(tenantId: string, month: string) {
+    const effectiveDate = monthToRange(month).end;
+    const [employees, salaries, rulesResult] = await Promise.all([
+      this.getEmployees(tenantId), this.getSalaryComponents(tenantId),
+      this.supabase.from("hr_payroll_rule_versions").select("id,effective_from,effective_to").eq("tenant_id", tenantId).lte("effective_from", effectiveDate).or(`effective_to.is.null,effective_to.gte.${effectiveDate}`),
+    ]);
+    if (rulesResult.error && !isMissingRelationError(rulesResult.error, "hr_payroll_rule_versions")) throw new ConflictException(rulesResult.error.message);
+    const salaryIds = employees.flatMap((employee: any) => resolveSalaryComponentsAtDate((salaries || []).filter((row: any) => String(row.employee_id) === String(employee.id)), effectiveDate).map((row: any) => row.id).filter(Boolean)).sort();
+    const { data: overrides, error: overrideError } = await this.supabase.from("hr_employee_payroll_rule_overrides").select("id,effective_from,effective_to").eq("tenant_id", tenantId).lte("effective_from", effectiveDate).or(`effective_to.is.null,effective_to.gte.${effectiveDate}`);
+    if (overrideError && !isMissingRelationError(overrideError, "hr_employee_payroll_rule_overrides")) throw new ConflictException(overrideError.message);
+    return { payroll_effective_date: effectiveDate, salary_component_version_ids: salaryIds, payroll_rule_version_ids: (rulesResult.data || []).map((row: any) => row.id).filter(Boolean).sort(), employee_override_version_ids: (overrides || []).map((row: any) => row.id).filter(Boolean).sort() };
+  }
+
+  async checkPayrollMonthAgain(tenantId: string, month: string, actorId: string) {
+    const cockpit = await this.getPayrollMonthCockpit(tenantId, month);
+    if (!cockpit.enabled) throw new ConflictException("Payroll Month Cockpit is not enabled for this tenant.");
+    const inputChecksum = await this.payrollInputChecksum(tenantId, month);
+    const resolutionSnapshot = await this.payrollResolutionReferences(tenantId, month);
+    const { data, error } = await this.supabase.rpc("hr_payroll_control_check_again", {
+      p_tenant_id: tenantId, p_month: month, p_actor_id: actorId,
+      p_blockers: cockpit.blockers, p_blocker_count: cockpit.counts.blocker_count,
+      p_warning_count: cockpit.counts.warning_count, p_input_checksum: inputChecksum,
+      p_resolution_snapshot: resolutionSnapshot,
+    });
+    if (error) throw new ConflictException(error.message);
+    return { ...cockpit, control: data, version: data?.version || 1, stage: data?.stage || cockpit.stage, last_action: "CHECK_AGAIN", last_action_at: data?.last_action_at, read_only: false };
+  }
+
+  private async transitionPayrollControl(input: { tenantId: string; month: string; actorId: string; expected: string; next: string; action: string; reason?: string; evidence?: any; checksum?: string; makerChecker?: boolean; secondApproval?: boolean }) {
+    const control = await this.payrollControl(input.tenantId, input.month);
+    if (!control) throw new ConflictException("Run Check Again before this payroll action.");
+    const { data, error } = await this.supabase.rpc("hr_payroll_control_transition", {
+      p_tenant_id: input.tenantId, p_control_id: control.id, p_expected_stage: input.expected,
+      p_to_stage: input.next, p_actor_id: input.actorId, p_action: input.action,
+      p_reason: input.reason || null, p_evidence: input.evidence || {},
+      p_expected_checksum: input.checksum || null, p_maker_checker_enabled: input.makerChecker !== false,
+      p_second_approval_required: input.secondApproval === true,
+    });
+    if (error) throw new ConflictException(error.message);
+    return data;
+  }
+
+  async closePayrollMonth(tenantId: string, month: string, actorId: string) {
+    const scan = await this.checkPayrollMonthAgain(tenantId, month, actorId);
+    if (scan.counts.blocker_count) throw new ConflictException("PAYROLL_STATE_CHANGED: payroll close blockers remain after revalidation.");
+    return this.transitionPayrollControl({ tenantId, month, actorId, expected: "READY_TO_CLOSE", next: "CLOSED", action: "CLOSE_MONTH", checksum: scan.control?.input_checksum, evidence: { blockers: scan.blockers, input_checksum: scan.control?.input_checksum, resolution_snapshot: scan.control?.resolution_snapshot || {} } });
+  }
+
+  async calculateControlledPayroll(tenantId: string, month: string, actorId: string) {
+    const control = await this.payrollControl(tenantId, month);
+    if (!control || control.stage !== "CLOSED") throw new ConflictException("Payroll must be closed before calculation.");
+    const cockpit = await this.getPayrollMonthCockpit(tenantId, month);
+    if (cockpit.counts.blocker_count) throw new ConflictException("PAYROLL_STATE_CHANGED: close blockers appeared before calculation.");
+    if (await this.payrollInputChecksum(tenantId, month) !== control.input_checksum) throw new ConflictException("PAYROLL_STATE_CHANGED: payroll inputs changed after Check Again.");
+    let runId = cockpit.legacy_run?.id;
+    if (!runId) {
+      const created = await this.createPayrollRun(tenantId, { payroll_month: month, status: "PENDING" }, actorId);
+      runId = Array.isArray(created) ? created[0]?.id : created?.id;
+    }
+    if (!runId) throw new ConflictException("Could not resolve a payroll run for this month.");
+    await this.generatePayslip(tenantId, { run_id: runId }, actorId);
+    const calculationChecksum = await this.payrollCalculationChecksum(tenantId, month, control, runId);
+    const { data: policy } = await this.supabase.from("hr_payroll_maker_checker_config").select("enabled,second_approval_threshold").eq("tenant_id", tenantId).maybeSingle();
+    const thresholdEnd = monthToRange(month).end;
+    const { data: thresholdRules, error: thresholdError } = await this.supabase.from("hr_payroll_rule_versions").select("id,rule_key,rule_value,effective_from,effective_to,created_at").eq("tenant_id", tenantId).eq("rule_key", "approval_threshold").lte("effective_from", thresholdEnd).or(`effective_to.is.null,effective_to.gte.${monthToRange(month).start}`);
+    if (thresholdError && !isMissingRelationError(thresholdError, "hr_payroll_rule_versions")) throw new ConflictException(thresholdError.message);
+    const ruleResolution = resolvePayrollRule({ ruleKey: "approval_threshold", effectiveDate: thresholdEnd, tenantRules: thresholdRules || [] });
+    const threshold = policy?.second_approval_threshold ?? ruleResolution.value ?? null;
+    const policySnapshot = { enabled: policy?.enabled === true, second_approval_threshold: threshold, threshold_rule_version_id: ruleResolution.version?.id || null };
+    const { error: checksumError } = await this.supabase.from("hr_payroll_month_controls").update({ payroll_run_id: runId, calculation_checksum: calculationChecksum, maker_checker_snapshot: policySnapshot }).eq("tenant_id", tenantId).eq("id", control.id).eq("stage", "CLOSED");
+    if (checksumError) throw new ConflictException(checksumError.message);
+    return this.transitionPayrollControl({ tenantId, month, actorId, expected: "CLOSED", next: "CALCULATED", action: "CALCULATE", evidence: { payroll_run_id: runId, input_checksum: control.input_checksum, calculation_checksum: calculationChecksum, resolution_snapshot: control.resolution_snapshot || {} } });
+  }
+
+  async calculateControlledPayrollByRun(tenantId: string, runId: string, actorId: string) {
+    const { data: run, error } = await this.supabase.from("payroll_runs").select("id,payroll_month").eq("tenant_id", tenantId).eq("id", runId).maybeSingle();
+    if (error || !run) throw new NotFoundException("Payroll run was not found for this tenant.");
+    const latest = await this.supabase.from("payroll_runs").select("id").eq("tenant_id", tenantId).eq("payroll_month", run.payroll_month).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (latest.error || latest.data?.id !== runId) throw new ConflictException("Only the current payroll run can be calculated through the month cockpit.");
+    return this.calculateControlledPayroll(tenantId, String(run.payroll_month), actorId);
+  }
+
+  async submitControlledPayroll(tenantId: string, month: string, actorId: string) {
+    const control = await this.payrollControl(tenantId, month);
+    if (!control?.input_checksum) throw new ConflictException("Payroll calculation has no validated input checksum.");
+    const scan = await this.getPayrollMonthCockpit(tenantId, month);
+    if (scan.counts.blocker_count) throw new ConflictException("PAYROLL_STATE_CHANGED: payroll inputs now have blockers.");
+    const currentChecksum = await this.payrollInputChecksum(tenantId, month);
+    if (currentChecksum !== control.input_checksum) throw new ConflictException("PAYROLL_STATE_CHANGED: inputs changed after calculation; recalculate before approval.");
+    const currentCalculationChecksum = control.payroll_run_id ? await this.payrollCalculationChecksum(tenantId, month, control, String(control.payroll_run_id)) : null;
+    if (!currentCalculationChecksum || currentCalculationChecksum !== control.calculation_checksum) throw new ConflictException("PAYROLL_STATE_CHANGED: calculated payslips changed; recalculate before approval.");
+    const { data: policy } = await this.supabase.from("hr_payroll_maker_checker_config").select("enabled,second_approval_threshold").eq("tenant_id", tenantId).maybeSingle();
+    return this.transitionPayrollControl({ tenantId, month, actorId, expected: "CALCULATED", next: "APPROVAL_PENDING", action: "SUBMIT_FOR_APPROVAL", checksum: control.calculation_checksum, evidence: { calculation_checksum: control.calculation_checksum, input_checksum: control.input_checksum, second_approval_threshold: policy?.second_approval_threshold ?? null } });
+  }
+
+  async approveControlledPayroll(tenantId: string, month: string, actorId: string) {
+    const control = await this.payrollControl(tenantId, month);
+    if (!control?.calculation_checksum) throw new ConflictException("No submitted payroll checksum is available.");
+    if (await this.payrollInputChecksum(tenantId, month) !== control.input_checksum) throw new ConflictException("PAYROLL_STATE_CHANGED: payroll source inputs changed after submission; recalculate and resubmit.");
+    if (control.payroll_run_id && await this.payrollCalculationChecksum(tenantId, month, control, String(control.payroll_run_id)) !== control.calculation_checksum) throw new ConflictException("PAYROLL_STATE_CHANGED: submitted calculation changed; recalculate and resubmit.");
+    const { data: policy } = await this.supabase.from("hr_payroll_maker_checker_config").select("enabled,second_approval_threshold").eq("tenant_id", tenantId).maybeSingle();
+    const thresholdEnd = monthToRange(month).end;
+    const { data: thresholdRules, error: thresholdError } = await this.supabase.from("hr_payroll_rule_versions").select("id,rule_key,rule_value,effective_from,effective_to,created_at").eq("tenant_id", tenantId).eq("rule_key", "approval_threshold").lte("effective_from", thresholdEnd).or(`effective_to.is.null,effective_to.gte.${monthToRange(month).start}`);
+    if (thresholdError && !isMissingRelationError(thresholdError, "hr_payroll_rule_versions")) throw new ConflictException(thresholdError.message);
+    const cockpit = await this.getPayrollMonthCockpit(tenantId, month);
+    const net = Number(cockpit.net || 0);
+    const snapshot = control.maker_checker_snapshot || {};
+    const resolvedThreshold = resolvePayrollRule({ ruleKey: "approval_threshold", effectiveDate: thresholdEnd, tenantRules: thresholdRules || [] });
+    const effectiveThreshold = Object.prototype.hasOwnProperty.call(snapshot, "second_approval_threshold") ? snapshot.second_approval_threshold : policy?.second_approval_threshold ?? resolvedThreshold.value ?? null;
+    const second = effectiveThreshold !== null && Number.isFinite(Number(effectiveThreshold)) && net > Number(effectiveThreshold);
+    const next = second ? "SECOND_APPROVAL_REQUIRED" : "APPROVED";
+    return this.transitionPayrollControl({ tenantId, month, actorId, expected: "APPROVAL_PENDING", next, action: second ? "FIRST_APPROVAL" : "APPROVE", checksum: control.calculation_checksum, makerChecker: snapshot.enabled === true, secondApproval: second, evidence: { net, threshold: effectiveThreshold, calculation_checksum: control.calculation_checksum, maker_checker_snapshot: snapshot, approval_threshold_rule_version_id: snapshot.threshold_rule_version_id || resolvedThreshold.version?.id || null } });
+  }
+
+  async countersignControlledPayroll(tenantId: string, month: string, actorId: string) {
+    const control = await this.payrollControl(tenantId, month);
+    if (!control?.calculation_checksum || await this.payrollInputChecksum(tenantId, month) !== control.input_checksum) throw new ConflictException("PAYROLL_STATE_CHANGED: payroll inputs changed; recalculate and resubmit before countersigning.");
+    if (control.payroll_run_id && await this.payrollCalculationChecksum(tenantId, month, control, String(control.payroll_run_id)) !== control.calculation_checksum) throw new ConflictException("PAYROLL_STATE_CHANGED: submitted calculation changed; recalculate and resubmit before countersigning.");
+    return this.transitionPayrollControl({ tenantId, month, actorId, expected: "SECOND_APPROVAL_REQUIRED", next: "APPROVED", action: "COUNTERSIGN", checksum: control?.calculation_checksum, makerChecker: control?.maker_checker_snapshot?.enabled === true, evidence: { calculation_checksum: control?.calculation_checksum, maker_checker_snapshot: control?.maker_checker_snapshot || {} } });
+  }
+
+  async markControlledPayrollPaid(tenantId: string, month: string, actorId: string) {
+    return this.transitionPayrollControl({ tenantId, month, actorId, expected: "APPROVED", next: "PAID", action: "MARK_PAID", evidence: { payment_executed: false } });
   }
 
   async getPayrollWorking(tenantId: string, payslipId: string) {
@@ -2607,6 +2800,39 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       evidence_complete: Array.isArray(breakdown.calculation_lines) && breakdown.calculation_lines.length > 0,
       deterministic_only: true,
     };
+  }
+
+  async getTeamDesk(user: any) {
+    const tenantId = String(user?.tenantId || "");
+    const actorId = String(user?.userId || user?.id || "");
+    const canAllHr = hasAdminBypass(user) || hasPermission(user, "hr:read") || hasPermission(user, "hr:approve");
+    const today = new Date().toISOString().slice(0, 10);
+    const features = await this.getPayrollControlFlags(tenantId);
+    if (!features.HR_TEAM_DESK_ENABLED) return { enabled: false, items: [], lanes: ["ALL", "ATTENDANCE", "LEAVE", "OVERTIME", "PAYROLL"], priority_groups: ["BLOCKS PAYROLL CLOSE", "TODAY", "THIS WEEK", "LATER"], read_only: true, tenant_id: tenantId };
+    const items: any[] = [];
+    const attendance = await this.attendanceControl.getApprovals(user, "PENDING");
+    for (const row of attendance) items.push({ id: `attendance:${row.id}`, type: "ATTENDANCE", employee: row.employee?.employee_name || row.employee?.employee_code || "Employee", reason: row.reason || "Attendance correction awaiting review", requested_at: row.requested_at, due_date: row.attendance_date || null, impact: "May block payroll close", owner: row.manager?.employee_name || "Attendance reviewer", state: row.status, href: "/dashboard/hr/management?section=management&tab=attendance", evidence: row });
+    if (canAllHr) {
+      const leaves = await this.getLeaves(tenantId);
+      for (const row of leaves.filter((item: any) => ["PENDING", "SUBMITTED"].includes(String(item.status).toUpperCase()))) items.push({ id: `leave:${row.id}`, type: "LEAVE", employee: row.employee_name || row.employee_id || "Employee", reason: `${row.leave_type || "Leave"} request`, requested_at: row.created_at, due_date: row.start_date || null, impact: "May affect payroll payable days", owner: "Leave approver", state: row.status, href: "/dashboard/hr/management?section=management&tab=leaves", evidence: { start_date: row.start_date, end_date: row.end_date, status: row.status, reason: row.reason } });
+    }
+    const employee = await this.getEmployeeByUserId(tenantId, actorId);
+    if (canAllHr || employee) {
+      const start = `${today.slice(0, 7)}-01`;
+      const end = monthToRange(today.slice(0, 7)).end;
+      const register = canAllHr ? await this.attendanceControl.buildRegister(tenantId, start, end) : await this.attendanceControl.buildRegisterForUser(user, start, end);
+      for (const day of register.daily.filter((row: any) => Number(row.overtime_hours || 0) > 0 && String(row.overtime_approval_status || "").toUpperCase() === "PENDING")) items.push({ id: `overtime:${day.employee_id}:${day.date}`, type: "OVERTIME", employee: day.employee_name || "Employee", reason: `${day.overtime_hours} overtime hours have an explicit pending review state`, requested_at: day.created_at || day.date, due_date: day.date, impact: "Pending in existing attendance workflow", owner: "Attendance reviewer", state: "PENDING", href: "/dashboard/hr/management?section=management&tab=attendance", evidence: { date: day.date, overtime_hours: day.overtime_hours }, actor_id: actorId });
+    }
+    if (hasPermission(user, "hr:read") || hasPermission(user, "PAYROLL_CLOSE") || hasPermission(user, "PAYROLL_CALCULATE") || hasPermission(user, "PAYROLL_APPROVE") || hasPermission(user, "PAYROLL_COUNTERSIGN") || hasPermission(user, "PAYROLL_PAY")) {
+      const { data: controls, error } = await this.supabase.from("hr_payroll_month_controls").select("id,tenant_id,payroll_month,version,stage,blocker_count,warning_count,last_action_at").eq("tenant_id", tenantId).order("payroll_month", { ascending: false });
+      if (error && !isMissingRelationError(error, "hr_payroll_month_controls")) throw new Error(error.message);
+      for (const row of controls || []) {
+        const required = row.stage === "APPROVAL_PENDING" ? "PAYROLL_APPROVE" : row.stage === "SECOND_APPROVAL_REQUIRED" ? "PAYROLL_COUNTERSIGN" : row.stage === "APPROVED" ? "PAYROLL_PAY" : "PAYROLL_CLOSE";
+        if (!hasPermission(user, "hr:read") && !hasPermission(user, required)) continue;
+        items.push({ id: `payroll:${row.id}`, type: "PAYROLL", employee: row.payroll_month, reason: `${row.stage.replace(/_/g, " ")} · ${row.blocker_count} close blockers`, requested_at: row.last_action_at, due_date: row.payroll_month + "-01", impact: row.blocker_count ? "Blocks payroll close" : "Payroll workflow action pending", owner: required.replace("PAYROLL_", "Payroll "), state: row.stage, href: `/dashboard/hr/payroll/monthly-processing?month=${row.payroll_month}`, evidence: row });
+      }
+    }
+    return { enabled: true, items: items.map(item => ({ ...item, priority_group: payrollAttentionGroup({ severity: /blocks payroll close/i.test(`${item.reason} ${item.impact}`) ? "BLOCKER" : undefined, dueDate: item.due_date, today }) })), lanes: ["ALL", "ATTENDANCE", "LEAVE", "OVERTIME", "PAYROLL"], priority_groups: ["BLOCKS PAYROLL CLOSE", "TODAY", "THIS WEEK", "LATER"], read_only: true, tenant_id: tenantId };
   }
 
   // Payroll Run
@@ -2828,6 +3054,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         row,
       ]),
     );
+    const [{ data: overtimeRules, error: overtimeRuleError }, { data: overtimeOverrides, error: overtimeOverrideError }] = await Promise.all([
+      this.supabase.from("hr_payroll_rule_versions").select("id,rule_key,rule_value,effective_from,effective_to,created_at").eq("tenant_id", tenantId).eq("rule_key", "overtime_rate").lte("effective_from", monthEnd).or(`effective_to.is.null,effective_to.gte.${monthStart}`),
+      this.supabase.from("hr_employee_payroll_rule_overrides").select("id,employee_id,rule_key,rule_value,effective_from,effective_to,created_at").eq("tenant_id", tenantId).in("employee_id", payrollEmployees.map((row: any) => row.id)).eq("rule_key", "overtime_rate").lte("effective_from", monthEnd).or(`effective_to.is.null,effective_to.gte.${monthStart}`),
+    ]);
+    if (overtimeRuleError && !isMissingRelationError(overtimeRuleError, "hr_payroll_rule_versions")) throw new ConflictException(overtimeRuleError.message);
+    if (overtimeOverrideError && !isMissingRelationError(overtimeOverrideError, "hr_employee_payroll_rule_overrides")) throw new ConflictException(overtimeOverrideError.message);
 
     const grossTypes = new Set(["BASIC", "HRA", "ALLOWANCE", "BONUS"]);
     const employeesWithoutSalary = payrollEmployees.filter(
@@ -2865,12 +3097,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     // tenant's reviewed attendance policy. Normal-day attendance is capped at
     // one paid day; overtime is calculated separately and remains auditable.
     const payslips = payableEmployees.map((employee, index) => {
-      const employeeSalaryComponents =
-        salaryComponents?.filter((sc: any) =>
-          sc.employee_id === employee.id &&
-          monthContainsEffectiveDate(sc.effective_from, sc.effective_to, payrollMonth),
-        ) ||
-        [];
+      const payrollEffectiveDate = monthEnd;
+      const overtimeResolution = resolvePayrollRule({ ruleKey: "overtime_rate", effectiveDate: payrollEffectiveDate, profileDefault: attendanceRegister.policy.overtime_multiplier, tenantRules: overtimeRules || [], employeeOverrides: (overtimeOverrides || []).filter((row: any) => String(row.employee_id) === String(employee.id)) });
+      const effectiveOvertimeRate = Number(overtimeResolution.value ?? attendanceRegister.policy.overtime_multiplier);
+      const employeeSalaryComponents = resolveSalaryComponentsAtDate(
+        (salaryComponents || []).filter((sc: any) => sc.employee_id === employee.id),
+        payrollEffectiveDate,
+      );
 
       const deductionTypes = new Set(["DEDUCTION", "PF", "ESI", "TAX"]);
 
@@ -2953,7 +3186,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
             : roundCurrency(
                 baseHourlyRate *
                   overtimeHours *
-                  attendanceRegister.policy.overtime_multiplier,
+                  effectiveOvertimeRate,
               )
           : 0;
       const employerPf = employeeSalaryComponents
@@ -2999,7 +3232,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         attendance_deduction: attendanceDeduction,
         late_deduction: lateDeduction,
         payroll_breakdown: {
-          policy: attendanceRegister.policy,
+          policy: { ...attendanceRegister.policy, overtime_multiplier: effectiveOvertimeRate, overtime_rule_source: overtimeResolution.source, overtime_rule_version_id: overtimeResolution.version?.id || null },
           present_days: Number(summary.present_days || 0),
           half_days: Number(summary.half_days || 0),
           payable_days: Number(summary.payable_days || 0),

@@ -237,7 +237,7 @@ CREATE TABLE IF NOT EXISTS public.hr_payroll_month_controls (
   payroll_month VARCHAR(7) NOT NULL CHECK (payroll_month ~ '^\d{4}-(0[1-9]|1[0-2])$'),
   version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
   stage TEXT NOT NULL DEFAULT 'OPEN' CHECK (stage IN (
-    'OPEN','READY_TO_CLOSE','CLOSED','CALCULATED','APPROVAL_PENDING','APPROVED','PAID','CORRECTION_OPEN'
+    'OPEN','READY_TO_CLOSE','CLOSED','CALCULATED','APPROVAL_PENDING','SECOND_APPROVAL_REQUIRED','APPROVED','PAID','CORRECTION_OPEN'
   )),
   payroll_run_id UUID REFERENCES public.payroll_runs(id) ON DELETE SET NULL,
   opened_by UUID NOT NULL,
@@ -246,9 +246,47 @@ CREATE TABLE IF NOT EXISTS public.hr_payroll_month_controls (
   last_action_by UUID NOT NULL,
   last_action_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   blocker_count INTEGER NOT NULL DEFAULT 0 CHECK (blocker_count >= 0),
+  warning_count INTEGER NOT NULL DEFAULT 0 CHECK (warning_count >= 0),
+  blocker_snapshot JSONB NOT NULL DEFAULT '[]'::JSONB,
+  resolution_snapshot JSONB NOT NULL DEFAULT '{}'::JSONB,
+  input_checksum TEXT,
+  calculation_checksum TEXT,
+  maker_checker_snapshot JSONB NOT NULL DEFAULT '{}'::JSONB,
+  calculated_by UUID,
+  calculated_at TIMESTAMPTZ,
+  submitted_by UUID,
+  submitted_at TIMESTAMPTZ,
+  first_approved_by UUID,
+  first_approved_at TIMESTAMPTZ,
+  countersigned_by UUID,
+  countersigned_at TIMESTAMPTZ,
+  paid_by UUID,
+  paid_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (tenant_id, payroll_month, version)
 );
+
+ALTER TABLE public.hr_payroll_month_controls
+  ADD COLUMN IF NOT EXISTS warning_count INTEGER NOT NULL DEFAULT 0 CHECK (warning_count >= 0),
+  ADD COLUMN IF NOT EXISTS blocker_snapshot JSONB NOT NULL DEFAULT '[]'::JSONB,
+  ADD COLUMN IF NOT EXISTS resolution_snapshot JSONB NOT NULL DEFAULT '{}'::JSONB,
+  ADD COLUMN IF NOT EXISTS input_checksum TEXT,
+  ADD COLUMN IF NOT EXISTS calculation_checksum TEXT,
+  ADD COLUMN IF NOT EXISTS maker_checker_snapshot JSONB NOT NULL DEFAULT '{}'::JSONB,
+  ADD COLUMN IF NOT EXISTS calculated_by UUID,
+  ADD COLUMN IF NOT EXISTS calculated_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS submitted_by UUID,
+  ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS first_approved_by UUID,
+  ADD COLUMN IF NOT EXISTS first_approved_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS countersigned_by UUID,
+  ADD COLUMN IF NOT EXISTS countersigned_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS paid_by UUID,
+  ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+
+ALTER TABLE public.hr_payroll_month_controls DROP CONSTRAINT IF EXISTS hr_payroll_month_controls_stage_check;
+ALTER TABLE public.hr_payroll_month_controls ADD CONSTRAINT hr_payroll_month_controls_stage_check
+  CHECK (stage IN ('OPEN','READY_TO_CLOSE','CLOSED','CALCULATED','APPROVAL_PENDING','SECOND_APPROVAL_REQUIRED','APPROVED','PAID','CORRECTION_OPEN'));
 
 CREATE INDEX IF NOT EXISTS idx_hr_payroll_month_controls_tenant_month
   ON public.hr_payroll_month_controls (tenant_id, payroll_month, version DESC);
@@ -268,6 +306,93 @@ CREATE TABLE IF NOT EXISTS public.hr_payroll_control_events (
 
 CREATE INDEX IF NOT EXISTS idx_hr_payroll_control_events_control
   ON public.hr_payroll_control_events (tenant_id, control_id, created_at DESC);
+
+CREATE OR REPLACE FUNCTION public.hr_payroll_control_events_immutable() RETURNS trigger
+LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'PAYROLL_AUDIT_EVENTS_ARE_APPEND_ONLY'; END; $$;
+DROP TRIGGER IF EXISTS hr_payroll_control_events_no_mutation ON public.hr_payroll_control_events;
+CREATE TRIGGER hr_payroll_control_events_no_mutation BEFORE UPDATE OR DELETE ON public.hr_payroll_control_events
+  FOR EACH ROW EXECUTE FUNCTION public.hr_payroll_control_events_immutable();
+
+-- Tenant-scoped, compare-and-set workflow transitions. Callers must still
+-- enforce their dedicated permission; this function provides atomic stage,
+-- checksum and segregation checks and appends immutable event evidence.
+CREATE OR REPLACE FUNCTION public.hr_payroll_control_transition(
+  p_tenant_id UUID, p_control_id UUID, p_expected_stage TEXT, p_to_stage TEXT,
+  p_actor_id UUID, p_action TEXT, p_reason TEXT DEFAULT NULL,
+  p_evidence JSONB DEFAULT '{}'::JSONB, p_expected_checksum TEXT DEFAULT NULL,
+  p_maker_checker_enabled BOOLEAN DEFAULT TRUE, p_second_approval_required BOOLEAN DEFAULT FALSE
+) RETURNS public.hr_payroll_month_controls
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+DECLARE v_control public.hr_payroll_month_controls%ROWTYPE;
+BEGIN
+  SELECT * INTO v_control FROM public.hr_payroll_month_controls
+    WHERE id = p_control_id AND tenant_id = p_tenant_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'PAYROLL_CONTROL_NOT_FOUND'; END IF;
+  IF v_control.stage <> p_expected_stage THEN RAISE EXCEPTION 'PAYROLL_STATE_CHANGED'; END IF;
+  IF p_expected_checksum IS NOT NULL AND COALESCE(v_control.calculation_checksum, v_control.input_checksum, '') <> p_expected_checksum THEN RAISE EXCEPTION 'PAYROLL_STATE_CHANGED'; END IF;
+  IF NOT (
+    (p_expected_stage = 'OPEN' AND p_to_stage = 'READY_TO_CLOSE') OR
+    (p_expected_stage = 'READY_TO_CLOSE' AND p_to_stage = 'CLOSED') OR
+    (p_expected_stage = 'CLOSED' AND p_to_stage = 'CALCULATED') OR
+    (p_expected_stage = 'CALCULATED' AND p_to_stage = 'APPROVAL_PENDING') OR
+    (p_expected_stage = 'APPROVAL_PENDING' AND p_to_stage IN ('APPROVED','SECOND_APPROVAL_REQUIRED')) OR
+    (p_expected_stage = 'SECOND_APPROVAL_REQUIRED' AND p_to_stage = 'APPROVED') OR
+    (p_expected_stage = 'APPROVED' AND p_to_stage = 'PAID')
+  ) THEN RAISE EXCEPTION 'INVALID_PAYROLL_TRANSITION'; END IF;
+  IF p_to_stage IN ('APPROVED','SECOND_APPROVAL_REQUIRED') AND p_maker_checker_enabled
+    AND v_control.calculated_by = p_actor_id THEN RAISE EXCEPTION 'PAYROLL_MAKER_CHECKER_VIOLATION'; END IF;
+  IF p_to_stage = 'APPROVED' AND p_expected_stage = 'SECOND_APPROVAL_REQUIRED' AND p_maker_checker_enabled
+    AND v_control.calculated_by = p_actor_id THEN RAISE EXCEPTION 'PAYROLL_MAKER_CHECKER_VIOLATION'; END IF;
+  IF p_to_stage = 'SECOND_APPROVAL_REQUIRED' AND NOT p_second_approval_required THEN RAISE EXCEPTION 'SECOND_APPROVAL_NOT_CONFIGURED'; END IF;
+  IF p_to_stage = 'APPROVED' AND p_expected_stage = 'SECOND_APPROVAL_REQUIRED'
+    AND v_control.first_approved_by = p_actor_id THEN RAISE EXCEPTION 'PAYROLL_COUNTERSIGN_SAME_APPROVER'; END IF;
+  UPDATE public.hr_payroll_month_controls SET
+    stage = p_to_stage, last_action = p_action, last_action_by = p_actor_id, last_action_at = now(),
+    calculated_by = CASE WHEN p_to_stage = 'CALCULATED' THEN p_actor_id ELSE calculated_by END,
+    calculated_at = CASE WHEN p_to_stage = 'CALCULATED' THEN now() ELSE calculated_at END,
+    submitted_by = CASE WHEN p_to_stage = 'APPROVAL_PENDING' THEN p_actor_id ELSE submitted_by END,
+    submitted_at = CASE WHEN p_to_stage = 'APPROVAL_PENDING' THEN now() ELSE submitted_at END,
+    first_approved_by = CASE WHEN p_to_stage IN ('APPROVED','SECOND_APPROVAL_REQUIRED') AND p_expected_stage = 'APPROVAL_PENDING' THEN p_actor_id ELSE first_approved_by END,
+    first_approved_at = CASE WHEN p_to_stage IN ('APPROVED','SECOND_APPROVAL_REQUIRED') AND p_expected_stage = 'APPROVAL_PENDING' THEN now() ELSE first_approved_at END,
+    countersigned_by = CASE WHEN p_to_stage = 'APPROVED' AND p_expected_stage = 'SECOND_APPROVAL_REQUIRED' THEN p_actor_id ELSE countersigned_by END,
+    countersigned_at = CASE WHEN p_to_stage = 'APPROVED' AND p_expected_stage = 'SECOND_APPROVAL_REQUIRED' THEN now() ELSE countersigned_at END,
+    paid_by = CASE WHEN p_to_stage = 'PAID' THEN p_actor_id ELSE paid_by END,
+    paid_at = CASE WHEN p_to_stage = 'PAID' THEN now() ELSE paid_at END
+  WHERE id = p_control_id AND tenant_id = p_tenant_id RETURNING * INTO v_control;
+  INSERT INTO public.hr_payroll_control_events
+    (tenant_id, control_id, actor_id, action, from_stage, to_stage, reason, evidence)
+  VALUES (p_tenant_id, p_control_id, p_actor_id, p_action, p_expected_stage, p_to_stage, p_reason,
+    COALESCE(p_evidence, '{}'::JSONB) || jsonb_build_object('calculation_checksum', v_control.calculation_checksum, 'version', v_control.version));
+  RETURN v_control;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.hr_payroll_control_check_again(
+  p_tenant_id UUID, p_month VARCHAR(7), p_actor_id UUID, p_blockers JSONB,
+  p_blocker_count INTEGER, p_warning_count INTEGER, p_input_checksum TEXT, p_resolution_snapshot JSONB DEFAULT '{}'::JSONB
+) RETURNS public.hr_payroll_month_controls
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public AS $$
+DECLARE v_control public.hr_payroll_month_controls%ROWTYPE; v_previous_stage TEXT;
+BEGIN
+  SELECT * INTO v_control FROM public.hr_payroll_month_controls WHERE tenant_id=p_tenant_id AND payroll_month=p_month ORDER BY version DESC LIMIT 1 FOR UPDATE;
+  IF NOT FOUND THEN
+    INSERT INTO public.hr_payroll_month_controls(tenant_id,payroll_month,opened_by,last_action_by)
+      VALUES(p_tenant_id,p_month,p_actor_id,p_actor_id) RETURNING * INTO v_control;
+  END IF;
+  IF v_control.stage NOT IN ('OPEN','READY_TO_CLOSE') THEN RAISE EXCEPTION 'PAYROLL_STATE_CHANGED'; END IF;
+  v_previous_stage := v_control.stage;
+  UPDATE public.hr_payroll_month_controls SET
+    stage = CASE WHEN p_blocker_count = 0 THEN 'READY_TO_CLOSE' ELSE 'OPEN' END,
+    blocker_count = GREATEST(0,p_blocker_count), warning_count=GREATEST(0,p_warning_count),
+    blocker_snapshot=COALESCE(p_blockers,'[]'::JSONB), resolution_snapshot=COALESCE(p_resolution_snapshot,'{}'::JSONB), input_checksum=p_input_checksum,
+    last_action='CHECK_AGAIN', last_action_by=p_actor_id, last_action_at=now()
+  WHERE id=v_control.id RETURNING * INTO v_control;
+  INSERT INTO public.hr_payroll_control_events(tenant_id,control_id,actor_id,action,from_stage,to_stage,evidence)
+    VALUES(p_tenant_id,v_control.id,p_actor_id,'CHECK_AGAIN',v_previous_stage,v_control.stage,
+      jsonb_build_object('blocker_count',p_blocker_count,'warning_count',p_warning_count,'input_checksum',p_input_checksum,'blockers',COALESCE(p_blockers,'[]'::JSONB),'resolution_snapshot',COALESCE(p_resolution_snapshot,'{}'::JSONB)));
+  RETURN v_control;
+END;
+$$;
 
 CREATE TABLE IF NOT EXISTS public.hr_payroll_rule_versions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

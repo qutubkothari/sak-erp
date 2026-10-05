@@ -11,6 +11,7 @@ describe("IntelligenceService critical behaviour", () => {
   const audit = { logActivity: jest.fn().mockResolvedValue(undefined) };
   const events = { recent: jest.fn(), record: jest.fn() };
   const crossModuleExceptions = { collect: jest.fn().mockResolvedValue([]) };
+  const hrService = { getPayrollMonthCockpit: jest.fn() };
   const tools = new GovernedToolRegistryService();
   const ai = {
     structuredJson: jest.fn(async (request: any) => ({
@@ -34,6 +35,7 @@ describe("IntelligenceService critical behaviour", () => {
       tools,
       ai as any,
       crossModuleExceptions as any,
+      hrService as any,
     );
   });
 
@@ -62,6 +64,25 @@ describe("IntelligenceService critical behaviour", () => {
     expect(result.sufficient_data).toBe(false);
     expect(result.confidence).toBe("LOW");
     expect(result.rows).toEqual([]);
+  });
+
+  it("answers payroll blocker questions from deterministic read-only cockpit evidence", async () => {
+    hrService.getPayrollMonthCockpit.mockResolvedValue({ enabled: true, month: "2026-09", stage: "OPEN", version: 1, blockers: [{ key: "salary-missing:e1", reason: "Salary missing", severity: "BLOCKER" }], counts: { blocker_count: 1 }, net: 0 });
+    const result = await service.ask("tenant-a", { id: "u", userId: "u", permissions: ["hr:read"] }, "What is stopping September payroll?", {});
+    expect(result.intent).toBe("PAYROLL_CONTROL_READ_ONLY");
+    expect(result.evidence[0].key).toBe("salary-missing:e1");
+    expect(result.read_only).toBe(true);
+    expect(ai.structuredJson).not.toHaveBeenCalled();
+    expect(hrService.getPayrollMonthCockpit).toHaveBeenCalledWith("tenant-a", "2026-09");
+  });
+
+  it("limits the my-approval Brain response to the caller's payroll approval permission", async () => {
+    hrService.getPayrollMonthCockpit.mockResolvedValue({ enabled: true, month: "2026-10", stage: "APPROVAL_PENDING", version: 2, blockers: [], counts: { blocker_count: 0 }, net: 0 });
+    const unauthorized = await service.ask("tenant-a", { id: "u", userId: "u", permissions: ["hr:read"] }, "What's waiting for my approval?", {});
+    expect(unauthorized.evidence).toEqual([]);
+    const authorized = await service.ask("tenant-a", { id: "u", userId: "u", permissions: ["hr:read", "PAYROLL_APPROVE"] }, "What's waiting for my approval?", {});
+    expect(authorized.evidence).toMatchObject([{ stage: "APPROVAL_PENDING", version: 2 }]);
+    expect(ai.structuredJson).not.toHaveBeenCalled();
   });
 
   it("does not execute a high-risk native action through the task endpoint", async () => {

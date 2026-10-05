@@ -26,6 +26,7 @@ import {
   RequireCreate,
   RequireRead,
   RequireUpdate,
+  RequirePermissions,
 } from "../../auth/decorators/permissions.decorator";
 import { hasSuperAdminBypass } from "../../auth/utils/permission-utils";
 import { FileInterceptor } from "@nestjs/platform-express";
@@ -532,22 +533,71 @@ export class HrController {
     return this.hrService.getPayrollMonthCockpit(req.user.tenantId, month);
   }
 
+  @Put("payroll/control/maker-checker")
+  @RequireUpdate("hr")
+  setPayrollMakerCheckerConfig(@Request() req: any, @Body() body: any) {
+    return this.hrService.setPayrollMakerCheckerConfig(req.user.tenantId, req.user.userId, body);
+  }
+
+  @Post("payroll/control/month/:month/check-again")
+  @RequirePermissions("hr:read")
+  checkPayrollMonthAgain(@Request() req: any, @Param("month") month: string) {
+    return this.hrService.checkPayrollMonthAgain(req.user.tenantId, month, req.user.userId);
+  }
+
+  @Post("payroll/control/month/:month/close")
+  @RequirePermissions("PAYROLL_CLOSE")
+  closePayrollMonth(@Request() req: any, @Param("month") month: string) {
+    return this.hrService.closePayrollMonth(req.user.tenantId, month, req.user.userId);
+  }
+
+  @Post("payroll/control/month/:month/calculate")
+  @RequirePermissions("PAYROLL_CALCULATE")
+  calculateControlledPayroll(@Request() req: any, @Param("month") month: string) {
+    return this.hrService.calculateControlledPayroll(req.user.tenantId, month, req.user.userId);
+  }
+
+  @Post("payroll/control/month/:month/submit")
+  @RequirePermissions("PAYROLL_CALCULATE")
+  submitControlledPayroll(@Request() req: any, @Param("month") month: string) {
+    return this.hrService.submitControlledPayroll(req.user.tenantId, month, req.user.userId);
+  }
+
+  @Post("payroll/control/month/:month/approve")
+  @RequirePermissions("PAYROLL_APPROVE")
+  approveControlledPayroll(@Request() req: any, @Param("month") month: string) {
+    return this.hrService.approveControlledPayroll(req.user.tenantId, month, req.user.userId);
+  }
+
+  @Post("payroll/control/month/:month/countersign")
+  @RequirePermissions("PAYROLL_COUNTERSIGN")
+  countersignControlledPayroll(@Request() req: any, @Param("month") month: string) {
+    return this.hrService.countersignControlledPayroll(req.user.tenantId, month, req.user.userId);
+  }
+
+  @Post("payroll/control/month/:month/pay")
+  @RequirePermissions("PAYROLL_PAY")
+  markControlledPayrollPaid(@Request() req: any, @Param("month") month: string) {
+    return this.hrService.markControlledPayrollPaid(req.user.tenantId, month, req.user.userId);
+  }
+
   @Get("payroll/control/working/:payslipId")
   @RequireRead("hr")
   getPayrollWorking(@Request() req: any, @Param("payslipId") payslipId: string) {
     return this.hrService.getPayrollWorking(req.user.tenantId, payslipId);
   }
 
+  @Get("team-desk")
+  getTeamDesk(@Request() req: any) {
+    return this.hrService.getTeamDesk(req.user);
+  }
+
   // Payslip Generation
   @Post("payroll/run/:runId/generate")
-  @RequireCreate("hr")
+  @RequirePermissions("PAYROLL_CALCULATE")
   async generatePayslips(@Request() req: any, @Param("runId") runId: string) {
     try {
-      return await this.hrService.generatePayslip(
-        req.user.tenantId,
-        { run_id: runId },
-        req.user.userId,
-      );
+      return await this.hrService.calculateControlledPayrollByRun(req.user.tenantId, runId, req.user.userId);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       const stack = err instanceof Error ? err.stack : undefined;

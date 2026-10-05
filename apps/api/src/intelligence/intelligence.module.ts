@@ -59,10 +59,12 @@ import { SmartImportModule } from '../smart-import/smart-import.module';
 import { UnifiedAiService } from './unified-ai.service';
 import { UnifiedAiContextService } from './unified-ai.context';
 import { FeatureAccessModule } from '../feature-access/feature-access.module';
+import { HrModule } from '../hr/hr.module';
 
 @Module({
   imports: [
     FeatureAccessModule,
+    HrModule,
     SmartImportModule,
     AuthModule,
     SupportAutofixModule,

@@ -4,6 +4,7 @@ export type PayrollStage =
   | "CLOSED"
   | "CALCULATED"
   | "APPROVAL_PENDING"
+  | "SECOND_APPROVAL_REQUIRED"
   | "APPROVED"
   | "PAID"
   | "CORRECTION_OPEN";
@@ -55,7 +56,8 @@ export function assertPayrollTransition(from: PayrollStage, to: PayrollStage) {
     READY_TO_CLOSE: ["CLOSED"],
     CLOSED: ["CALCULATED"],
     CALCULATED: ["APPROVAL_PENDING"],
-    APPROVAL_PENDING: ["APPROVED"],
+    APPROVAL_PENDING: ["APPROVED", "SECOND_APPROVAL_REQUIRED"],
+    SECOND_APPROVAL_REQUIRED: ["APPROVED"],
     APPROVED: ["PAID"],
     PAID: [],
     CORRECTION_OPEN: ["CALCULATED"],
@@ -63,6 +65,13 @@ export function assertPayrollTransition(from: PayrollStage, to: PayrollStage) {
   if (!allowed[from].includes(to)) {
     throw new Error(`Invalid payroll transition: ${from} -> ${to}`);
   }
+}
+
+export function payrollAttentionGroup(input: { severity?: string; dueDate?: string | null; today: string }) {
+  if (input.severity === "BLOCKER") return "BLOCKS PAYROLL CLOSE" as const;
+  if (input.dueDate && input.dueDate <= input.today) return "TODAY" as const;
+  if (input.dueDate && input.dueDate <= new Date(Date.parse(`${input.today}T00:00:00Z`) + 7 * 86400000).toISOString().slice(0, 10)) return "THIS WEEK" as const;
+  return "LATER" as const;
 }
 
 export type EffectiveRule<T = unknown> = {
