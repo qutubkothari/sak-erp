@@ -38,6 +38,11 @@ import {
   isSupportedPayrollDeploymentProfile,
   type PayrollBlocker,
 } from "../payroll-control.domain";
+import {
+  attendanceChecksumChanged,
+  buildMonthlyPayrollAttendancePreview,
+  type MonthlyPayrollAttendancePreview,
+} from "../monthly-payroll-attendance.domain";
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
@@ -4231,28 +4236,154 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   // Monthly Payroll Processing
+  async getMonthlyPayrollAttendancePreview(
+    tenantId: string,
+    employeeId: string,
+    month: string,
+  ): Promise<MonthlyPayrollAttendancePreview> {
+    const match = /^(\d{4})-(\d{2})$/.exec(String(month || ""));
+    const monthNumber = match ? Number(match[2]) : 0;
+    if (!match || monthNumber < 1 || monthNumber > 12) {
+      throw new BadRequestException(
+        "A valid payroll month (YYYY-MM) is required",
+      );
+    }
+    if (!isNonEmptyString(employeeId)) {
+      throw new BadRequestException(
+        "An employee is required for attendance preview",
+      );
+    }
+
+    const year = Number(match[1]);
+    const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    const start = `${month}-01`;
+    const end = `${month}-${String(daysInMonth).padStart(2, "0")}`;
+    const [register, employeeResult] = await Promise.all([
+      this.attendanceControl.buildRegister(tenantId, start, end, employeeId),
+      this.supabase
+        .from("employees")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("id", employeeId)
+        .maybeSingle(),
+    ]);
+    if (employeeResult.error) throw new Error(employeeResult.error.message);
+    if (!employeeResult.data) {
+      throw new NotFoundException("Employee not found for this tenant");
+    }
+    try {
+      return buildMonthlyPayrollAttendancePreview({
+        register,
+        employee: employeeResult.data,
+        employeeId,
+        tenantId,
+        month,
+        // The existing monthly form prorates salary by paid calendar days /
+        // Days in Month. Keep that established calendar-day payroll basis.
+        basis: "CALENDAR_DAY",
+      });
+    } catch (error: any) {
+      if (error?.message === "EMPLOYEE_NOT_IN_ATTENDANCE_REGISTER") {
+        throw new NotFoundException(
+          "Employee is not eligible for this attendance period",
+        );
+      }
+      throw error;
+    }
+  }
+
+  private assertMonthlyPayrollAttendanceReady(
+    preview: MonthlyPayrollAttendancePreview,
+  ) {
+    if (preview.review_required || preview.payable_days === null) {
+      throw new ConflictException({
+        code:
+          preview.review_code || "ATTENDANCE_DERIVED_METRICS_REVIEW_REQUIRED",
+        message:
+          "Attendance inputs need review before monthly payroll can be saved or processed.",
+        attendance_preview: preview,
+      });
+    }
+  }
+
+  private async calculateMonthlyPayrollAmounts(
+    tenantId: string,
+    employeeId: string,
+    data: any,
+    preview: MonthlyPayrollAttendancePreview,
+  ) {
+    const components = await this.getSalaryComponents(tenantId, employeeId);
+    const fixedComponents = components.filter(
+      (component: any) =>
+        ["BASIC", "HRA"].includes(
+          String(component.component_type || "").toUpperCase(),
+        ) || ["Medical", "Travelling"].includes(component.component_name),
+    );
+    const fixedTotal = fixedComponents.reduce(
+      (sum: number, component: any) => sum + Number(component.amount || 0),
+      0,
+    );
+    const fullMonthGross =
+      fixedTotal +
+      Number(data.bonus_monthly || 0) +
+      Number(data.production_incentive || 0) +
+      Number(data.special_allowance || 0);
+    const ratio =
+      preview.days_in_month > 0
+        ? Number(preview.payable_days || 0) / preview.days_in_month
+        : 0;
+    const grossSalary = roundCurrency(fullMonthGross * ratio);
+    const professionalTax = roundCurrency(
+      Number(data.professional_tax || 0) * ratio,
+    );
+    const netSalary = roundCurrency(grossSalary - professionalTax);
+    const monthlyHold =
+      Number(data.bonus_hold || 0) +
+      Number(data.production_incentive_hold || 0);
+    return {
+      gross_salary: grossSalary,
+      net_salary: netSalary,
+      monthly_hold: roundCurrency(monthlyHold),
+      amount_paid: roundCurrency(netSalary - monthlyHold),
+    };
+  }
+
   async createMonthlyPayroll(tenantId: string, data: any) {
+    const employeeId = String(data?.employee_id || "");
+    const month = String(data?.payroll_month || "");
+    const preview = await this.getMonthlyPayrollAttendancePreview(
+      tenantId,
+      employeeId,
+      month,
+    );
+    this.assertMonthlyPayrollAttendanceReady(preview);
+    const amounts = await this.calculateMonthlyPayrollAmounts(
+      tenantId,
+      employeeId,
+      data,
+      preview,
+    );
     const payload = {
       tenant_id: tenantId,
-      employee_id: data.employee_id,
-      payroll_month: data.payroll_month,
-      days_in_month: data.days_in_month,
-      days_travelled: data.days_travelled || 0,
-      comp_offs: data.comp_offs || 0,
-      leaves_absent: data.leaves_absent || 0,
-      approved_paid_leaves: data.approved_paid_leaves || 0,
-      paid_for_total_days: data.paid_for_total_days || 0,
+      employee_id: employeeId,
+      payroll_month: month,
+      days_in_month: preview.days_in_month,
+      days_travelled: preview.travel_days,
+      comp_offs: preview.comp_off_days,
+      leaves_absent: preview.absent_days + preview.unpaid_leave_days,
+      approved_paid_leaves: preview.paid_leave_days,
+      paid_for_total_days: preview.payable_days,
       bonus_monthly: data.bonus_monthly || 0,
       production_incentive: data.production_incentive || 0,
       bonus_hold: data.bonus_hold || 0,
       production_incentive_hold: data.production_incentive_hold || 0,
       special_allowance: data.special_allowance || 0,
       professional_tax: data.professional_tax || 0,
-      gross_salary: data.gross_salary,
-      net_salary: data.net_salary,
-      monthly_hold: data.monthly_hold,
-      amount_paid: data.amount_paid,
-      status: data.status || "DRAFT",
+      ...amounts,
+      attendance_summary: preview.attendance_summary,
+      attendance_checksum: preview.attendance_checksum,
+      attendance_snapshot_at: new Date().toISOString(),
+      status: "DRAFT",
     };
 
     const { data: result, error } = await this.supabase
@@ -4281,24 +4412,51 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   async updateMonthlyPayroll(tenantId: string, id: string, data: any) {
+    const employeeId = String(data?.employee_id || "");
+    if (!employeeId) {
+      const { data: current, error: currentError } = await this.supabase
+        .from("monthly_payroll")
+        .select("employee_id")
+        .eq("tenant_id", tenantId)
+        .eq("id", id)
+        .maybeSingle();
+      if (currentError) throw new Error(currentError.message);
+      if (!current?.employee_id) {
+        throw new NotFoundException("Monthly payroll record not found");
+      }
+      data.employee_id = current.employee_id;
+    }
+    const month = String(data?.payroll_month || "");
+    const preview = await this.getMonthlyPayrollAttendancePreview(
+      tenantId,
+      String(data.employee_id),
+      month,
+    );
+    this.assertMonthlyPayrollAttendanceReady(preview);
+    const amounts = await this.calculateMonthlyPayrollAmounts(
+      tenantId,
+      String(data.employee_id),
+      data,
+      preview,
+    );
     const payload: any = {
-      payroll_month: data.payroll_month,
-      days_in_month: data.days_in_month,
-      days_travelled: data.days_travelled || 0,
-      comp_offs: data.comp_offs || 0,
-      leaves_absent: data.leaves_absent || 0,
-      approved_paid_leaves: data.approved_paid_leaves || 0,
-      paid_for_total_days: data.paid_for_total_days || 0,
+      payroll_month: month,
+      days_in_month: preview.days_in_month,
+      days_travelled: preview.travel_days,
+      comp_offs: preview.comp_off_days,
+      leaves_absent: preview.absent_days + preview.unpaid_leave_days,
+      approved_paid_leaves: preview.paid_leave_days,
+      paid_for_total_days: preview.payable_days,
       bonus_monthly: data.bonus_monthly || 0,
       production_incentive: data.production_incentive || 0,
       bonus_hold: data.bonus_hold || 0,
       production_incentive_hold: data.production_incentive_hold || 0,
       special_allowance: data.special_allowance || 0,
       professional_tax: data.professional_tax || 0,
-      gross_salary: data.gross_salary,
-      net_salary: data.net_salary,
-      monthly_hold: data.monthly_hold,
-      amount_paid: data.amount_paid,
+      ...amounts,
+      attendance_summary: preview.attendance_summary,
+      attendance_checksum: preview.attendance_checksum,
+      attendance_snapshot_at: new Date().toISOString(),
     };
 
     const { data: result, error } = await this.supabase
@@ -4312,11 +4470,48 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   async processMonthlyPayroll(tenantId: string, id: string) {
+    const { data: current, error: currentError } = await this.supabase
+      .from("monthly_payroll")
+      .select("id,employee_id,payroll_month,status,attendance_checksum")
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
+      .maybeSingle();
+    if (currentError) throw new Error(currentError.message);
+    if (!current)
+      throw new NotFoundException("Monthly payroll record not found");
+    if (String(current.status || "DRAFT").toUpperCase() !== "DRAFT") {
+      throw new ConflictException({
+        code: "MONTHLY_PAYROLL_NOT_DRAFT",
+        message: "Only a draft monthly payroll can be processed.",
+      });
+    }
+    const preview = await this.getMonthlyPayrollAttendancePreview(
+      tenantId,
+      String(current.employee_id),
+      String(current.payroll_month),
+    );
+    if (
+      attendanceChecksumChanged(
+        current.attendance_checksum,
+        preview.attendance_checksum,
+      )
+    ) {
+      throw new ConflictException({
+        code: "ATTENDANCE_CHANGED_REVIEW_REQUIRED",
+        message:
+          "Attendance or leave changed after the payroll preview. Refresh the attendance preview before processing.",
+        attendance_preview: preview,
+      });
+    }
+    this.assertMonthlyPayrollAttendanceReady(preview);
     const { data: result, error } = await this.supabase
       .from("monthly_payroll")
       .update({
         status: "PROCESSED",
         processed_at: new Date().toISOString(),
+        attendance_summary: preview.attendance_summary,
+        attendance_checksum: preview.attendance_checksum,
+        attendance_snapshot_at: new Date().toISOString(),
       })
       .eq("tenant_id", tenantId)
       .eq("id", id)

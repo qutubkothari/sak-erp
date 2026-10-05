@@ -388,6 +388,36 @@ interface MonthlyPayroll {
   processed_at?: string;
 }
 
+interface MonthlyPayrollAttendancePreview {
+  employee_id: string;
+  employee_code: string;
+  employee_name: string;
+  payroll_month: string;
+  source: string;
+  days_in_month: number;
+  eligible_calendar_days: number;
+  working_days: number;
+  present_days: number;
+  half_days: number;
+  paid_leave_days: number;
+  unpaid_leave_days: number;
+  absent_days: number;
+  travel_days: number;
+  comp_off_days: number;
+  outside_pending_days: number;
+  outside_rejected_days: number;
+  payroll_basis: "CALENDAR_DAY" | "WORKING_DAY";
+  payable_days: number | null;
+  formula: string;
+  unresolved_policy_days: number;
+  unresolved_derived_metrics_days: number;
+  review_required: boolean;
+  review_code: string | null;
+  review_reasons: string[];
+  attendance_checksum: string;
+  attendance_summary: Record<string, unknown>;
+}
+
 interface HrCommandStats {
   activeEmployees: number;
   inactiveEmployees: number;
@@ -2042,6 +2072,93 @@ function HrPageContent() {
     special_allowance: 0,
     professional_tax: 200,
   });
+  const [monthlyPayrollAttendancePreview, setMonthlyPayrollAttendancePreview] =
+    useState<MonthlyPayrollAttendancePreview | null>(null);
+  const [monthlyPayrollAttendanceLoading, setMonthlyPayrollAttendanceLoading] =
+    useState(false);
+  const [monthlyPayrollAttendanceError, setMonthlyPayrollAttendanceError] =
+    useState("");
+
+  useEffect(() => {
+    if (
+      !showMonthlyPayrollForm ||
+      !monthlyPayrollForm.employee_id ||
+      !/^\d{4}-\d{2}$/.test(monthlyPayrollForm.payroll_month)
+    ) {
+      setMonthlyPayrollAttendancePreview(null);
+      setMonthlyPayrollAttendanceError("");
+      setMonthlyPayrollAttendanceLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const employeeId = monthlyPayrollForm.employee_id;
+    const month = monthlyPayrollForm.payroll_month;
+    setMonthlyPayrollAttendanceLoading(true);
+    setMonthlyPayrollAttendanceError("");
+    setMonthlyPayrollAttendancePreview(null);
+
+    apiClient
+      .get<any>(
+        `/hr/payroll/monthly/attendance-preview?employeeId=${encodeURIComponent(employeeId)}&month=${encodeURIComponent(month)}`,
+      )
+      .then((response) => {
+        const preview = response?.attendance_checksum
+          ? response
+          : response?.data;
+        if (cancelled) return;
+        if (!preview?.attendance_checksum) {
+          throw new Error("Attendance preview response was incomplete");
+        }
+        setMonthlyPayrollAttendancePreview(preview);
+        setMonthlyPayrollForm((current) => {
+          if (
+            current.employee_id !== employeeId ||
+            current.payroll_month !== month
+          ) {
+            return current;
+          }
+          return {
+            ...current,
+            days_in_month: preview.days_in_month,
+            days_travelled: preview.travel_days,
+            comp_offs: preview.comp_off_days,
+            leaves_absent: preview.absent_days + preview.unpaid_leave_days,
+            approved_paid_leaves: preview.paid_leave_days,
+            paid_for_total_days: preview.payable_days ?? 0,
+          };
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setMonthlyPayrollAttendancePreview(null);
+        setMonthlyPayrollAttendanceError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load authoritative attendance for this month",
+        );
+        setMonthlyPayrollForm((current) => ({
+          ...current,
+          days_in_month: 0,
+          days_travelled: 0,
+          comp_offs: 0,
+          leaves_absent: 0,
+          approved_paid_leaves: 0,
+          paid_for_total_days: 0,
+        }));
+      })
+      .finally(() => {
+        if (!cancelled) setMonthlyPayrollAttendanceLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    showMonthlyPayrollForm,
+    monthlyPayrollForm.employee_id,
+    monthlyPayrollForm.payroll_month,
+  ]);
 
   // Close modals on Escape key
   useEscapeKey(showEmployeeForm, () => setShowEmployeeForm(false));
@@ -3092,6 +3209,18 @@ function HrPageContent() {
 
   const handleSaveMonthlyPayroll = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (
+      monthlyPayrollAttendanceLoading ||
+      !monthlyPayrollAttendancePreview ||
+      monthlyPayrollAttendancePreview.review_required ||
+      monthlyPayrollAttendancePreview.payable_days === null
+    ) {
+      alert(
+        monthlyPayrollAttendancePreview?.review_code ||
+          "Load and review the authoritative attendance summary before saving monthly payroll.",
+      );
+      return;
+    }
     setLoading(true);
     if (selectedMonthlyPayroll?.id ? !canEditHR : !canCreateHR) {
       alert(
@@ -3129,16 +3258,12 @@ function HrPageContent() {
       const daysInMonth = Number(monthlyPayrollForm.days_in_month);
       const paidDays = Number(monthlyPayrollForm.paid_for_total_days);
       const grossSalary =
-        daysInMonth > 0 && paidDays > 0
-          ? (fullMonthGross / daysInMonth) * paidDays
-          : fullMonthGross;
+        daysInMonth > 0 ? (fullMonthGross / daysInMonth) * paidDays : 0;
 
       // Professional Tax should also be prorated
       const fullMonthPT = Number(monthlyPayrollForm.professional_tax);
       const professionalTax =
-        daysInMonth > 0 && paidDays > 0
-          ? (fullMonthPT / daysInMonth) * paidDays
-          : fullMonthPT;
+        daysInMonth > 0 ? (fullMonthPT / daysInMonth) * paidDays : 0;
 
       // Net Salary = Gross - Professional Tax (holds are NOT deducted here)
       const netSalary = grossSalary - professionalTax;
@@ -3194,8 +3319,12 @@ function HrPageContent() {
         professional_tax: 200,
       });
       fetchData();
-    } catch (error) {
-      alert("Failed to save monthly payroll");
+    } catch (error: any) {
+      alert(
+        error?.response?.data?.code ||
+          error?.message ||
+          "Failed to save monthly payroll",
+      );
     } finally {
       setLoading(false);
     }
@@ -3218,8 +3347,13 @@ function HrPageContent() {
       await apiClient.put(`/hr/payroll/monthly/${id}/process`);
       fetchData();
       alert("Monthly payroll processed successfully");
-    } catch (error) {
-      alert("Failed to process monthly payroll");
+    } catch (error: any) {
+      const code = error?.response?.data?.code;
+      alert(
+        code === "ATTENDANCE_CHANGED_REVIEW_REQUIRED"
+          ? "ATTENDANCE_CHANGED_REVIEW_REQUIRED. Reopen the draft and refresh the attendance preview before processing."
+          : code || error?.message || "Failed to process monthly payroll",
+      );
     } finally {
       setLoading(false);
     }
@@ -3593,15 +3727,17 @@ function HrPageContent() {
   // Auto-fill monthly payroll from saved salary components
   const handleEmployeeSelectForPayroll = async (employeeId: string) => {
     if (!employeeId) {
+      setMonthlyPayrollAttendancePreview(null);
+      setMonthlyPayrollAttendanceError("");
       setMonthlyPayrollForm({
         employee_id: "",
-        payroll_month: "",
-        days_in_month: 30,
+        payroll_month: new Date().toISOString().substring(0, 7),
+        days_in_month: 0,
         days_travelled: 0,
         comp_offs: 0,
         leaves_absent: 0,
         approved_paid_leaves: 0,
-        paid_for_total_days: 30,
+        paid_for_total_days: 0,
         bonus_monthly: 0,
         production_incentive: 0,
         bonus_hold: 0,
@@ -3633,13 +3769,15 @@ function HrPageContent() {
       // Pre-fill form with employee's salary structure
       setMonthlyPayrollForm({
         employee_id: employeeId,
-        payroll_month: new Date().toISOString().substring(0, 7), // Current month
-        days_in_month: 30,
+        payroll_month:
+          monthlyPayrollForm.payroll_month ||
+          new Date().toISOString().substring(0, 7),
+        days_in_month: 0,
         days_travelled: 0,
         comp_offs: 0,
         leaves_absent: 0,
         approved_paid_leaves: 0,
-        paid_for_total_days: 30,
+        paid_for_total_days: 0,
         bonus_monthly: 0,
         production_incentive: 0,
         bonus_hold: 0,
@@ -3651,13 +3789,15 @@ function HrPageContent() {
       // Set default values if fetch fails
       setMonthlyPayrollForm({
         employee_id: employeeId,
-        payroll_month: new Date().toISOString().substring(0, 7),
-        days_in_month: 30,
+        payroll_month:
+          monthlyPayrollForm.payroll_month ||
+          new Date().toISOString().substring(0, 7),
+        days_in_month: 0,
         days_travelled: 0,
         comp_offs: 0,
         leaves_absent: 0,
         approved_paid_leaves: 0,
-        paid_for_total_days: 30,
+        paid_for_total_days: 0,
         bonus_monthly: 0,
         production_incentive: 0,
         bonus_hold: 0,
@@ -12831,13 +12971,8 @@ function HrPageContent() {
                     <input
                       type="number"
                       value={monthlyPayrollForm.days_in_month}
-                      onChange={(e) =>
-                        setMonthlyPayrollForm({
-                          ...monthlyPayrollForm,
-                          days_in_month: Number(e.target.value),
-                        })
-                      }
-                      className="w-full border rounded px-3 py-2"
+                      readOnly
+                      className="w-full border rounded px-3 py-2 bg-gray-50"
                       min="28"
                       max="31"
                       required
@@ -12850,13 +12985,8 @@ function HrPageContent() {
                     <input
                       type="number"
                       value={monthlyPayrollForm.days_travelled}
-                      onChange={(e) =>
-                        setMonthlyPayrollForm({
-                          ...monthlyPayrollForm,
-                          days_travelled: Number(e.target.value),
-                        })
-                      }
-                      className="w-full border rounded px-3 py-2"
+                      readOnly
+                      className="w-full border rounded px-3 py-2 bg-gray-50"
                       min="0"
                     />
                   </div>
@@ -12867,31 +12997,21 @@ function HrPageContent() {
                     <input
                       type="number"
                       value={monthlyPayrollForm.comp_offs}
-                      onChange={(e) =>
-                        setMonthlyPayrollForm({
-                          ...monthlyPayrollForm,
-                          comp_offs: Number(e.target.value),
-                        })
-                      }
-                      className="w-full border rounded px-3 py-2"
+                      readOnly
+                      className="w-full border rounded px-3 py-2 bg-gray-50"
                       min="0"
                       step="0.5"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">
-                      Leave(s) / Absent
+                      Unpaid Leave(s) / Absent
                     </label>
                     <input
                       type="number"
                       value={monthlyPayrollForm.leaves_absent}
-                      onChange={(e) =>
-                        setMonthlyPayrollForm({
-                          ...monthlyPayrollForm,
-                          leaves_absent: Number(e.target.value),
-                        })
-                      }
-                      className="w-full border rounded px-3 py-2"
+                      readOnly
+                      className="w-full border rounded px-3 py-2 bg-gray-50"
                       min="0"
                     />
                   </div>
@@ -12902,13 +13022,8 @@ function HrPageContent() {
                     <input
                       type="number"
                       value={monthlyPayrollForm.approved_paid_leaves}
-                      onChange={(e) =>
-                        setMonthlyPayrollForm({
-                          ...monthlyPayrollForm,
-                          approved_paid_leaves: Number(e.target.value),
-                        })
-                      }
-                      className="w-full border rounded px-3 py-2"
+                      readOnly
+                      className="w-full border rounded px-3 py-2 bg-gray-50"
                       min="0"
                     />
                   </div>
@@ -12919,13 +13034,8 @@ function HrPageContent() {
                     <input
                       type="number"
                       value={monthlyPayrollForm.paid_for_total_days}
-                      onChange={(e) =>
-                        setMonthlyPayrollForm({
-                          ...monthlyPayrollForm,
-                          paid_for_total_days: Number(e.target.value),
-                        })
-                      }
-                      className="w-full border rounded px-3 py-2 font-semibold"
+                      readOnly
+                      className="w-full border rounded px-3 py-2 bg-gray-50 font-semibold"
                       min="0"
                       step="0.5"
                       required
@@ -12933,6 +13043,137 @@ function HrPageContent() {
                   </div>
                 </div>
               </div>
+
+              <section
+                aria-label="Attendance Summary"
+                className="rounded-lg border border-[#E8DCC4] bg-[#FAF9F6] p-4"
+              >
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold text-[#4A3426]">
+                      Attendance Summary
+                    </h4>
+                    <p className="text-xs text-[#6F5A49]">
+                      {monthlyPayrollAttendancePreview
+                        ? `Source: ${monthlyPayrollAttendancePreview.source}`
+                        : "Source: selected month's authoritative attendance register"}
+                    </p>
+                  </div>
+                  {monthlyPayrollForm.employee_id &&
+                    monthlyPayrollForm.payroll_month && (
+                      <a
+                        href="/dashboard/hr/management?section=management&tab=attendance"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="shrink-0 rounded-md border border-[#D8C4A8] bg-white px-3 py-2 text-xs font-semibold text-[#4A3426]"
+                      >
+                        View Attendance
+                      </a>
+                    )}
+                </div>
+
+                {monthlyPayrollAttendanceLoading ? (
+                  <p className="text-sm text-[#6F5A49]">
+                    Loading attendance summary…
+                  </p>
+                ) : monthlyPayrollAttendanceError ? (
+                  <p role="alert" className="text-sm font-medium text-red-700">
+                    {monthlyPayrollAttendanceError}
+                  </p>
+                ) : monthlyPayrollAttendancePreview ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                      {[
+                        [
+                          "Working Days",
+                          monthlyPayrollAttendancePreview.working_days,
+                        ],
+                        [
+                          "Present",
+                          monthlyPayrollAttendancePreview.present_days,
+                        ],
+                        [
+                          "Half Days",
+                          monthlyPayrollAttendancePreview.half_days,
+                        ],
+                        [
+                          "Paid Leave",
+                          monthlyPayrollAttendancePreview.paid_leave_days,
+                        ],
+                        [
+                          "Unpaid Leave",
+                          monthlyPayrollAttendancePreview.unpaid_leave_days,
+                        ],
+                        ["Absent", monthlyPayrollAttendancePreview.absent_days],
+                        ["Travel", monthlyPayrollAttendancePreview.travel_days],
+                        [
+                          "Comp-Off",
+                          monthlyPayrollAttendancePreview.comp_off_days,
+                        ],
+                      ].map(([label, value]) => (
+                        <div
+                          key={String(label)}
+                          className="rounded-md bg-white p-2"
+                        >
+                          <div className="text-xs text-[#6F5A49]">{label}</div>
+                          <div className="font-semibold text-[#2F1B12]">
+                            {value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 rounded-md bg-white p-3 text-sm">
+                      <div className="font-semibold text-[#2F1B12]">
+                        Payable Days:{" "}
+                        {monthlyPayrollAttendancePreview.payable_days ??
+                          "Review required"}
+                      </div>
+                      <div className="mt-1 text-xs text-[#6F5A49]">
+                        Basis:{" "}
+                        {monthlyPayrollAttendancePreview.payroll_basis ===
+                        "CALENDAR_DAY"
+                          ? "Calendar day"
+                          : "Working day"}
+                        . {monthlyPayrollAttendancePreview.formula}
+                      </div>
+                      {monthlyPayrollAttendancePreview.payroll_basis ===
+                        "CALENDAR_DAY" &&
+                        monthlyPayrollAttendancePreview.payable_days !==
+                          null && (
+                          <div className="mt-1 text-xs text-[#6F5A49]">
+                            Salary proration: full-month amount ×{" "}
+                            {monthlyPayrollAttendancePreview.payable_days}{" "}
+                            payable days ÷{" "}
+                            {monthlyPayrollAttendancePreview.days_in_month}{" "}
+                            calendar days.
+                          </div>
+                        )}
+                    </div>
+                    {monthlyPayrollAttendancePreview.review_required && (
+                      <div
+                        role="alert"
+                        className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+                      >
+                        <strong>
+                          {monthlyPayrollAttendancePreview.review_code}
+                        </strong>
+                        <ul className="mt-1 list-disc pl-5">
+                          {monthlyPayrollAttendancePreview.review_reasons.map(
+                            (reason) => (
+                              <li key={reason}>{reason}</li>
+                            ),
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-[#6F5A49]">
+                    Select an employee and payroll month to load the attendance
+                    summary.
+                  </p>
+                )}
+              </section>
 
               <div className="border-t pt-4">
                 <h4 className="font-semibold mb-3 text-green-600">

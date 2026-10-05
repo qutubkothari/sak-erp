@@ -678,6 +678,20 @@ export class HrController {
   }
 
   // Monthly Payroll Processing
+  @Get("payroll/monthly/attendance-preview")
+  @RequireRead("hr")
+  getMonthlyPayrollAttendancePreview(
+    @Request() req: any,
+    @Query("employeeId") employeeId: string,
+    @Query("month") month: string,
+  ) {
+    return this.hrService.getMonthlyPayrollAttendancePreview(
+      req.user.tenantId,
+      employeeId,
+      month,
+    );
+  }
+
   @Post("payroll/monthly")
   @RequireCreate("hr")
   createMonthlyPayroll(@Request() req: any, @Body() body: any) {
