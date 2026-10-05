@@ -71,7 +71,7 @@ test('branding changes are shared source rather than per-client forks', () => {
 });
 test('branding-only change leaves ERP business data and AI capability configuration untouched', () => {
   const { execFileSync } = require('node:child_process');
-  const changed = execFileSync('git', ['diff', 'HEAD', '--name-only'], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean);
+  const changed = execFileSync('git', ['diff', 'HEAD^', 'HEAD', '--name-only'], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean);
   assert.ok(changed.length > 0);
   assert.ok(changed.every((file) => file === 'tenant/profiles.json' || file.startsWith('apps/web/')));
   assert.ok(!changed.some((file) => /migration|\.sql$|business-data|capability/i.test(file)));
