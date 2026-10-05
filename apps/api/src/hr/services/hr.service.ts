@@ -25,6 +25,7 @@ import {
   payrollProfileCapabilities,
   summarizePayrollBlockers,
   payrollAttentionGroup,
+  validatePayrollAttendancePolicy,
   type PayrollBlocker,
 } from "../payroll-control.domain";
 
@@ -2542,6 +2543,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           Number(currentBreakdown.variance_threshold_percent),
         ),
       };
+    });
+    const { data: attendancePolicy, error: attendancePolicyError } = await this.supabase.from("hr_attendance_policies").select("standard_daily_hours,half_day_hours,overtime_after_hours,overtime_multiplier,overtime_calculation_mode,late_deduction_mode,working_weekdays").eq("tenant_id", tenantId).maybeSingle();
+    const policyIssues = attendancePolicyError ? ["policy_source_unavailable"] : attendancePolicy ? validatePayrollAttendancePolicy(attendancePolicy) : [];
+    if (policyIssues.length) blockers.push({
+      key: "payroll-configuration:attendance-policy", reason: attendancePolicyError ? "The attendance payroll policy could not be read, so payroll configuration cannot be validated." : "The stored attendance payroll policy contains invalid values required by the current calculator.",
+      responsible: "HR / Payroll", fix_href: "/dashboard/hr/management?section=management&tab=attendance",
+      evidence: { source: "hr_attendance_policies", invalid_fields: policyIssues }, severity: "BLOCKER",
     });
     const counts = summarizePayrollBlockers(blockers);
     const control = await this.payrollControl(tenantId, month);

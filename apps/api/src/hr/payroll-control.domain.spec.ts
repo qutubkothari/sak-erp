@@ -14,6 +14,7 @@ import {
   safePayrollFeatureFlags,
   summarizePayrollBlockers,
   payrollAttentionGroup,
+  validatePayrollAttendancePolicy,
 } from "./payroll-control.domain";
 
 describe("payroll control domain", () => {
@@ -46,6 +47,12 @@ describe("payroll control domain", () => {
     expect(payrollAttentionGroup({ dueDate: "2026-10-05", today: "2026-10-05" })).toBe("TODAY");
     expect(payrollAttentionGroup({ dueDate: "2026-10-08", today: "2026-10-05" })).toBe("THIS WEEK");
     expect(payrollAttentionGroup({ today: "2026-10-05" })).toBe("LATER");
+  });
+
+  it("validates only payroll attendance policy fields used by the current calculator", () => {
+    const valid = { standard_daily_hours: 8, half_day_hours: 4, overtime_after_hours: 8, overtime_multiplier: 1.5, overtime_calculation_mode: "HOURLY", late_deduction_mode: "NONE", working_weekdays: [1, 2, 3, 4, 5] };
+    expect(validatePayrollAttendancePolicy(valid)).toEqual([]);
+    expect(validatePayrollAttendancePolicy({ ...valid, standard_daily_hours: 0, overtime_multiplier: -1, overtime_calculation_mode: "AI", working_weekdays: [] })).toEqual(expect.arrayContaining(["standard_daily_hours", "overtime_multiplier", "overtime_calculation_mode", "working_weekdays"]));
   });
 
   it("resolves effective rules by employee, tenant, then profile precedence", () => {

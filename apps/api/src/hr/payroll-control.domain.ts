@@ -74,6 +74,22 @@ export function payrollAttentionGroup(input: { severity?: string; dueDate?: stri
   return "LATER" as const;
 }
 
+export function validatePayrollAttendancePolicy(policy: Record<string, unknown>) {
+  const issues: string[] = [];
+  const numberWithin = (key: string, min: number, max: number) => {
+    const value = Number(policy[key]);
+    if (!Number.isFinite(value) || value < min || value > max) issues.push(key);
+  };
+  numberWithin("standard_daily_hours", 0.25, 24);
+  numberWithin("half_day_hours", 0, Number(policy.standard_daily_hours));
+  numberWithin("overtime_after_hours", 0, 24);
+  numberWithin("overtime_multiplier", 0, 10);
+  if (!['HOURLY', 'DAY_CREDIT'].includes(String(policy.overtime_calculation_mode || '').toUpperCase())) issues.push("overtime_calculation_mode");
+  if (!['NONE', 'PER_MINUTE', 'HALF_DAY_AFTER_MARKS'].includes(String(policy.late_deduction_mode || '').toUpperCase())) issues.push("late_deduction_mode");
+  if (!Array.isArray(policy.working_weekdays) || policy.working_weekdays.length === 0 || policy.working_weekdays.some(day => !Number.isInteger(Number(day)) || Number(day) < 0 || Number(day) > 6)) issues.push("working_weekdays");
+  return [...new Set(issues)];
+}
+
 export type EffectiveRule<T = unknown> = {
   rule_key: string;
   rule_value: T;
