@@ -551,8 +551,8 @@ export class HrController {
 
   @Get("payroll/control/month/:month")
   @RequireRead("hr")
-  getPayrollMonthCockpit(@Request() req: any, @Param("month") month: string) {
-    return this.hrService.getPayrollMonthCockpit(req.user.tenantId, month);
+  getPayrollMonthCockpit(@Request() req: any, @Param("month") month: string, @Query("employee_ids") employeeIds?: string) {
+    return this.hrService.getPayrollMonthCockpit(req.user.tenantId, month, employeeIds === undefined ? undefined : employeeIds.split(","));
   }
 
   @Put("payroll/control/maker-checker")
@@ -563,8 +563,8 @@ export class HrController {
 
   @Post("payroll/control/month/:month/check-again")
   @RequirePermissions("hr:read")
-  checkPayrollMonthAgain(@Request() req: any, @Param("month") month: string) {
-    return this.hrService.checkPayrollMonthAgain(req.user.tenantId, month, req.user.userId);
+  checkPayrollMonthAgain(@Request() req: any, @Param("month") month: string, @Body() body?: { employee_ids?: string[] }) {
+    return this.hrService.checkPayrollMonthAgain(req.user.tenantId, month, req.user.userId, body?.employee_ids);
   }
 
   @Post("payroll/control/month/:month/close")

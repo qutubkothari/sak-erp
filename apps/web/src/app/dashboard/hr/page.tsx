@@ -340,7 +340,7 @@ interface PayrollRun {
   created_at?: string;
 }
 
-const PAYROLL_RUN_STATUSES = ["PENDING", "COMPLETED", "APPROVED", "REJECTED", "LOCKED"] as const;
+const PAYROLL_RUN_STATUSES = ["PENDING", "PARTIAL", "COMPLETED", "APPROVED", "REJECTED", "LOCKED"] as const;
 type PayrollRunSortKey = "run_date" | "payroll_month" | "status";
 
 interface EmployeeDocument {
@@ -3266,34 +3266,12 @@ function HrPageContent() {
     }
   };
 
-  const handleGeneratePayslips = async (runId: string) => {
+  const handleGeneratePayslips = (run: PayrollRun) => {
     if (!canApproveHR) {
-      alert("You do not have permission to generate payslips");
+      alert("You do not have permission to calculate payroll");
       return;
     }
-    const confirmed = await confirmDialog({
-      title: "Generate Payslips",
-      message: "Generate payslips for this payroll run?",
-      confirmLabel: "Generate",
-      variant: "warning",
-    });
-    if (!confirmed) return;
-    setLoading(true);
-    try {
-      const result = await apiClient.post<any>(
-        `/hr/payroll/run/${runId}/generate`,
-      );
-      fetchData();
-      alert(
-        result?.warning ||
-          `${Number(result?.generated || 0)} payslip(s) generated successfully`,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      alert(`Failed to generate payslips${message ? `: ${message}` : ""}`);
-    } finally {
-      setLoading(false);
-    }
+    router.push(`/dashboard/hr/payroll/monthly-processing?month=${encodeURIComponent(run.payroll_month)}`);
   };
 
   const handleSaveMonthlyPayroll = async (e: React.FormEvent) => {
@@ -10286,11 +10264,11 @@ function HrPageContent() {
                             <td className="whitespace-nowrap px-6 py-4 text-sm">
                               {run.status === "PENDING" && canApproveHR && (
                                 <button
-                                  onClick={() => handleGeneratePayslips(run.id)}
+                                  onClick={() => handleGeneratePayslips(run)}
                                   disabled={loading}
                                   className="font-semibold text-[#8B6F47] hover:underline disabled:opacity-50"
                                 >
-                                  Generate Payslips
+                                  Review payroll controls
                                 </button>
                               )}
                             </td>
