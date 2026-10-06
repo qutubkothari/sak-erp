@@ -191,13 +191,38 @@ NOTIFY pgrst, 'reload schema';`;
     `).eq('tenant_id', tenantId).order('created_at', { ascending: false });
     const status = String(query?.status || '').trim().toUpperCase();
     if (status && SERVICE_STATUSES.has(status)) db = db.eq('status', status);
+    const dateFrom = String(query?.dateFrom || '').trim();
+    const dateTo = String(query?.dateTo || '').trim();
+    if (dateFrom) db = db.gte('completion_date', dateFrom);
+    if (dateTo) db = db.lte('completion_date', dateTo);
+    if (query?.supplierId) db = db.eq('vendor_id', query.supplierId);
     const { data, error } = await db;
     if (error) {
       if (isMissingSchemaError(error)) return [];
       throw new BadRequestException(error.message);
     }
-    const search = String(query?.search || '').trim().toLowerCase();
-    return (data || []).filter((row: any) => !search || [row.ses_number, row.po?.po_number, row.vendor?.name].some((value) => String(value || '').toLowerCase().includes(search)));
+    const rows: any[] = data || [];
+    const search = String(query?.search || '').trim().toLocaleLowerCase();
+    let requesterById = new Map<string, string>();
+    if (search && rows.length) {
+      const requesterIds = Array.from(new Set(rows.flatMap((row) => [row.created_by, row.submitted_by]).filter(Boolean).map(String)));
+      if (requesterIds.length) {
+        const { data: users } = await this.supabase.from('users').select('id, first_name, last_name, email').eq('tenant_id', tenantId).in('id', requesterIds);
+        requesterById = new Map((users || []).map((user: any) => [String(user.id), [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email || '']));
+      }
+    }
+    const filtered = rows.filter((row: any) => !search || [
+      row.ses_number, row.po?.po_number, row.vendor?.name,
+      ...(row.items || []).flatMap((item: any) => [item.item_code, item.item_name]),
+      requesterById.get(String(row.created_by || '')), requesterById.get(String(row.submitted_by || '')),
+    ].some((value) => String(value || '').toLocaleLowerCase().includes(search)));
+    const order = String(query?.sortOrder || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+    const sortBy = String(query?.sortBy || 'completion_date');
+    return filtered.sort((a, b) => {
+      const left = sortBy === 'status' ? a.status : sortBy === 'supplier' ? a.vendor?.name : a[sortBy] || a.completion_date;
+      const right = sortBy === 'status' ? b.status : sortBy === 'supplier' ? b.vendor?.name : b[sortBy] || b.completion_date;
+      return String(left || '').localeCompare(String(right || ''), undefined, { numeric: true, sensitivity: 'base' }) * order;
+    });
   }
 
   async findOne(tenantId: string, id: string) {
@@ -269,15 +294,26 @@ NOTIFY pgrst, 'reload schema';`;
     const ses = await this.findOne(tenantId, id);
     if (String(ses.status).toUpperCase() !== 'PENDING_APPROVAL') throw new BadRequestException('Only a submitted Service Entry Sheet can be accepted.');
     const userId = String(user?.userId || user?.id || '').trim();
-    if (userId && userId === String(ses.created_by || '') && !this.superAdminBypass(user)) throw new ForbiddenException('Maker-checker: the service entry creator cannot accept their own entry.');
+    if (userId && [ses.created_by, ses.submitted_by].some((maker) => String(maker || '') === userId) && !this.superAdminBypass(user)) throw new ForbiddenException('Maker-checker: the service entry requester cannot accept their own entry.');
+    const acceptedLines: Array<{ id: string; oldQty: number; acceptedQty: number }> = [];
     for (const item of ses.items || []) {
-      const { data: poItem, error: poItemError } = await this.supabase.from('purchase_order_items').select('id, service_accepted_qty').eq('id', item.po_item_id).maybeSingle();
+      const { data: poItem, error: poItemError } = await this.supabase.from('purchase_order_items').select('id, service_accepted_qty').eq('tenant_id', tenantId).eq('id', item.po_item_id).maybeSingle();
       if (poItemError || !poItem) throw new BadRequestException('A linked PO line is no longer available.');
-      const { error: updateError } = await this.supabase.from('purchase_order_items').update({ service_accepted_qty: this.number(poItem.service_accepted_qty) + this.number(item.accepted_qty) }).eq('id', item.po_item_id);
+      const oldQty = this.number(poItem.service_accepted_qty);
+      const acceptedQty = this.number(item.accepted_qty);
+      const { error: updateError } = await this.supabase.from('purchase_order_items').update({ service_accepted_qty: oldQty + acceptedQty }).eq('tenant_id', tenantId).eq('id', item.po_item_id);
       if (updateError) throw new BadRequestException(updateError.message);
+      acceptedLines.push({ id: item.po_item_id, oldQty, acceptedQty });
     }
-    const { error } = await this.supabase.from('service_entry_sheets').update({ status: 'APPROVED', approved_by: userId || null, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', id);
+    const approvedAt = new Date().toISOString();
+    const { error } = await this.supabase.from('service_entry_sheets').update({ status: 'APPROVED', approved_by: userId || null, approved_at: approvedAt, updated_at: approvedAt }).eq('tenant_id', tenantId).eq('id', id);
     if (error) throw new BadRequestException(error.message);
+    const { error: auditError } = await this.supabase.from('activity_logs').insert({ tenant_id: tenantId, user_id: userId || null, action: 'SERVICE_ENTRY_ACCEPTED', resource_type: 'SERVICE_ENTRY_SHEET', resource_id: id, resource_code: ses.ses_number, resource_name: 'Service Entry Sheet acceptance', old_value: { status: ses.status }, new_value: { status: 'APPROVED', approved_at: approvedAt } });
+    if (auditError) {
+      await this.supabase.from('service_entry_sheets').update({ status: 'PENDING_APPROVAL', approved_by: null, approved_at: null }).eq('tenant_id', tenantId).eq('id', id);
+      for (const line of acceptedLines) await this.supabase.from('purchase_order_items').update({ service_accepted_qty: line.oldQty }).eq('tenant_id', tenantId).eq('id', line.id);
+      throw new BadRequestException(`Acceptance was reverted because its audit event could not be recorded: ${auditError.message}`);
+    }
     return this.findOne(tenantId, id);
   }
 
@@ -285,11 +321,17 @@ NOTIFY pgrst, 'reload schema';`;
     const ses = await this.findOne(tenantId, id);
     if (String(ses.status).toUpperCase() !== 'PENDING_APPROVAL') throw new BadRequestException('Only a submitted Service Entry Sheet can be rejected.');
     const userId = String(user?.userId || user?.id || '').trim();
-    if (userId && userId === String(ses.created_by || '') && !this.superAdminBypass(user)) throw new ForbiddenException('Maker-checker: the service entry creator cannot reject their own entry.');
+    if (userId && [ses.created_by, ses.submitted_by].some((maker) => String(maker || '') === userId) && !this.superAdminBypass(user)) throw new ForbiddenException('Maker-checker: the service entry requester cannot reject their own entry.');
     const note = String(reason || '').trim();
     if (!note) throw new BadRequestException('A rejection reason is required.');
-    const { error } = await this.supabase.from('service_entry_sheets').update({ status: 'REJECTED', rejected_by: userId || null, rejected_at: new Date().toISOString(), rejection_reason: note, updated_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', id);
+    const rejectedAt = new Date().toISOString();
+    const { error } = await this.supabase.from('service_entry_sheets').update({ status: 'REJECTED', rejected_by: userId || null, rejected_at: rejectedAt, rejection_reason: note, updated_at: rejectedAt }).eq('tenant_id', tenantId).eq('id', id);
     if (error) throw new BadRequestException(error.message);
+    const { error: auditError } = await this.supabase.from('activity_logs').insert({ tenant_id: tenantId, user_id: userId || null, action: 'SERVICE_ENTRY_REJECTED', resource_type: 'SERVICE_ENTRY_SHEET', resource_id: id, resource_code: ses.ses_number, resource_name: 'Service Entry Sheet rejection', old_value: { status: ses.status }, new_value: { status: 'REJECTED', rejected_at: rejectedAt }, metadata: { reason: note } });
+    if (auditError) {
+      await this.supabase.from('service_entry_sheets').update({ status: 'PENDING_APPROVAL', rejected_by: null, rejected_at: null, rejection_reason: null }).eq('tenant_id', tenantId).eq('id', id);
+      throw new BadRequestException(`Rejection was reverted because its audit event could not be recorded: ${auditError.message}`);
+    }
     return this.findOne(tenantId, id);
   }
 

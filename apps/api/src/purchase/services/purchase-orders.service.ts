@@ -1116,8 +1116,11 @@ export class PurchaseOrdersService {
       const received = receiptLedger
         ? grnLedgerReceived
         : (grnReceivedByPoItem.has(poItemId) ? grnLedgerReceived : storedPoReceived);
-      const remaining = Math.max(0, ordered - received);
       const facts = receiptLedger?.receiptFactsByPoItem?.get(poItemId);
+      const accepted = facts?.accepted ?? it?.accepted_qty;
+      const remaining = facts
+        ? Math.max(0, ordered - this.toNumber(accepted))
+        : Math.max(0, ordered - received);
       acceptedTotal += facts?.accepted || 0;
       rejectedTotal += facts?.rejected || 0;
       qcPendingTotal += facts?.qcPending || 0;
@@ -1127,7 +1130,7 @@ export class PurchaseOrdersService {
         ...it,
         ordered_qty: ordered,
         received_qty: received,
-        accepted_qty: facts?.accepted ?? it?.accepted_qty,
+        accepted_qty: accepted,
         rejected_qty: facts?.rejected ?? it?.rejected_qty,
         remaining_qty: remaining,
       };
@@ -1137,18 +1140,20 @@ export class PurchaseOrdersService {
       ? receiptLedger.receivedByPoId.get(String(po?.id || '').trim()) || 0
       : await this.fetchGrnReceivedTotalByPoId(tenantId, po?.id);
     const effectiveReceivedTotal = Math.max(receivedTotal, Math.min(poLevelReceivedTotal, orderedTotal));
+    const hasReceiptFacts = Boolean(receiptLedger?.receiptFactsByPoItem);
     if (poLevelReceivedTotal > receivedTotal && orderedTotal > 0) {
       let remainingPoLevelReceived = poLevelReceivedTotal;
       for (const item of patchedItems) {
         const ordered = getOrderedQty(item);
         const received = Math.min(ordered, remainingPoLevelReceived);
         item.received_qty = Math.max(this.toNumber(item.received_qty), received);
-        item.remaining_qty = Math.max(0, ordered - this.toNumber(item.received_qty));
+        item.remaining_qty = hasReceiptFacts
+          ? Math.max(0, ordered - this.toNumber(item.accepted_qty))
+          : Math.max(0, ordered - this.toNumber(item.received_qty));
         remainingPoLevelReceived = Math.max(0, remainingPoLevelReceived - received);
       }
     }
 
-    const hasReceiptFacts = Boolean(receiptLedger?.receiptFactsByPoItem);
     const allFullyReceived = hasReceiptFacts
       ? acceptedTotal >= orderedTotal - 1e-9
       : patchedItems.every((it: any) => getOrderedQty(it) <= this.toNumber(it.received_qty) + 1e-9);
@@ -1176,7 +1181,7 @@ export class PurchaseOrdersService {
         received_qty: effectiveReceivedTotal,
         accepted_qty: acceptedTotal,
         rejected_qty: rejectedTotal,
-        remaining_qty: Math.max(0, orderedTotal - effectiveReceivedTotal),
+        remaining_qty: Math.max(0, orderedTotal - (hasReceiptFacts ? acceptedTotal : effectiveReceivedTotal)),
         received_percent: receivedPercent,
       },
       purchase_order_items: patchedItems,

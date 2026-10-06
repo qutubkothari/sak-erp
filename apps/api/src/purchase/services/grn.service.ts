@@ -1909,6 +1909,7 @@ export class GrnService {
           accepted_qty,
           rejected_qty,
           received_qty,
+          qc_status,
           uid_count,
           item:items(id, code, name, hsn_code, uom, description, oem_part_no, oem_name, uid_tracking)
         )
@@ -1928,6 +1929,7 @@ export class GrnService {
           accepted_qty,
           rejected_qty,
           received_qty,
+          qc_status,
           uid_count,
           item:items(id, code, name, hsn_code, uom, description, oem_part_no, oem_name)
         )
@@ -1938,7 +1940,8 @@ export class GrnService {
       .select(selection)
       .eq("tenant_id", tenantId)
       .eq("is_active", true)
-      .order("created_at", { ascending: false });
+      .order("receipt_date", { ascending: false, nullsFirst: false })
+      .order("grn_number", { ascending: false });
 
     if (filters?.status) {
       query = query.eq("status", filters.status);
@@ -1951,6 +1954,11 @@ export class GrnService {
     if (filters?.vendorId) {
       query = query.eq("vendor_id", filters.vendorId);
     }
+
+    const dateFrom = String(filters?.dateFrom || filters?.receiptDateFrom || '').trim();
+    const dateTo = String(filters?.dateTo || filters?.receiptDateTo || '').trim();
+    if (dateFrom) query = query.gte('receipt_date', dateFrom);
+    if (dateTo) query = query.lte('receipt_date', dateTo);
 
     const { data, error } = await query;
 
@@ -1977,6 +1985,14 @@ export class GrnService {
           Array.isArray(grn?.grn_items) &&
           grn.grn_items.length > 0
         );
+      });
+    }
+
+    if (filters?.qcStatus) {
+      const qcStatus = String(filters.qcStatus).trim().toUpperCase();
+      rows = rows.filter((grn: any) => {
+        const statuses = (Array.isArray(grn?.grn_items) ? grn.grn_items : []).map((item: any) => String(item?.qc_status || '').toUpperCase());
+        return statuses.includes(qcStatus) || (qcStatus === 'COMPLETED' && grn?.qc_completed === true);
       });
     }
 
@@ -2014,6 +2030,20 @@ export class GrnService {
         })
         .map((entry: any) => entry.grn);
     }
+
+    const sortBy = String(filters?.sortBy || 'receipt_date').toLowerCase();
+    const ascending = String(filters?.sortOrder || '').toLowerCase() === 'asc';
+    const sortValue = (grn: any) => {
+      if (sortBy === 'grn_number') return String(grn?.grn_number || '');
+      if (sortBy === 'status') return String(grn?.status || '');
+      if (sortBy === 'supplier' || sortBy === 'vendor') return String(grn?.vendor?.name || '');
+      return String(grn?.receipt_date || grn?.created_at || '');
+    };
+    rows = [...rows].sort((a: any, b: any) => {
+      const left = sortValue(a), right = sortValue(b);
+      const compared = sortBy === 'receipt_date' ? Date.parse(left || '') - Date.parse(right || '') : left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+      return (ascending ? compared : -compared) || String(a?.grn_number || '').localeCompare(String(b?.grn_number || ''));
+    });
 
     if (compact) return rows;
 

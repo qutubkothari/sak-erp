@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import {
   PurchaseRequisitionsService,
   canonicalizeRequisitionItems,
+  buildWorkflowStatusLabel,
   normalizeRfqPercentage,
   requisitionItemsMatch,
 } from './purchase-requisitions.service';
@@ -10,6 +11,12 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
 process.env.SUPABASE_KEY = process.env.SUPABASE_KEY || 'test-key';
 
 describe('PurchaseRequisitionsService controls', () => {
+  it('labels an ordered PR without implying receipt completion', () => {
+    expect(buildWorkflowStatusLabel('PO_DONE')).toBe('Fully Ordered');
+    expect(buildWorkflowStatusLabel('GOODS_RCVD')).toBe('Fully Received');
+    expect(buildWorkflowStatusLabel('PARTIALLY_RECEIVED')).toBe('Partially Received');
+  });
+
   const makeService = () => new PurchaseRequisitionsService({} as any, {} as any, {} as any, {} as any);
 
   const operatorFixture = () => {

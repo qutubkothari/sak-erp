@@ -23,6 +23,8 @@ interface DebitNote {
   creator: { name: string };
   approver?: { name: string };
   approval_date?: string;
+  rejection_reason?: string;
+  rejected_at?: string;
   debit_note_items?: DebitNoteItem[];
 }
 
@@ -70,11 +72,13 @@ export default function DebitNotesPage() {
     fetchDebitNotes();
   }, [filterStatus]);
 
-  const fetchDebitNotes = async () => {
+  const fetchDebitNotes = async (search = '') => {
     try {
       setLoading(true);
-      const params = filterStatus ? `?status=${filterStatus}` : '';
-      const data = await apiClient.get<DebitNote[]>(`/purchase/debit-notes${params}`);
+      const params = new URLSearchParams();
+      if (filterStatus) params.set('status', filterStatus);
+      if (search.trim()) params.set('search', search.trim());
+      const data = await apiClient.get<DebitNote[]>(`/purchase/debit-notes?${params.toString()}`);
       setDebitNotes(data);
     } catch (error) {
     } finally {
@@ -98,7 +102,7 @@ export default function DebitNotesPage() {
     }
     const confirmed = await confirmDialog({
       title: 'Approve Debit Note',
-      message: 'Are you sure you want to approve this debit note? This will update the GRN payable amount.',
+      message: 'Approve the financial debit note? This updates supplier liability. Rejected material still needs its own disposition.',
       confirmLabel: 'Approve',
       variant: 'warning',
     });
@@ -112,6 +116,19 @@ export default function DebitNotesPage() {
     } catch (error: any) {
       alert(`Failed to approve: ${error.message || 'Unknown error'}`);
     }
+  };
+
+  const rejectDebitNote = async (id: string) => {
+    if (!canApproveDebitNotes) return;
+    const reason = prompt('Enter the financial rejection reason:');
+    if (!reason?.trim()) return;
+    const confirmed = await confirmDialog({ title: 'Reject Debit Note', message: `Reject this financial debit note? Reason: ${reason.trim()}`, confirmLabel: 'Reject', variant: 'warning' });
+    if (!confirmed) return;
+    try {
+      await apiClient.put(`/purchase/debit-notes/${id}/reject`, { reason: reason.trim() });
+      setShowViewModal(false);
+      await fetchDebitNotes();
+    } catch (error: any) { alert(`Failed to reject: ${error.message || 'Unknown error'}`); }
   };
 
   const sendEmailToSupplier = async (id: string) => {
@@ -158,6 +175,10 @@ export default function DebitNotesPage() {
       return;
     }
     const disposalNotes = prompt('Enter disposal notes (optional):');
+    if (!disposalNotes?.trim()) {
+      alert('Enter a reason or remarks to record this material disposition.');
+      return;
+    }
     
     try {
       await apiClient.put(`/purchase/debit-notes/${debitNoteId}/items/${itemId}/return-status`, {
@@ -178,6 +199,7 @@ export default function DebitNotesPage() {
       case 'SENT': return 'bg-blue-100 text-blue-800';
       case 'ACKNOWLEDGED': return 'bg-purple-100 text-purple-800';
       case 'CLOSED': return 'bg-gray-400 text-white';
+      case 'REJECTED': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -552,6 +574,8 @@ export default function DebitNotesPage() {
             defaultPageSize={10}
             pageSizeOptions={[10, 25, 50, 100]}
             searchPlaceholder="Search by DN number, vendor, or GRN…"
+            manualFiltering
+            onSearchChange={(value) => { void fetchDebitNotes(value); }}
             toolbarRight={
               <select
                 value={filterStatus}
@@ -560,6 +584,7 @@ export default function DebitNotesPage() {
               >
                 <option value="">All Status</option>
                 <option value="DRAFT">Draft</option>
+                <option value="REJECTED">Rejected</option>
                 <option value="APPROVED">Approved</option>
                 <option value="SENT">Sent</option>
                 <option value="ACKNOWLEDGED">Acknowledged</option>
@@ -608,6 +633,7 @@ export default function DebitNotesPage() {
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(selectedDebitNote.status)}`}>
                     {selectedDebitNote.status}
                   </span>
+                  {selectedDebitNote.status === 'APPROVED' && selectedDebitNote.debit_note_items?.some((item) => !['RETURNED', 'DESTROYED', 'REWORKED'].includes(String(item.return_status || 'PENDING').toUpperCase())) ? <p className="mt-2 text-xs font-semibold text-amber-800">Financial approval complete · Material disposition pending</p> : null}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
@@ -620,6 +646,16 @@ export default function DebitNotesPage() {
                     ₹{selectedDebitNote.total_amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-[#E8DCC4] bg-white p-4">
+                <h3 className="mb-3 font-semibold text-[#3F2D20]">Debit Note Amount Breakdown</h3>
+                {(() => {
+                  const base = Number(selectedDebitNote.gross_amount ?? selectedDebitNote.debit_note_items?.reduce((sum, item) => sum + Number(item.amount || 0), 0) ?? 0);
+                  const tax = Number(selectedDebitNote.tax_amount || selectedDebitNote.debit_note_items?.reduce((sum, item) => sum + Number(item.tax_amount || 0), 0) || 0);
+                  const adjustment = Number(selectedDebitNote.total_amount || 0) - base - tax;
+                  return <div className="space-y-1 text-sm"><div className="flex justify-between"><span>Taxable / Base Value</span><span>₹{base.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div><div className="flex justify-between"><span>Tax</span><span>₹{tax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>{Math.abs(adjustment) > 0.009 ? <div className="flex justify-between"><span>Other adjustment</span><span>₹{adjustment.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div> : null}<div className="flex justify-between border-t border-[#E8DCC4] pt-2 font-bold"><span>Total Debit Note</span><span>₹{Number(selectedDebitNote.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div></div>;
+                })()}
               </div>
 
               {/* Reason */}
@@ -644,6 +680,7 @@ export default function DebitNotesPage() {
                   </p>
                 </div>
               )}
+              {selectedDebitNote.rejection_reason ? <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"><strong>Financially rejected</strong>{selectedDebitNote.rejected_at ? ` on ${new Date(selectedDebitNote.rejected_at).toLocaleString()}` : ''}<p className="mt-1">{selectedDebitNote.rejection_reason}</p></div> : null}
 
               {/* Line Items */}
               <div>
@@ -667,7 +704,7 @@ export default function DebitNotesPage() {
                           </div>
                         </div>
                         <span className={`px-2 py-1 rounded text-xs font-bold ${getReturnStatusColor(item.return_status)}`}>
-                          {item.return_status}
+                          {String(item.return_status || 'PENDING').toUpperCase() === 'PENDING' ? 'Disposition pending' : item.return_status}
                         </span>
                       </div>
                       
@@ -726,12 +763,15 @@ export default function DebitNotesPage() {
                   Print Debit Note
                 </button>
                 {selectedDebitNote.status === 'DRAFT' && canApproveDebitNotes && (
+                  <>
+                  <button onClick={() => rejectDebitNote(selectedDebitNote.id)} className="rounded-md bg-red-700 px-5 py-2 text-sm font-semibold text-white hover:bg-red-800">Reject Debit Note</button>
                   <button
                     onClick={() => approveDebitNote(selectedDebitNote.id)}
                     className="rounded-md bg-emerald-700 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
                   >
                     ✓ Approve Debit Note
                   </button>
+                  </>
                 )}
                 {selectedDebitNote.status === 'APPROVED' && canEditDebitNotes && (
                   <button

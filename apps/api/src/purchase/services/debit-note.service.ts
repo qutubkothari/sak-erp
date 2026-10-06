@@ -32,7 +32,8 @@ export class DebitNoteService {
       .select(`
         *,
         grn:grns(id, grn_number),
-        vendor:vendors(id, name, code)
+        vendor:vendors(id, name, code),
+        debit_note_items(*, item:items(code, name))
       `)
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false });
@@ -43,10 +44,21 @@ export class DebitNoteService {
     if (filters?.vendor_id) {
       query = query.eq('vendor_id', filters.vendor_id);
     }
-
     const { data, error } = await query;
     if (error) throw error;
-    return data;
+    const search = String(filters?.search || '').trim().toLocaleLowerCase();
+    let rows = (data || []).filter((note: any) => !search || [
+      note.debit_note_number, note.reason, note.grn?.grn_number, note.vendor?.name, note.vendor?.code,
+      ...(note.debit_note_items || []).flatMap((item: any) => [item.item_code, item.item_name, item.item?.code, item.item?.name]),
+    ].some((value) => String(value || '').toLocaleLowerCase().includes(search)));
+    const sortBy = String(filters?.sortBy || 'debit_note_date');
+    const order = String(filters?.sortOrder || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+    rows = rows.sort((a: any, b: any) => {
+      const left = sortBy === 'status' ? a.status : sortBy === 'supplier' ? a.vendor?.name : sortBy === 'debit_note_number' ? a.debit_note_number : a.debit_note_date || a.created_at;
+      const right = sortBy === 'status' ? b.status : sortBy === 'supplier' ? b.vendor?.name : sortBy === 'debit_note_number' ? b.debit_note_number : b.debit_note_date || b.created_at;
+      return String(left || '').localeCompare(String(right || ''), undefined, { numeric: true, sensitivity: 'base' }) * order;
+    });
+    return rows;
   }
 
   // Get single debit note with details
@@ -79,7 +91,7 @@ export class DebitNoteService {
   async approve(tenantId: string, id: string, userId: string, options: { overrideMakerChecker?: boolean } = {}) {
     const { data: existing, error: fetchError } = await this.supabase
       .from('debit_notes')
-      .select('id, debit_note_number, status, created_by')
+      .select('id, debit_note_number, status, created_by, total_amount')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .maybeSingle();
@@ -108,9 +120,38 @@ export class DebitNoteService {
 
     if (error) throw error;
 
+    const { error: auditError } = await this.supabase.from('activity_logs').insert({
+      tenant_id: tenantId, user_id: userId, action: 'DEBIT_NOTE_APPROVED',
+      resource_type: 'DEBIT_NOTE', resource_id: id, resource_code: data.debit_note_number,
+      resource_name: 'Debit note financial approval', old_value: { status: existing.status },
+      new_value: { status: data.status, total_amount: data.total_amount },
+      metadata: { physical_disposition: 'PENDING' },
+    });
+    if (auditError) {
+      await this.supabase.from('debit_notes').update({ status: existing.status, approved_by: null, approval_date: null }).eq('tenant_id', tenantId).eq('id', id);
+      throw new BadRequestException(`Debit note approval was reverted because its audit event could not be recorded: ${auditError.message}`);
+    }
+
     console.log(`Debit note ${data.debit_note_number} approved by user ${userId}`);
     
     // Trigger will automatically update GRN net_payable_amount
+    return data;
+  }
+
+  async reject(tenantId: string, id: string, userId: string, reason: unknown, options: { overrideMakerChecker?: boolean } = {}) {
+    const note = await this.findOne(tenantId, id);
+    const rejectionReason = String(reason || '').trim();
+    if (!rejectionReason) throw new BadRequestException('A rejection reason is required.');
+    if (!options.overrideMakerChecker && note.created_by && String(note.created_by) === String(userId)) throw new ForbiddenException('Creator cannot reject their own debit note.');
+    if (String(note.status).toUpperCase() !== 'DRAFT') throw new BadRequestException(`Only draft debit notes can be rejected. Current status: ${note.status}`);
+    const rejectedAt = new Date().toISOString();
+    const { data, error } = await this.supabase.from('debit_notes').update({ status: 'REJECTED', rejected_by: userId, rejected_at: rejectedAt, rejection_reason: rejectionReason, updated_at: rejectedAt }).eq('tenant_id', tenantId).eq('id', id).select().single();
+    if (error) throw new BadRequestException(error.message);
+    const { error: auditError } = await this.supabase.from('activity_logs').insert({ tenant_id: tenantId, user_id: userId, action: 'DEBIT_NOTE_REJECTED', resource_type: 'DEBIT_NOTE', resource_id: id, resource_code: data.debit_note_number, resource_name: 'Debit note financial rejection', old_value: { status: note.status }, new_value: { status: 'REJECTED', rejected_at: rejectedAt }, metadata: { reason: rejectionReason } });
+    if (auditError) {
+      await this.supabase.from('debit_notes').update({ status: note.status, rejected_by: null, rejected_at: null, rejection_reason: null }).eq('tenant_id', tenantId).eq('id', id);
+      throw new BadRequestException(`Rejection was reverted because its audit event could not be recorded: ${auditError.message}`);
+    }
     return data;
   }
 
@@ -118,7 +159,14 @@ export class DebitNoteService {
   async updateStatus(tenantId: string, id: string, status: string) {
     const validStatuses = ['DRAFT', 'APPROVED', 'SENT', 'ACKNOWLEDGED', 'CLOSED'];
     if (!validStatuses.includes(status)) {
-      throw new Error(`Invalid status: ${status}`);
+      throw new BadRequestException(`Invalid status: ${status}`);
+    }
+    if (status === 'CLOSED') {
+      const { data: lines, error: linesError } = await this.supabase.from('debit_note_items')
+        .select('id, return_status').eq('tenant_id', tenantId).eq('debit_note_id', id);
+      if (linesError) throw new BadRequestException(linesError.message);
+      const pending = (lines || []).filter((line: any) => !['RETURNED', 'DESTROYED', 'REWORKED'].includes(String(line.return_status || 'PENDING').toUpperCase()));
+      if (pending.length) throw new BadRequestException('Debit Note cannot be closed while rejected-material disposition is pending.');
     }
 
     const { data, error } = await this.supabase
@@ -143,21 +191,39 @@ export class DebitNoteService {
     itemId: string,
     returnStatus: string,
     disposalNotes?: string,
+    userId?: string,
   ) {
-    const validStatuses = ['PENDING', 'RETURNED', 'DESTROYED', 'REWORKED'];
+    const validStatuses = ['RETURNED', 'DESTROYED', 'REWORKED'];
     if (!validStatuses.includes(returnStatus)) {
-      throw new Error(`Invalid return status: ${returnStatus}`);
+      throw new BadRequestException(`Invalid rejected-material disposition: ${returnStatus}`);
+    }
+
+    const reason = String(disposalNotes || '').trim();
+    if (!reason) throw new BadRequestException('A reason or remarks are required to record material disposition.');
+    const { data: note, error: noteError } = await this.supabase.from('debit_notes')
+      .select('id, debit_note_number').eq('tenant_id', tenantId).eq('id', debitNoteId).maybeSingle();
+    if (noteError) throw new BadRequestException(noteError.message);
+    if (!note) throw new NotFoundException('Debit note not found');
+    const { data: existing, error: itemFetchError } = await this.supabase.from('debit_note_items')
+      .select('id, tenant_id, return_status, grn_item_id, disposal_notes')
+      .eq('tenant_id', tenantId).eq('debit_note_id', debitNoteId).eq('id', itemId).maybeSingle();
+    if (itemFetchError) throw new BadRequestException(itemFetchError.message);
+    if (!existing) throw new NotFoundException('Debit note item not found');
+    if (String(existing.return_status || 'PENDING').toUpperCase() !== 'PENDING') {
+      throw new BadRequestException(`Material disposition is already finalized as ${existing.return_status}.`);
     }
 
     const { data, error } = await this.supabase
       .from('debit_note_items')
       .update({
         return_status: returnStatus,
-        return_date: returnStatus !== 'PENDING' ? new Date().toISOString().split('T')[0] : null,
-        disposal_notes: disposalNotes || null,
+        return_date: new Date().toISOString().split('T')[0],
+        disposal_notes: reason,
       })
+      .eq('tenant_id', tenantId)
       .eq('debit_note_id', debitNoteId)
       .eq('id', itemId)
+      .eq('return_status', 'PENDING')
       .select()
       .single();
 
@@ -165,10 +231,29 @@ export class DebitNoteService {
     
     // Also update grn_items return_status
     if (data.grn_item_id) {
-      await this.supabase
+      const { error: grnItemError } = await this.supabase
         .from('grn_items')
         .update({ return_status: returnStatus })
+        .eq('tenant_id', tenantId)
         .eq('id', data.grn_item_id);
+      if (grnItemError) {
+        await this.supabase.from('debit_note_items').update({ return_status: 'PENDING', return_date: null, disposal_notes: null }).eq('tenant_id', tenantId).eq('id', itemId);
+        throw new BadRequestException(`Disposition was reverted because the GRN rejected-material record could not be updated: ${grnItemError.message}`);
+      }
+    }
+
+    const { error: auditError } = await this.supabase.from('activity_logs').insert({
+      tenant_id: tenantId, user_id: userId || null,
+      action: 'REJECTED_MATERIAL_DISPOSITION', resource_type: 'DEBIT_NOTE',
+      resource_id: debitNoteId, resource_code: note.debit_note_number,
+      resource_name: 'Rejected material disposition',
+      old_value: { status: existing.return_status || 'PENDING' },
+      new_value: { status: returnStatus, item_id: itemId }, metadata: { reason },
+    });
+    if (auditError) {
+      await this.supabase.from('debit_note_items').update({ return_status: 'PENDING', return_date: null, disposal_notes: null }).eq('tenant_id', tenantId).eq('id', itemId);
+      if (data.grn_item_id) await this.supabase.from('grn_items').update({ return_status: 'PENDING' }).eq('tenant_id', tenantId).eq('id', data.grn_item_id);
+      throw new BadRequestException(`Disposition was reverted because its audit event could not be recorded: ${auditError.message}`);
     }
 
     return data;

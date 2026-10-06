@@ -24,6 +24,7 @@ type ServicePo = {
   id: string;
   po_number: string;
   vendor?: { name?: string };
+  vendor_id?: string;
   delivery_address?: string;
   service_lines: ServiceLine[];
 };
@@ -37,6 +38,15 @@ type ServiceEntry = {
   service_period_end?: string;
   completion_notes?: string;
   rejection_reason?: string;
+  created_by?: string;
+  submitted_by?: string;
+  submitted_at?: string;
+  approved_by?: string;
+  approved_at?: string;
+  rejected_by?: string;
+  rejected_at?: string;
+  evidence?: Array<{ name?: string; url?: string }>;
+  vendor_id?: string;
   vendor?: { name?: string };
   po?: { id?: string; po_number?: string; status?: string };
   items?: Array<{ item_code: string; item_name: string; accepted_qty: number; uom?: string; amount?: number }>;
@@ -61,6 +71,14 @@ function ServiceEntriesContent() {
   const [error, setError] = useState('');
   const [rejectTarget, setRejectTarget] = useState<ServiceEntry | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [selectedEntry, setSelectedEntry] = useState<ServiceEntry | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sortBy, setSortBy] = useState('completion_date');
+  const [sortOrder, setSortOrder] = useState('desc');
 
   const selectedPo = useMemo(() => servicePos.find((po) => po.id === selectedPoId) || null, [servicePos, selectedPoId]);
   const openServicePoNumbers = useMemo(() => new Set(servicePos.map((po) => po.po_number)), [servicePos]);
@@ -74,8 +92,16 @@ function ServiceEntriesContent() {
   const load = async () => {
     setLoading(true);
     try {
+      const params = new URLSearchParams();
+      if (search.trim()) params.set('search', search.trim());
+      if (statusFilter) params.set('status', statusFilter);
+      if (supplierFilter) params.set('supplierId', supplierFilter);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+      params.set('sortBy', sortBy);
+      params.set('sortOrder', sortOrder);
       const [nextEntries, nextPos] = await Promise.all([
-        apiClient.get<ServiceEntry[]>('/purchase/service-entries'),
+        apiClient.get<ServiceEntry[]>(`/purchase/service-entries?${params.toString()}`),
         apiClient.get<ServicePo[]>('/purchase/service-entries/eligible-pos'),
       ]);
       setEntries(Array.isArray(nextEntries) ? nextEntries : []);
@@ -87,7 +113,7 @@ function ServiceEntriesContent() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { const timer = setTimeout(() => { void load(); }, 250); return () => clearTimeout(timer); }, [search, statusFilter, supplierFilter, dateFrom, dateTo, sortBy, sortOrder]);
 
   const openCreate = () => {
     setSelectedPoId(''); setQuantities({}); setLocation(''); setNotes(''); setEvidenceText(''); setError('');
@@ -196,9 +222,18 @@ function ServiceEntriesContent() {
 
       <section className="overflow-hidden rounded-xl border border-[#E8DCC4] bg-white">
         <div className="border-b border-[#E8DCC4] px-5 py-4"><h2 className="font-semibold text-[#3D2B1F]">Service acceptance register</h2></div>
+        <div className="grid gap-2 border-b border-[#E8DCC4] bg-[#FFFCF7] p-4 sm:grid-cols-2 lg:grid-cols-6">
+          <input aria-label="Search SES register" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search SES, PO, supplier, service, requester" className="rounded-lg border border-[#D8C8AA] px-3 py-2 text-sm lg:col-span-2" />
+          <select aria-label="Filter SES status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-lg border border-[#D8C8AA] px-3 py-2 text-sm"><option value="">All statuses</option><option value="DRAFT">Draft</option><option value="PENDING_APPROVAL">Pending approval</option><option value="APPROVED">Approved</option><option value="REJECTED">Rejected</option><option value="CANCELLED">Cancelled</option></select>
+          <select aria-label="Filter SES supplier" value={supplierFilter} onChange={(event) => setSupplierFilter(event.target.value)} className="rounded-lg border border-[#D8C8AA] px-3 py-2 text-sm"><option value="">All suppliers</option>{Array.from(new Map(entries.filter((entry) => entry.vendor?.name && entry.vendor_id).map((entry) => [String(entry.vendor_id), entry.vendor?.name])).entries()).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
+          <input aria-label="Service date from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="rounded-lg border border-[#D8C8AA] px-3 py-2 text-sm" />
+          <input aria-label="Service date to" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="rounded-lg border border-[#D8C8AA] px-3 py-2 text-sm" />
+          <select aria-label="Sort SES register" value={`${sortBy}:${sortOrder}`} onChange={(event) => { const [by, order] = event.target.value.split(':'); setSortBy(by); setSortOrder(order); }} className="rounded-lg border border-[#D8C8AA] px-3 py-2 text-sm"><option value="completion_date:desc">Newest service date</option><option value="completion_date:asc">Oldest service date</option><option value="ses_number:asc">SES number</option><option value="status:asc">Status</option><option value="supplier:asc">Supplier</option></select>
+          <button type="button" onClick={() => { setSearch(''); setStatusFilter(''); setSupplierFilter(''); setDateFrom(''); setDateTo(''); setSortBy('completion_date'); setSortOrder('desc'); }} className="rounded-lg border border-[#D8C8AA] px-3 py-2 text-sm font-medium text-[#5E4635]">Clear filters</button>
+        </div>
         {loading ? <div className="p-8 text-center text-sm text-[#7A6555]">Loading Service Entry Sheets…</div> : entries.length === 0 ? <div className="p-8 text-center text-sm text-[#7A6555]">No Service Entry Sheets recorded yet.</div> : (
           <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-sm"><thead className="bg-[#F5EFE3] text-left text-xs uppercase tracking-wide text-[#5E4635]"><tr><th className="px-4 py-3">SES</th><th className="px-4 py-3">PO / Supplier</th><th className="px-4 py-3">Service period</th><th className="px-4 py-3">Completed services</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Action</th></tr></thead><tbody>
-            {entries.map((entry) => <tr key={entry.id} className="border-t border-[#F0E8DA] align-top"><td className="px-4 py-3 font-semibold text-[#4A3426]">{entry.ses_number}<div className="mt-1 text-xs font-normal text-[#7A6555]">Completed {entry.completion_date}</div></td><td className="px-4 py-3"><div>{entry.po?.po_number || '-'}</div><div className="text-xs text-[#7A6555]">{entry.vendor?.name || '-'}</div></td><td className="px-4 py-3 text-[#5E4635]">{entry.service_period_start || '-'} to {entry.service_period_end || '-'}</td><td className="px-4 py-3">{(entry.items || []).map((item) => <div key={`${entry.id}-${item.item_code}`}>{item.item_code}: {item.accepted_qty} {item.uom || ''} <span className="text-xs text-[#7A6555]">({money(item.amount)})</span></div>)}</td><td className="px-4 py-3"><ErpStatusBadge status={entry.status} /></td><td className="px-4 py-3 text-right">{entry.status === 'PENDING_APPROVAL' ? <div className="inline-flex gap-2"><ErpButton size="sm" variant="approve" onClick={() => void approve(entry)}><Check className="h-4 w-4" /> Accept</ErpButton><ErpButton size="sm" variant="danger" onClick={() => void reject(entry)}><X className="h-4 w-4" /> Reject</ErpButton></div> : entry.rejection_reason ? <span className="text-xs text-red-700">{entry.rejection_reason}</span> : '-'}</td></tr>)}
+            {entries.map((entry) => <tr key={entry.id} className="border-t border-[#F0E8DA] align-top"><td className="px-4 py-3 font-semibold text-[#4A3426]"><button type="button" onClick={() => setSelectedEntry(entry)} className="underline decoration-dotted underline-offset-2">{entry.ses_number}</button><div className="mt-1 text-xs font-normal text-[#7A6555]">Completed {entry.completion_date}</div></td><td className="px-4 py-3"><div>{entry.po?.po_number || '-'}</div><div className="text-xs text-[#7A6555]">{entry.vendor?.name || '-'}</div></td><td className="px-4 py-3 text-[#5E4635]">{entry.service_period_start || '-'} to {entry.service_period_end || '-'}</td><td className="px-4 py-3">{(entry.items || []).map((item) => <div key={`${entry.id}-${item.item_code}`}>{item.item_code}: {item.accepted_qty} {item.uom || ''} <span className="text-xs text-[#7A6555]">({money(item.amount)})</span></div>)}</td><td className="px-4 py-3"><ErpStatusBadge status={entry.status} label={entry.status === 'PENDING_APPROVAL' ? 'Pending approval' : entry.status} /></td><td className="px-4 py-3 text-right"><div className="inline-flex gap-2"><ErpButton size="sm" variant="secondary" onClick={() => setSelectedEntry(entry)}><FileText className="h-4 w-4" /> View</ErpButton>{entry.status === 'PENDING_APPROVAL' ? <><ErpButton size="sm" variant="approve" onClick={() => void approve(entry)}><Check className="h-4 w-4" /> Accept</ErpButton><ErpButton size="sm" variant="danger" onClick={() => void reject(entry)}><X className="h-4 w-4" /> Reject</ErpButton></> : null}</div></td></tr>)}
           </tbody></table></div>
         )}
       </section>
@@ -229,6 +264,7 @@ function ServiceEntriesContent() {
         <div><label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#5E4635]">Completion / sign-off notes *</label><textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} className="w-full rounded-lg border border-[#D8C8AA] px-3 py-2.5 text-sm" placeholder="What was completed, quality/result, and any exceptions" /></div>
         <div><label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#5E4635]">Supporting document reference</label><textarea rows={2} value={evidenceText} onChange={(event) => setEvidenceText(event.target.value)} className="w-full rounded-lg border border-[#D8C8AA] px-3 py-2.5 text-sm" placeholder="Optional: completion certificate, report, timesheet or document link" /></div>
       </div><div className="flex justify-end gap-2 border-t border-[#E8DCC4] bg-[#FAF9F6] px-5 py-4"><ErpButton variant="secondary" onClick={() => setShowCreate(false)}>Cancel</ErpButton><ErpButton variant="approve" disabled={saving} onClick={() => void createAndSubmit()}><Send className="h-4 w-4" /> {saving ? 'Submitting…' : 'Submit for Acceptance'}</ErpButton></div></div></div> : null}
+      {selectedEntry ? <div className="fixed inset-0 z-[1550] flex items-center justify-center bg-[#3B2A1F]/55 p-4"><section role="dialog" aria-modal="true" aria-label={`Service Entry Sheet ${selectedEntry.ses_number}`} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#D8C8AA] bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-[#E8DCC4] bg-[#FAF7F1] px-5 py-4"><div><h2 className="text-lg font-semibold text-[#3D2B1F]">{selectedEntry.ses_number}</h2><p className="text-sm text-[#7A6555]">{selectedEntry.po?.po_number} · {selectedEntry.vendor?.name}</p></div><button type="button" onClick={() => setSelectedEntry(null)} aria-label="Close SES details" className="rounded p-1 text-[#7A6555]"><X className="h-5 w-5" /></button></div><div className="space-y-5 p-5"><div className="flex items-center gap-2"><ErpStatusBadge status={selectedEntry.status} label={selectedEntry.status === 'PENDING_APPROVAL' ? 'Pending approval' : selectedEntry.status} /> <span className="text-sm text-[#7A6555]">Completion date {selectedEntry.completion_date}</span></div><p className="whitespace-pre-wrap rounded-lg bg-[#FAF9F6] p-3 text-sm">{selectedEntry.completion_notes || 'No completion notes.'}</p><div><h3 className="mb-2 font-semibold text-[#4A3426]">Evidence</h3>{selectedEntry.evidence?.length ? <ul className="list-inside list-disc space-y-1 text-sm">{selectedEntry.evidence.map((file, index) => <li key={`${file.url}-${index}`}>{file.url ? <a className="text-blue-700 underline" href={file.url} target="_blank" rel="noreferrer">{file.name || file.url}</a> : file.name || 'Attachment'}</li>)}</ul> : <p className="text-sm text-[#7A6555]">No evidence attached.</p>}</div><div><h3 className="mb-2 font-semibold text-[#4A3426]">Acceptance history</h3><ol className="space-y-2 border-l-2 border-[#E8DCC4] pl-4 text-sm"><li>Submitted {selectedEntry.submitted_at ? new Date(selectedEntry.submitted_at).toLocaleString() : '—'}</li>{selectedEntry.approved_at ? <li>Accepted {new Date(selectedEntry.approved_at).toLocaleString()} · {selectedEntry.approved_by || 'Approver recorded'}</li> : null}{selectedEntry.rejected_at ? <li className="text-red-700">Rejected {new Date(selectedEntry.rejected_at).toLocaleString()} · {selectedEntry.rejection_reason}</li> : null}</ol></div></div><div className="flex justify-end border-t border-[#E8DCC4] bg-[#FAF9F6] px-5 py-3"><ErpButton variant="secondary" onClick={() => setSelectedEntry(null)}>Close</ErpButton></div></section></div> : null}
       {rejectTarget ? (
         <div className="fixed inset-0 z-[1600] flex items-center justify-center bg-[#3B2A1F]/55 p-4">
           <div className="w-full max-w-lg rounded-xl border border-[#D8C8AA] bg-white shadow-2xl">

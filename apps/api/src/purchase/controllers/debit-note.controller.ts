@@ -166,6 +166,14 @@ export class DebitNoteController {
     });
   }
 
+  @Put(':id/reject')
+  @RequireApprove('debit_notes')
+  async reject(@Req() req: any, @Param('id') id: string, @Body() body: { reason?: string }) {
+    return this.debitNoteService.reject(req.user.tenantId, id, req.user.userId, body?.reason, {
+      overrideMakerChecker: hasSuperAdminBypass(req.user),
+    });
+  }
+
   @Post(':id/send-email')
   async sendEmail(@Req() req: any, @Param('id') id: string) {
     const tenantId = req.user.tenantId;
@@ -173,6 +181,7 @@ export class DebitNoteController {
   }
 
   @Put(':id/status')
+  @RequireUpdate('debit_notes')
   async updateStatus(
     @Req() req: any,
     @Param('id') id: string,
@@ -187,6 +196,7 @@ export class DebitNoteController {
   }
 
   @Put(':id/items/:itemId/return-status')
+  @RequireUpdate('debit_notes')
   async updateReturnStatus(
     @Req() req: any,
     @Param('id') id: string,
@@ -200,6 +210,7 @@ export class DebitNoteController {
       itemId,
       body.returnStatus,
       body.disposalNotes,
+      req.user.userId,
     );
   }
 

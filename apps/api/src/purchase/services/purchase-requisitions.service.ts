@@ -13,6 +13,8 @@ const PR_WORKFLOW_STATUS = {
   RFQ_RCVD: 'RFQ_RCVD',
   PO_DONE: 'PO_DONE',
   GOODS_RCVD: 'GOODS_RCVD',
+  PARTIALLY_ORDERED: 'PARTIALLY_ORDERED',
+  PARTIALLY_RECEIVED: 'PARTIALLY_RECEIVED',
   REJECTED: 'REJECTED',
 } as const;
 
@@ -58,7 +60,7 @@ function buildRfqNumber(prNumber: string, recipientKey: string, index: number): 
   return `RFQ-${String(prNumber || '').trim()}-${sanitizedKey || String(index + 1).padStart(2, '0')}`;
 }
 
-function buildWorkflowStatusLabel(status: string, detail?: string | null): string {
+export function buildWorkflowStatusLabel(status: string, detail?: string | null): string {
   switch (status) {
     case PR_WORKFLOW_STATUS.DRAFT:
       return 'Draft';
@@ -68,14 +70,18 @@ function buildWorkflowStatusLabel(status: string, detail?: string | null): strin
       return 'Approved';
     case PR_WORKFLOW_STATUS.RFQ_ISSUED:
       if (detail === 'No') return 'RFQ Not Sent';
-      if (detail === 'Yes') return 'RFQ Sent';
-      return 'RFQ Sent';
+      if (detail === 'Yes') return 'RFQ In Progress';
+      return 'RFQ In Progress';
     case PR_WORKFLOW_STATUS.RFQ_RCVD:
-      return 'RFQ Response Received';
+      return 'RFQ Complete';
     case PR_WORKFLOW_STATUS.PO_DONE:
-      return 'PO Done';
+      return 'Fully Ordered';
     case PR_WORKFLOW_STATUS.GOODS_RCVD:
-      return 'Goods Recvd';
+      return 'Fully Received';
+    case PR_WORKFLOW_STATUS.PARTIALLY_ORDERED:
+      return 'Partially Ordered';
+    case PR_WORKFLOW_STATUS.PARTIALLY_RECEIVED:
+      return 'Partially Received';
     case PR_WORKFLOW_STATUS.REJECTED:
       return 'Rejected';
     default:
@@ -2615,6 +2621,7 @@ export class PurchaseRequisitionsService {
 
       const requestedTotal = items.reduce((sum: number, item: any) => sum + Number(item?.requested_qty || 0), 0);
       const poDone = requestedTotal > 0 && poSummary.totalOrderedQty >= requestedTotal - 1e-9;
+      const hasReceipt = poSummary.totalReceivedQty > 0;
       const goodsReceived = poSummary.totalOrderedQty > 0 && poSummary.totalReceivedQty >= poSummary.totalOrderedQty;
 
       let workflowStatus = baseStatus;
@@ -2630,8 +2637,12 @@ export class PurchaseRequisitionsService {
       } else if (baseStatus === PR_WORKFLOW_STATUS.APPROVED) {
         if (goodsReceived) {
           workflowStatus = PR_WORKFLOW_STATUS.GOODS_RCVD;
+        } else if (hasReceipt) {
+          workflowStatus = PR_WORKFLOW_STATUS.PARTIALLY_RECEIVED;
         } else if (poDone) {
           workflowStatus = PR_WORKFLOW_STATUS.PO_DONE;
+        } else if (poSummary.totalOrderedQty > 0) {
+          workflowStatus = PR_WORKFLOW_STATUS.PARTIALLY_ORDERED;
         } else if (rfqSummary.receivedCount > 0) {
           workflowStatus = PR_WORKFLOW_STATUS.RFQ_RCVD;
           workflowDetail = 'Received';

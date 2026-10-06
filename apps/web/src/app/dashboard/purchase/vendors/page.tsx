@@ -1,7 +1,7 @@
 "use client";
 import { useBrainRecord } from '@/hooks/useBrainRecord';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   CheckCircle2,
@@ -81,6 +81,7 @@ interface Vendor {
   name: string;
   legal_name: string;
   tax_id?: string;
+  market_profile?: string;
   category: string;
   contact_person?: string;
   email?: string;
@@ -103,6 +104,8 @@ interface Vendor {
   approval_reason?: string | null;
   approval_trail?: Array<Record<string, any>>;
   approval_history?: Array<Record<string, any>>;
+  matched_on?: string[];
+  missing_required_documents?: string[];
   attachments?: Array<{
     id: string;
     document_type: string;
@@ -412,20 +415,21 @@ function formatCategory(value: string): string {
 }
 
 function getVendorApprovalStatus(vendor: Vendor): "APPROVED" | "REJECTED" | "PENDING" {
-  if (vendor.is_verified) return "APPROVED";
   const status = String(
     vendor.approval_status ||
       vendor.metadata?.vendorApproval?.status ||
       "",
   ).toUpperCase();
+  if (status === "APPROVED") return "APPROVED";
+  if (!status && vendor.is_verified) return "APPROVED";
   return status === "REJECTED" ? "REJECTED" : "PENDING";
 }
 
 function getVendorApprovalLabel(vendor: Vendor): string {
   const status = getVendorApprovalStatus(vendor);
-  if (status === "APPROVED") return "Approved";
-  if (status === "REJECTED") return "Rejected";
-  return "Pending";
+  if (status === "APPROVED") return "Master approved";
+  if (status === "REJECTED") return "Master rejected";
+  return "Pending verification";
 }
 
 function getVendorApprovalReason(vendor: Vendor): string {
@@ -489,6 +493,7 @@ export default function VendorsPage() {
   const canExport = isAdminLike(user);
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const vendorSearchRequest = useRef(0);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("ALL");
@@ -511,16 +516,19 @@ export default function VendorsPage() {
     hydrate();
   }, [hydrate]);
 
-  const fetchVendors = async () => {
+  const fetchVendors = async (search = "") => {
+    const requestId = ++vendorSearchRequest.current;
     try {
       setLoading(true);
-      const data = await apiClient.get<Vendor[]>("/purchase/vendors");
-      setVendors(Array.isArray(data) ? data : []);
+      const data = await apiClient.get<Vendor[]>(`/purchase/vendors${search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ""}`);
+      if (requestId === vendorSearchRequest.current) setVendors(Array.isArray(data) ? data : []);
     } catch (error: any) {
-      toast.error(error?.message || "Failed to load vendors");
-      setVendors([]);
+      if (requestId === vendorSearchRequest.current) {
+        toast.error(error?.message || "Failed to load vendors");
+        setVendors([]);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === vendorSearchRequest.current) setLoading(false);
     }
   };
 
@@ -720,10 +728,27 @@ export default function VendorsPage() {
       toast.error("Maker-checker: vendor creator cannot approve their own vendor");
       return;
     }
+    const missingDocuments = verify ? vendor.missing_required_documents || [] : [];
+    let overrideReason = "";
+    if (missingDocuments.length) {
+      if (!hasMakerCheckerOverride(user)) {
+        toast.error(`Vendor approval is blocked. Required documents missing: ${missingDocuments.join(", ")}.`);
+        return;
+      }
+      const enteredReason = window.prompt(`Privileged document override for ${vendor.name}. Missing: ${missingDocuments.join(", ")}. Enter the business reason; this will be audited.`);
+      if (enteredReason === null) return;
+      overrideReason = enteredReason.trim();
+      if (!overrideReason) {
+        toast.error("A reason is required for a document override");
+        return;
+      }
+    }
     const confirmed = await confirmDialog({
       title: verify ? "Verify Vendor" : "Remove Verification",
       message: verify
-        ? `Allow ${vendor.name} for new purchasing transactions?`
+        ? missingDocuments.length
+          ? `Override missing required documents and allow ${vendor.name} for new purchasing transactions? Missing: ${missingDocuments.join(", ")}. Reason: ${overrideReason}`
+          : `Allow ${vendor.name} for new purchasing transactions?`
         : `Block ${vendor.name} from new purchasing transactions until verified again?`,
       confirmLabel: verify ? "Verify" : "Unverify",
       variant: verify ? "info" : "warning",
@@ -732,7 +757,9 @@ export default function VendorsPage() {
     try {
       const updated = await apiClient.put<Vendor>(
         `/purchase/vendors/${vendor.id}/${verify ? "verify" : "unverify"}`,
-        {},
+        missingDocuments.length
+          ? { overrideRequiredDocuments: true, overrideConfirmed: true, overrideReason }
+          : {},
       );
       toast.success(verify ? "Vendor verified" : "Vendor verification removed");
       if (viewingVendor?.id === vendor.id) setViewingVendor(updated);
@@ -830,7 +857,7 @@ export default function VendorsPage() {
       }));
       toast[result.valid ? "success" : "error"](
         result.message ||
-          (result.valid ? "GSTIN verified" : "GSTIN verification failed"),
+          (result.portalVerified ? "GSTIN verified against portal" : result.valid ? "GSTIN format and checksum valid; portal verification unavailable" : "GSTIN verification failed"),
       );
     } catch (error: any) {
       toast.error(error?.message || "Failed to verify GSTIN");
@@ -948,6 +975,7 @@ export default function VendorsPage() {
             <div className="text-xs text-[#7A6555]">
               {vendor.legal_name || vendor.tax_id || "-"}
             </div>
+            {vendor.matched_on?.length ? <div className="mt-1 text-[11px] text-[#6F4E37]">Matched: {vendor.matched_on.join(", ")}</div> : null}
           </div>
         ),
       },
@@ -1058,13 +1086,13 @@ export default function VendorsPage() {
       },
       {
         id: "gst",
-        label: "GST Status",
+        label: "GSTIN Verification",
         accessor: (vendor) =>
-          vendor.gst_verification?.valid ? "Verified" : "Not verified",
+          vendor.gst_verification?.portalVerified ? "Portal verified" : vendor.gst_verification?.valid ? "Format checked" : "Not verified",
         sortable: true,
         minWidth: 120,
         defaultVisible: false,
-        cell: (vendor) => (vendor.gst_verification?.valid ? "Verified" : "-"),
+        cell: (vendor) => vendor.gst_verification?.portalVerified ? "Portal verified" : vendor.gst_verification?.valid ? "Format checked" : "-",
       },
       {
         id: "actions",
@@ -1075,6 +1103,18 @@ export default function VendorsPage() {
         align: "right",
         cell: (vendor) => (
           <div className="flex items-center justify-end gap-1">
+            {(() => {
+              const approved = getVendorApprovalStatus(vendor) === "APPROVED";
+              return canVerify ? <>
+                {approved || !(vendor.missing_required_documents?.length) || hasMakerCheckerOverride(user) ? <ErpButton
+                  variant="ghost" size="sm" className="h-8 w-8 p-0"
+                  title={approved ? "Reset master approval" : vendor.missing_required_documents?.length ? "Privileged document override" : "Approve vendor"}
+                  aria-label={approved ? "Reset master approval" : vendor.missing_required_documents?.length ? "Privileged document override" : "Approve vendor"}
+                  onClick={() => handleVerification(vendor, !approved)}
+                >{approved ? <ShieldOff className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4 text-emerald-700" />}</ErpButton> : <span className="px-2 text-[11px] text-amber-800" title={`Missing: ${vendor.missing_required_documents.join(", ")}`}>Documents required</span>}
+                {!approved ? <ErpButton variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-700" title="Reject vendor" aria-label="Reject vendor" onClick={() => handleRejectVendor(vendor)}><XCircle className="h-4 w-4" /></ErpButton> : null}
+              </> : null;
+            })()}
             <ErpButton
               variant="ghost"
               size="sm"
@@ -1096,40 +1136,6 @@ export default function VendorsPage() {
               >
                 <Edit className="h-4 w-4" />
               </ErpButton>
-            ) : null}
-            {canVerify ? (
-              <>
-                <ErpButton
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  title={
-                    vendor.is_verified ? "Remove verification" : "Approve vendor"
-                  }
-                  aria-label={
-                    vendor.is_verified ? "Remove verification" : "Approve vendor"
-                  }
-                  onClick={() => handleVerification(vendor, !vendor.is_verified)}
-                >
-                  {vendor.is_verified ? (
-                    <ShieldOff className="h-4 w-4" />
-                  ) : (
-                    <ShieldCheck className="h-4 w-4 text-emerald-700" />
-                  )}
-                </ErpButton>
-                {!vendor.is_verified ? (
-                  <ErpButton
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 text-red-700"
-                    title="Reject vendor"
-                    aria-label="Reject vendor"
-                    onClick={() => handleRejectVendor(vendor)}
-                  >
-                    <XCircle className="h-4 w-4" />
-                  </ErpButton>
-                ) : null}
-              </>
             ) : null}
             {canDelete ? (
               <ErpButton
@@ -1211,6 +1217,8 @@ export default function VendorsPage() {
           defaultPageSize={25}
           pageSizeOptions={[10, 25, 50, 100]}
           searchPlaceholder="Search vendor, code, GSTIN, contact, email, or location..."
+          manualFiltering
+          onSearchChange={(value) => { setSelectedIds([]); void fetchVendors(value); }}
           emptyState={
             <ErpWorkspaceState
               mode="empty"
@@ -1287,10 +1295,10 @@ export default function VendorsPage() {
                   }
                   label={
                     getVendorApprovalStatus(viewingVendor) === "APPROVED"
-                      ? "Verified for Purchasing"
+                      ? "Master Approved"
                       : getVendorApprovalStatus(viewingVendor) === "REJECTED"
                         ? "Rejected"
-                        : "Verification Pending"
+                      : "Pending Verification"
                   }
                   tone={
                     getVendorApprovalStatus(viewingVendor) === "REJECTED"
@@ -1299,7 +1307,7 @@ export default function VendorsPage() {
                   }
                 />
                 {viewingVendor.gst_verification?.valid ? (
-                  <ErpStatusBadge status="APPROVED" label="GST Verified" />
+                  <ErpStatusBadge status="APPROVED" label={viewingVendor.gst_verification.portalVerified ? "GSTIN Portal Verified" : "GSTIN Format Checked"} />
                 ) : null}
               </div>
               {getVendorApprovalStatus(viewingVendor) === "REJECTED" ? (
@@ -1326,26 +1334,29 @@ export default function VendorsPage() {
                 ) : null}
                 {canVerify ? (
                   <>
+                    {(() => {
+                      const approved = getVendorApprovalStatus(viewingVendor) === "APPROVED";
+                      const missingDocuments = (viewingVendor.missing_required_documents?.length || 0) > 0;
+                      return <>
                     <ErpButton
-                      variant={
-                        viewingVendor.is_verified ? "secondary" : "approve"
-                      }
-                      disabled={!viewingVendor.is_verified && isVendorCreator(viewingVendor, user) && !hasMakerCheckerOverride(user)}
+                      variant={approved ? "secondary" : "approve"}
+                      disabled={!approved && ((missingDocuments && !hasMakerCheckerOverride(user)) || (isVendorCreator(viewingVendor, user) && !hasMakerCheckerOverride(user)))}
+                      title={!approved && missingDocuments ? `Required documents missing: ${viewingVendor.missing_required_documents!.join(", ")}` : undefined}
                       onClick={() =>
                         handleVerification(
                           viewingVendor,
-                          !viewingVendor.is_verified,
+                          !approved,
                         )
                       }
                     >
-                      {viewingVendor.is_verified ? (
+                      {approved ? (
                         <ShieldOff className="h-4 w-4" />
                       ) : (
                         <ShieldCheck className="h-4 w-4" />
                       )}
-                      {viewingVendor.is_verified ? "Unverify" : "Approve"}
+                      {approved ? "Reset Approval" : missingDocuments ? "Documents Required" : "Approve Vendor"}
                     </ErpButton>
-                    {!viewingVendor.is_verified ? (
+                    {!approved ? (
                       <ErpButton
                         variant="danger"
                         disabled={isVendorCreator(viewingVendor, user) && !hasMakerCheckerOverride(user)}
@@ -1355,6 +1366,8 @@ export default function VendorsPage() {
                         Reject
                       </ErpButton>
                     ) : null}
+                      </>;
+                    })()}
                   </>
                 ) : null}
               </div>
@@ -1539,10 +1552,10 @@ export default function VendorsPage() {
             <section>
               <SectionTitle
                 title="Onboarding Documents"
-                description="GST, PAN, MSME, and cancelled cheque checklist for supplier onboarding."
+                description={['INDIA', 'IN', 'SAIFSEAS'].includes(String(viewingVendor.market_profile || 'INDIA').toUpperCase()) ? "GSTIN verification is separate from GST certificate upload. Required documents depend on the India supplier profile." : `Market profile ${viewingVendor.market_profile || 'unknown'} does not inherit Indian GST, PAN, MSME, or cheque requirements.`}
               />
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {VENDOR_DOCUMENT_CHECKLIST.map((document) => {
+                {( ['INDIA', 'IN', 'SAIFSEAS'].includes(String(viewingVendor.market_profile || 'INDIA').toUpperCase()) ? VENDOR_DOCUMENT_CHECKLIST : [{ type: 'OTHER', label: 'Other supporting document' }] ).map((document) => {
                   const attachment = getAttachmentForType(viewingVendor, document.type);
                   return (
                     <div
@@ -1551,9 +1564,7 @@ export default function VendorsPage() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="text-sm font-semibold text-[#4A3426]">
-                            {document.label}
-                          </div>
+                          <div className="text-sm font-semibold text-[#4A3426]">{document.label}{viewingVendor.missing_required_documents?.includes(document.label) ? <span className="ml-2 text-xs font-medium text-red-700">Required · Missing</span> : null}</div>
                           <div className="mt-1 text-xs text-[#7A6555]">
                             {attachment ? "Uploaded" : "Missing"}
                           </div>
@@ -2017,7 +2028,7 @@ export default function VendorsPage() {
                     >
                       {form.gstVerification.message ||
                         (form.gstVerification.valid
-                          ? "GSTIN verified"
+                          ? form.gstVerification.portalVerified ? "GSTIN portal verified" : "GSTIN format and checksum valid"
                           : "GSTIN invalid")}
                     </p>
                   ) : null}

@@ -148,11 +148,13 @@ describe('DebitNoteService debit note approval controls', () => {
         error: null,
       }),
     };
+    const auditQuery: any = { insert: jest.fn().mockResolvedValue({ error: null }) };
 
     (service as any).supabase = {
       from: jest.fn()
         .mockReturnValueOnce(fetchQuery)
-        .mockReturnValueOnce(updateQuery),
+        .mockReturnValueOnce(updateQuery)
+        .mockReturnValueOnce(auditQuery),
     };
 
     const result = await service.approve('tenant-1', 'dn-1', 'checker-1');
@@ -165,6 +167,7 @@ describe('DebitNoteService debit note approval controls', () => {
       id: 'dn-1',
       status: 'APPROVED',
     }));
+    expect(auditQuery.insert).toHaveBeenCalledWith(expect.objectContaining({ action: 'DEBIT_NOTE_APPROVED', resource_id: 'dn-1' }));
   });
 
   it('blocks approval once a debit note has left draft status', async () => {
@@ -190,6 +193,44 @@ describe('DebitNoteService debit note approval controls', () => {
     await expect(
       service.approve('tenant-1', 'dn-1', 'checker-1'),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('DebitNoteService rejected-material disposition', () => {
+  it('keeps the debit-note case open while any material disposition is pending', async () => {
+    const service = new DebitNoteService({} as any);
+    const lineQuery: any = { select: jest.fn(() => lineQuery), eq: jest.fn(() => lineQuery), then: (resolve: any) => resolve({ data: [{ id: 'item-1', return_status: 'PENDING' }], error: null }) };
+    const from = jest.fn(() => lineQuery);
+    (service as any).supabase = { from };
+    await expect(service.updateStatus('tenant-1', 'dn-1', 'CLOSED')).rejects.toThrow('disposition is pending');
+    expect(from).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires a reason, records one final disposition, scopes updates to the tenant, and audits the actor', async () => {
+    const service = new DebitNoteService({} as any);
+    const noteQuery: any = { select: jest.fn(() => noteQuery), eq: jest.fn(() => noteQuery), maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'dn-1', debit_note_number: 'DN-1' }, error: null }) };
+    const itemFetch: any = { select: jest.fn(() => itemFetch), eq: jest.fn(() => itemFetch), maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'item-1', tenant_id: 'tenant-1', return_status: 'PENDING', grn_item_id: 'grn-item-1' }, error: null }) };
+    const itemUpdate: any = { update: jest.fn(() => itemUpdate), eq: jest.fn(() => itemUpdate), select: jest.fn(() => itemUpdate), single: jest.fn().mockResolvedValue({ data: { id: 'item-1', grn_item_id: 'grn-item-1', return_status: 'RETURNED' }, error: null }) };
+    const grnItemUpdate: any = { update: jest.fn(() => grnItemUpdate), eq: jest.fn(() => grnItemUpdate), then: (resolve: any) => resolve({ error: null }) };
+    const audit: any = { insert: jest.fn().mockResolvedValue({ error: null }) };
+    (service as any).supabase = { from: jest.fn().mockReturnValueOnce(noteQuery).mockReturnValueOnce(itemFetch).mockReturnValueOnce(itemUpdate).mockReturnValueOnce(grnItemUpdate).mockReturnValueOnce(audit) };
+
+    await expect(service.updateReturnStatus('tenant-1', 'dn-1', 'item-1', 'RETURNED', '', 'user-1')).rejects.toThrow('reason or remarks');
+    const result = await service.updateReturnStatus('tenant-1', 'dn-1', 'item-1', 'RETURNED', 'Supplier pickup recorded', 'user-1');
+
+    expect(result.return_status).toBe('RETURNED');
+    expect(itemUpdate.update).toHaveBeenCalledWith(expect.objectContaining({ return_status: 'RETURNED', disposal_notes: 'Supplier pickup recorded' }));
+    expect(itemUpdate.eq).toHaveBeenCalledWith('tenant_id', 'tenant-1');
+    expect(grnItemUpdate.update).toHaveBeenCalledWith({ return_status: 'RETURNED' });
+    expect(audit.insert).toHaveBeenCalledWith(expect.objectContaining({ user_id: 'user-1', action: 'REJECTED_MATERIAL_DISPOSITION', metadata: { reason: 'Supplier pickup recorded' } }));
+  });
+
+  it('rejects a contradictory second disposition', async () => {
+    const service = new DebitNoteService({} as any);
+    const noteQuery: any = { select: jest.fn(() => noteQuery), eq: jest.fn(() => noteQuery), maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'dn-1', debit_note_number: 'DN-1' }, error: null }) };
+    const itemFetch: any = { select: jest.fn(() => itemFetch), eq: jest.fn(() => itemFetch), maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'item-1', return_status: 'RETURNED' }, error: null }) };
+    (service as any).supabase = { from: jest.fn().mockReturnValueOnce(noteQuery).mockReturnValueOnce(itemFetch) };
+    await expect(service.updateReturnStatus('tenant-1', 'dn-1', 'item-1', 'DESTROYED', 'No', 'user-2')).rejects.toThrow('already finalized as RETURNED');
   });
 });
 

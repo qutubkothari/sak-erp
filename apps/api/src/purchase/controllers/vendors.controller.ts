@@ -155,8 +155,14 @@ export class VendorsController {
 
   @Put(':id/verify')
   @RequireApprove('vendors')
-  async verify(@Request() req: any, @Param('id') id: string) {
-    return this.vendorsService.setVerification(req.user.tenantId, req.user.userId, id, true, { overrideMakerChecker: hasSuperAdminBypass(req.user) });
+  async verify(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    const privilegedOverride = hasSuperAdminBypass(req.user);
+    return this.vendorsService.setVerification(req.user.tenantId, req.user.userId, id, true, {
+      overrideMakerChecker: privilegedOverride,
+      overrideRequiredDocuments: privilegedOverride && body?.overrideRequiredDocuments === true,
+      overrideConfirmed: body?.overrideConfirmed === true,
+      overrideReason: body?.overrideReason,
+    });
   }
 
   @Put(':id/unverify')

@@ -6343,11 +6343,19 @@ function PurchaseOrdersContent() {
                           <p className="font-medium">{(trailPO as any).approved_at ? new Date((trailPO as any).approved_at).toLocaleString() : '-'}</p>
                         </div>
                         <div>
-                          <span className="text-gray-500">Sent to Supplier:</span>
-                          <p className="font-medium">{(trailPO as any).sent_at ? new Date((trailPO as any).sent_at).toLocaleString() : 'Not sent'}</p>
+                          <span className="text-gray-500">System Dispatch:</span>
+                          <p className="font-medium">{(trailPO as any).sent_at ? `Sent ${new Date((trailPO as any).sent_at).toLocaleString()}` : 'Not sent through ERP'}</p>
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label="PO receipt progress">
+                    {[
+                      ['Ordered Qty', Number((trailPO as any).receipt_progress?.ordered_qty || 0)],
+                      ['Accepted Received Qty', Number((trailPO as any).receipt_progress?.accepted_qty || 0)],
+                      ['Remaining / Open Qty', Number((trailPO as any).receipt_progress?.remaining_qty || 0)],
+                    ].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-[#E8DCC4] bg-white p-4"><div className="text-xs font-medium text-[#7A6555]">{label}</div><div className="mt-1 text-xl font-bold tabular-nums text-[#4A3426]">{Number(value).toLocaleString()}</div></div>)}
                   </div>
 
                   {/* Financial reconciliation */}

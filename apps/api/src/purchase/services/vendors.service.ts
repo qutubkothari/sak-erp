@@ -368,6 +368,26 @@ function normalizeVendorApprovalStatus(value: any): 'PENDING' | 'APPROVED' | 'RE
   return 'PENDING';
 }
 
+export function filterVendorSearchResults<T extends Record<string, any>>(vendors: T[], rawSearch: unknown): T[] {
+  const search = String(rawSearch || '').trim().toLocaleLowerCase();
+  if (!search) return vendors;
+  return vendors.flatMap((vendor: any) => {
+    const fields: Array<[string, unknown]> = [
+      ['Vendor name', vendor.name], ['Vendor code', vendor.code],
+      ['GSTIN / tax identifier', vendor.tax_id || vendor.gst_number],
+      ['PAN', vendor.pan_number], ['Contact person', vendor.contact_person],
+      ['Contact email', vendor.email], ['Contact phone', vendor.phone],
+      ['Alias', vendor.alias], ['Alias', vendor.aliases],
+    ];
+    const matchedOn: string[] = [];
+    for (const [label, value] of fields) {
+      const values = Array.isArray(value) ? value : [value];
+      if (values.some((entry) => String(entry || '').toLocaleLowerCase().includes(search)) && !matchedOn.includes(label)) matchedOn.push(label);
+    }
+    return matchedOn.length ? [{ ...vendor, matched_on: matchedOn } as T] : [];
+  });
+}
+
 function normalizeAttachmentType(value: any): string {
   const normalized = String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_');
   return VENDOR_ATTACHMENT_TYPES.has(normalized) ? normalized : 'OTHER';
@@ -908,10 +928,6 @@ export class VendorsService {
       }
     }
 
-    if (filters?.search) {
-      query = query.or(`code.ilike.%${filters.search}%,name.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
-    }
-
     const { data, error } = await query;
 
     console.log('🔵 [API] Query result - data count:', data?.length || 0);
@@ -921,7 +937,30 @@ export class VendorsService {
     }
 
     if (error) throw new BadRequestException(error.message);
-    return (data || []).map((vendor) => this.hydrateVendor(vendor));
+    let vendors: any[] = (data || []).map((vendor) => this.hydrateVendor(vendor));
+    if (vendors.length) {
+      const [{ data: tenant }, { data: attachments }] = await Promise.all([
+        this.supabase.from('tenants').select('market_profile').eq('id', tenantId).maybeSingle(),
+        this.supabase.from('vendor_attachments').select('vendor_id, document_type').eq('tenant_id', tenantId).in('vendor_id', vendors.map((v) => v.id)),
+      ]);
+      const profile = String(tenant?.market_profile || 'INDIA').trim().toUpperCase();
+      const docsByVendor = new Map<string, Set<string>>();
+      for (const attachment of attachments || []) {
+        const id = String(attachment.vendor_id);
+        const docs = docsByVendor.get(id) || new Set<string>();
+        docs.add(String(attachment.document_type || '').toUpperCase());
+        docsByVendor.set(id, docs);
+      }
+      vendors = vendors.map((vendor) => {
+        const required = ['INDIA', 'IN', 'SAIFSEAS'].includes(profile)
+          ? ['PAN', ...(validateGstin(vendor.tax_id).formatValid || vendor.gst_number ? ['GST'] : [])]
+          : [];
+        const docs = docsByVendor.get(String(vendor.id)) || new Set<string>();
+        return { ...vendor, market_profile: profile, missing_required_documents: required.filter((type) => !docs.has(type)).map((type) => type === 'GST' ? 'GST Certificate' : type) };
+      });
+    }
+    // Server-side matching happens before ListTable applies its page slice.
+    return filterVendorSearchResults(vendors, filters?.search);
   }
 
   async findOne(tenantId: string, id: string) {
@@ -934,14 +973,19 @@ export class VendorsService {
 
     if (error) throw new NotFoundException('Vendor not found');
     const vendor = this.hydrateVendor(data);
-    const [attachments, approvalHistory] = await Promise.all([
+    const [attachments, approvalHistory, tenantResult] = await Promise.all([
       this.fetchVendorAttachments(tenantId, id),
       this.fetchVendorApprovalHistory(tenantId, id),
+      this.supabase.from('tenants').select('market_profile').eq('id', tenantId).maybeSingle(),
     ]);
+    const marketProfile = String(tenantResult.data?.market_profile || 'INDIA').trim().toUpperCase();
+    const missingRequiredDocuments = await this.missingRequiredDocuments(tenantId, { ...vendor, attachments });
     return {
       ...vendor,
       attachments,
       approval_history: approvalHistory,
+      market_profile: marketProfile,
+      missing_required_documents: missingRequiredDocuments,
     };
   }
 
@@ -989,13 +1033,24 @@ export class VendorsService {
     return this.findOne(tenantId, id);
   }
 
-  async setVerification(tenantId: string, userId: string, id: string, isVerified: boolean, options: { overrideMakerChecker?: boolean } = {}) {
+  async setVerification(tenantId: string, userId: string, id: string, isVerified: boolean, options: { overrideMakerChecker?: boolean; overrideRequiredDocuments?: boolean; overrideConfirmed?: boolean; overrideReason?: string } = {}) {
     const existing = await this.findOne(tenantId, id);
     if (!options.overrideMakerChecker) this.assertMakerChecker(existing, userId, isVerified ? 'approve' : 'reset approval for');
+    if (isVerified) {
+      const missing = await this.missingRequiredDocuments(tenantId, existing);
+      if (missing.length) {
+        const overrideReason = String(options.overrideReason || '').trim();
+        if (!options.overrideRequiredDocuments || !options.overrideMakerChecker || options.overrideConfirmed !== true || !overrideReason) {
+          throw new BadRequestException(`Vendor approval is blocked. Required documents missing: ${missing.join(', ')}.`);
+        }
+      }
+    }
     const metadata = safeObject(existing?.metadata);
     const now = new Date().toISOString();
     const fromStatus = normalizeVendorApprovalStatus(existing.approval_status);
-    const action = isVerified ? 'APPROVED' : 'RESET_TO_PENDING';
+    const action = isVerified
+      ? options.overrideRequiredDocuments ? 'DOCUMENT_REQUIREMENT_OVERRIDE' : 'APPROVED'
+      : 'RESET_TO_PENDING';
     const vendorApproval = isVerified
       ? {
           status: 'APPROVED',
@@ -1059,8 +1114,24 @@ export class VendorsService {
       action,
       fromStatus,
       toStatus: isVerified ? 'APPROVED' : 'PENDING',
+      reason: isVerified && options.overrideRequiredDocuments ? String(options.overrideReason || '').trim() : null,
+      metadata: isVerified && options.overrideRequiredDocuments ? { requiredDocumentOverride: true, overrideConfirmed: true, missingRequiredDocuments: await this.missingRequiredDocuments(tenantId, existing) } : undefined,
     });
     return this.findOne(tenantId, id);
+  }
+
+  private async missingRequiredDocuments(tenantId: string, vendor: any): Promise<string[]> {
+    const { data: tenant, error } = await this.supabase.from('tenants').select('market_profile').eq('id', tenantId).maybeSingle();
+    if (error && !String(error.message || '').toLowerCase().includes('market_profile')) throw new BadRequestException(error.message);
+    const profile = String(tenant?.market_profile || 'INDIA').trim().toUpperCase();
+    const attachments = Array.isArray(vendor?.attachments) ? vendor.attachments : [];
+    const uploaded = new Set(attachments.map((file: any) => String(file?.document_type || '').toUpperCase()));
+    // India supplier onboarding uses PAN and a GST certificate when a GSTIN is
+    // recorded. Other market profiles must not inherit these Indian requirements.
+    if (!['INDIA', 'IN', 'SAIFSEAS'].includes(profile)) return [];
+    const required = ['PAN'];
+    if (validateGstin(vendor?.tax_id).formatValid || vendor?.gst_number) required.push('GST');
+    return required.filter((type) => !uploaded.has(type)).map((type) => type === 'GST' ? 'GST Certificate' : type);
   }
 
   async rejectVerification(tenantId: string, userId: string, id: string, reason: any, options: { overrideMakerChecker?: boolean } = {}) {

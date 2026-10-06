@@ -210,6 +210,8 @@ describe('PurchaseOrdersService controls', () => {
     });
 
     expect(receipt.receipt_status).toBe(expectedStatus);
+    expect(receipt.receipt_progress.remaining_qty).toBe(10 - accepted);
+    if (rejected > 0) expect(receipt.purchase_order_items[0].remaining_qty).toBe(10 - accepted);
   });
 
   it('keeps a PO with one incomplete line open', async () => {

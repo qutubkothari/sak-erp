@@ -330,6 +330,7 @@ interface GRN {
     }>;
   } | null;
   vendor: {
+    id?: string;
     name: string;
     code: string;
   };
@@ -664,7 +665,13 @@ function GRNContent() {
     }
   };
   const [filterStatus, setFilterStatus] = useState("ALL");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(initialGrnSearch);
+  const [filterVendor, setFilterVendor] = useState("");
+  const [receiptDateFrom, setReceiptDateFrom] = useState("");
+  const [receiptDateTo, setReceiptDateTo] = useState("");
+  const [filterQcStatus, setFilterQcStatus] = useState("");
+  const [grnSortBy, setGrnSortBy] = useState("receipt_date");
+  const [grnSortOrder, setGrnSortOrder] = useState("desc");
   const [showUIDsModal, setShowUIDsModal] = useState(false);
   const [selectedGRNUIDs, setSelectedGRNUIDs] = useState<UIDRecord[]>([]);
   const [loadingUIDs, setLoadingUIDs] = useState(false);
@@ -1348,7 +1355,7 @@ function GRNContent() {
 
   useEffect(() => {
     fetchGRNs();
-  }, [filterStatus]);
+  }, [filterStatus, searchTerm, filterVendor, receiptDateFrom, receiptDateTo, filterQcStatus, grnSortBy, grnSortOrder]);
 
   useEffect(() => {
     if (!attentionReview || consumedReview.current === attentionReview) return;
@@ -2062,6 +2069,12 @@ function GRNContent() {
       params.set("compact", "true");
       if (filterStatus !== "ALL") params.append("status", filterStatus);
       if (searchTerm) params.append("search", searchTerm);
+      if (filterVendor) params.append("vendorId", filterVendor);
+      if (receiptDateFrom) params.append("dateFrom", receiptDateFrom);
+      if (receiptDateTo) params.append("dateTo", receiptDateTo);
+      if (filterQcStatus) params.append("qcStatus", filterQcStatus);
+      params.set("sortBy", grnSortBy);
+      params.set("sortOrder", grnSortOrder);
 
       const data = await apiClient.get(`/purchase/grn?${params}`);
       setGrns(data);
@@ -3394,7 +3407,11 @@ function GRNContent() {
               searchPlaceholder="Search GRN, PO, vendor, invoice, part no, item name, description, HSN…"
               toolbarLayout="singleLine"
               searchClassName="sm:max-w-[28rem] lg:max-w-[34rem]"
+              manualFiltering
+              onSearchChange={setSearchTerm}
+              resetPageKey={`${filterStatus}:${filterVendor}:${receiptDateFrom}:${receiptDateTo}:${filterQcStatus}`}
               toolbarRight={
+                <div className="grid w-full gap-2 sm:grid-cols-2 xl:grid-cols-7">
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
@@ -3405,6 +3422,13 @@ function GRNContent() {
                   <option value="COMPLETED">Completed</option>
                   <option value="CANCELLED">Cancelled</option>
                 </select>
+                <select aria-label="Filter by supplier" value={filterVendor} onChange={(e) => setFilterVendor(e.target.value)} className="min-h-9 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm"><option value="">All suppliers</option>{Array.from(new Map(grns.filter((g) => g.vendor?.id).map((g) => [g.vendor!.id, g.vendor?.name || g.vendor?.code || 'Supplier'])).entries()).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
+                <input aria-label="Receipt date from" type="date" value={receiptDateFrom} onChange={(e) => setReceiptDateFrom(e.target.value)} className="min-h-9 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-sm" />
+                <input aria-label="Receipt date to" type="date" value={receiptDateTo} onChange={(e) => setReceiptDateTo(e.target.value)} className="min-h-9 rounded-md border border-[#D8C8AA] bg-white px-2 py-1.5 text-sm" />
+                <select aria-label="Filter QC status" value={filterQcStatus} onChange={(e) => setFilterQcStatus(e.target.value)} className="min-h-9 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm"><option value="">All QC</option><option value="ACCEPTED">Accepted</option><option value="PARTIAL">Partial</option><option value="REJECTED">Rejected</option><option value="PENDING">Pending</option></select>
+                <select aria-label="Sort GRN register" value={`${grnSortBy}:${grnSortOrder}`} onChange={(e) => { const [by, order] = e.target.value.split(':'); setGrnSortBy(by); setGrnSortOrder(order); }} className="min-h-9 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm"><option value="receipt_date:desc">Newest receipt</option><option value="receipt_date:asc">Oldest receipt</option><option value="grn_number:asc">GRN number</option><option value="status:asc">Status</option><option value="supplier:asc">Supplier</option></select>
+                <button type="button" onClick={() => { setFilterStatus('ALL'); setFilterVendor(''); setReceiptDateFrom(''); setReceiptDateTo(''); setFilterQcStatus(''); setSearchTerm(''); setGrnSortBy('receipt_date'); setGrnSortOrder('desc'); }} className="min-h-9 rounded-md border border-[#D8C8AA] bg-white px-3 py-1.5 text-sm font-medium">Clear filters</button>
+                </div>
               }
               emptyState={
                 <div className="p-12 text-center">
