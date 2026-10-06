@@ -9,7 +9,6 @@ type Blocker = {
   key: string;
   kind?: string;
   employee_name?: string;
-  reason: string;
   fix_href?: string;
   affected_days?: number;
   severity: "BLOCKER" | "WARNING" | "INFO";
@@ -79,7 +78,7 @@ function issueCopy(item: Blocker, month: string) {
   if (item.kind === "leave") return { title: "Review pending leave", description: `${item.employee_name || "This employee"} has a leave request during ${period} that has not been decided.`, action: "Review leave" };
   if (item.kind === "payroll-configuration") return { title: "Review attendance settings", description: "The attendance rules needed for payroll are incomplete. Ask HR to review them before continuing.", action: "Review attendance settings" };
   if (item.kind === "payroll-selection") return { title: "Select an employee", description: "Choose at least one active employee to prepare payroll.", action: "Choose employees" };
-  return { title: item.employee_name || "Payroll item", description: item.reason, action: "Review this item" };
+  return { title: item.employee_name || "Payroll item", description: "This payroll item needs HR review before you continue.", action: "Review this item" };
 }
 
 function friendlyPayrollError(error: unknown, fallback: string) {
