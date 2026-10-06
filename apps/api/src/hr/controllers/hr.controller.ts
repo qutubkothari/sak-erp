@@ -37,7 +37,7 @@ import { HrHistoricalAttendanceImportService } from "../services/hr-historical-a
 // employee-facing page receives only the fields needed to explain next steps.
 export function payrollReviewHref(cockpit: any, item: any) {
   const kind = String(item.key || "").split(":")[0];
-  const mode = kind.startsWith("salary-") ? "salary" : kind.startsWith("attendance") ? "attendance" : null;
+  const mode = kind.startsWith("salary-") ? "salary" : kind.startsWith("attendance") || kind === "employee-overtime-rule" ? "attendance" : null;
   const employee = String(item.employee_code || item.entity_id || "");
   const month = String(cockpit.month || "");
   const batch = String(cockpit.control?.id || "");
@@ -64,7 +64,8 @@ function payrollMonthClientView(cockpit: any) {
       employee_name: item.employee_name,
       fix_href: payrollReviewHref(cockpit, item), severity: item.severity,
       affected_days: String(item.key || "").startsWith("attendance-derived-metrics:")
-        ? Number(item.evidence?.unresolved_days || 0) : undefined,
+        ? Number(item.evidence?.unresolved_days || 0)
+        : String(item.key || "").startsWith("employee-overtime-rule:") ? (item.evidence?.missing_dates || []).length : undefined,
     })),
     counts: cockpit.counts, employee_count: cockpit.employee_count,
     payroll_employee_count: cockpit.payroll_employee_count,
@@ -680,6 +681,12 @@ export class HrController {
   @RequireUpdate("hr")
   confirmHistoricalPayrollAttendancePolicy(@Request() req: any, @Param("month") month: string, @Body() body: any) {
     return this.hrService.confirmHistoricalPayrollAttendancePolicy(req.user.tenantId, month, req.user.userId, body);
+  }
+
+  @Post("payroll/control/month/:month/review/overtime-rule")
+  @RequireUpdate("hr")
+  confirmPayrollEmployeeOvertimeRule(@Request() req: any, @Param("month") month: string, @Body() body: any) {
+    return this.hrService.confirmPayrollEmployeeOvertimeRule(req.user.tenantId, month, req.user.userId, body);
   }
 
   @Post("payroll/control/month/:month/review/salary-effective-date")

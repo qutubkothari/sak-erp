@@ -128,11 +128,11 @@ describe("attendance policy effective dates", () => {
     expect(result).toMatchObject({ lateMinutes: 0, overtimeHours: 0, derivedMetricsStatus: null, policy: { effective_from: "2026-09-01" } });
   });
 
-  it("recalculates historical overtime after a dated policy is confirmed", async () => {
+  it("keeps legacy attendance metrics date scoped while payroll OT is resolved separately", async () => {
     const { service } = controlWithPolicy(policy("tenant-1", { effective_from: "2026-09-19", late_deduction_mode: "NONE" }));
     const earlier = await service.calculateAttendanceMetrics("tenant-1", "2026-09-01", "2026-09-01T09:35:39.717+05:30", 11.33);
     expect(earlier.overtimeHours).toBeNull();
-    expect(requiresAttendanceDerivedMetricsReview({ derived_metrics_status: earlier.derivedMetricsStatus }, policy("tenant-1", { late_deduction_mode: "NONE" }), { overtime_eligible: true })).toBe(true);
+    expect(requiresAttendanceDerivedMetricsReview({ derived_metrics_status: earlier.derivedMetricsStatus }, policy("tenant-1", { late_deduction_mode: "NONE" }), { overtime_eligible: true })).toBe(false);
     jest.spyOn(service, "getHistoricalPolicyVersions").mockResolvedValue([{ id: "historical-rule", rule_key: "attendance_policy", rule_value: policy("tenant-1", { late_deduction_mode: "NONE" }), effective_from: "2026-09-01", effective_to: "2026-09-18" }]);
     const confirmed = await service.calculateAttendanceMetrics("tenant-1", "2026-09-01", "2026-09-01T09:35:39.717+05:30", 11.33);
     expect(confirmed.lateMinutes).toBe(20);
@@ -222,7 +222,7 @@ describe("attendance policy effective dates", () => {
     ).toBe(true);
   });
 
-  it("marks overtime pay-relevant only when the effective policy enables it for the employee", () => {
+  it("does not use attendance policy to decide employee overtime pay relevance", () => {
     const unresolved = {
       derived_metrics_status: "HISTORICAL_POLICY_UNAVAILABLE",
     };
@@ -235,7 +235,7 @@ describe("attendance policy effective dates", () => {
         }),
         { overtime_eligible: true },
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       requiresAttendanceDerivedMetricsReview(
         unresolved,

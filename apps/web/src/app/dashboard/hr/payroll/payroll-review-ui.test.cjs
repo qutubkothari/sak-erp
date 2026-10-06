@@ -15,10 +15,13 @@ test("attendance and salary buttons have dedicated employee review targets", () 
   assert.match(view, /PAYROLL_SALARY_REVIEW/);
 });
 
-test("attendance review lists only affected dates with pay relevance and policy gap", () => {
+test("attendance review separates employee OT rules from attendance policy and lists affected dates", () => {
   assert.match(view, /review\.attendance\.affected\.map/);
   assert.match(view, /No effective policy recorded/);
-  assert.match(view, /The later policy is never applied backward automatically/);
+  assert.match(view, /EMPLOYEE_OT_RULE_REQUIRED/);
+  assert.match(view, /Confirm Overtime Rule/);
+  assert.match(view, /Attendance \/ Shift Policy/);
+  assert.match(view, /Employee OT Rule/);
   assert.match(view, /Pay relevant: \{day\.late_pay_relevant/);
   assert.match(view, /Pay relevant: \{day\.overtime_pay_relevant/);
   assert.match(view, /statusLabel\[day\.classification\]/);

@@ -15,6 +15,7 @@ import {
   summarizePayrollBlockers,
   payrollAttentionGroup,
   validatePayrollAttendancePolicy,
+  validateHrPayrollRuleValue,
   classifyPayrollEvidence,
   reconcilePayrollTotals,
   explainPayrollVariance,
@@ -74,6 +75,37 @@ describe("payroll control domain", () => {
     expect(resolvePayrollRule({ ruleKey: "ot_rate", effectiveDate: "2026-02-01", profileDefault: 1.25, tenantRules })).toMatchObject({ value: 1.5, source: "TENANT" });
     expect(resolvePayrollRule({ ruleKey: "ot_rate", effectiveDate: "2025-12-31", profileDefault: 1.25, tenantRules })).toMatchObject({ value: 1.25, source: "PROFILE" });
     expect(resolvePayrollRule({ ruleKey: "ot_rate", effectiveDate: "2026-02-01", profileDefault: 1.25, tenantRules, employeeOverrides: [{ rule_key: "ot_rate", rule_value: 2, effective_from: "2026-02-01" }] })).toMatchObject({ value: 2, source: "EMPLOYEE" });
+  });
+
+  it("resolves dated employee overtime independently for two people on the same attendance date", () => {
+    const rule = (employee: string, effective_from: string, rate: number) => ({
+      employee_id: employee, rule_key: "employee_overtime_rule", effective_from,
+      effective_to: null, rule_value: { eligible: true, method: "HOURLY", starts_after_hours: 9, rate_multiplier: rate },
+    });
+    const padmaRules = [rule("padma", "2026-09-01", 1.5), rule("padma", "2026-09-19", 2)];
+    const abdulRules = [rule("abdul", "2026-09-01", 2.25)];
+    expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: "2026-09-01", employeeOverrides: padmaRules })).toMatchObject({ source: "EMPLOYEE", value: { rate_multiplier: 1.5 } });
+    expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: "2026-09-19", employeeOverrides: padmaRules })).toMatchObject({ source: "EMPLOYEE", value: { rate_multiplier: 2 } });
+    expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: "2026-09-01", employeeOverrides: abdulRules })).toMatchObject({ source: "EMPLOYEE", value: { rate_multiplier: 2.25 } });
+    expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: "2026-08-31", employeeOverrides: padmaRules })).toMatchObject({ source: "MISSING", value: undefined });
+  });
+
+  it("validates method-specific employee overtime values and rejects attendance-policy OT fields", () => {
+    expect(validateHrPayrollRuleValue("employee_overtime_rule", { eligible: true, method: "HOURLY", starts_after_hours: 9, rate_multiplier: 1.5 })).toMatchObject({ method: "HOURLY" });
+    expect(validateHrPayrollRuleValue("employee_overtime_rule", { eligible: false })).toEqual({ eligible: false });
+    expect(() => validateHrPayrollRuleValue("employee_overtime_rule", { eligible: true, method: "HOURLY", starts_after_hours: 9 })).toThrow("Invalid value");
+    expect(() => validateHrPayrollRuleValue("employee_overtime_rule", { eligible: true, method: "DAY_CREDIT", half_day_after_hours: 12, full_day_after_hours: 10, holiday_min_hours: 6 })).toThrow("Invalid value");
+    expect(() => validateHrPayrollRuleValue("employee_overtime_rule", { eligible: true, method: "HOURLY", starts_after_hours: 9, rate_multiplier: 1.5, overtime_enabled: true })).toThrow("Invalid value");
+  });
+
+  it("looks up overtime by local attendance date across the UTC midnight boundary", () => {
+    const utc = new Date("2026-08-31T20:00:00.000Z");
+    const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(utc);
+    const rule = { rule_key: "employee_overtime_rule", effective_from: "2026-09-01", effective_to: "2026-09-18",
+      rule_value: { eligible: true, method: "HOURLY", starts_after_hours: 9, rate_multiplier: 1.5 } };
+    expect(localDate).toBe("2026-09-01");
+    expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: localDate, employeeOverrides: [rule] }).source).toBe("EMPLOYEE");
+    expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: utc.toISOString().slice(0, 10), employeeOverrides: [rule] }).source).toBe("MISSING");
   });
 
   it("enforces payroll separation of duties and configured second approval", () => {

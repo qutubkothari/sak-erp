@@ -1,36 +1,45 @@
+type EmployeeOvertimeRule = {
+  eligible: boolean;
+  method?: "HOURLY" | "DAY_CREDIT";
+  starts_after_hours?: number;
+  rate_multiplier?: number;
+  minimum_hours?: number;
+  cap_hours?: number;
+  half_day_after_hours?: number;
+  full_day_after_hours?: number;
+  holiday_min_hours?: number;
+};
+
 type AttendanceDay = {
   date: string;
+  scheduled?: boolean | null;
+  work_hours?: number | null;
   late_minutes?: number | null;
-  overtime_hours?: number | null;
-  overtime_credit_days?: number | null;
   policy?: {
     policy_version_id?: string | null;
     effective_from?: string;
     late_deduction_mode: string;
     late_marks_per_half_day: number;
     standard_daily_hours: number;
-    overtime_enabled: boolean;
-    overtime_calculation_mode: string;
-    overtime_multiplier: number;
   } | null;
 };
 
-/** Keeps late and overtime calculations tied to each day's confirmed policy. */
+/** Calculates late from attendance policy and overtime solely from the dated employee rule. */
 export function calculateDatedAttendanceAdjustments(input: {
   days: AttendanceDay[];
   dailyGrossRate: number;
   basicSalary: number;
   workingDays: number;
-  overtimeEligible: boolean;
-  overtimeRateForDate: (date: string, profileRate: number) => number;
+  overtimeRuleForDate: (date: string) => EmployeeOvertimeRule | undefined;
 }) {
   const marksByPolicy = new Map<string, { count: number; threshold: number }>();
   let lateDeduction = 0;
   let overtimeAmount = 0;
+  let overtimeHours = 0;
+  let overtimeCreditDays = 0;
   for (const day of input.days) {
     const policy = day.policy;
-    if (!policy) continue;
-    if (Number(day.late_minutes || 0) > 0) {
+    if (policy && Number(day.late_minutes || 0) > 0) {
       if (policy.late_deduction_mode === "PER_MINUTE") {
         lateDeduction += input.dailyGrossRate * Number(day.late_minutes) /
           (Math.max(1, Number(policy.standard_daily_hours)) * 60);
@@ -41,18 +50,31 @@ export function calculateDatedAttendanceAdjustments(input: {
         marksByPolicy.set(key, marks);
       }
     }
-    if (!input.overtimeEligible || !policy.overtime_enabled) continue;
-    if (policy.overtime_calculation_mode === "DAY_CREDIT") {
-      overtimeAmount += input.dailyGrossRate * Number(day.overtime_credit_days || 0);
-    } else {
-      const hourlyRate = input.workingDays > 0
-        ? input.basicSalary / (input.workingDays * Math.max(1, Number(policy.standard_daily_hours))) : 0;
-      overtimeAmount += hourlyRate * Number(day.overtime_hours || 0) *
-        input.overtimeRateForDate(day.date, Number(policy.overtime_multiplier));
+
+    const rule = input.overtimeRuleForDate(day.date);
+    if (!rule?.eligible) continue;
+    const hours = Math.max(0, Number(day.work_hours || 0));
+    const minimumHours = Number(rule.minimum_hours || 0);
+    if (hours < minimumHours) continue;
+    if (rule.method === "DAY_CREDIT") {
+      const creditDays = day.scheduled === false
+        ? (hours >= Number(rule.holiday_min_hours) ? 1 : 0.5)
+        : hours >= Number(rule.full_day_after_hours) ? 1
+          : hours > Number(rule.half_day_after_hours) ? 0.5 : 0;
+      overtimeCreditDays += creditDays;
+      overtimeAmount += input.dailyGrossRate * creditDays;
+      continue;
     }
+    const rawOvertimeHours = Math.max(0, hours - Number(rule.starts_after_hours));
+    if (rawOvertimeHours < minimumHours) continue;
+    const payableHours = Math.min(rawOvertimeHours, rule.cap_hours === undefined ? rawOvertimeHours : Number(rule.cap_hours));
+    const hourlyRate = input.workingDays > 0
+      ? input.basicSalary / (input.workingDays * Math.max(1, Number(policy?.standard_daily_hours || 8))) : 0;
+    overtimeHours += payableHours;
+    overtimeAmount += hourlyRate * payableHours * Number(rule.rate_multiplier);
   }
   for (const marks of marksByPolicy.values()) {
     lateDeduction += Math.floor(marks.count / marks.threshold) * 0.5 * input.dailyGrossRate;
   }
-  return { lateDeduction, overtimeAmount };
+  return { lateDeduction, overtimeAmount, overtimeHours, overtimeCreditDays };
 }

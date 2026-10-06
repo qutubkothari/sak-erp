@@ -7,7 +7,7 @@ import { apiClient } from "../../../../../../lib/api-client";
 type Rule = { rule_key: string; value: unknown; source: string; company_value?: unknown; company_source?: string; history: any[]; employee_overrides: any[] };
 type Employee = { id: string; employee_name?: string; employee_code?: string };
 const RULES = [
-  ["weekly_working_days", "Weekly working days"], ["overtime_rate", "Overtime rate"],
+  ["weekly_working_days", "Weekly working days"],
   ["late_policy", "Late policy"], ["sandwich_leave_behavior", "Sandwich leave behavior"],
   ["payroll_close_day", "Payroll close day"], ["approval_threshold", "Approval threshold"],
 ] as const;

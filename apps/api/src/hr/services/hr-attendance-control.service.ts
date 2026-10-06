@@ -103,18 +103,17 @@ export const isAttendancePolicyEffective = (
 
 export const hasAttendanceDerivedMetricsPayrollEffect = (
   policy: any,
-  employee: any,
+  _employee?: any,
 ) =>
   Boolean(
     policy &&
-    ((policy.late_deduction_mode && policy.late_deduction_mode !== "NONE") ||
-      (policy.overtime_enabled && employee?.overtime_eligible !== false)),
+    (policy.late_deduction_mode && policy.late_deduction_mode !== "NONE"),
   );
 
 export const requiresAttendanceDerivedMetricsReview = (
   summary: any,
   policy: any,
-  employee: any,
+  employee?: any,
 ) =>
   summary?.derived_metrics_status === "HISTORICAL_POLICY_UNAVAILABLE" &&
   hasAttendanceDerivedMetricsPayrollEffect(policy, employee);

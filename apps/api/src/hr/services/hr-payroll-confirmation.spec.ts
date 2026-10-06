@@ -53,8 +53,11 @@ describe("historical payroll review confirmation", () => {
     expect(service.supabase.rpc).toHaveBeenCalledWith("hr_confirm_historical_attendance_policy", expect.objectContaining({
       p_tenant_id: tenant, p_employee_id: employeeId, p_batch_id: batchId, p_actor_id: actor,
       p_effective_from: "2026-09-01", p_effective_to: "2026-09-18", p_reason: "Approved historical HR record",
-      p_policy: policy,
     }));
+    const savedPolicy = service.supabase.rpc.mock.calls[0][1].p_policy;
+    expect(savedPolicy).toMatchObject({ timezone: "Asia/Kolkata", shift_start: "09:00", late_deduction_mode: "NONE" });
+    expect(savedPolicy).not.toHaveProperty("overtime_enabled");
+    expect(savedPolicy).not.toHaveProperty("overtime_after_hours");
   });
 
   it("rejects guessed policy sources, dates outside the affected period, and database overlap", async () => {
@@ -81,6 +84,34 @@ describe("historical payroll review confirmation", () => {
     expect(service.supabase.rpc).toHaveBeenCalledTimes(1);
   });
 
+  it("confirms an employee overtime rule through the existing dated override path and reloads review", async () => {
+    const service = confirmationService();
+    service.getPayrollReviewContext = jest.fn()
+      .mockResolvedValueOnce({ employee: { id: employeeId }, batch_id: batchId, from: "2026-09-01", to: "2026-09-30",
+        attendance: { affected: [{ date: "2026-09-01", classification: "EMPLOYEE_OT_RULE_REQUIRED" }] } })
+      .mockResolvedValueOnce({ attendance: { affected: [] } });
+    service.saveEmployeePayrollOverride = jest.fn().mockResolvedValue({ id: "ot-rule-1" });
+    await service.confirmPayrollEmployeeOvertimeRule(tenant, "2026-09", actor, {
+      employee: employeeId, batch: batchId, effective_from: "2026-09-01", effective_to: "2026-09-18",
+      reason: "Signed employee OT agreement", rule_value: { eligible: true, method: "HOURLY", starts_after_hours: 9, rate_multiplier: 1.5 },
+    });
+    expect(service.saveEmployeePayrollOverride).toHaveBeenCalledWith(tenant, employeeId, actor, expect.objectContaining({
+      rule_key: "employee_overtime_rule", effective_from: "2026-09-01", effective_to: "2026-09-18", reason: "Signed employee OT agreement",
+    }));
+    expect(service.getPayrollReviewContext).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects an employee overtime rule that misses unresolved dates and propagates overlap rejection", async () => {
+    const service = confirmationService();
+    service.getPayrollReviewContext = jest.fn().mockResolvedValue({ employee: { id: employeeId }, batch_id: batchId, from: "2026-09-01", to: "2026-09-30",
+      attendance: { affected: [{ date: "2026-09-01", classification: "EMPLOYEE_OT_RULE_REQUIRED" }] } });
+    service.saveEmployeePayrollOverride = jest.fn().mockRejectedValue(new Error("Override overlaps an existing effective period"));
+    await expect(service.confirmPayrollEmployeeOvertimeRule(tenant, "2026-09", actor, { employee: employeeId, batch: batchId,
+      effective_from: "2026-09-02", reason: "Evidence", rule_value: { eligible: false } })).rejects.toThrow("must cover");
+    await expect(service.confirmPayrollEmployeeOvertimeRule(tenant, "2026-09", actor, { employee: employeeId, batch: batchId,
+      effective_from: "2026-09-01", reason: "Evidence", rule_value: { eligible: false } })).rejects.toThrow("overlaps");
+  });
+
   it("rejects another employee's or already dated salary row", async () => {
     const service = confirmationService();
     await expect(service.confirmPayrollSalaryEffectiveDate(tenant, "2026-09", actor, {
@@ -101,13 +132,14 @@ describe("historical payroll review confirmation", () => {
   it("requires HR update permission and has no payroll processing call", () => {
     expect(Reflect.getMetadata("permissions", HrController.prototype.confirmHistoricalPayrollAttendancePolicy)).toEqual(["hr:update"]);
     expect(Reflect.getMetadata("permissions", HrController.prototype.confirmPayrollSalaryEffectiveDate)).toEqual(["hr:update"]);
+    expect(Reflect.getMetadata("permissions", HrController.prototype.confirmPayrollEmployeeOvertimeRule)).toEqual(["hr:update"]);
   });
 
   it("Recheck reads the latest blockers and can clear a resolved employee batch", async () => {
     const service = confirmationService();
     service.getPayrollMonthCockpit = jest.fn()
       .mockResolvedValueOnce({ enabled: true, scope_conflict: false, employee_ids: [employeeId],
-        blockers: [{ key: "attendance-derived-metrics" }], counts: { blocker_count: 1, warning_count: 1 }, stage: "OPEN" })
+        blockers: [{ key: "employee-overtime-rule" }], counts: { blocker_count: 1, warning_count: 1 }, stage: "OPEN" })
       .mockResolvedValueOnce({ enabled: true, scope_conflict: false, employee_ids: [employeeId],
         blockers: [], counts: { blocker_count: 0, warning_count: 0 }, stage: "OPEN" });
     service.getPayrollControlFlags = jest.fn().mockResolvedValue({ PAYROLL_STATE_TRANSITIONS_ENABLED: true });

@@ -11,7 +11,10 @@ function setup() {
     select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis(),
     maybeSingle: jest.fn().mockResolvedValue({ data: employee, error: null }),
   };
-  const from = jest.fn(() => employeeQuery);
+  const overtimeQuery: any = {
+    select: jest.fn().mockReturnThis(), eq: jest.fn().mockReturnThis(), order: jest.fn().mockResolvedValue({ data: [], error: null }),
+  };
+  const from = jest.fn((table: string) => table === "employees" ? employeeQuery : overtimeQuery);
   const service: any = Object.create(HrService.prototype);
   service.supabase = { from };
   service.payrollControl = jest.fn().mockResolvedValue({ id: batchId, resolution_snapshot: { employee_ids: [employeeId] } });
@@ -26,7 +29,7 @@ function setup() {
       approval_status: "NOT_REQUIRED",
     })),
   }) };
-  return { service, from, employeeQuery };
+  return { service, from, employeeQuery, overtimeQuery };
 }
 
 const open = (service: any, kind: "attendance" | "salary" = "attendance", overrides: Record<string, string> = {}) =>
@@ -67,6 +70,16 @@ describe("payroll review context", () => {
     expect(url.searchParams.get("employee")).toBe("SAS-10075");
     expect(url.searchParams.get("review_mode")).toBe("PAYROLL_SALARY_REVIEW");
   });
+  it("links employee overtime rule blockers to the focused attendance review", () => {
+    const href = payrollReviewHref({ month: "2026-09", control: { id: batchId } }, {
+      key: `employee-overtime-rule:${employeeId}`, entity_id: employeeId, employee_code: "SAS-10075",
+    });
+    const url = new URL(href, "https://mizantra.saksolution.com");
+    expect(url.pathname).toBe("/dashboard/hr/attendance/payroll-review");
+    expect(url.searchParams.get("employee")).toBe("SAS-10075");
+    expect(url.searchParams.get("batch")).toBe(batchId);
+    expect(url.searchParams.get("review_mode")).toBe("PAYROLL_ATTENDANCE_REVIEW");
+  });
   it("opens Padma's exact September batch and only affected attendance dates", async () => {
     const { service, employeeQuery } = setup();
     const review = await open(service);
@@ -79,11 +92,12 @@ describe("payroll review context", () => {
     expect(service.attendanceControl.buildRegister).toHaveBeenCalledWith(tenant, "2026-09-01", "2026-09-30", employeeId);
   });
 
-  it("shows the policy gap and overtime pay relevance without applying the later policy", async () => {
+  it("shows the employee overtime gap without applying the later attendance policy", async () => {
     const { service } = setup();
     const review = await open(service);
-    expect(review.attendance.policy).toMatchObject({ gap_from: "2026-09-01", gap_to: "2026-09-18", effective_from: "2026-09-19", late_pay_relevant: false, overtime_pay_relevant: true });
-    expect(review.attendance.affected[0]).toMatchObject({ late_minutes: null, overtime_hours: null, classification: "CONFIRM_POLICY", policy_effective_on_date: false });
+    expect(review.attendance.policy).toMatchObject({ gap_from: null, gap_to: null, effective_from: "2026-09-19", late_pay_relevant: false });
+    expect(review.attendance.overtime_rule).toMatchObject({ gap_from: "2026-09-01", gap_to: "2026-09-18", source: "EMPLOYEE" });
+    expect(review.attendance.affected[0]).toMatchObject({ late_minutes: null, overtime_hours: null, classification: "EMPLOYEE_OT_RULE_REQUIRED", policy_effective_on_date: false });
     expect(review.attendance.complete).toBe(false);
   });
 
@@ -105,7 +119,7 @@ describe("payroll review context", () => {
       date: "2026-09-01", timezone: "Asia/Kolkata",
       check_in_time: "2026-09-01T03:18:02.507+00:00", check_out_time: "2026-09-01T12:44:03.222+00:00",
       hours: 9.43, late_minutes: null, overtime_hours: null,
-      policy_effective_on_date: false, classification: "CONFIRM_POLICY",
+      policy_effective_on_date: false, classification: "EMPLOYEE_OT_RULE_REQUIRED",
     });
   });
 
@@ -120,14 +134,14 @@ describe("payroll review context", () => {
     expect(review.attendance.actionable_days).toBe(0);
   });
 
-  it("does not require payroll review for historical metrics with no pay effect", async () => {
+  it("keeps the employee OT rule blocker even when attendance policy has no late or OT settings", async () => {
     const { service } = setup();
     const register = await service.attendanceControl.buildRegister();
     register.policy = { effective_from: "2026-09-19", late_deduction_mode: "NONE", overtime_enabled: false };
     service.attendanceControl.buildRegister.mockResolvedValue(register);
     const review = await open(service);
-    expect(review.attendance.affected[0].classification).toBe("NO_ACTION_REQUIRED");
-    expect(review.attendance.complete).toBe(true);
+    expect(review.attendance.affected[0].classification).toBe("EMPLOYEE_OT_RULE_REQUIRED");
+    expect(review.attendance.complete).toBe(false);
   });
 
   it("classifies a rejected attendance record for correction", async () => {
@@ -179,11 +193,15 @@ describe("payroll review context", () => {
   });
 
   it("requires HR read permission and performs no payroll writes while reviewing", async () => {
-    const { service, from } = setup();
+    const { service, from, overtimeQuery } = setup();
     expect(Reflect.getMetadata("permissions", HrController.prototype.getPayrollReviewContext)).toEqual(["hr:read"]);
     await open(service);
-    expect(from).toHaveBeenCalledTimes(1);
+    expect(from).toHaveBeenCalledTimes(2);
     expect(from).toHaveBeenCalledWith("employees");
+    expect(from).toHaveBeenCalledWith("hr_employee_payroll_rule_overrides");
+    expect(overtimeQuery.eq).toHaveBeenCalledWith("tenant_id", tenant);
+    expect(overtimeQuery.eq).toHaveBeenCalledWith("employee_id", employeeId);
+    expect(overtimeQuery.eq).toHaveBeenCalledWith("rule_key", "employee_overtime_rule");
     expect(service.getSalaryComponents).not.toHaveBeenCalled();
   });
 });
