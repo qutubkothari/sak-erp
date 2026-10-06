@@ -43,7 +43,7 @@ function payrollMonthClientView(cockpit: any) {
     blockers: (cockpit.blockers || []).map((item: any, index: number) => ({
       key: `${String(item.key || "issue").split(":")[0]}-${index}`,
       kind: String(item.key || "issue").split(":")[0],
-      employee_name: item.employee_name, reason: item.reason,
+      employee_name: item.employee_name,
       fix_href: item.fix_href, severity: item.severity,
       affected_days: String(item.key || "").startsWith("attendance-derived-metrics:")
         ? Number(item.evidence?.unresolved_days || 0) : undefined,
