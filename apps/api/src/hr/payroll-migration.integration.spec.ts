@@ -124,6 +124,8 @@ function isolatedDatabase() {
       const firstControl = (await checkScope([first]) as any).rows[0];
       expect(firstControl.stage).toBe("READY_TO_CLOSE");
       expect(firstControl.resolution_snapshot.employee_ids).toEqual([first]);
+      await db.query("UPDATE hr_payroll_month_controls SET stage='CLOSED' WHERE id=$1", [firstControl.id]);
+      expect(((await checkScope([first]) as any).rows[0]).stage).toBe("READY_TO_CLOSE");
       await db.query("UPDATE hr_payroll_month_controls SET stage='PAID' WHERE id=$1", [firstControl.id]);
       await expect(checkScope([first])).rejects.toThrow("already have approved payroll");
       const secondControl = (await checkScope([second]) as any).rows[0];

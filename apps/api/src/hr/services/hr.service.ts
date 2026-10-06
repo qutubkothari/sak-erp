@@ -3203,6 +3203,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       throw new Error(attendanceError.message);
     }
 
+    const attendanceRegister = await this.attendanceControl.buildRegister(tenantId, monthStart, monthEnd);
+    const attendanceSummary = new Map(attendanceRegister.summary.map((row: any) => [String(row.employee_id), row]));
+    for (const employee of eligibleEmployees) {
+      const summary: any = attendanceSummary.get(String(employee.id)) || {};
+      if (!requiresAttendanceDerivedMetricsReview(summary, attendanceRegister.policy, employee)) continue;
+      blockers.push({
+        key: `attendance-derived-metrics:${employee.id}`,
+        entity_id: String(employee.id),
+        employee_name: employee.employee_name || employee.employee_code || "Employee",
+        reason: "Historical late or overtime metrics are unverified and could affect this employee's pay. Review the attendance policy for this payroll period.",
+        responsible: "HR / Payroll",
+        fix_href: "/dashboard/hr/management?section=management&tab=attendance",
+        evidence: { unresolved_days: Number(summary.unresolved_derived_metrics_days || 0), payroll_month: month },
+        severity: "BLOCKER",
+      });
+    }
+
     const { data: leaves, error: leaveError } = await this.supabase
       .from("leave_requests")
       .select("id,employee_id,start_date,end_date,status")
