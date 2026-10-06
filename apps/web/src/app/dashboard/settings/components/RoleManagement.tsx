@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Shield, Check } from 'lucide-react';
+import { Plus, Edit, Trash2, Shield, Check, Search, Copy } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { hasModulePermission, readStoredUser, isAdminLike } from '@/lib/rbac';
@@ -149,6 +149,8 @@ export default function RoleManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [copyRole, setCopyRole] = useState<Role | null>(null);
+  const [roleSearch, setRoleSearch] = useState('');
 
   useEffect(() => {
     fetchRoles();
@@ -164,6 +166,8 @@ export default function RoleManagement() {
       setLoading(false);
     }
   };
+
+  const visibleRoles = roles.filter((role) => `${role.name} ${role.description || ''} ${normalizePermissions((role as any).permissions).map(getPermissionLabel).join(' ')}`.toLowerCase().includes(roleSearch.trim().toLowerCase()));
 
   const handleDeleteRole = async (roleId: string) => {
     if (!canDeleteSettings) {
@@ -209,6 +213,7 @@ export default function RoleManagement() {
       </div>
 
       {/* Roles Grid */}
+      <label className="relative block"><span className="sr-only">Search roles and permissions</span><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={roleSearch} onChange={(event) => setRoleSearch(event.target.value)} placeholder="Search role, module, or permission" className="min-h-11 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm"/></label>
       {loading ? (
         <div className="text-center py-12" style={{ color: '#8B6F47' }}>
           Loading roles...
@@ -219,7 +224,7 @@ export default function RoleManagement() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {roles.map((role) => (
+          {visibleRoles.map((role) => (
             (() => {
               const permissions = normalizePermissions((role as any).permissions);
               const allowedPermissions = permissions.filter(
@@ -277,6 +282,7 @@ export default function RoleManagement() {
                   )}
                 </div>
               </div>
+              <p className="text-xs text-slate-600">{(role as any).assigned_user_count || 0} assigned users{(role as any).assigned_users?.length ? ` · ${(role as any).assigned_users.slice(0, 3).map((u: any) => [u.first_name, u.last_name].filter(Boolean).join(' ') || u.username || 'User').join(', ')}` : ''}</p>
 
               <div className="flex gap-2 pt-4 border-t" style={{ borderColor: '#E8DCC4' }}>
                 {canEditSettings && (
@@ -292,6 +298,7 @@ export default function RoleManagement() {
                     <span>Edit</span>
                   </button>
                 )}
+                {canCreateSettings && <button type="button" onClick={() => { setCopyRole(role); setShowCreateModal(true); }} aria-label={`Copy ${role.name}`} title="Copy role permissions into a new role" className="rounded-lg border-2 px-3 py-2 text-slate-700" style={{ borderColor: '#E8DCC4' }}><Copy className="h-4 w-4" /></button>}
                 {canDeleteSettings && (
                   <button
                     onClick={() => handleDeleteRole(role.id)}
@@ -310,7 +317,7 @@ export default function RoleManagement() {
 
       {/* Create Role Modal */}
       {showCreateModal && canCreateSettings && (
-        <RoleModal onClose={() => setShowCreateModal(false)} onSuccess={fetchRoles} canSubmit={canCreateSettings} />
+            <RoleModal role={copyRole || undefined} copy={!!copyRole} onClose={() => { setShowCreateModal(false); setCopyRole(null); }} onSuccess={fetchRoles} canSubmit={canCreateSettings} />
       )}
 
       {/* Edit Role Modal */}
@@ -324,24 +331,28 @@ export default function RoleManagement() {
 // Role Modal Component
 function RoleModal({
   role,
+  copy = false,
   onClose,
   onSuccess,
   canSubmit,
 }: {
   role?: Role;
+  copy?: boolean;
   onClose: () => void;
   onSuccess: () => void;
   canSubmit: boolean;
 }) {
   const initialPermissions = normalizePermissions((role as any)?.permissions);
   const [formData, setFormData] = useState({
-    name: role?.name || '',
+    name: role ? `${role.name}${copy ? ' Copy' : ''}` : '',
     description: role?.description || '',
   });
   const [modulePermissions, setModulePermissions] = useState<Permission[]>(() => buildModulePermissions(initialPermissions));
   const [screenPermissions, setScreenPermissions] = useState<Permission[]>(() => buildScreenPermissions(initialPermissions));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [permissionSearch, setPermissionSearch] = useState('');
+  const [moduleFilter, setModuleFilter] = useState('ALL');
 
   const handleModulePermissionChange = (moduleIndex: number, permission: keyof Omit<Permission, 'module' | 'screen'>, value: boolean) => {
     const newPermissions = [...modulePermissions];
@@ -393,7 +404,7 @@ function RoleModal({
     e.preventDefault();
     setError('');
     if (!canSubmit) {
-      setError(`You do not have permission to ${role ? 'update' : 'create'} roles`);
+      setError(`You do not have permission to ${role && !copy ? 'update' : 'create'} roles`);
       return;
     }
     const privilegedName = ['super admin', 'superadmin', 'owner', 'platform owner'].includes(formData.name.trim().toLowerCase());
@@ -405,13 +416,12 @@ function RoleModal({
     setLoading(true);
 
     try {
-      const derivedModulePermissions = buildModulePermissionsFromScreens(screenPermissions);
       const payload = {
         ...formData,
-        permissions: [...derivedModulePermissions, ...screenPermissions],
+        permissions: [...modulePermissions, ...screenPermissions],
       };
 
-      if (role) {
+      if (role && !copy) {
         await apiClient.put(`/roles/${role.id}`, payload);
       } else {
         await apiClient.post('/roles', payload);
@@ -429,7 +439,7 @@ function RoleModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold mb-4" style={{ color: '#6F4E37' }}>
-          {role ? 'Edit Role' : 'Create New Role'}
+          {copy ? 'Copy Role' : role ? 'Edit Role' : 'Create New Role'}
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -465,11 +475,12 @@ function RoleModal({
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold mb-4" style={{ color: '#6F4E37' }}>
-              Screen Permissions
-            </h3>
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row"><label className="relative flex-1"><span className="sr-only">Search permissions</span><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={permissionSearch} onChange={(event) => setPermissionSearch(event.target.value)} placeholder="Search permissions" className="min-h-10 w-full rounded-lg border border-slate-300 pl-9 pr-3 text-sm"/></label><select value={moduleFilter} onChange={(event) => setModuleFilter(event.target.value)} className="min-h-10 rounded-lg border border-slate-300 px-3 text-sm"><option value="ALL">All modules</option>{MODULES.map((module) => <option key={module}>{module}</option>)}</select></div>
+            <h3 className="text-lg font-semibold mb-3" style={{ color: '#6F4E37' }}>Module Permissions</h3>
+            <div className="mb-5 overflow-x-auto rounded-lg border-2" style={{ borderColor: '#E8DCC4' }}><table className="w-full min-w-[760px]"><thead style={{backgroundColor:'#FAF9F6',color:'#6F4E37'}}><tr><th className="px-3 py-2 text-left text-sm">Module</th>{(['view','create','edit','delete','approve','download'] as const).map((action)=><th key={action} className="px-2 py-2 text-center text-xs uppercase">{action}</th>)}</tr></thead><tbody className="divide-y">{modulePermissions.map((perm,idx)=>({perm,idx})).filter(({perm})=>(moduleFilter==='ALL'||perm.module===moduleFilter)&&(!permissionSearch.trim()||String(perm.module).toLowerCase().includes(permissionSearch.toLowerCase()))).map(({perm,idx})=><tr key={perm.module}><td className="px-3 py-2 text-sm font-medium">{perm.module}</td>{(['view','create','edit','delete','approve','download'] as const).map((action)=><td key={action} className="px-2 py-2 text-center"><input aria-label={`${perm.module} ${action}`} type="checkbox" checked={!!perm[action]} onChange={(event)=>handleModulePermissionChange(idx,action,event.target.checked)}/></td>)}</tr>)}</tbody></table></div>
+            <h3 className="text-lg font-semibold mb-3" style={{ color: '#6F4E37' }}>Screen Permissions</h3>
             <div className="bg-white rounded-lg border-2 overflow-hidden" style={{ borderColor: '#E8DCC4' }}>
-              <table className="w-full">
+              <div className="overflow-x-auto"><table className="w-full min-w-[850px]">
                 <thead style={{ backgroundColor: '#FAF9F6', color: '#6F4E37' }}>
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-semibold">Screen</th>
@@ -484,8 +495,7 @@ function RoleModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8DCC4]">
-                  {screenPermissions.map((perm, idx) => {
-                    const screen = SCREEN_DEFINITIONS[idx];
+                  {screenPermissions.map((perm, idx) => ({perm,idx,screen:SCREEN_DEFINITIONS[idx]})).filter(({perm,screen})=>(moduleFilter==='ALL'||perm.module===moduleFilter)&&(!permissionSearch.trim()||`${screen.label} ${screen.module} ${screen.key}`.toLowerCase().includes(permissionSearch.toLowerCase()))).map(({perm,idx,screen}) => {
                     return (
                       <tr key={screen.key} className="hover:bg-[#FAF9F6]">
                         <td className="px-4 py-3 font-medium" style={{ color: '#6F4E37' }}>
@@ -519,7 +529,7 @@ function RoleModal({
                     );
                   })}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           </div>
 

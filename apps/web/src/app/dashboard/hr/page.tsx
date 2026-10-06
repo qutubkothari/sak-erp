@@ -93,6 +93,9 @@ interface Employee {
   employee_name: string;
   designation: string;
   department: string;
+  department_id?: string | null;
+  designation_id?: string | null;
+  branch_id?: string | null;
   contact_number: string;
   email: string;
   status: string;
@@ -102,6 +105,9 @@ interface Employee {
   manager_id?: string | null;
   overtime_eligible?: boolean;
 }
+
+interface HrMasterOption { id: string; code?: string | null; name: string; status: "ACTIVE" | "INACTIVE"; employee_count?: number }
+interface HrBranchOption { id: string; branch_code: string; branch_name: string; is_active: boolean }
 
 interface AttendanceApproval {
   id: string;
@@ -958,6 +964,9 @@ function HrPageContent() {
   >("attendance");
   const [showEmployeeMore, setShowEmployeeMore] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<HrMasterOption[]>([]);
+  const [designations, setDesignations] = useState<HrMasterOption[]>([]);
+  const [branches, setBranches] = useState<HrBranchOption[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceApprovals, setAttendanceApprovals] = useState<
     AttendanceApproval[]
@@ -1698,6 +1707,9 @@ function HrPageContent() {
     employee_name: "",
     designation: "",
     department: "",
+    designation_id: "",
+    department_id: "",
+    branch_id: "",
     date_of_joining: getTodayDateInputValue(),
     date_of_birth: "",
     contact_number: "",
@@ -2663,8 +2675,16 @@ function HrPageContent() {
       }
 
       if (activeTab === "employees") {
-        const data = await apiClient.get<any>("/hr/employees");
+        const [data, departmentData, designationData, branchData] = await Promise.all([
+          apiClient.get<any>("/hr/employees"),
+          apiClient.get<any>("/hr/departments").catch(() => []),
+          apiClient.get<any>("/hr/designations").catch(() => []),
+          apiClient.get<any>("/hr/branches").catch(() => []),
+        ]);
         setEmployees(Array.isArray(data) ? data : data.data || []);
+        setDepartments(Array.isArray(departmentData) ? departmentData : departmentData.data || []);
+        setDesignations(Array.isArray(designationData) ? designationData : designationData.data || []);
+        setBranches((Array.isArray(branchData) ? branchData : branchData.data || []).filter((branch: HrBranchOption) => branch?.id && branch?.branch_name));
       } else if (activeTab === "attendance") {
         const empData = await apiClient.get<any>("/hr/employees");
         const allEmployees: Employee[] = Array.isArray(empData)
@@ -2831,6 +2851,9 @@ function HrPageContent() {
         employee_name: "",
         designation: "",
         department: "",
+        designation_id: "",
+        department_id: "",
+        branch_id: "",
         date_of_joining: getTodayDateInputValue(),
         date_of_birth: "",
         contact_number: "",
@@ -7621,8 +7644,11 @@ function HrPageContent() {
                                 setEmployeeForm({
                                   employee_code: employee.employee_code,
                                   employee_name: employee.employee_name,
-                                  designation: employee.designation || "",
-                                  department: employee.department || "",
+                                  designation: "",
+                                  department: "",
+                                  designation_id: employee.designation_id || "",
+                                  department_id: employee.department_id || "",
+                                  branch_id: employee.branch_id || "",
                                   date_of_joining: employee.date_of_joining,
                                   date_of_birth: "",
                                   contact_number: employee.contact_number || "",
@@ -7795,8 +7821,11 @@ function HrPageContent() {
                           setEmployeeForm({
                             employee_code: employee.employee_code,
                             employee_name: employee.employee_name,
-                            designation: employee.designation || "",
-                            department: employee.department || "",
+                            designation: "",
+                            department: "",
+                            designation_id: employee.designation_id || "",
+                            department_id: employee.department_id || "",
+                            branch_id: employee.branch_id || "",
                             date_of_joining: employee.date_of_joining,
                             date_of_birth: "",
                             contact_number: employee.contact_number || "",
@@ -10670,35 +10699,37 @@ function HrPageContent() {
                   <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
                     Designation
                   </label>
-                  <input
-                    type="text"
-                    value={employeeForm.designation}
-                    onChange={(e) =>
-                      setEmployeeForm({
-                        ...employeeForm,
-                        designation: e.target.value,
-                      })
-                    }
-                    className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#2F1B12] outline-none focus:border-[#8B6F47] focus:ring-2 focus:ring-[#E8DCC4]"
-                  />
+                  <select
+                    value={employeeForm.designation_id}
+                    onChange={(e) => setEmployeeForm({ ...employeeForm, designation_id: e.target.value, designation: "" })}
+                    className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#2F1B12]"
+                  >
+                    <option value="">Select designation</option>
+                    {designations.filter((item) => item.status === "ACTIVE" || item.id === employeeForm.designation_id).map((item) => <option key={item.id} value={item.id}>{item.name}{item.status === "INACTIVE" ? " (inactive)" : ""}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
                     Department
                   </label>
-                  <input
-                    type="text"
-                    value={employeeForm.department}
-                    onChange={(e) =>
-                      setEmployeeForm({
-                        ...employeeForm,
-                        department: e.target.value,
-                      })
-                    }
-                    className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#2F1B12] outline-none focus:border-[#8B6F47] focus:ring-2 focus:ring-[#E8DCC4]"
-                  />
+                  <select
+                    value={employeeForm.department_id}
+                    onChange={(e) => setEmployeeForm({ ...employeeForm, department_id: e.target.value, department: "" })}
+                    className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#2F1B12]"
+                  >
+                    <option value="">Select department</option>
+                    {departments.filter((item) => item.status === "ACTIVE" || item.id === employeeForm.department_id).map((item) => <option key={item.id} value={item.id}>{item.name}{item.status === "INACTIVE" ? " (inactive)" : ""}</option>)}
+                  </select>
                 </div>
               </div>
+
+              {branches.length > 0 && <div className="mt-4">
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">Branch / Location</label>
+                <select value={employeeForm.branch_id} onChange={(event) => setEmployeeForm({ ...employeeForm, branch_id: event.target.value })} className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#2F1B12]">
+                  <option value="">No branch assigned</option>
+                  {branches.filter((branch) => branch.is_active !== false || branch.id === employeeForm.branch_id).map((branch) => <option key={branch.id} value={branch.id}>{branch.branch_code} · {branch.branch_name}{branch.is_active === false ? ' (inactive)' : ''}</option>)}
+                </select>
+              </div>}
 
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div>
@@ -12201,34 +12232,35 @@ function HrPageContent() {
                   <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
                     Designation
                   </label>
-                  <input
-                    type="text"
-                    value={employeeForm.designation}
-                    onChange={(e) =>
-                      setEmployeeForm({
-                        ...employeeForm,
-                        designation: e.target.value,
-                      })
-                    }
-                    className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#2F1B12] outline-none focus:border-[#8B6F47] focus:ring-2 focus:ring-[#E8DCC4]"
-                  />
+                  <select
+                    value={employeeForm.designation_id}
+                    onChange={(e) => setEmployeeForm({ ...employeeForm, designation_id: e.target.value, designation: "" })}
+                    className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#2F1B12]"
+                  >
+                    <option value="">Select designation</option>
+                    {designations.filter((item) => item.status === "ACTIVE" || item.id === employeeForm.designation_id).map((item) => <option key={item.id} value={item.id}>{item.name}{item.status === "INACTIVE" ? " (inactive)" : ""}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
                     Department
                   </label>
-                  <input
-                    type="text"
-                    value={employeeForm.department}
-                    onChange={(e) =>
-                      setEmployeeForm({
-                        ...employeeForm,
-                        department: e.target.value,
-                      })
-                    }
-                    className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#2F1B12] outline-none focus:border-[#8B6F47] focus:ring-2 focus:ring-[#E8DCC4]"
-                  />
+                  <select
+                    value={employeeForm.department_id}
+                    onChange={(e) => setEmployeeForm({ ...employeeForm, department_id: e.target.value, department: "" })}
+                    className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#2F1B12]"
+                  >
+                    <option value="">Select department</option>
+                    {departments.filter((item) => item.status === "ACTIVE" || item.id === employeeForm.department_id).map((item) => <option key={item.id} value={item.id}>{item.name}{item.status === "INACTIVE" ? " (inactive)" : ""}</option>)}
+                  </select>
                 </div>
+                {branches.length > 0 && <div className="md:col-span-2">
+                  <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">Branch / Location</label>
+                  <select value={employeeForm.branch_id} onChange={(event) => setEmployeeForm({ ...employeeForm, branch_id: event.target.value })} className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm font-semibold text-[#2F1B12]">
+                    <option value="">No branch assigned</option>
+                    {branches.filter((branch) => branch.is_active !== false || branch.id === employeeForm.branch_id).map((branch) => <option key={branch.id} value={branch.id}>{branch.branch_code} · {branch.branch_name}{branch.is_active === false ? ' (inactive)' : ''}</option>)}
+                  </select>
+                </div>}
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
                     Contact

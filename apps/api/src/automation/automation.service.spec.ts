@@ -27,4 +27,32 @@ describe('AutomationService branch profile controls', () => {
     setTenantMarket('EGYPT');
     await expect((service as any).branchMarket('tenant-egypt', 'INDIA')).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('uses UAE defaults for Mizantra when the tenant row has no explicit market profile', async () => {
+    const previous = process.env.ERP_TENANT_PROFILE;
+    process.env.ERP_TENANT_PROFILE = 'MIZANTRA';
+    try {
+      setTenantMarket('');
+      await expect((service as any).branchMarket('tenant-mizantra')).resolves.toEqual({
+        market: 'UAE', currency_code: 'AED', tax_regime: 'UAE_VAT', timezone: 'Asia/Dubai',
+      });
+    } finally {
+      if (previous === undefined) delete process.env.ERP_TENANT_PROFILE;
+      else process.env.ERP_TENANT_PROFILE = previous;
+    }
+  });
+
+  it('keeps ARWA on Egypt defaults even when a stale tenant market says India', async () => {
+    const previous = process.env.ERP_TENANT_PROFILE;
+    process.env.ERP_TENANT_PROFILE = 'ARWA';
+    try {
+      setTenantMarket('INDIA');
+      await expect((service as any).branchMarket('tenant-arwa')).resolves.toEqual({
+        market: 'EGYPT', currency_code: 'EGP', tax_regime: 'EGYPT_VAT', timezone: 'Africa/Cairo',
+      });
+    } finally {
+      if (previous === undefined) delete process.env.ERP_TENANT_PROFILE;
+      else process.env.ERP_TENANT_PROFILE = previous;
+    }
+  });
 });

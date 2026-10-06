@@ -6,13 +6,14 @@ const TARGETS = Object.freeze({
     name: 'SaifSeas live',
     host: '72.62.192.228',
     sshUser: 'qutubk',
-    appRoot: '/var/www/sak-erp',
-    apiProcess: 'sak-api',
-    webProcess: 'sak-web',
+    appRoot: '/var/www/sak-erp-v3',
+    apiProcess: 'sak-v2-api',
+    webProcess: 'sak-v2-web',
     apiPort: '4000',
     webPort: '3000',
     publicUrl: 'https://erp.saifseas.com',
     databaseProjectRef: 'xjiyiywzmklljrpblcqj',
+    production: true,
   }),
   test: Object.freeze({
     name: 'Mizantra test',
@@ -25,6 +26,20 @@ const TARGETS = Object.freeze({
     webPort: '3001',
     publicUrl: 'https://mizantra.saksolution.com',
     databaseProjectRef: 'nwkaruzvzwwuftjquypk',
+    production: true,
+  }),
+  arwa: Object.freeze({
+    name: 'Arwa live',
+    host: '200.141.1.206',
+    sshUser: 'root',
+    appRoot: '/var/www/arwa-mizantra',
+    apiProcess: 'arwa-mizantra-api',
+    webProcess: 'arwa-mizantra-web',
+    apiPort: '4002',
+    webPort: '3004',
+    publicUrl: 'https://arwa.mizantra.ae',
+    databaseProjectRef: 'igwbnjjepprmmhutrvej',
+    production: true,
   }),
 });
 
@@ -125,11 +140,11 @@ function validateEnvironment(targetName, appRoot, envPath) {
     }
   }
 
-  const otherTarget = targetName === 'live' ? TARGETS.test : TARGETS.live;
   const envText = fs.readFileSync(envPath, 'utf8');
-  if (envText.includes(otherTarget.databaseProjectRef)) {
+  const otherTarget = Object.entries(TARGETS).find(([name]) => name !== targetName && envText.includes(TARGETS[name].databaseProjectRef));
+  if (otherTarget) {
     throw new Error(
-      `${target.name} deployment blocked: environment contains the ${otherTarget.name} database reference`,
+      `${target.name} deployment blocked: environment contains the ${otherTarget[1].name} database reference`,
     );
   }
 

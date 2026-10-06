@@ -111,10 +111,13 @@ export default function AutomationPage() {
   const [showRule, setShowRule] = useState(false);
   const [showBranch, setShowBranch] = useState(false);
   const [ruleForm, setRuleForm] = useState({ rule_name: '', module: 'SALES', trigger_type: 'QUOTATION_EXPIRING', action_type: 'NOTIFY', recipients: '', days: '7', template_subject: '', template_body: '' });
-  const branchMarket = getTenantProfile() === 'ARWA' ? 'EGYPT' : 'INDIA';
+  const appProfile = getTenantProfile();
+  const branchMarket = appProfile === 'ARWA' ? 'EGYPT' : appProfile === 'MIZANTRA' ? 'UAE' : 'INDIA';
   const branchDefaults = branchMarket === 'EGYPT'
     ? { branch_code: '', branch_name: '', market_profile: 'EGYPT', currency_code: 'EGP', tax_regime: 'EGYPT_VAT', timezone: 'Africa/Cairo' }
-    : { branch_code: '', branch_name: '', market_profile: 'INDIA', currency_code: 'INR', tax_regime: 'GST', timezone: 'Asia/Kolkata' };
+    : branchMarket === 'UAE'
+      ? { branch_code: '', branch_name: '', market_profile: 'UAE', currency_code: 'AED', tax_regime: 'UAE_VAT', timezone: 'Asia/Dubai' }
+      : { branch_code: '', branch_name: '', market_profile: 'INDIA', currency_code: 'INR', tax_regime: 'GST', timezone: 'Asia/Kolkata' };
   const [branchForm, setBranchForm] = useState(branchDefaults);
 
   useEffect(() => {

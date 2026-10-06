@@ -1,7 +1,7 @@
-import { Injectable, ExecutionContext } from '@nestjs/common';
+import { ForbiddenException, Injectable, ExecutionContext } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
-import { Observable } from 'rxjs';
+import { isObservable, lastValueFrom, Observable } from 'rxjs';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -9,7 +9,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     super();
   }
 
-  canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     // Check if route is marked as public
     const isPublic = this.reflector.getAllAndOverride<boolean>('isPublic', [
       context.getHandler(),
@@ -20,6 +20,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true;
     }
 
-    return super.canActivate(context);
+    const authenticated = super.canActivate(context);
+    const allowed = isObservable(authenticated) ? await lastValueFrom(authenticated) : await authenticated;
+    const request = context.switchToHttp().getRequest();
+    const path = String(request.originalUrl || request.url || '').split('?')[0];
+    if (request.user?.must_change_password && !path.endsWith('/auth/change-password')) {
+      throw new ForbiddenException('Change your temporary password before continuing.');
+    }
+    return Boolean(allowed);
   }
 }

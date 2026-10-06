@@ -52,6 +52,12 @@ export class UserController {
     return this.userService.update(id, dto, req.user.tenantId, req.user.userId || req.user.id);
   }
 
+  @Post(':id/require-password-change')
+  @RequireUpdate('users')
+  async requirePasswordChange(@Param('id') id: string, @Request() req: any) {
+    return this.userService.requirePasswordChange(id, req.user.tenantId);
+  }
+
   @Get('role-approvals/pending')
   @RequireRead('users')
   async pendingRoleApprovals(@Request() req: any) {

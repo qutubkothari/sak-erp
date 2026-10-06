@@ -38,15 +38,19 @@ export class IntegrationHubService {
 
   async dashboard(tenantId: string, user: any) {
     this.requireAdministrator(user);
-    const [{ data: tenant, error: tenantError }, { data: connections, error: connectionError }, { data: events, error: eventError }] = await Promise.all([
+    const [{ data: tenant, error: tenantError }, { data: connections, error: connectionError }, { data: events, error: eventError }, { data: users, error: userError }] = await Promise.all([
       this.db.from('tenants').select('market_profile').eq('id', tenantId).single(),
       this.db.from('integration_connections').select('*').eq('tenant_id', tenantId).order('connector_name'),
       this.db.from('integration_events').select('*').eq('tenant_id', tenantId).order('occurred_at', { ascending: false }).limit(50),
+      this.db.from('users').select('id,first_name,last_name,username').eq('tenant_id', tenantId),
     ]);
-    if (tenantError || connectionError || eventError) throw new BadRequestException((tenantError || connectionError || eventError)?.message);
-    const configuredMarket = String(tenant?.market_profile || 'INDIA').toUpperCase();
-    const market = configuredMarket in CATALOG ? configuredMarket : 'INDIA';
-    const safeConnections = (connections || []).map((connection) => this.safeConnection(connection));
+    if (tenantError || connectionError || eventError || userError) throw new BadRequestException((tenantError || connectionError || eventError || userError)?.message);
+    const profile = String(process.env.ERP_TENANT_PROFILE || '').toUpperCase();
+    const profileMarket = profile === 'ARWA' ? 'EGYPT' : profile === 'MIZANTRA' ? 'UAE' : profile === 'SAIFSEAS' ? 'INDIA' : null;
+    const configuredMarket = String(profileMarket || tenant?.market_profile || 'SHARED').toUpperCase();
+    const market = configuredMarket in CATALOG ? configuredMarket : 'SHARED';
+    const usersById = new Map((users || []).map((user: any) => [String(user.id), [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || user.username || 'User']));
+    const safeConnections = (connections || []).map((connection: any) => ({ ...this.safeConnection(connection), configured_by: usersById.get(String(connection.created_by || '')) || null }));
     return {
       market_profile: market,
       catalog: [...CATALOG.SHARED, ...CATALOG[market]].map(([connector_code, connector_name]) => ({

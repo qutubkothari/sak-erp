@@ -515,6 +515,7 @@ export class AuthService {
         email,
         password,
         is_active,
+        must_change_password,
         tenant_id,
         first_name,
         last_name,
@@ -586,6 +587,7 @@ export class AuthService {
       lastName: user.last_name,
       tenantId: user.tenant_id,
       isActive: user.is_active,
+      mustChangePassword: Boolean((user as any).must_change_password),
       roles: rolesForUser.map((role: any) => ({ role })),
     };
 
@@ -656,6 +658,7 @@ export class AuthService {
         first_name,
         last_name,
         is_active,
+        must_change_password,
         tenant_id,
         role:roles (
           id,
@@ -686,6 +689,7 @@ export class AuthService {
       firstName: user.first_name,
       lastName: user.last_name,
       isActive: user.is_active,
+      mustChangePassword: Boolean((user as any).must_change_password),
       tenantId: user.tenant_id,
       role: (user as any).role,
       roles: rolesForUser.map((role: any) => ({ role })),
@@ -715,6 +719,9 @@ export class AuthService {
   }
 
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
+    if (String(newPassword ?? '').length < 10) {
+      throw new BadRequestException('New password must be at least 10 characters.');
+    }
     const { data: user, error: userError } = await this.supabase
       .from('users')
       .select('id, password')
@@ -734,11 +741,15 @@ export class AuthService {
 
     const { error: updateError } = await this.supabase
       .from('users')
-      .update({ password: hashedPassword })
+      .update({ password: hashedPassword, must_change_password: false })
       .eq('id', userId);
 
     if (updateError) {
       throw new Error(`Failed to update password: ${updateError.message}`);
+    }
+
+    for (const key of [...this.validationCache.keys()]) {
+      if (key.endsWith(`:${userId}`)) this.validationCache.delete(key);
     }
 
     return { message: 'Password changed successfully' };
@@ -796,6 +807,9 @@ export class AuthService {
       if (!String(token ?? '').trim()) {
         throw new BadRequestException('Reset token is required');
       }
+      if (String(newPassword ?? '').length < 10) {
+        throw new BadRequestException('New password must be at least 10 characters.');
+      }
 
       const payload = this.jwtService.verify(token);
 
@@ -807,11 +821,15 @@ export class AuthService {
 
       const { error: updateError } = await this.supabase
         .from('users')
-        .update({ password: hashedPassword })
+        .update({ password: hashedPassword, must_change_password: false })
         .eq('id', payload.sub);
 
       if (updateError) {
         throw new Error(`Failed to reset password: ${updateError.message}`);
+      }
+
+      for (const key of [...this.validationCache.keys()]) {
+        if (key.endsWith(`:${payload.sub}`)) this.validationCache.delete(key);
       }
 
       return { message: 'Password reset successfully' };

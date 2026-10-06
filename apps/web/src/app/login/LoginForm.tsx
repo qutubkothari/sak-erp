@@ -48,6 +48,10 @@ export default function LoginForm({ brand }: { brand: LoginBrand }) {
         setAccountId(response.data.tenants?.[0]?.accountId || '');
         setError(response.data.message || 'Select the company to continue.');
       } else if (response.success && response.data?.accessToken) {
+        if (response.data.user?.mustChangePassword) {
+          router.replace('/change-password');
+          return;
+        }
         const landingPath = getDefaultLandingPath(response.data.user as any);
         if (typeof window !== 'undefined' && landingPath.startsWith('/dashboard/hr/')) {
           sessionStorage.setItem('postLoginLandingPath', landingPath);

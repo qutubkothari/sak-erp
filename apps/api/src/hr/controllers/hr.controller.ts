@@ -44,6 +44,58 @@ export class HrController {
     private readonly historicalImport: HrHistoricalAttendanceImportService,
   ) {}
 
+  @Get("departments")
+  @RequireRead("hr")
+  getDepartments(@Request() req: any, @Query("status") status?: string) {
+    return this.hrService.getDepartments(req.user.tenantId, status);
+  }
+  @Post("departments")
+  @RequireCreate("hr")
+  createDepartment(@Request() req: any, @Body() body: any) {
+    return this.hrService.createDepartment(req.user.tenantId, req.user.userId, body);
+  }
+  @Put("departments/:id")
+  @RequireUpdate("hr")
+  updateDepartment(@Request() req: any, @Param("id") id: string, @Body() body: any) {
+    return this.hrService.updateDepartment(req.user.tenantId, id, body);
+  }
+  @Put("departments/:id/status")
+  @RequireUpdate("hr")
+  setDepartmentStatus(@Request() req: any, @Param("id") id: string, @Body() body: any) {
+    const status = String(body?.status || "").toUpperCase();
+    if (status !== "ACTIVE" && status !== "INACTIVE") throw new BadRequestException("Status must be ACTIVE or INACTIVE.");
+    return this.hrService.setHrMasterStatus("hr_departments", req.user.tenantId, id, status);
+  }
+
+  @Get("designations")
+  @RequireRead("hr")
+  getDesignations(@Request() req: any, @Query("status") status?: string) {
+    return this.hrService.getDesignations(req.user.tenantId, status);
+  }
+  @Post("designations")
+  @RequireCreate("hr")
+  createDesignation(@Request() req: any, @Body() body: any) {
+    return this.hrService.createDesignation(req.user.tenantId, req.user.userId, body);
+  }
+  @Put("designations/:id")
+  @RequireUpdate("hr")
+  updateDesignation(@Request() req: any, @Param("id") id: string, @Body() body: any) {
+    return this.hrService.updateDesignation(req.user.tenantId, id, body);
+  }
+  @Put("designations/:id/status")
+  @RequireUpdate("hr")
+  setDesignationStatus(@Request() req: any, @Param("id") id: string, @Body() body: any) {
+    const status = String(body?.status || "").toUpperCase();
+    if (status !== "ACTIVE" && status !== "INACTIVE") throw new BadRequestException("Status must be ACTIVE or INACTIVE.");
+    return this.hrService.setHrMasterStatus("hr_designations", req.user.tenantId, id, status);
+  }
+
+  @Get("branches")
+  @RequireRead("hr")
+  getEmployeeBranches(@Request() req: any) {
+    return this.hrService.getEmployeeBranches(req.user.tenantId);
+  }
+
   // Employee CRUD
   @Post("employees")
   @RequireCreate("hr")

@@ -27,16 +27,16 @@ try {
   process.exit(2);
 }
 
-if (targetName === 'live') {
+if (target.production) {
   const approved = process.env.SAK_LIVE_RELEASE_APPROVED === 'YES';
   const releaseTicket = String(process.env.SAK_LIVE_RELEASE_TICKET || '').trim();
 
   if (!approved || !releaseTicket) {
     console.error(
-      'LIVE BUILD BLOCKED: an explicit production release approval and release ticket are required.',
+      `PRODUCTION BUILD BLOCKED: ${target.name} requires an explicit production release approval and release ticket.`,
     );
     console.error(
-      'Set SAK_LIVE_RELEASE_APPROVED=YES and SAK_LIVE_RELEASE_TICKET=<approved-release-reference> only for an authorised live release.',
+      'Set SAK_LIVE_RELEASE_APPROVED=YES and SAK_LIVE_RELEASE_TICKET=<approved-release-reference> only for an authorised production release.',
     );
     process.exit(2);
   }

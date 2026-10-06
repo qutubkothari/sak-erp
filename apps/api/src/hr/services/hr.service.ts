@@ -1103,10 +1103,102 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return { message: "Holiday deleted successfully" };
   }
 
+  private async resolveHrMasterLabel(table: "hr_departments" | "hr_designations", tenantId: string, id: unknown, allowExistingInactive = false) {
+    const normalizedId = isNonEmptyString(id) ? String(id).trim() : "";
+    if (!normalizedId) return null;
+    const { data, error } = await this.supabase
+      .from(table)
+      .select("id,name,status")
+      .eq("tenant_id", tenantId)
+      .eq("id", normalizedId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new BadRequestException("The selected HR master record was not found for this tenant.");
+    if (String(data.status).toUpperCase() !== "ACTIVE" && !allowExistingInactive) throw new BadRequestException("Inactive HR master records cannot be assigned.");
+    return data;
+  }
+
+  private async resolveEmployeeBranch(tenantId: string, id: unknown, allowExistingInactive = false) {
+    const normalizedId = isNonEmptyString(id) ? String(id).trim() : "";
+    if (!normalizedId) return null;
+    const { data, error } = await this.supabase.from("company_branches").select("id,branch_name,is_active").eq("tenant_id", tenantId).eq("id", normalizedId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new BadRequestException("The selected branch was not found for this tenant.");
+    if (data.is_active === false && !allowExistingInactive) throw new BadRequestException("Inactive branches cannot be newly assigned.");
+    return data;
+  }
+
+  private async listHrMaster(table: "hr_departments" | "hr_designations", tenantId: string, status?: string) {
+    let query = this.supabase.from(table).select("id,tenant_id,code,name,status,created_by,created_at,updated_at").eq("tenant_id", tenantId).order("name", { ascending: true });
+    if (status && ["ACTIVE", "INACTIVE"].includes(String(status).toUpperCase())) query = query.eq("status", String(status).toUpperCase());
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    const rows = data || [];
+    if (!rows.length) return [];
+    const ids = rows.map((row: any) => row.id);
+    const { data: employees, error: employeeError } = await this.supabase.from("employees").select(table === "hr_departments" ? "department_id" : "designation_id").eq("tenant_id", tenantId).in(table === "hr_departments" ? "department_id" : "designation_id", ids);
+    if (employeeError) throw new Error(employeeError.message);
+    const counts = new Map<string, number>();
+    for (const employee of employees || []) {
+      const id = String((employee as any)[table === "hr_departments" ? "department_id" : "designation_id"] || "");
+      if (id) counts.set(id, (counts.get(id) || 0) + 1);
+    }
+    return rows.map((row: any) => ({ ...row, employee_count: counts.get(String(row.id)) || 0 }));
+  }
+
+  async getDepartments(tenantId: string, status?: string) { return this.listHrMaster("hr_departments", tenantId, status); }
+  async getDesignations(tenantId: string, status?: string) { return this.listHrMaster("hr_designations", tenantId, status); }
+  async getEmployeeBranches(tenantId: string) {
+    const { data, error } = await this.supabase.from("company_branches").select("id,tenant_id,branch_code,branch_name,is_active").eq("tenant_id", tenantId).order("branch_name", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  private async saveHrMaster(table: "hr_departments" | "hr_designations", tenantId: string, actorId: string, data: any, id?: string) {
+    const name = String(data?.name || "").trim();
+    const code = String(data?.code || "").trim() || null;
+    if (!name) throw new BadRequestException("Name is required.");
+    if (name.length > 200 || (code && code.length > 40)) throw new BadRequestException("Name or code exceeds the supported length.");
+    const { data: rows, error: duplicateError } = await this.supabase.from(table).select("id,name,code").eq("tenant_id", tenantId);
+    if (duplicateError) throw new Error(duplicateError.message);
+    const duplicate = (rows || []).find((row: any) => String(row.id) !== String(id || "") && (String(row.name || "").trim().toLocaleLowerCase() === name.toLocaleLowerCase() || (code && String(row.code || "").trim().toLocaleLowerCase() === code.toLocaleLowerCase())));
+    if (duplicate) throw new ConflictException("A record with the same name or code already exists in this tenant.");
+    const payload = id
+      ? { name, code, updated_at: new Date().toISOString() }
+      : { tenant_id: tenantId, name, code, status: "ACTIVE", created_by: actorId || null };
+    const query = id
+      ? this.supabase.from(table).update(payload).eq("tenant_id", tenantId).eq("id", id)
+      : this.supabase.from(table).insert(payload);
+    const { data: saved, error } = await query.select("id,tenant_id,code,name,status,created_by,created_at,updated_at").single();
+    if (error) throw new Error(error.message);
+    return saved;
+  }
+
+  async createDepartment(tenantId: string, actorId: string, data: any) { return this.saveHrMaster("hr_departments", tenantId, actorId, data); }
+  async updateDepartment(tenantId: string, id: string, data: any) { return this.saveHrMaster("hr_departments", tenantId, "", data, id); }
+  async createDesignation(tenantId: string, actorId: string, data: any) { return this.saveHrMaster("hr_designations", tenantId, actorId, data); }
+  async updateDesignation(tenantId: string, id: string, data: any) { return this.saveHrMaster("hr_designations", tenantId, "", data, id); }
+
+  async setHrMasterStatus(table: "hr_departments" | "hr_designations", tenantId: string, id: string, status: "ACTIVE" | "INACTIVE") {
+    const { data, error } = await this.supabase.from(table).update({ status, updated_at: new Date().toISOString() }).eq("tenant_id", tenantId).eq("id", id).select("id,status,updated_at").single();
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
   // Employee CRUD
   async createEmployee(tenantId: string, data: any) {
+    const department = await this.resolveHrMasterLabel("hr_departments", tenantId, data?.department_id);
+    const designation = await this.resolveHrMasterLabel("hr_designations", tenantId, data?.designation_id);
+    const branch = await this.resolveEmployeeBranch(tenantId, data?.branch_id);
+    if (!department && String(data?.department || "").trim()) throw new BadRequestException("Select a department from the Department Master.");
+    if (!designation && String(data?.designation || "").trim()) throw new BadRequestException("Select a designation from the Designation Master.");
     const employeeData = {
       ...sanitizeEmployeePayload(data),
+      department_id: department?.id || null,
+      department: department?.name || null,
+      designation_id: designation?.id || null,
+      designation: designation?.name || null,
+      branch_id: branch?.id || null,
       tenant_id: tenantId,
     };
     if (employeeData.manager_id) {
@@ -1192,6 +1284,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
   async updateEmployee(tenantId: string, id: string, data: any) {
     const employeeData = sanitizeEmployeePayload(data);
+    let existingEmployee: any = null;
+    if (Object.prototype.hasOwnProperty.call(data || {}, "department_id") || Object.prototype.hasOwnProperty.call(data || {}, "designation_id") || Object.prototype.hasOwnProperty.call(data || {}, "branch_id")) {
+      const { data: current, error } = await this.supabase.from("employees").select("department_id,designation_id,branch_id").eq("tenant_id", tenantId).eq("id", id).maybeSingle();
+      if (error) throw new Error(error.message);
+      existingEmployee = current;
+    }
+    if (Object.prototype.hasOwnProperty.call(data || {}, "department_id")) {
+      const department = await this.resolveHrMasterLabel("hr_departments", tenantId, data.department_id, String(data.department_id || "") === String(existingEmployee?.department_id || ""));
+      if (!department && String(data?.department || "").trim()) throw new BadRequestException("Select a department from the Department Master.");
+      employeeData.department_id = department?.id || null;
+      employeeData.department = department?.name || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(data || {}, "designation_id")) {
+      const designation = await this.resolveHrMasterLabel("hr_designations", tenantId, data.designation_id, String(data.designation_id || "") === String(existingEmployee?.designation_id || ""));
+      if (!designation && String(data?.designation || "").trim()) throw new BadRequestException("Select a designation from the Designation Master.");
+      employeeData.designation_id = designation?.id || null;
+      employeeData.designation = designation?.name || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(data || {}, "branch_id")) {
+      const branch = await this.resolveEmployeeBranch(tenantId, data.branch_id, String(data.branch_id || "") === String(existingEmployee?.branch_id || ""));
+      employeeData.branch_id = branch?.id || null;
+    }
     if (employeeData.manager_id === id) {
       throw new BadRequestException(
         "An employee cannot be their own reporting manager",

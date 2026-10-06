@@ -187,6 +187,7 @@ interface LoginResponse {
     email: string;
     firstName?: string;
     lastName?: string;
+    mustChangePassword?: boolean;
     tenantId?: string;
     isActive?: boolean;
     role?: {

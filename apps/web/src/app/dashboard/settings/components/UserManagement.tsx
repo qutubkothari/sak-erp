@@ -13,6 +13,7 @@ interface User {
   first_name: string;
   last_name: string;
   is_active: boolean;
+  must_change_password?: boolean;
   last_login_at?: string | null;
   role?: {
     id: string;
@@ -98,6 +99,7 @@ export default function UserManagement() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [roleApprovals, setRoleApprovals] = useState<RoleApprovalRequest[]>([]);
   const [approvalError, setApprovalError] = useState('');
+  const [securityMessage, setSecurityMessage] = useState('');
 
   useEffect(() => {
     setCurrentUser(readStoredUser());
@@ -160,6 +162,29 @@ export default function UserManagement() {
     }
   };
 
+  const sendPasswordReset = async (user: User) => {
+    if (!canEditSettings) return;
+    setSecurityMessage('');
+    try {
+      await apiClient.post('/auth/reset-password-request', { email: user.email, tenantId: (currentUser as any)?.tenantId });
+      setSecurityMessage(`Password reset instructions were requested for ${user.email}.`);
+    } catch (error: any) {
+      setSecurityMessage(error?.message || 'Unable to request password reset.');
+    }
+  };
+
+  const requirePasswordChange = async (user: User) => {
+    if (!canEditSettings || user.must_change_password) return;
+    if (!window.confirm(`Require ${getDisplayName(user)} to change their password at next sign in?`)) return;
+    try {
+      await apiClient.post(`/users/${user.id}/require-password-change`, {});
+      setSecurityMessage(`Password change is required for ${getDisplayName(user)} at next sign in.`);
+      await fetchUsers();
+    } catch (error: any) {
+      setSecurityMessage(error?.message || 'Unable to require a password change.');
+    }
+  };
+
   const handleDeleteUser = async (userId: string) => {
     if (!canDeleteSettings) {
       alert('You do not have permission to delete users');
@@ -184,6 +209,7 @@ export default function UserManagement() {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border-2 bg-white shadow-sm" style={{ borderColor: '#E8DCC4' }}>
+        {securityMessage && <p role="status" className="mx-5 mt-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">{securityMessage}</p>}
         <div className="flex flex-col gap-4 border-b p-5 lg:flex-row lg:items-center lg:justify-between" style={{ borderColor: '#E8DCC4' }}>
           <div>
             <div className="flex items-center gap-3">
@@ -319,8 +345,8 @@ export default function UserManagement() {
           <div className="space-y-3 p-3 md:hidden">
             {pageUsers.map((user) => <article key={user.id} className="rounded-xl border border-slate-200 p-4">
               <div className="flex items-start justify-between gap-3"><div><h4 className="font-semibold text-slate-900">{getDisplayName(user)}</h4><p className="text-xs text-slate-600">{user.employee?.employee_code || 'No employee code'} · {user.employee?.department || 'No department'}</p></div><span className={`rounded-full px-2 py-1 text-xs font-semibold ${user.is_active ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{user.is_active ? 'Active' : 'Inactive'}</span></div>
-              <dl className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Username</dt><dd className="break-all font-medium text-slate-800">{user.username}</dd></div><div><dt className="text-slate-500">Last Login</dt><dd className="font-medium text-slate-800">{user.last_login_at ? formatDisplayDate(user.last_login_at) : 'Never'}</dd></div><div className="col-span-2"><dt className="text-slate-500">Email</dt><dd className="break-all font-medium text-slate-800">{user.email}</dd></div><div className="col-span-2"><dt className="text-slate-500">Roles</dt><dd className="font-medium text-slate-800">{getUserRoles(user).map((role) => role.name).join(', ') || 'No role assigned'}</dd></div></dl>
-              <div className="mt-3 flex gap-2 border-t pt-3">{canEditSettings && <><button type="button" onClick={() => { setSelectedUser(user); setShowEditModal(true); }} className="flex-1 rounded-lg border px-3 py-2 text-sm font-semibold">Manage Access</button><button type="button" onClick={() => handleToggleStatus(user.id, user.is_active)} className="rounded-lg border px-3 py-2 text-sm">{user.is_active ? 'Deactivate' : 'Activate'}</button></>}</div>
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Username</dt><dd className="break-all font-medium text-slate-800">{user.username}</dd></div><div><dt className="text-slate-500">Last Login</dt><dd className="font-medium text-slate-800">{user.last_login_at ? formatDisplayDate(user.last_login_at) : 'Never'}</dd></div><div className="col-span-2"><dt className="text-slate-500">Email</dt><dd className="break-all font-medium text-slate-800">{user.email}</dd></div><div className="col-span-2"><dt className="text-slate-500">Roles</dt><dd className="font-medium text-slate-800">{getUserRoles(user).map((role) => role.name).join(', ') || 'No role assigned'}</dd></div><div className="col-span-2"><dt className="text-slate-500">Password</dt><dd className="font-medium text-slate-800">{user.must_change_password ? 'Change required at next sign in' : 'Current'}</dd></div></dl>
+              <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">{canEditSettings && <><button type="button" onClick={() => { setSelectedUser(user); setShowEditModal(true); }} className="flex-1 rounded-lg border px-3 py-2 text-sm font-semibold">Manage Access</button><button type="button" onClick={() => handleToggleStatus(user.id, user.is_active)} className="rounded-lg border px-3 py-2 text-sm">{user.is_active ? 'Deactivate' : 'Activate'}</button>{!user.must_change_password && <button type="button" onClick={() => void requirePasswordChange(user)} className="rounded-lg border px-3 py-2 text-sm">Require password change</button>}<button type="button" onClick={() => void sendPasswordReset(user)} className="rounded-lg border px-3 py-2 text-sm">Send reset email</button></>}</div>
             </article>)}
           </div>
           <div className="hidden overflow-x-auto md:block">
@@ -402,6 +428,7 @@ export default function UserManagement() {
                   </td>
                   <td className="px-6 py-4 text-sm" style={{ color: '#8B6F47' }}>
                     {user.last_login_at ? formatDisplayDate(user.last_login_at) : 'Never'}
+                    {user.must_change_password ? <span className="mt-1 block text-xs font-semibold text-amber-700">Password change required</span> : null}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-2">
@@ -428,6 +455,22 @@ export default function UserManagement() {
                           <UserCheck className="w-4 h-4" style={{ color: '#8B6F47' }} />
                         )}
                       </button>
+                      <button
+                        onClick={() => void sendPasswordReset(user)}
+                        style={{ display: canEditSettings ? undefined : 'none' }}
+                        className="p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                        title="Send password reset instructions"
+                        aria-label={`Send password reset instructions to ${user.email}`}
+                      >
+                        <Mail className="w-4 h-4 text-blue-700" />
+                      </button>
+                      {!user.must_change_password && <button
+                        onClick={() => void requirePasswordChange(user)}
+                        style={{ display: canEditSettings ? undefined : 'none' }}
+                        className="p-2 rounded-lg hover:bg-amber-50 transition-colors"
+                        title="Require password change at next sign in"
+                        aria-label={`Require a password change for ${user.username}`}
+                      ><KeyRound className="w-4 h-4 text-amber-700" /></button>}
                       <button
                         onClick={() => handleDeleteUser(user.id)}
                         style={{ display: canDeleteSettings ? undefined : 'none' }}
@@ -467,6 +510,8 @@ export default function UserManagement() {
 function CreateUserModal({ onClose, onSuccess, canSubmit, isAdminUser }: { onClose: () => void; onSuccess: () => void; canSubmit: boolean; isAdminUser: boolean }) {
   const [employees, setEmployees] = useState<any[]>([]);
   const [employeeId, setEmployeeId] = useState('');
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [step, setStep] = useState(1);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [roleIds, setRoleIds] = useState<string[]>([]);
@@ -485,8 +530,11 @@ function CreateUserModal({ onClose, onSuccess, canSubmit, isAdminUser }: { onClo
   }, [isAdminUser]);
 
   const employee = employees.find((row) => row.id === employeeId);
+  const matchingEmployees = employees.filter((row) => [row.employee_name, row.employee_code, row.department]
+    .some((value) => String(value || '').toLowerCase().includes(employeeSearch.trim().toLowerCase())));
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (step < 3) { setStep((current) => Math.min(3, current + 1)); return; }
     if (!employeeId) { setError('Select an existing employee from HR Employee Master.'); return; }
     if (!canSubmit) { setError('You do not have permission to create employee access.'); return; }
     if (!confirmPrivilegedRoleAssignment(roles, roleIds)) return;
@@ -506,17 +554,32 @@ function CreateUserModal({ onClose, onSuccess, canSubmit, isAdminUser }: { onClo
           <option value="">Select an employee</option>{employees.map((row) => <option key={row.id} value={row.id}>{row.employee_code} ? {row.employee_name}</option>)}
         </select>
       </label>
-      {employee && <section className="grid grid-cols-1 gap-3 rounded-lg bg-slate-50 p-4 text-sm sm:grid-cols-2" aria-label="Read-only HR employee details">
-        {[['Department', employee.department], ['Designation', employee.designation], ['Email', employee.email], ['Status', employee.status]].map(([label, value]) => <div key={label}><div className="text-xs text-slate-500">{label}</div><div className="font-medium text-slate-800">{value || '?'}</div></div>)}
-        <a className="text-blue-700 underline sm:col-span-2" href="/dashboard/hr">Open HR Employee Master</a>
-      </section>}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="space-y-1 text-sm font-medium">Username <span className="text-red-600">*</span><input required value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} autoComplete="off" className="w-full rounded-lg border px-3 py-2" /></label>
-        <label className="space-y-1 text-sm font-medium">Initial password <span className="text-red-600">*</span><input required minLength={8} type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-lg border px-3 py-2" /></label>
-      </div>
-      <label className="block space-y-1 text-sm font-medium">Roles <span className="text-red-600">*</span><select required multiple value={roleIds} onChange={(event) => setRoleIds(Array.from(event.target.selectedOptions).map((option) => option.value))} className="min-h-28 w-full rounded-lg border px-3 py-2">{roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select><span className="block text-xs font-normal text-slate-500">Role changes require a separate authorized approval.</span></label>
+      <ol className="grid grid-cols-3 gap-2" aria-label="Create employee access steps">{['Employee', 'Account & roles', 'Review'].map((label, index) => <li key={label} className={`rounded-lg px-2 py-2 text-center text-xs font-semibold ${step === index + 1 ? 'bg-slate-900 text-white' : step > index + 1 ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>{index + 1}. {label}</li>)}</ol>
+      {step === 1 && <>
+        <label className="block space-y-1 text-sm font-medium">Search active, unlinked employees<input type="search" value={employeeSearch} onChange={(event) => setEmployeeSearch(event.target.value)} placeholder="Name, employee code, or department" className="w-full rounded-lg border px-3 py-2" /></label>
+        <label className="block space-y-1 text-sm font-medium">Employee <span className="text-red-600">*</span>
+          <select required value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} className="w-full rounded-lg border px-3 py-2">
+            <option value="">Select an employee</option>{matchingEmployees.map((row) => <option key={row.id} value={row.id}>{row.employee_code ? `${row.employee_code} · ` : ''}{row.employee_name}{row.department ? ` · ${row.department}` : ''}</option>)}
+          </select>
+          {!matchingEmployees.length && <span className="block text-xs text-slate-500">No active, unlinked employees match this search.</span>}
+        </label>
+        {employee && <section className="grid grid-cols-1 gap-3 rounded-lg bg-slate-50 p-4 text-sm sm:grid-cols-2" aria-label="Read-only HR employee details">
+          <div className="sm:col-span-2"><div className="text-xs text-slate-500">Employee</div><div className="font-semibold text-slate-800">{employee.employee_name} · {employee.employee_code || 'No code'}</div></div>
+          {[['Department', employee.department], ['Designation', employee.designation], ['Email', employee.email], ['Status', employee.status]].map(([label, value]) => <div key={label}><div className="text-xs text-slate-500">{label}</div><div className="font-medium text-slate-800">{value || '—'}</div></div>)}
+          <a className="text-blue-700 underline sm:col-span-2" href="/dashboard/hr">Open HR Employee Master</a>
+        </section>}
+      </>}
+      {step === 2 && <>
+        <section className="rounded-lg bg-slate-50 p-3 text-sm"><span className="text-xs text-slate-500">Selected employee</span><div className="font-semibold">{employee?.employee_name} · {employee?.department || 'No department'}</div><span className="text-xs text-slate-600">HR identity stays owned by Employee Master.</span></section>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="space-y-1 text-sm font-medium">Username <span className="text-red-600">*</span><input required value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} autoComplete="off" className="w-full rounded-lg border px-3 py-2" /></label>
+          <label className="space-y-1 text-sm font-medium">Temporary password <span className="text-red-600">*</span><input required minLength={10} type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-lg border px-3 py-2" /><span className="block text-xs font-normal text-slate-500">The employee must choose a new password at first sign in. Temporary passwords are not displayed after creation.</span></label>
+        </div>
+        <label className="block space-y-1 text-sm font-medium">Roles <span className="text-red-600">*</span><select required multiple value={roleIds} onChange={(event) => setRoleIds(Array.from(event.target.selectedOptions).map((option) => option.value))} className="min-h-28 w-full rounded-lg border px-3 py-2">{roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select><span className="block text-xs font-normal text-slate-500">Role changes require a separate authorized approval.</span></label>
+      </>}
+      {step === 3 && <section className="space-y-3 rounded-xl border p-4 text-sm"><h3 className="font-semibold">Review account access</h3><dl className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><dt className="text-xs text-slate-500">Employee</dt><dd className="font-medium">{employee?.employee_name} · {employee?.employee_code || 'No code'}</dd></div><div><dt className="text-xs text-slate-500">Department / designation</dt><dd className="font-medium">{employee?.department || '—'} / {employee?.designation || '—'}</dd></div><div><dt className="text-xs text-slate-500">Username</dt><dd className="font-medium">{username || 'Not entered'}</dd></div><div><dt className="text-xs text-slate-500">Roles</dt><dd className="font-medium">{roles.filter(role => roleIds.includes(role.id)).map(role => role.name).join(', ') || 'None selected'}</dd></div><div className="sm:col-span-2"><dt className="text-xs text-slate-500">Security</dt><dd className="font-medium">Temporary password; change required at first sign in.</dd></div></dl></section>}
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      <footer className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2">Cancel</button><button disabled={loading || !canSubmit} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white disabled:opacity-50">{loading ? 'Creating?' : 'Create Access'}</button></footer>
+      <footer className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-between"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2">Cancel</button><div className="flex flex-col-reverse gap-2 sm:flex-row">{step > 1 && <button type="button" onClick={() => setStep(value => value - 1)} className="rounded-lg border px-4 py-2">Back</button>}{step < 3 ? <button type="button" disabled={step === 1 ? !employeeId : !username || password.length < 10 || !roleIds.length} onClick={() => setStep(value => value + 1)} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white disabled:opacity-50">Continue</button> : <button type="submit" disabled={loading || !canSubmit} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white disabled:opacity-50">{loading ? 'Creating…' : 'Create Access'}</button>}</div></footer>
     </form></div>
   </div>;
 }

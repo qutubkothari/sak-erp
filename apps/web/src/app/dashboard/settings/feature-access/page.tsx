@@ -5,6 +5,8 @@ import Link from "next/link";
 import { CheckCircle2, Loader2, RefreshCw, Save, ShieldCheck } from "lucide-react";
 import { apiClient } from "../../../../../lib/api-client";
 import { useAuthStore } from "@/stores/auth.store";
+import { hasScreenPermission } from "@/lib/rbac";
+import { getTenantProfile } from "@/lib/profile-branding";
 
 type Feature = {
   feature_key: string;
@@ -34,6 +36,25 @@ export default function FeatureAccessPage() {
   const [tenantTargets, setTenantTargets] = useState<TenantTarget[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const { setUser } = useAuthStore();
+  const { user, hydrate } = useAuthStore();
+  const profile = getTenantProfile();
+  useEffect(() => { hydrate(); }, [hydrate]);
+
+  const profileSupports = (feature: Feature) => {
+    const identity = `${feature.feature_key} ${feature.feature_name} ${feature.module_name} ${feature.screen_route || ""}`.toLowerCase();
+    if (identity.includes('miz antra') || identity.includes('mizantra ai') || identity.includes('action operator') || identity.includes('brain') || identity.includes('data doctor') || identity.includes('autoengineer') || identity.includes('proactive operations')) return profile === 'MIZANTRA';
+    if (/india|gst|tds|eway|e-way/.test(identity)) return profile === 'SAIFSEAS';
+    if (/egypt|eta\b|egyptian/.test(identity)) return profile === 'ARWA';
+    if (/uae|emirates|fta|wps/.test(identity)) return profile === 'MIZANTRA';
+    return true;
+  };
+  const reasonFor = (feature: Feature) => {
+    const tenantEnabled = feature.is_enabled !== false;
+    const supported = profileSupports(feature);
+    const roleAllowed = feature.screen_route ? hasScreenPermission(user, feature.screen_route, 'view') : null;
+    const effective = tenantEnabled && supported && roleAllowed !== false;
+    return { tenantEnabled, supported, roleAllowed, effective, reason: !supported ? `Not supported by the ${profile} profile.` : !tenantEnabled ? 'Tenant entitlement is disabled.' : roleAllowed === false ? 'Your role does not have access to this screen.' : roleAllowed === null ? 'Role permission is enforced by the capability API.' : 'Available to your role and tenant.' };
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -182,11 +203,11 @@ export default function FeatureAccessPage() {
                 <div className="grid gap-px bg-slate-100 md:grid-cols-2 xl:grid-cols-3">
                   {rows.map((feature) => {
                     const enabled = feature.is_enabled !== false;
+                    const availability = reasonFor(feature);
                     return (
-                      <button key={feature.feature_key} type="button" onClick={() => toggle(feature.feature_key)} className="flex items-start gap-3 bg-white p-4 text-left hover:bg-[#FFFDF8]">
-                        <span className={`mt-0.5 flex h-6 w-10 items-center rounded-full p-0.5 transition ${enabled ? "justify-end bg-emerald-600" : "justify-start bg-slate-300"}`}><span className="h-5 w-5 rounded-full bg-white shadow" /></span>
-                        <span className="min-w-0 flex-1"><span className="flex items-center gap-2 font-semibold text-[#344C67]">{feature.feature_name}{enabled && <CheckCircle2 className="h-4 w-4 text-emerald-600" />}</span><span className="mt-1 block text-xs text-slate-600">{feature.description || feature.screen_route}</span></span>
-                      </button>
+                      <article key={feature.feature_key} className="bg-white p-4">
+                        <div className="flex items-start gap-3"><button aria-label={`${enabled ? 'Disable' : 'Enable'} tenant entitlement for ${feature.feature_name}`} type="button" onClick={() => toggle(feature.feature_key)} className={`mt-0.5 flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition ${enabled ? "justify-end bg-emerald-600" : "justify-start bg-slate-300"}`}><span className="h-5 w-5 rounded-full bg-white shadow" /></button><div className="min-w-0 flex-1"><h3 className="font-semibold text-[#344C67]">{feature.feature_name}</h3><p className="mt-1 text-xs text-slate-600">{feature.description || feature.screen_route}</p><dl className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Tenant enabled</dt><dd className="font-semibold">{availability.tenantEnabled ? 'Yes' : 'No'}</dd></div><div><dt className="text-slate-500">Profile supports</dt><dd className="font-semibold">{availability.supported ? 'Yes' : 'No'}</dd></div><div><dt className="text-slate-500">Role permitted</dt><dd className="font-semibold">{availability.roleAllowed === null ? 'Enforced by API' : availability.roleAllowed ? 'Yes' : 'No'}</dd></div><div><dt className="text-slate-500">Effective</dt><dd className="font-semibold">{availability.effective ? 'Available / server-enforced' : 'Not available'}</dd></div></dl><p className="mt-2 rounded bg-slate-50 p-2 text-xs text-slate-600">{availability.reason}</p></div></div>
+                      </article>
                     );
                   })}
                 </div>

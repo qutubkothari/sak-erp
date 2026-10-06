@@ -38,8 +38,8 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters long.');
+    if (newPassword.length < 10) {
+      setError('Password must be at least 10 characters long.');
       return;
     }
 
@@ -121,7 +121,7 @@ export default function ResetPasswordPage() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                minLength={8}
+                minLength={10}
                 className="w-full px-4 py-3 rounded-lg border-2 focus:outline-none focus:border-opacity-80 transition-colors"
                 style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
                 placeholder="Enter your new password"
@@ -138,7 +138,7 @@ export default function ResetPasswordPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                minLength={8}
+                minLength={10}
                 className="w-full px-4 py-3 rounded-lg border-2 focus:outline-none focus:border-opacity-80 transition-colors"
                 style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
                 placeholder="Re-enter your new password"
@@ -146,7 +146,7 @@ export default function ResetPasswordPage() {
             </div>
 
             <p className="text-sm" style={{ color: '#6F4E37' }}>
-              Use at least 8 characters.
+              Use at least 10 characters.
             </p>
 
             {error && (

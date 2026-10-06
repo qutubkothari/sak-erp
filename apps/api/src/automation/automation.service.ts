@@ -195,7 +195,9 @@ export class AutomationService {
   private async branchMarket(tenantId: string, requested?: unknown) {
     const { data, error } = await this.supabase.from('tenants').select('market_profile').eq('id', tenantId).single();
     if (error || !data) throw new BadRequestException(error?.message || 'Tenant market profile could not be resolved.');
-    const market = String(data.market_profile || 'INDIA').trim().toUpperCase();
+    const profile = String(process.env.ERP_TENANT_PROFILE || '').trim().toUpperCase();
+    const profileMarket = profile === 'ARWA' ? 'EGYPT' : profile === 'MIZANTRA' ? 'UAE' : profile === 'SAIFSEAS' ? 'INDIA' : null;
+    const market = String(profileMarket || data.market_profile || 'INDIA').trim().toUpperCase();
     if (!['INDIA', 'UAE', 'EGYPT'].includes(market)) throw new BadRequestException('Unsupported tenant market profile.');
     if (requested && String(requested).trim().toUpperCase() !== market) {
       throw new BadRequestException('Branch market profile must match the tenant profile.');

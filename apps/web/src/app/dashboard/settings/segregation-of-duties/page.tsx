@@ -5,7 +5,7 @@ import { apiClient } from '../../../../../lib/api-client';
 
 type UserRow = { id: string; first_name?: string; last_name?: string; username?: string; email?: string };
 type Assignment = { id: string; user_id: string; workflow_role: string; is_active?: boolean };
-type Conflict = { user_id: string; severity: string; roles: string[]; remediation?: string };
+type Conflict = { user_id: string; severity: string; roles: string[]; remediation?: string; module?: string };
 const ROLE_LABELS: Record<string, string> = {
   JOURNAL_PREPARER: 'Journal preparer', JOURNAL_REVIEWER: 'Journal reviewer',
   JOURNAL_APPROVER: 'Journal approver', JOURNAL_POSTER: 'Journal poster',
@@ -19,6 +19,10 @@ export default function SegregationOfDutiesPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [moduleFilter, setModuleFilter] = useState('ALL');
+  const [riskFilter, setRiskFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ACTIVE');
+  const [userFilter, setUserFilter] = useState('ALL');
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
@@ -42,13 +46,26 @@ export default function SegregationOfDutiesPage() {
     if (labels.some((role) => role.includes('preparer')) && labels.some((role) => role.includes('reviewer'))) return 'This user can prepare and review journal entries.';
     return `This user holds multiple finance workflow roles: ${labels.join(' and ')}.`;
   };
+  const riskSeverity = (conflict: Conflict) => {
+    const supplied = String(conflict.severity || '').toUpperCase();
+    if (supplied) return supplied;
+    const labels = conflict.roles.map(displayRole);
+    return labels.some((role) => role.includes('preparer')) && labels.some((role) => role.includes('approver')) ? 'HIGH' : 'MEDIUM';
+  };
+  const visibleConflicts = (data.conflicts as Conflict[]).filter((conflict) => {
+    const highRisk = riskSeverity(conflict) === 'HIGH';
+    return (moduleFilter === 'ALL' || String(conflict.module || 'FINANCE').toUpperCase() === moduleFilter)
+      && (riskFilter === 'ALL' || (riskFilter === 'HIGH') === highRisk)
+      && (statusFilter === 'ALL' || statusFilter === 'ACTIVE')
+      && (userFilter === 'ALL' || conflict.user_id === userFilter);
+  });
 
   return <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
     <header><p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Workflow & Controls</p><h1 className="mt-1 text-2xl font-bold text-slate-900">Segregation of Duties</h1><p className="mt-2 max-w-3xl text-sm text-slate-600">Review users who hold more than one finance workflow responsibility. This screen reports conflicts and does not change access.</p></header>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     <section className={`rounded-2xl border p-5 ${data.summary.conflicts ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50'}`}><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold text-slate-900">{loading ? 'Loading control status…' : `${data.summary.conflicts || 0} active conflict${data.summary.conflicts === 1 ? '' : 's'}`}</h2><p className="mt-1 text-sm text-slate-700">{data.summary.active_assignments || 0} active assignments · {data.summary.users_with_finance_roles || 0} users with finance roles.</p></div><button type="button" onClick={() => void load()} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium">Refresh review</button></div></section>
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="border-b p-4"><h2 className="font-semibold text-slate-900">Conflict review</h2><p className="mt-1 text-sm text-slate-600">Resolve by reviewing assignments and applying normal access controls.</p></div>
-      {data.conflicts.length ? <div className="divide-y divide-slate-100">{(data.conflicts as Conflict[]).map((conflict) => <article key={conflict.user_id} className="grid gap-3 p-4 md:grid-cols-[1fr_1fr_1fr]"><div><p className="text-xs font-semibold uppercase text-red-700">High risk · Active</p><h3 className="mt-1 font-semibold text-slate-900">{personName(conflict.user_id)}</h3></div><div><p className="text-xs text-slate-500">Conflict</p><p className="text-sm text-slate-800">{risks(conflict)}</p><p className="mt-1 text-xs text-slate-600">{conflict.roles.map(displayRole).join(' · ')}</p></div><div><p className="text-xs text-slate-500">Suggested resolution</p><p className="text-sm text-slate-700">{conflict.remediation || 'Review assignments and separate the responsibilities.'}</p></div></article>)}</div> : <p className="p-5 text-sm text-emerald-800">{loading ? 'Checking assignments…' : 'No active finance workflow conflicts found.'}</p>}
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="border-b p-4"><h2 className="font-semibold text-slate-900">Conflict review</h2><p className="mt-1 text-sm text-slate-600">Resolve by reviewing assignments and applying normal access controls.</p><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4"><label className="text-xs font-medium text-slate-600">Module<select value={moduleFilter} onChange={event => setModuleFilter(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"><option value="ALL">All modules</option><option value="FINANCE">Finance controls</option></select></label><label className="text-xs font-medium text-slate-600">Risk<select value={riskFilter} onChange={event => setRiskFilter(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"><option value="ALL">All risk levels</option><option value="HIGH">High</option><option value="OTHER">Other</option></select></label><label className="text-xs font-medium text-slate-600">Status<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"><option value="ACTIVE">Active conflicts only</option></select></label><label className="text-xs font-medium text-slate-600">User<select value={userFilter} onChange={event => setUserFilter(event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"><option value="ALL">All users</option>{[...new Set((data.conflicts as Conflict[]).map(conflict => conflict.user_id))].map(id => <option key={id} value={id}>{personName(id)}</option>)}</select></label></div></div>
+      {visibleConflicts.length ? <div className="divide-y divide-slate-100">{visibleConflicts.map((conflict) => <article key={conflict.user_id} className="grid gap-3 p-4 md:grid-cols-[1fr_1.4fr_1fr]"><div><p className="text-xs font-semibold uppercase text-red-700">{riskSeverity(conflict)} risk · Active · {conflict.module || 'Finance'}</p><h3 className="mt-1 font-semibold text-slate-900">{personName(conflict.user_id)}</h3></div><div><p className="text-xs text-slate-500">Business explanation</p><p className="text-sm text-slate-800">{risks(conflict)}</p><p className="mt-2 text-xs font-medium text-slate-500">Conflicting capabilities</p><p className="text-sm text-slate-700">{conflict.roles.map(displayRole).join(' · ')}</p></div><div><p className="text-xs text-slate-500">Recommended resolution</p><p className="text-sm text-slate-700">{conflict.remediation || 'Review assignments and separate the responsibilities.'}</p></div></article>)}</div> : <p className="p-5 text-sm text-emerald-800">{loading ? 'Checking assignments…' : 'No active finance workflow conflicts match these filters.'}</p>}
     </section>
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="border-b p-4"><h2 className="font-semibold text-slate-900">Workflow assignment register</h2></div><div className="divide-y divide-slate-100">{(data.assignments as Assignment[]).map((assignment) => <div key={assignment.id} className="flex flex-col gap-1 p-4 sm:flex-row sm:items-center sm:justify-between"><span className="font-medium text-slate-800">{displayRole(assignment.workflow_role)}</span><span className="text-sm text-slate-600">{personName(assignment.user_id)}</span><span className={`text-xs font-semibold ${assignment.is_active === false ? 'text-slate-500' : 'text-emerald-700'}`}>{assignment.is_active === false ? 'Inactive' : 'Active'}</span></div>)}{!loading && !data.assignments.length && <p className="p-5 text-sm text-slate-600">No finance workflow role assignments are configured.</p>}</div></section>
   </main>;

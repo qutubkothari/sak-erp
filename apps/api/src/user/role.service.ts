@@ -68,7 +68,17 @@ export class RoleService {
       throw new Error(`Failed to fetch roles: ${error.message}`);
     }
 
-    return data;
+    const [{ data: assignments }, { data: legacyUsers }] = await Promise.all([
+      this.supabase.from('user_roles').select('role_id,user_id').eq('tenant_id', tenantId),
+      this.supabase.from('users').select('id,role_id,username,first_name,last_name').eq('tenant_id', tenantId),
+    ]);
+    const usersById = new Map((legacyUsers || []).map((user: any) => [String(user.id), user]));
+    return (data || []).map((role: any) => {
+      const users = new Map<string, any>();
+      for (const assignment of assignments || []) if (String(assignment.role_id) === String(role.id) && assignment.user_id) users.set(String(assignment.user_id), usersById.get(String(assignment.user_id)) || { id: assignment.user_id });
+      for (const user of legacyUsers || []) if (String(user.role_id || '') === String(role.id)) users.set(String(user.id), user);
+      return { ...role, assigned_users: [...users.values()], assigned_user_count: users.size };
+    });
   }
 
   async findOne(id: string, tenantId: string) {

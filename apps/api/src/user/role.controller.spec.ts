@@ -8,11 +8,12 @@ describe('RoleController privileged role protection', () => {
     update: jest.fn().mockResolvedValue({ id: 'role-1' }),
     delete: jest.fn().mockResolvedValue({}),
   };
+  const audit = { logActivity: jest.fn().mockResolvedValue(undefined) };
   let controller: RoleController;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    controller = new RoleController(service as any);
+    controller = new RoleController(service as any, audit as any);
   });
 
   it('rejects a privileged role creation by a non Master Admin', async () => {
@@ -28,8 +29,9 @@ describe('RoleController privileged role protection', () => {
   });
 
   it('allows a Master Admin to create a privileged role', async () => {
-    await controller.create({ name: 'Super Admin', permissions: [] }, { user: { role: 'SUPER_ADMIN', tenantId: 'tenant' } });
+    await controller.create({ name: 'Super Admin', permissions: [] }, { user: { id: 'admin-1', role: 'SUPER_ADMIN', tenantId: 'tenant' }, ip: '127.0.0.1', headers: {} });
     expect(service.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant' }));
+    expect(audit.logActivity).toHaveBeenCalledWith(expect.objectContaining({ action: 'PRIVILEGED_ROLE_CREATED', tenantId: 'tenant', userId: 'admin-1' }));
   });
 
   it('protects updates and deletion of existing privileged roles', async () => {

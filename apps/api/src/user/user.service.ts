@@ -442,6 +442,9 @@ export class UserService {
     roleIds?: string[];
     tenantId: string;
   }, requestedBy: string) {
+    if (String(dto.password || '').length < 10) {
+      throw new ConflictException('Temporary password must be at least 10 characters.');
+    }
     const employeeId = String(dto.employee_id || '').trim();
     if (!employeeId) {
       throw new ConflictException('Select an existing HR employee before creating account access.');
@@ -477,6 +480,7 @@ export class UserService {
         username: normalizedUsername,
         email: normalizedEmail,
         password: hashedPassword,
+        must_change_password: true,
         first_name: firstName,
         last_name: lastName,
         role_id: null,
@@ -490,6 +494,7 @@ export class UserService {
         first_name,
         last_name,
         is_active,
+        must_change_password,
         created_at
       `)
       .single();
@@ -536,6 +541,18 @@ export class UserService {
       throw new Error(syncError?.message || 'Failed to create employee profile');
     }
 
+    return data;
+  }
+
+  async requirePasswordChange(id: string, tenantId: string) {
+    const { data, error } = await this.supabase
+      .from('users')
+      .update({ must_change_password: true })
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .select('id, must_change_password')
+      .maybeSingle();
+    if (error || !data) throw new NotFoundException('User not found for this tenant.');
     return data;
   }
 

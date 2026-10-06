@@ -16,7 +16,7 @@ function required(name) {
 try {
   const targetName = required('target');
   const target = TARGETS[targetName];
-  if (!target) throw new Error(`--target must be exactly live or test; received ${targetName}`);
+  if (!target) throw new Error(`--target must be one of ${Object.keys(TARGETS).join(', ')}; received ${targetName}`);
 
   const appRoot = normalizePath(required('app-root'));
   const actual = {
