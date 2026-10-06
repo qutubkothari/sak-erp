@@ -396,6 +396,12 @@ function RoleModal({
       setError(`You do not have permission to ${role ? 'update' : 'create'} roles`);
       return;
     }
+    const privilegedName = ['super admin', 'superadmin', 'owner', 'platform owner'].includes(formData.name.trim().toLowerCase());
+    const grantsAdministrativeWrite = [...modulePermissions, ...screenPermissions].some((permission) =>
+      /setting|user|role|feature-access/i.test(`${permission.module || ''} ${permission.screen || ''}`) &&
+      ['create', 'edit', 'delete', 'approve'].some((action) => permission[action as keyof Permission] === true),
+    );
+    if ((privilegedName || grantsAdministrativeWrite) && !window.confirm('This role grants privileged administrative access. Only authorized administrators should hold it. Continue?')) return;
     setLoading(true);
 
     try {

@@ -1,6 +1,12 @@
 import profiles from '../../../../tenant/profiles.json';
 
 export type TenantProfile = keyof typeof profiles;
+export function getTenantProfile(
+  profile = process.env.NEXT_PUBLIC_ERP_TENANT_PROFILE || process.env.ERP_TENANT_PROFILE,
+): TenantProfile | null {
+  return profile && profile in profiles ? profile as TenantProfile : null;
+}
+
 export type ProfileBranding = {
   brand: string;
   companyName: string;

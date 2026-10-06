@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
@@ -140,6 +140,15 @@ export class RoleService {
   }
 
   async delete(id: string, tenantId: string) {
+    const [{ data: assignedUsers, error: assignmentError }, { data: legacyUsers, error: legacyError }] = await Promise.all([
+      this.supabase.from('user_roles').select('user_id').eq('tenant_id', tenantId).eq('role_id', id).limit(1),
+      this.supabase.from('users').select('id').eq('tenant_id', tenantId).eq('role_id', id).limit(1),
+    ]);
+    if (assignmentError) throw new Error(`Failed to check role assignments: ${assignmentError.message}`);
+    if (legacyError) throw new Error(`Failed to check legacy role assignments: ${legacyError.message}`);
+    if ((assignedUsers || []).length || (legacyUsers || []).length) {
+      throw new ConflictException('This role is assigned to one or more users. Reassign them before removing the role.');
+    }
     const { error } = await this.supabase
       .from('roles')
       .delete()

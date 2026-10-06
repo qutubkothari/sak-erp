@@ -19,6 +19,12 @@ export class UserController {
     return this.userService.findAll(req.user.tenantId);
   }
 
+  @Get('employee-candidates')
+  @RequireCreate('users')
+  async employeeCandidates(@Request() req: any) {
+    return this.userService.employeeCandidates(req.user.tenantId);
+  }
+
   @Get(':id')
   @RequireRead('users')
   @ApiOperation({ summary: 'Get user by ID' })

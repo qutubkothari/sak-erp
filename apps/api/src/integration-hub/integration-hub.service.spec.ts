@@ -22,6 +22,20 @@ describe('IntegrationHubService controls', () => {
     expect(safe.secret_reference).toBeUndefined();
   });
 
+  it('keeps the Egypt catalog isolated from India-specific connectors', async () => {
+    const tenantQuery = { eq: jest.fn(() => ({ single: jest.fn().mockResolvedValue({ data: { market_profile: 'EGYPT' }, error: null }) })) };
+    const connectionQuery = { eq: jest.fn(() => ({ order: jest.fn().mockResolvedValue({ data: [], error: null }) })) };
+    const eventQuery = { eq: jest.fn(() => ({ order: jest.fn(() => ({ limit: jest.fn().mockResolvedValue({ data: [], error: null }) })) })) };
+    (service as any).db = { from: jest.fn((table: string) => ({
+      select: jest.fn(() => table === 'tenants' ? tenantQuery : table === 'integration_connections' ? connectionQuery : eventQuery),
+    })) };
+
+    const result = await service.dashboard('tenant-egypt', admin);
+    expect(result.market_profile).toBe('EGYPT');
+    expect(result.catalog.map((entry: any) => entry.connector_code)).toContain('CRM');
+    expect(result.catalog.some((entry: any) => entry.connector_code.startsWith('INDIA_'))).toBe(false);
+  });
+
   it('rejects a pasted credential value even for an administrator', async () => {
     jest.spyOn(service, 'dashboard').mockResolvedValue({ catalog: [{ connector_code: 'CRM', connector_name: 'CRM / customer sync', market_profile: 'SHARED' }] } as any);
     await expect(service.save('tenant-a', admin, { connector_code: 'CRM', secret_reference: 'api_key=not-a-vault-reference' })).rejects.toBeInstanceOf(BadRequestException);

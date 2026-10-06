@@ -66,7 +66,12 @@ export class TenantService {
   }
 
   private sanitizeTenantUpdate<T extends { settings?: Record<string, unknown> }>(dto: T): T {
-    const input = dto as T & Record<string, unknown>;
+    const writableFields = new Set([
+      'name', 'domain', 'address', 'phone', 'email', 'tax_id', 'logo_url',
+      'settings', 'market_profile', 'default_currency', 'tax_regime', 'locale', 'timezone',
+    ]);
+    const input = Object.fromEntries(Object.entries(dto).filter(([key]) => writableFields.has(key))) as T & Record<string, unknown>;
+    let sanitized = input as T;
     if ('market_profile' in input) {
       const profile = String(input.market_profile || 'INDIA').trim().toUpperCase();
       if (!['INDIA', 'UAE', 'EGYPT'].includes(profile)) {
@@ -77,29 +82,29 @@ export class TenantService {
         : profile === 'UAE'
           ? { default_currency: 'AED', tax_regime: 'UAE_VAT', locale: 'en-AE', timezone: 'Asia/Dubai' }
           : { default_currency: 'INR', tax_regime: 'GST', locale: 'en-IN', timezone: 'Asia/Kolkata' };
-      dto = {
+      sanitized = {
         ...input,
         market_profile: profile,
         ...regionalDefaults,
       } as T;
     }
 
-    if (!dto.settings || typeof dto.settings !== 'object' || Array.isArray(dto.settings)) {
-      return dto;
+    if (!sanitized.settings || typeof sanitized.settings !== 'object' || Array.isArray(sanitized.settings)) {
+      return sanitized;
     }
 
-    const deliveryAddresses = dto.settings.deliveryAddresses;
+    const deliveryAddresses = sanitized.settings.deliveryAddresses;
     if (!Array.isArray(deliveryAddresses)) {
-      return dto;
+      return sanitized;
     }
 
     return {
-      ...dto,
+      ...sanitized,
       settings: {
-        ...dto.settings,
+        ...sanitized.settings,
         deliveryAddresses: this.normalizeDeliveryAddresses(deliveryAddresses),
       },
-    };
+    } as T;
   }
 
   private normalizeDeliveryAddresses(value: unknown[]): Array<{ id: string; name: string; address: string }> {

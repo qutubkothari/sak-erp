@@ -192,13 +192,28 @@ export class AutomationService {
     return data || [];
   }
 
+  private async branchMarket(tenantId: string, requested?: unknown) {
+    const { data, error } = await this.supabase.from('tenants').select('market_profile').eq('id', tenantId).single();
+    if (error || !data) throw new BadRequestException(error?.message || 'Tenant market profile could not be resolved.');
+    const market = String(data.market_profile || 'INDIA').trim().toUpperCase();
+    if (!['INDIA', 'UAE', 'EGYPT'].includes(market)) throw new BadRequestException('Unsupported tenant market profile.');
+    if (requested && String(requested).trim().toUpperCase() !== market) {
+      throw new BadRequestException('Branch market profile must match the tenant profile.');
+    }
+    const regional = market === 'EGYPT'
+      ? { currency_code: 'EGP', tax_regime: 'EGYPT_VAT', timezone: 'Africa/Cairo' }
+      : market === 'UAE'
+        ? { currency_code: 'AED', tax_regime: 'UAE_VAT', timezone: 'Asia/Dubai' }
+        : { currency_code: 'INR', tax_regime: 'GST', timezone: 'Asia/Kolkata' };
+    return { market, ...regional };
+  }
+
   async createBranch(tenantId: string, body: any) {
-    const market = String(body.market_profile || 'INDIA').toUpperCase();
-    if (!['INDIA', 'UAE'].includes(market)) throw new BadRequestException('Market profile must be INDIA or UAE');
+    const regional = await this.branchMarket(tenantId, body.market_profile);
     const branchCode = String(body.branch_code || '').trim().toUpperCase();
     const branchName = String(body.branch_name || '').trim();
     if (!branchCode || !branchName) throw new BadRequestException('Branch code and branch name are required');
-    const payload = { tenant_id: tenantId, branch_code: branchCode, branch_name: branchName, market_profile: market, currency_code: market === 'UAE' ? 'AED' : 'INR', tax_regime: market === 'UAE' ? 'UAE_VAT' : 'GST', timezone: market === 'UAE' ? 'Asia/Dubai' : 'Asia/Kolkata', address: String(body.address || '').trim() || null, is_active: body.is_active !== false };
+    const payload = { tenant_id: tenantId, branch_code: branchCode, branch_name: branchName, market_profile: regional.market, currency_code: regional.currency_code, tax_regime: regional.tax_regime, timezone: regional.timezone, address: String(body.address || '').trim() || null, is_active: body.is_active !== false };
     const { data, error } = await this.supabase.from('company_branches').insert(payload).select().single();
     if (error || !data) throw new BadRequestException(error?.code === '23505' ? 'Branch code already exists.' : error?.message || 'Branch could not be created');
     return data;
@@ -208,15 +223,14 @@ export class AutomationService {
     const existing = await this.supabase.from('company_branches').select('*').eq('tenant_id', tenantId).eq('id', id).maybeSingle();
     if (existing.error) throw new BadRequestException(existing.error.message);
     if (!existing.data) throw new NotFoundException('Branch not found');
-    const market = String(body.market_profile || existing.data.market_profile || 'INDIA').toUpperCase();
-    if (!['INDIA', 'UAE'].includes(market)) throw new BadRequestException('Market profile must be INDIA or UAE');
+    const regional = await this.branchMarket(tenantId, body.market_profile || existing.data.market_profile);
     const payload = {
       branch_code: body.branch_code === undefined ? existing.data.branch_code : String(body.branch_code || '').trim().toUpperCase(),
       branch_name: body.branch_name === undefined ? existing.data.branch_name : String(body.branch_name || '').trim(),
-      market_profile: market,
-      currency_code: String(body.currency_code || existing.data.currency_code || (market === 'UAE' ? 'AED' : 'INR')).trim().toUpperCase(),
-      tax_regime: String(body.tax_regime || existing.data.tax_regime || (market === 'UAE' ? 'UAE_VAT' : 'GST')).trim(),
-      timezone: String(body.timezone || existing.data.timezone || (market === 'UAE' ? 'Asia/Dubai' : 'Asia/Kolkata')).trim(),
+      market_profile: regional.market,
+      currency_code: regional.currency_code,
+      tax_regime: regional.tax_regime,
+      timezone: regional.timezone,
       address: body.address === undefined ? existing.data.address : String(body.address || '').trim() || null,
       is_active: body.is_active === undefined ? existing.data.is_active : Boolean(body.is_active),
       updated_at: new Date().toISOString(),

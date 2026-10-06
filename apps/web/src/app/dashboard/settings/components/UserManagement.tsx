@@ -4,9 +4,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, UserX, UserCheck, Search, Mail, Eye, EyeOff, AtSign, ShieldCheck, Users, KeyRound } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
-import DateInput from '../../../../components/ui/DateInput';
 import { hasModulePermission, readStoredUser, isAdminLike, type StoredUser } from '@/lib/rbac';
-import { getTodayDateInputValue } from '@/lib/date';
 
 interface User {
   id: string;
@@ -15,6 +13,7 @@ interface User {
   first_name: string;
   last_name: string;
   is_active: boolean;
+  last_login_at?: string | null;
   role?: {
     id: string;
     name: string;
@@ -52,12 +51,6 @@ interface RoleApprovalRequest {
   requested_roles: Array<{ id: string; name: string }>;
 }
 
-function formatDateInputValue(value?: string): string {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  return raw.slice(0, 10);
-}
-
 function formatDisplayDate(value?: string): string {
   const raw = String(value || '').trim();
   if (!raw) return '-';
@@ -80,9 +73,12 @@ function getUserRoles(user: User): Array<{ id: string; name: string }> {
   return user.role ? [user.role] : [];
 }
 
-const employeeAccessFieldClass = 'space-y-2';
-const employeeAccessFullSpanClass = 'lg:col-span-2 xl:col-span-3';
-const todayDate = getTodayDateInputValue();
+function confirmPrivilegedRoleAssignment(roles: any[], selectedRoleIds: string[]): boolean {
+  const privileged = roles.filter((role) => selectedRoleIds.includes(String(role.id)) &&
+    ['super admin', 'superadmin', 'owner', 'platform owner'].includes(String(role.name || '').trim().toLowerCase()));
+  if (!privileged.length) return true;
+  return window.confirm(`You are assigning ${privileged.map((role) => role.name).join(', ')}. This grants privileged administrative access. Continue?`);
+}
 
 export default function UserManagement() {
   const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
@@ -93,6 +89,10 @@ export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [sortBy, setSortBy] = useState<'EMPLOYEE' | 'LAST_LOGIN'>('EMPLOYEE');
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -119,14 +119,17 @@ export default function UserManagement() {
     }
   };
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      getDisplayName(user).toLowerCase().includes(searchQuery.toLowerCase()) ||
-      String(user.employee?.employee_code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      String(user.employee?.department || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredUsers = users.filter((user) => {
+    const matchesStatus = statusFilter === 'ALL' || (statusFilter === 'ACTIVE') === user.is_active;
+    const matchesSearch = [user.username, user.email, getDisplayName(user), user.employee?.employee_code, user.employee?.department]
+      .some((value) => String(value || '').toLowerCase().includes(normalizedQuery));
+    return matchesStatus && matchesSearch;
+  }).sort((a, b) => sortBy === 'LAST_LOGIN'
+    ? String(b.last_login_at || '').localeCompare(String(a.last_login_at || ''))
+    : getDisplayName(a).localeCompare(getDisplayName(b)));
+  const pageCount = Math.max(1, Math.ceil(filteredUsers.length / pageSize));
+  const pageUsers = filteredUsers.slice((page - 1) * pageSize, page * pageSize);
 
   const accessStats = {
     total: users.length,
@@ -237,10 +240,18 @@ export default function UserManagement() {
               type="text"
               placeholder="Search by employee name, code, username, email, or department..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
               className="w-full rounded-lg border-2 py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-opacity-80"
               style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
             />
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as typeof statusFilter); setPage(1); }} aria-label="Filter by account status" className="rounded-lg border-2 bg-white px-3 py-2 text-sm" style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}>
+              <option value="ALL">All statuses</option><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option>
+            </select>
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)} aria-label="Sort employee access" className="rounded-lg border-2 bg-white px-3 py-2 text-sm" style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}>
+              <option value="EMPLOYEE">Sort: Employee</option><option value="LAST_LOGIN">Sort: Last login</option>
+            </select>
           </div>
           <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: '#E8DCC4', color: '#7A6555', backgroundColor: '#FAF9F6' }}>
             Access is controlled by assigned roles. Use Roles & Permissions for module/screen rights.
@@ -304,23 +315,31 @@ export default function UserManagement() {
             {searchQuery ? 'No employees found matching your search.' : 'No employee access records yet. Create your first employee login!'}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="space-y-3 p-3 md:hidden">
+            {pageUsers.map((user) => <article key={user.id} className="rounded-xl border border-slate-200 p-4">
+              <div className="flex items-start justify-between gap-3"><div><h4 className="font-semibold text-slate-900">{getDisplayName(user)}</h4><p className="text-xs text-slate-600">{user.employee?.employee_code || 'No employee code'} · {user.employee?.department || 'No department'}</p></div><span className={`rounded-full px-2 py-1 text-xs font-semibold ${user.is_active ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>{user.is_active ? 'Active' : 'Inactive'}</span></div>
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Username</dt><dd className="break-all font-medium text-slate-800">{user.username}</dd></div><div><dt className="text-slate-500">Last Login</dt><dd className="font-medium text-slate-800">{user.last_login_at ? formatDisplayDate(user.last_login_at) : 'Never'}</dd></div><div className="col-span-2"><dt className="text-slate-500">Email</dt><dd className="break-all font-medium text-slate-800">{user.email}</dd></div><div className="col-span-2"><dt className="text-slate-500">Roles</dt><dd className="font-medium text-slate-800">{getUserRoles(user).map((role) => role.name).join(', ') || 'No role assigned'}</dd></div></dl>
+              <div className="mt-3 flex gap-2 border-t pt-3">{canEditSettings && <><button type="button" onClick={() => { setSelectedUser(user); setShowEditModal(true); }} className="flex-1 rounded-lg border px-3 py-2 text-sm font-semibold">Manage Access</button><button type="button" onClick={() => handleToggleStatus(user.id, user.is_active)} className="rounded-lg border px-3 py-2 text-sm">{user.is_active ? 'Deactivate' : 'Activate'}</button></>}</div>
+            </article>)}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
           <table className="min-w-[1120px] w-full">
             <thead className="sticky top-0 z-10" style={{ backgroundColor: '#FAF9F6', color: '#6F4E37' }}>
               <tr>
-                <th className="px-6 py-3 text-left text-sm font-semibold">Name</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">Employee</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold">Code</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold">Username</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold">Email</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold">Department</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold">Role</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold">Status</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold">Joined</th>
+                <th className="px-6 py-3 text-left text-sm font-semibold">Last Login</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E8DCC4]">
-              {filteredUsers.map((user) => (
+              {pageUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-[#FAF9F6] transition-colors">
                   <td className="px-6 py-4">
                     <div className="font-medium" style={{ color: '#6F4E37' }}>
@@ -382,7 +401,7 @@ export default function UserManagement() {
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm" style={{ color: '#8B6F47' }}>
-                    {formatDisplayDate(user.employee?.date_of_joining || user.created_at)}
+                    {user.last_login_at ? formatDisplayDate(user.last_login_at) : 'Never'}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-2">
@@ -424,7 +443,12 @@ export default function UserManagement() {
             </tbody>
           </table>
           </div>
+          </>
         )}
+        {!loading && filteredUsers.length > pageSize && <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm text-slate-600">
+          <span>Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredUsers.length)} of {filteredUsers.length}</span>
+          <div className="flex gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded border px-3 py-2 disabled:opacity-40">Previous</button><button type="button" disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} className="rounded border px-3 py-2 disabled:opacity-40">Next</button></div>
+        </div>}
       </div>
 
       {/* Create Employee Access Modal */}
@@ -440,655 +464,93 @@ export default function UserManagement() {
   );
 }
 
-// Create User Modal Component
 function CreateUserModal({ onClose, onSuccess, canSubmit, isAdminUser }: { onClose: () => void; onSuccess: () => void; canSubmit: boolean; isAdminUser: boolean }) {
-  const today = new Date().toISOString().split('T')[0];
-  const emptyFormData = {
-    employee_code: '',
-    employee_name: '',
-    designation: '',
-    department: '',
-    date_of_joining: today,
-    date_of_birth: '',
-    contact_number: '',
-    address: '',
-    biometric_id: '',
-    username: '',
-    email: '',
-    firstName: '',
-    lastName: '',
-    roleIds: [] as string[],
-    password: '',
-  };
-  const [formData, setFormData] = useState({
-    ...emptyFormData,
-  });
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [employeeId, setEmployeeId] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [roleIds, setRoleIds] = useState<string[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    fetchRoles();
-  }, []);
+    Promise.all([apiClient.get<any[]>('/users/employee-candidates'), apiClient.get<any[]>('/roles')])
+      .then(([employeeRows, roleRows]) => {
+        setEmployees(employeeRows);
+        const privileged = ['super admin', 'owner', 'platform owner'];
+        setRoles(isAdminUser ? roleRows : roleRows.filter((role) => !privileged.includes(String(role.name || '').toLowerCase())));
+      })
+      .catch((err: any) => setError(err?.message || 'Unable to load HR employees and roles.'));
+  }, [isAdminUser]);
 
-  useEffect(() => {
-    setFormData(emptyFormData);
-    setShowPassword(false);
-  }, []);
-
-  const handleClose = () => {
-    setFormData(emptyFormData);
-    setShowPassword(false);
-    setError('');
-    onClose();
-  };
-
-  const fetchRoles = async () => {
+  const employee = employees.find((row) => row.id === employeeId);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!employeeId) { setError('Select an existing employee from HR Employee Master.'); return; }
+    if (!canSubmit) { setError('You do not have permission to create employee access.'); return; }
+    if (!confirmPrivilegedRoleAssignment(roles, roleIds)) return;
+    setLoading(true); setError('');
     try {
-      const data = await apiClient.get<any[]>('/roles');
-      const ADMIN_ROLES = ['super admin', 'owner'];
-      setRoles(isAdminUser ? data : data.filter((r: any) => !ADMIN_ROLES.includes(String(r.name || '').toLowerCase())));
-    } catch (error) {
-    }
+      await apiClient.post('/users', { employee_id: employeeId, username, password, roleIds });
+      onSuccess(); onClose();
+    } catch (err: any) { setError(err?.message || 'Failed to create employee access.'); }
+    finally { setLoading(false); }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!canSubmit) {
-      setError('You do not have permission to create employee access');
-      return;
-    }
-    setLoading(true);
-
-    try {
-      await apiClient.post('/users', formData);
-      onSuccess();
-      handleClose();
-    } catch (error: any) {
-      setError(error.message || 'Failed to create employee access');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 p-4">
-      <div className="flex min-h-full items-start justify-center py-6">
-      <div className="bg-white rounded-lg p-6 w-full max-w-5xl max-h-[92vh] overflow-y-auto shadow-xl">
-        <h2 className="text-2xl font-bold mb-4" style={{ color: '#6F4E37' }}>
-          Create Employee Access
-        </h2>
-
-        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Employee Code
-              </label>
-              <input
-                type="text"
-                required
-                autoComplete="off"
-                value={formData.employee_code}
-                onChange={(e) => setFormData({ ...formData, employee_code: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Employee Name
-              </label>
-              <input
-                type="text"
-                required
-                autoComplete="off"
-                value={formData.employee_name}
-                onChange={(e) => setFormData({ ...formData, employee_name: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Date of Joining
-              </label>
-              <DateInput
-                max={todayDate}
-                value={formData.date_of_joining}
-                onChange={(value) => setFormData({ ...formData, date_of_joining: value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Date of Birth
-              </label>
-              <DateInput
-                max={todayDate}
-                value={formData.date_of_birth}
-                onChange={(value) => setFormData({ ...formData, date_of_birth: value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Contact Number
-              </label>
-              <input
-                type="text"
-                autoComplete="off"
-                value={formData.contact_number}
-                onChange={(e) => setFormData({ ...formData, contact_number: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Biometric ID
-              </label>
-              <input
-                type="text"
-                autoComplete="off"
-                value={formData.biometric_id}
-                onChange={(e) => setFormData({ ...formData, biometric_id: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                First Name
-              </label>
-              <input
-                type="text"
-                required
-                autoComplete="off"
-                value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Last Name
-              </label>
-              <input
-                type="text"
-                required
-                autoComplete="off"
-                value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Designation
-              </label>
-              <input
-                type="text"
-                autoComplete="off"
-                value={formData.designation}
-                onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Department
-              </label>
-              <input
-                type="text"
-                autoComplete="off"
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                User Name
-              </label>
-              <input
-                type="text"
-                required
-                autoComplete="off"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase() })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Email
-              </label>
-              <input
-                type="email"
-                required
-                name="create-user-email"
-                autoComplete="off"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  minLength={8}
-                  name="create-user-password"
-                  autoComplete="new-password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-4 py-2 pr-11 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                  style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B6F47] hover:text-[#6F4E37]"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className={employeeAccessFullSpanClass}>
-            <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Address
-            </label>
-            <textarea
-              rows={3}
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80 resize-y"
-              style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-            />
-          </div>
-
-          <div className={employeeAccessFullSpanClass}>
-            <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Roles
-            </label>
-            <select
-              required
-              multiple
-              value={formData.roleIds}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  roleIds: Array.from(e.target.selectedOptions).map((o) => o.value),
-                })
-              }
-              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80 min-h-[120px]"
-              style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-            >
-              {roles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs mt-1" style={{ color: '#8B6F47' }}>
-              Hold Ctrl/Command to select multiple roles.
-            </p>
-          </div>
-
-          {error && (
-            <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>
-          )}
-
-          <div className="flex flex-col gap-3 pt-4 sm:flex-row">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="flex-1 px-4 py-2 rounded-lg border-2 font-semibold hover:bg-[#FAF9F6] transition-colors"
-              style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !canSubmit}
-              className="flex-1 px-4 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-              style={{ backgroundColor: '#8B6F47' }}
-            >
-              {loading ? 'Creating...' : 'Create Employee Access'}
-            </button>
-          </div>
-        </form>
+  return <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50" role="dialog" aria-modal="true" aria-labelledby="create-access-title">
+    <div className="flex min-h-full items-stretch justify-end"><form onSubmit={submit} className="min-h-full w-full max-w-xl space-y-5 overflow-y-auto bg-white p-5 shadow-xl sm:p-6">
+      <header><h2 id="create-access-title" className="text-xl font-bold text-slate-800">Create Employee Access</h2><p className="mt-1 text-sm text-slate-600">Choose an existing active employee. Employee details come from HR Employee Master.</p></header>
+      <label className="block space-y-1 text-sm font-medium">Employee <span className="text-red-600">*</span>
+        <select required value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} className="w-full rounded-lg border px-3 py-2">
+          <option value="">Select an employee</option>{employees.map((row) => <option key={row.id} value={row.id}>{row.employee_code} ? {row.employee_name}</option>)}
+        </select>
+      </label>
+      {employee && <section className="grid grid-cols-1 gap-3 rounded-lg bg-slate-50 p-4 text-sm sm:grid-cols-2" aria-label="Read-only HR employee details">
+        {[['Department', employee.department], ['Designation', employee.designation], ['Email', employee.email], ['Status', employee.status]].map(([label, value]) => <div key={label}><div className="text-xs text-slate-500">{label}</div><div className="font-medium text-slate-800">{value || '?'}</div></div>)}
+        <a className="text-blue-700 underline sm:col-span-2" href="/dashboard/hr">Open HR Employee Master</a>
+      </section>}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label className="space-y-1 text-sm font-medium">Username <span className="text-red-600">*</span><input required value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} autoComplete="off" className="w-full rounded-lg border px-3 py-2" /></label>
+        <label className="space-y-1 text-sm font-medium">Initial password <span className="text-red-600">*</span><input required minLength={8} type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-lg border px-3 py-2" /></label>
       </div>
-      </div>
-    </div>
-  );
+      <label className="block space-y-1 text-sm font-medium">Roles <span className="text-red-600">*</span><select required multiple value={roleIds} onChange={(event) => setRoleIds(Array.from(event.target.selectedOptions).map((option) => option.value))} className="min-h-28 w-full rounded-lg border px-3 py-2">{roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select><span className="block text-xs font-normal text-slate-500">Role changes require a separate authorized approval.</span></label>
+      {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      <footer className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2">Cancel</button><button disabled={loading || !canSubmit} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white disabled:opacity-50">{loading ? 'Creating?' : 'Create Access'}</button></footer>
+    </form></div>
+  </div>;
 }
 
 // Edit User Modal Component
-function EditUserModal({
-  user,
-  onClose,
-  onSuccess,
-  canSubmit,
-  isAdminUser,
-}: {
-  user: User;
-  onClose: () => void;
-  onSuccess: () => void;
-  canSubmit: boolean;
-  isAdminUser: boolean;
-}) {
-  const [formData, setFormData] = useState({
-    employee_code: user.employee?.employee_code || '',
-    employee_name: user.employee?.employee_name || `${user.first_name} ${user.last_name}`.trim(),
-    designation: user.employee?.designation || '',
-    department: user.employee?.department || '',
-    date_of_joining: formatDateInputValue(user.employee?.date_of_joining),
-    date_of_birth: formatDateInputValue(user.employee?.date_of_birth),
-    contact_number: user.employee?.contact_number || '',
-    address: user.employee?.address || '',
-    biometric_id: user.employee?.biometric_id || '',
-    username: user.username,
-    firstName: user.first_name,
-    lastName: user.last_name,
-    roleIds: getUserRoles(user).map((r) => r.id),
-  });
+function EditUserModal({ user, onClose, onSuccess, canSubmit, isAdminUser }: { user: User; onClose: () => void; onSuccess: () => void; canSubmit: boolean; isAdminUser: boolean }) {
+  const [username, setUsername] = useState(user.username);
+  const [roleIds, setRoleIds] = useState(getUserRoles(user).map((role) => role.id));
   const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   useEffect(() => {
-    fetchRoles();
-  }, []);
-
-  const fetchRoles = async () => {
-    try {
-      const data = await apiClient.get<any[]>('/roles');
-      const ADMIN_ROLES = ['super admin', 'owner'];
-      setRoles(isAdminUser ? data : data.filter((r: any) => !ADMIN_ROLES.includes(String(r.name || '').toLowerCase())));
-    } catch (error) {
-    }
+    apiClient.get<any[]>('/roles').then((rows) => {
+      const privileged = ['super admin', 'owner', 'platform owner'];
+      setRoles(isAdminUser ? rows : rows.filter((role) => !privileged.includes(String(role.name || '').toLowerCase())));
+    }).catch((err: any) => setError(err?.message || 'Unable to load roles.'));
+  }, [isAdminUser]);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!canSubmit) { setError('You do not have permission to update employee access.'); return; }
+    if (!confirmPrivilegedRoleAssignment(roles, roleIds)) return;
+    setLoading(true); setError('');
+    try { await apiClient.put(`/users/${user.id}`, { username, roleIds }); onSuccess(); onClose(); }
+    catch (err: any) { setError(err?.message || 'Failed to update employee access.'); }
+    finally { setLoading(false); }
   };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!canSubmit) {
-      setError('You do not have permission to update employee access');
-      return;
-    }
-    setLoading(true);
-
-    try {
-      await apiClient.put(`/users/${user.id}`, {
-        employee_code: formData.employee_code,
-        employee_name: formData.employee_name,
-        designation: formData.designation,
-        department: formData.department,
-        date_of_joining: formData.date_of_joining,
-        date_of_birth: formData.date_of_birth,
-        contact_number: formData.contact_number,
-        address: formData.address,
-        biometric_id: formData.biometric_id,
-        username: formData.username,
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-        roleIds: formData.roleIds,
-      });
-      onSuccess();
-      onClose();
-    } catch (error: any) {
-      setError(error.message || 'Failed to update employee access');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 p-4">
-      <div className="flex min-h-full items-start justify-center py-6">
-      <div className="bg-white rounded-lg p-6 w-full max-w-5xl max-h-[92vh] overflow-y-auto shadow-xl">
-        <h2 className="text-2xl font-bold mb-4" style={{ color: '#6F4E37' }}>
-          Edit Employee Access
-        </h2>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Employee Code
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.employee_code}
-                onChange={(e) => setFormData({ ...formData, employee_code: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Employee Name
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.employee_name}
-                onChange={(e) => setFormData({ ...formData, employee_name: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Date of Joining
-              </label>
-              <DateInput
-                max={todayDate}
-                value={formData.date_of_joining}
-                onChange={(value) => setFormData({ ...formData, date_of_joining: value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Date of Birth
-              </label>
-              <DateInput
-                max={todayDate}
-                value={formData.date_of_birth}
-                onChange={(value) => setFormData({ ...formData, date_of_birth: value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Contact Number
-              </label>
-              <input
-                type="text"
-                value={formData.contact_number}
-                onChange={(e) => setFormData({ ...formData, contact_number: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Biometric ID
-              </label>
-              <input
-                type="text"
-                value={formData.biometric_id}
-                onChange={(e) => setFormData({ ...formData, biometric_id: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                First Name
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Last Name
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Designation
-              </label>
-              <input
-                type="text"
-                value={formData.designation}
-                onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Department
-              </label>
-              <input
-                type="text"
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                User Name
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value.toLowerCase() })}
-                className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
-                style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-              />
-            </div>
-            <div className={employeeAccessFieldClass}>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                Email (cannot be changed)
-              </label>
-              <input
-                type="email"
-                disabled
-                value={user.email}
-                className="w-full px-4 py-2 rounded-lg border-2 bg-gray-100"
-                style={{ borderColor: '#E8DCC4', color: '#8B6F47' }}
-              />
-            </div>
-          </div>
-
-          <div className={employeeAccessFullSpanClass}>
-            <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Address
-            </label>
-            <textarea
-              rows={3}
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80 resize-y"
-              style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-            />
-          </div>
-
-          <div className={employeeAccessFullSpanClass}>
-            <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Roles
-            </label>
-            <select
-              required
-              multiple
-              value={formData.roleIds}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  roleIds: Array.from(e.target.selectedOptions).map((o) => o.value),
-                })
-              }
-              className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80 min-h-[120px]"
-              style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-            >
-              {roles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs mt-1" style={{ color: '#8B6F47' }}>
-              Hold Ctrl/Command to select multiple roles.
-            </p>
-          </div>
-
-          {error && (
-            <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>
-          )}
-
-          <div className="flex flex-col gap-3 pt-4 sm:flex-row">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 rounded-lg border-2 font-semibold hover:bg-[#FAF9F6] transition-colors"
-              style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !canSubmit}
-              className="flex-1 px-4 py-2 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-              style={{ backgroundColor: '#8B6F47' }}
-            >
-              {loading ? 'Updating...' : 'Update Employee Access'}
-            </button>
-          </div>
-        </form>
-      </div>
-      </div>
-    </div>
-  );
+  const employee = user.employee;
+  return <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50" role="dialog" aria-modal="true" aria-labelledby="edit-access-title"><div className="flex min-h-full items-stretch justify-end"><form onSubmit={submit} className="min-h-full w-full max-w-xl space-y-5 overflow-y-auto bg-white p-5 shadow-xl sm:p-6">
+    <header><h2 id="edit-access-title" className="text-xl font-bold text-slate-800">Manage Employee Access</h2><p className="mt-1 text-sm text-slate-600">HR identity and employment details are read-only here.</p></header>
+    <section className="grid grid-cols-1 gap-3 rounded-lg bg-slate-50 p-4 text-sm sm:grid-cols-2">{[['Employee', employee?.employee_name || `${user.first_name} ${user.last_name}`], ['Employee code', employee?.employee_code], ['Department', employee?.department], ['Designation', employee?.designation], ['Email', user.email]].map(([label, value]) => <div key={label}><div className="text-xs text-slate-500">{label}</div><div className="font-medium text-slate-800">{value || '?'}</div></div>)}<a className="text-blue-700 underline sm:col-span-2" href="/dashboard/hr">Open HR Employee Master</a></section>
+    {!employee && <p className="rounded bg-amber-50 p-3 text-sm text-amber-800">CONFIGURATION_REVIEW_REQUIRED: this legacy account has no deterministic HR employee link.</p>}
+    <label className="block space-y-1 text-sm font-medium">Username<input required value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} autoComplete="off" className="w-full rounded-lg border px-3 py-2" /></label>
+    <label className="block space-y-1 text-sm font-medium">Roles <select multiple value={roleIds} onChange={(event) => setRoleIds(Array.from(event.target.selectedOptions).map((option) => option.value))} className="min-h-28 w-full rounded-lg border px-3 py-2">{roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+    {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+    <footer className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2">Cancel</button><button disabled={loading || !canSubmit} className="rounded-lg bg-slate-800 px-4 py-2 font-semibold text-white disabled:opacity-50">{loading ? 'Saving?' : 'Save Access'}</button></footer>
+  </form></div></div>;
 }

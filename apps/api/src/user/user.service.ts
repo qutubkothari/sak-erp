@@ -82,7 +82,7 @@ export class UserService {
     try {
       const { data, error } = await this.supabase
         .from('employees')
-        .select('id, tenant_id, user_id, employee_code, employee_name, designation, department, contact_number, email, status, date_of_joining, date_of_birth, address, biometric_id')
+        .select('id, tenant_id, user_id, employee_code, employee_name, designation, department, email, status')
         .eq('tenant_id', tenantId)
         .in('user_id', userIds);
 
@@ -97,202 +97,6 @@ export class UserService {
       return map;
     } catch (error) {
       return map;
-    }
-  }
-
-  private async findExistingEmployeeForSync(
-    tenantId: string,
-    userId: string,
-    employeeCode?: string,
-  ) {
-    const normalizedEmployeeCode = String(employeeCode || '').trim();
-
-    try {
-      const { data, error } = await this.supabase
-        .from('employees')
-        .select('id, employee_code')
-        .eq('tenant_id', tenantId)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (data?.id) return data;
-    } catch {
-      // Ignore and continue with code-based lookup.
-    }
-
-    if (!normalizedEmployeeCode) {
-      return null;
-    }
-
-    try {
-      const { data: byCode, error: byCodeError } = await this.supabase
-        .from('employees')
-        .select('id, employee_code')
-        .eq('tenant_id', tenantId)
-        .eq('employee_code', normalizedEmployeeCode)
-        .maybeSingle();
-
-      if (byCodeError) throw byCodeError;
-      return byCode || null;
-    } catch {
-      // If lookup by code also fails, return null so syncEmployeeProfile falls through to insert
-      return null;
-    }
-  }
-
-  private async syncEmployeeProfile(
-    tenantId: string,
-    user: {
-      id: string;
-      email: string;
-      first_name?: string;
-      last_name?: string;
-      is_active?: boolean;
-    },
-    dto: {
-      employee_code?: string;
-      employee_name?: string;
-      designation?: string;
-      department?: string;
-      date_of_joining?: string;
-      date_of_birth?: string;
-      contact_number?: string;
-      address?: string;
-      biometric_id?: string;
-    },
-  ) {
-    const employeeName = this.buildEmployeeName(user.first_name, user.last_name, dto.employee_name);
-    const fallbackEmployeeCode = `EMP-${String(Date.now()).slice(-8)}`;
-    const normalizedEmployeeCode = String(dto.employee_code || '').trim() || fallbackEmployeeCode;
-
-    const employeePayload: any = {
-      tenant_id: tenantId,
-      user_id: user.id,
-      employee_code: normalizedEmployeeCode,
-      employee_name: employeeName,
-      designation: dto.designation || null,
-      department: dto.department || null,
-      date_of_joining: dto.date_of_joining || null,
-      date_of_birth: dto.date_of_birth || null,
-      contact_number: dto.contact_number || null,
-      email: this.normalizeEmail(user.email) || null,
-      address: dto.address || null,
-      biometric_id: dto.biometric_id || null,
-      status: user.is_active === false ? 'INACTIVE' : 'ACTIVE',
-      updated_at: new Date().toISOString(),
-    };
-
-    const existingEmployee = await this.findExistingEmployeeForSync(
-      tenantId,
-      user.id,
-      normalizedEmployeeCode,
-    );
-
-    if (existingEmployee?.id) {
-      const { error: updateError } = await this.supabase
-        .from('employees')
-        .update(employeePayload)
-        .eq('tenant_id', tenantId)
-        .eq('id', existingEmployee.id);
-
-      if (updateError) {
-        const sanitizedPayload = { ...employeePayload };
-        delete sanitizedPayload.user_id;
-
-        if (!this.isMissingColumnError(updateError, 'user_id')) {
-          throw new Error(`Failed to update employee profile: ${updateError.message}`);
-        }
-
-        const { error: fallbackError } = await this.supabase
-          .from('employees')
-          .update(sanitizedPayload)
-          .eq('tenant_id', tenantId)
-          .eq('id', existingEmployee.id);
-
-        if (fallbackError) {
-          throw new Error(`Failed to update employee profile: ${fallbackError.message}`);
-        }
-      }
-
-      return existingEmployee.id;
-    }
-
-    const { data: inserted, error: insertError } = await this.supabase
-      .from('employees')
-      .insert(employeePayload)
-      .select('id')
-      .single();
-
-    if (insertError) {
-      // If another employee already has this employee_code, update that record instead of failing.
-      const isDuplicateCode =
-        (insertError as any).code === '23505' &&
-        (insertError.message?.includes('employee_code') ||
-          insertError.message?.includes('employees_tenant_employee_code_unique_idx'));
-
-      if (isDuplicateCode && normalizedEmployeeCode) {
-        const { data: byCodeUpdate, error: byCodeUpdateError } = await this.supabase
-          .from('employees')
-          .update(employeePayload)
-          .eq('tenant_id', tenantId)
-          .eq('employee_code', normalizedEmployeeCode)
-          .select('id')
-          .single();
-
-        if (!byCodeUpdateError && byCodeUpdate?.id) {
-          return byCodeUpdate.id;
-        }
-        // If user_id column is missing on this path, retry without it
-        if (byCodeUpdateError && this.isMissingColumnError(byCodeUpdateError, 'user_id')) {
-          const sanitizedPayload = { ...employeePayload };
-          delete sanitizedPayload.user_id;
-          const { data: retried, error: retriedError } = await this.supabase
-            .from('employees')
-            .update(sanitizedPayload)
-            .eq('tenant_id', tenantId)
-            .eq('employee_code', normalizedEmployeeCode)
-            .select('id')
-            .single();
-          if (!retriedError && retried?.id) return retried.id;
-        }
-      }
-
-      const sanitizedPayload = { ...employeePayload };
-      delete sanitizedPayload.user_id;
-
-      if (!this.isMissingColumnError(insertError, 'user_id')) {
-        throw new Error(`Failed to create employee profile: ${insertError.message}`);
-      }
-
-      const { data: fallbackInserted, error: fallbackError } = await this.supabase
-        .from('employees')
-        .insert(sanitizedPayload)
-        .select('id')
-        .single();
-
-      if (fallbackError || !fallbackInserted) {
-        throw new Error(`Failed to create employee profile: ${fallbackError?.message || 'Unknown error'}`);
-      }
-
-      return fallbackInserted.id;
-    }
-
-    return inserted?.id;
-  }
-
-  private async deactivateEmployeeLink(tenantId: string, userId: string) {
-    try {
-      const { error } = await this.supabase
-        .from('employees')
-        .update({ status: 'INACTIVE', user_id: null, updated_at: new Date().toISOString() })
-        .eq('tenant_id', tenantId)
-        .eq('user_id', userId);
-
-      if (!error) return;
-      throw error;
-    } catch (error) {
-      throw new Error(`Failed to deactivate linked employee: ${String((error as any)?.message || error)}`);
     }
   }
 
@@ -405,6 +209,17 @@ export class UserService {
 
   private async requestRoleChange(tenantId: string, userId: string, roleIds: string[], requestedBy: string) {
     const requested = [...new Set(roleIds.map(String).filter(Boolean))].sort();
+    if (requested.length) {
+      const { data: tenantRoles, error: roleError } = await this.supabase
+        .from('roles')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('id', requested);
+      if (roleError) throw new Error(`Unable to validate tenant roles: ${roleError.message}`);
+      if ((tenantRoles || []).length !== requested.length) {
+        throw new ForbiddenException('One or more selected roles are not available in this tenant.');
+      }
+    }
     const previous = await this.currentRoleIds(tenantId, userId);
     if (requested.join(',') === previous.join(',')) return null;
 
@@ -468,6 +283,24 @@ export class UserService {
     }
 
     if (approve) {
+      const requestedIds = (request.requested_role_ids || []).map(String).filter(Boolean);
+      const { data: requestedRoles, error: requestedRolesError } = requestedIds.length
+        ? await this.supabase.from('roles').select('id, name, code').eq('tenant_id', tenantId).in('id', requestedIds)
+        : { data: [], error: null };
+      if (requestedRolesError) throw new Error(`Unable to validate requested roles: ${requestedRolesError.message}`);
+      const privilegedNames = new Set(['SUPER_ADMIN', 'SUPERADMIN', 'OWNER', 'PLATFORM_OWNER']);
+      const hasPrivilegedTarget = (requestedRoles || []).some((role: any) => [role.name, role.code]
+        .some((value) => privilegedNames.has(String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '_'))));
+      if (hasPrivilegedTarget) {
+        const checkerRoleIds = await this.currentRoleIds(tenantId, checkerId);
+        const { data: checkerRoles, error: checkerRolesError } = checkerRoleIds.length
+          ? await this.supabase.from('roles').select('name, code').eq('tenant_id', tenantId).in('id', checkerRoleIds)
+          : { data: [], error: null };
+        if (checkerRolesError) throw new Error(`Unable to validate approver authority: ${checkerRolesError.message}`);
+        const isMasterAdmin = (checkerRoles || []).some((role: any) => [role.name, role.code]
+          .some((value) => privilegedNames.has(String(value || '').trim().toUpperCase().replace(/[\s-]+/g, '_'))));
+        if (!isMasterAdmin) throw new ForbiddenException('Only a Master Admin can approve assignment of a privileged role.');
+      }
       await this.trySyncUserRoles(tenantId, request.user_id, request.requested_role_ids || []);
       const { error: userError } = await this.supabase
         .from('users')
@@ -516,6 +349,7 @@ export class UserService {
         first_name,
         last_name,
         is_active,
+        last_login_at,
         created_at,
         role:roles (
           id,
@@ -548,6 +382,18 @@ export class UserService {
         roles: (multi.length > 0 ? multi : fallback).map((role: any) => ({ role })),
       };
     });
+  }
+
+  async employeeCandidates(tenantId: string) {
+    const { data, error } = await this.supabase
+      .from('employees')
+      .select('id, employee_code, employee_name, designation, department, email, status')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'ACTIVE')
+      .is('user_id', null)
+      .order('employee_name', { ascending: true });
+    if (error) throw new Error(`Unable to load employees eligible for account access: ${error.message}`);
+    return data || [];
   }
 
   async findOne(id: string, tenantId: string) {
@@ -590,25 +436,31 @@ export class UserService {
 
   async create(dto: {
     username: string;
-    email: string;
     password: string;
-    firstName: string;
-    lastName: string;
+    employee_id: string;
     roleId?: string;
     roleIds?: string[];
     tenantId: string;
-    employee_code?: string;
-    employee_name?: string;
-    designation?: string;
-    department?: string;
-    date_of_joining?: string;
-    date_of_birth?: string;
-    contact_number?: string;
-    address?: string;
-    biometric_id?: string;
   }, requestedBy: string) {
+    const employeeId = String(dto.employee_id || '').trim();
+    if (!employeeId) {
+      throw new ConflictException('Select an existing HR employee before creating account access.');
+    }
+    const { data: employee, error: employeeError } = await this.supabase
+      .from('employees')
+      .select('id, tenant_id, user_id, employee_name, email, status')
+      .eq('tenant_id', dto.tenantId)
+      .eq('id', employeeId)
+      .maybeSingle();
+    if (employeeError || !employee) throw new NotFoundException('HR employee not found for this tenant.');
+    if (employee.user_id) throw new ConflictException('This HR employee already has a linked user account.');
+    if (String(employee.status || 'ACTIVE').toUpperCase() !== 'ACTIVE') {
+      throw new ConflictException('Only active HR employees can be given account access.');
+    }
+    const normalizedEmail = this.normalizeRequiredEmail(employee.email);
+    const { firstName, lastName } = this.splitName(undefined, undefined, employee.employee_name);
+    if (!firstName) throw new ConflictException('The selected HR employee needs a name in Employee Master.');
     const normalizedUsername = await this.ensureUniqueUsername(dto.tenantId, dto.username);
-    const normalizedEmail = this.normalizeRequiredEmail(dto.email);
 
     const hashedPassword = await bcrypt.hash(dto.password, 12);
 
@@ -625,8 +477,8 @@ export class UserService {
         username: normalizedUsername,
         email: normalizedEmail,
         password: hashedPassword,
-        first_name: dto.firstName,
-        last_name: dto.lastName,
+        first_name: firstName,
+        last_name: lastName,
         role_id: null,
         tenant_id: dto.tenantId,
         is_active: true,
@@ -647,12 +499,28 @@ export class UserService {
     }
 
     try {
-      await this.syncEmployeeProfile(dto.tenantId, data as any, dto as any);
+      const { data: linked, error: linkError } = await this.supabase
+        .from('employees')
+        .update({ user_id: data.id, updated_at: new Date().toISOString() })
+        .eq('tenant_id', dto.tenantId)
+        .eq('id', employeeId)
+        .is('user_id', null)
+        .select('id')
+        .maybeSingle();
+      if (linkError || !linked) {
+        throw new ConflictException('Employee account linkage changed. Refresh the register and try again.');
+      }
       const roleApproval = roleIds.length
         ? await this.requestRoleChange(dto.tenantId, data.id, roleIds, requestedBy)
         : null;
       return { ...data, role_approval: roleApproval };
     } catch (syncError: any) {
+      await this.supabase
+        .from('employees')
+        .update({ user_id: null, updated_at: new Date().toISOString() })
+        .eq('tenant_id', dto.tenantId)
+        .eq('id', employeeId)
+        .eq('user_id', data.id);
       await this.supabase
         .from('user_roles')
         .delete()
@@ -703,6 +571,26 @@ export class UserService {
     const updateDto: any = { ...dto };
     delete updateDto.roleIds;
 
+    const { data: employeeLink, error: employeeLookupError } = await this.supabase
+      .from('employees')
+      .select('id, employee_name, email, status')
+      .eq('tenant_id', tenantId)
+      .eq('user_id', id)
+      .maybeSingle();
+    if (employeeLookupError && !this.isMissingColumnError(employeeLookupError, 'user_id')) {
+      throw new Error(`Unable to validate the HR employee link: ${employeeLookupError.message}`);
+    }
+    const linkedEmployee = employeeLookupError ? null : employeeLink;
+    if (linkedEmployee) {
+      // HR Employee Master owns identity and employment status for linked accounts.
+      delete updateDto.email;
+      delete updateDto.first_name;
+      delete updateDto.last_name;
+      if (dto.is_active === true && String(linkedEmployee.status || 'ACTIVE').toUpperCase() !== 'ACTIVE') {
+        throw new ConflictException('Reactivate this account only after the linked HR employee is active.');
+      }
+    }
+
     if (typeof updateDto.username === 'string') {
       updateDto.username = await this.ensureUniqueUsername(tenantId, updateDto.username, id);
     }
@@ -710,18 +598,6 @@ export class UserService {
     if (typeof updateDto.email === 'string') {
       updateDto.email = this.normalizeRequiredEmail(updateDto.email);
     }
-
-    const employeeFields = {
-      employee_code: updateDto.employee_code,
-      employee_name: updateDto.employee_name,
-      designation: updateDto.designation,
-      department: updateDto.department,
-      date_of_joining: updateDto.date_of_joining,
-      date_of_birth: updateDto.date_of_birth,
-      contact_number: updateDto.contact_number,
-      address: updateDto.address,
-      biometric_id: updateDto.biometric_id,
-    };
 
     delete updateDto.employee_code;
     delete updateDto.employee_name;
@@ -759,13 +635,6 @@ export class UserService {
       ? await this.requestRoleChange(tenantId, id, roleIds, requestedBy)
       : null;
 
-    try {
-      await this.syncEmployeeProfile(tenantId, data as any, employeeFields);
-    } catch (syncErr: any) {
-      // Log but don't fail the whole update — user record was already updated successfully
-      console.warn('[UserService.update] syncEmployeeProfile warning:', syncErr?.message || syncErr);
-    }
-
     return { ...data, role_approval: roleApproval };
   }
 
@@ -781,8 +650,6 @@ export class UserService {
     if (findError || !user) {
       throw new NotFoundException('User not found');
     }
-
-    await this.deactivateEmployeeLink(tenantId, id);
 
     const { error } = await this.supabase
       .from('users')
@@ -800,6 +667,14 @@ export class UserService {
       }
       throw new Error(`Failed to delete user: ${error.message}`);
     }
+
+    // Removing login access must not deactivate the HR employee record.
+    const { error: unlinkError } = await this.supabase
+      .from('employees')
+      .update({ user_id: null, updated_at: new Date().toISOString() })
+      .eq('tenant_id', tenantId)
+      .eq('user_id', id);
+    if (unlinkError) throw new Error(`User access was removed but HR employee linkage needs review: ${unlinkError.message}`);
 
     return { message: 'User deleted successfully' };
   }

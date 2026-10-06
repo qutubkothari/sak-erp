@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { RequireCreate, RequireRead, RequireUpdate } from '../auth/decorators/permissions.decorator';
 import { AutomationService } from './automation.service';
 
 @Controller('automation')
@@ -44,11 +46,17 @@ export class AutomationController {
   updateTask(@Request() req: any, @Param('id') id: string, @Body() body: any) { return this.automationService.updateTask(req.user.tenantId, req.user.userId, id, body); }
 
   @Get('branches')
+  @UseGuards(PermissionsGuard)
+  @RequireRead('branches')
   branches(@Request() req: any) { return this.automationService.listBranches(req.user.tenantId); }
 
   @Post('branches')
+  @UseGuards(PermissionsGuard)
+  @RequireCreate('branches')
   createBranch(@Request() req: any, @Body() body: any) { return this.automationService.createBranch(req.user.tenantId, body); }
 
   @Put('branches/:id')
+  @UseGuards(PermissionsGuard)
+  @RequireUpdate('branches')
   updateBranch(@Request() req: any, @Param('id') id: string, @Body() body: any) { return this.automationService.updateBranch(req.user.tenantId, id, body); }
 }

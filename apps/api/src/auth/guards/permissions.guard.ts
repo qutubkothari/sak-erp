@@ -38,7 +38,7 @@ const MODULE_RESOURCE_MAP: Record<string, string[]> = {
   "BOM & Engineering": ["bom"],
   Documents: ["documents"],
   Reports: ["reports", "transformation"],
-  Settings: ["users", "roles", "activity_logs"],
+  Settings: ["users", "roles", "activity_logs", "tenant", "branches"],
   Accounts: ["accounting"],
   Projects: ["projects"],
 };
