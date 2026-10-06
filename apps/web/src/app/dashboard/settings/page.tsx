@@ -1,12 +1,15 @@
 ﻿'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useEffect } from 'react';
 import { Search, Building2, Users, Workflow, Settings2, Sparkles, ShieldCheck, ArrowUpRight } from 'lucide-react';
 import { hasScreenPermission, readStoredUser, isAdminLike, type StoredUser } from '@/lib/rbac';
 import { getTenantProfile } from '@/lib/profile-branding';
 import { apiClient } from '../../../../lib/api-client';
+import UserManagement from './components/UserManagement';
+import RoleManagement from './components/RoleManagement';
 
 type Destination = { title: string; description: string; href: string; keywords: string[]; permissionRoute: string; profiles?: string[] };
 type Group = { title: string; description: string; icon: typeof Building2; items: Destination[] };
@@ -47,6 +50,8 @@ const groups: Group[] = [
 ];
 
 export default function SettingsHome() {
+  const searchParams = useSearchParams();
+  const tab = searchParams.get('tab');
   const [user, setUser] = useState<StoredUser | null>(null);
   const [query, setQuery] = useState('');
   const [health, setHealth] = useState<Array<{ label: string; value: string }>>([]);
@@ -83,6 +88,9 @@ export default function SettingsHome() {
     if (!q) return [];
     return searchableItems.filter((item) => [item.title, item.description, item.group, ...item.keywords].some((value) => value.toLowerCase().includes(q)));
   }, [query, searchableItems]);
+
+  if (tab === 'users') return <UserManagement />;
+  if (tab === 'roles') return <RoleManagement />;
 
   return <main className="mx-auto max-w-7xl space-y-7 p-4 sm:p-6">
     <header><p className="text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Administration</p><h1 className="mt-1 text-3xl font-bold text-slate-900">Settings</h1><p className="mt-2 max-w-2xl text-sm text-slate-600">Configure organization, people, controls, and enabled platform capabilities.</p></header>
