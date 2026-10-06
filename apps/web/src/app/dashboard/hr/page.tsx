@@ -2676,6 +2676,7 @@ function HrPageContent() {
         const allEmployees = Array.isArray(empData)
           ? empData
           : empData.data || [];
+        setEmployees(allEmployees);
 
         if (payrollSubTab === "salary") {
           const salaryData = await apiClient.get<any>("/hr/salary-components");
