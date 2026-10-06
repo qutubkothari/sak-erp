@@ -16,10 +16,10 @@ function setup() {
   service.supabase = { from };
   service.payrollControl = jest.fn().mockResolvedValue({ id: batchId, resolution_snapshot: { employee_ids: [employeeId] } });
   service.getSalaryComponents = jest.fn().mockResolvedValue([]);
-  service.attendanceControl = { buildRegister: jest.fn().mockResolvedValue({
+  service.attendanceControl = { getPolicyTemplates: jest.fn().mockResolvedValue([{ id: "current-policy", label: "Current policy from 2026-09-19", policy: { timezone: "Asia/Kolkata" } }]), buildRegister: jest.fn().mockResolvedValue({
     policy: { effective_from: "2026-09-19", late_deduction_mode: "NONE", overtime_enabled: true },
-    daily: Array.from({ length: 15 }, (_, index) => ({
-      employee_id: employeeId, date: `2026-09-${String(index + 1).padStart(2, "0")}`,
+    daily: [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18].map((day, index) => ({
+      employee_id: employeeId, date: `2026-09-${String(day).padStart(2, "0")}`,
       attendance_id: `attendance-${index + 1}`, check_in_time: "09:35", check_out_time: "20:55",
       status: "PRESENT", work_hours: 11.33, late_minutes: null, overtime_hours: null,
       derived_metrics_status: "HISTORICAL_POLICY_UNAVAILABLE", policy_resolution_status: "POLICY_FOR_DATE_NOT_FOUND",
@@ -61,7 +61,7 @@ describe("payroll review context", () => {
     expect(review.employee).toEqual({ id: employeeId, code: "SAS-10075", name: "NVS Padmavathi" });
     expect(review.attendance.affected).toHaveLength(15);
     expect(review.attendance.affected[0].date).toBe("2026-09-01");
-    expect(review.attendance.affected[14].date).toBe("2026-09-15");
+    expect(review.attendance.affected[14].date).toBe("2026-09-18");
     expect(employeeQuery.eq).toHaveBeenCalledWith("tenant_id", tenant);
     expect(employeeQuery.eq).toHaveBeenCalledWith("employee_code", "SAS-10075");
     expect(service.attendanceControl.buildRegister).toHaveBeenCalledWith(tenant, "2026-09-01", "2026-09-30", employeeId);

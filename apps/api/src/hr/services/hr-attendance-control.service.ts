@@ -9,6 +9,7 @@ import {
   hasAdminBypass,
   hasPermission,
 } from "../../auth/utils/permission-utils";
+import { resolvePayrollRule } from "../payroll-control.domain";
 
 type Policy = {
   tenant_id: string;
@@ -118,6 +119,20 @@ export const requiresAttendanceDerivedMetricsReview = (
   summary?.derived_metrics_status === "HISTORICAL_POLICY_UNAVAILABLE" &&
   hasAttendanceDerivedMetricsPayrollEffect(policy, employee);
 
+export function resolveAttendancePolicyForDate(current: Policy | null, versions: any[], date: string): Policy | null {
+  const candidates = [
+    ...(current ? [{ id: String(current.id || "current"), rule_key: "attendance_policy", rule_value: current, effective_from: current.effective_from, effective_to: current.effective_to }] : []),
+    ...versions.map((row) => ({ ...row, rule_key: "attendance_policy" })),
+  ];
+  const resolved = resolvePayrollRule({ ruleKey: "attendance_policy", effectiveDate: date, tenantRules: candidates });
+  return resolved.version ? ({
+    ...(resolved.value as Record<string, unknown>),
+    effective_from: resolved.version.effective_from,
+    effective_to: resolved.version.effective_to || null,
+    policy_version_id: resolved.version.id,
+  } as Policy) : null;
+}
+
 @Injectable()
 export class HrAttendanceControlService {
   private readonly supabase: SupabaseClient;
@@ -154,6 +169,26 @@ export class HrAttendanceControlService {
         `Unable to create attendance policy: ${createError.message}`,
       );
     return this.normalizePolicy(created);
+  }
+
+  async getHistoricalPolicyVersions(tenantId: string) {
+    const { data, error } = await this.supabase.from("hr_payroll_rule_versions")
+      .select("id,rule_key,rule_value,effective_from,effective_to,reason,created_at")
+      .eq("tenant_id", tenantId).eq("rule_key", "attendance_policy")
+      .order("effective_from", { ascending: false });
+    if (error) throw new Error(`Unable to load attendance policy history: ${error.message}`);
+    return data || [];
+  }
+
+  async getPolicyTemplates(tenantId: string) {
+    const [current, versions] = await Promise.all([this.getPolicy(tenantId), this.getHistoricalPolicyVersions(tenantId)]);
+    return [
+      { id: String((current as any).id || "current"), label: `Current policy from ${current.effective_from}`, policy: current },
+      ...versions.map((row: any) => ({
+        id: String(row.id), label: `Confirmed policy ${row.effective_from}${row.effective_to ? ` to ${row.effective_to}` : " onward"}`,
+        policy: { ...row.rule_value, effective_from: row.effective_from, effective_to: row.effective_to },
+      })),
+    ];
   }
 
   async updatePolicy(tenantId: string, body: any) {
@@ -229,8 +264,9 @@ export class HrAttendanceControlService {
   }
 
   async getPolicyForDate(tenantId: string, attendanceDate: string) {
-    const policy = await this.getPolicy(tenantId);
-    if (!isAttendancePolicyEffective(policy, attendanceDate)) {
+    const [current, versions] = await Promise.all([this.getPolicy(tenantId), this.getHistoricalPolicyVersions(tenantId)]);
+    const policy = resolveAttendancePolicyForDate(current, versions, attendanceDate);
+    if (!policy) {
       return {
         policy: null,
         error: {
@@ -493,7 +529,7 @@ export class HrAttendanceControlService {
       throw new BadRequestException(
         "Attendance report range cannot exceed 366 days",
       );
-    const policy = await this.getPolicy(tenantId);
+    const [policy, historicalPolicies] = await Promise.all([this.getPolicy(tenantId), this.getHistoricalPolicyVersions(tenantId)]);
     let employeeQuery = this.supabase
       .from("employees")
       .select("*")
@@ -570,9 +606,7 @@ export class HrAttendanceControlService {
             String(row.start_date).slice(0, 10) <= date &&
             String(row.end_date || row.start_date).slice(0, 10) >= date,
         );
-        const policyForDate = isAttendancePolicyEffective(policy, date)
-          ? policy
-          : null;
+        const policyForDate = resolveAttendancePolicyForDate(policy, historicalPolicies, date);
         const scheduled = policyForDate
           ? policyForDate.working_weekdays.includes(weekday) && !holiday
           : null;
@@ -675,14 +709,14 @@ export class HrAttendanceControlService {
           } else if (!scheduled) {
             dayStatus = holiday ? "HOLIDAY_WORKED" : "WEEK_OFF_WORKED";
           } else if (
-            hours >= policy.standard_daily_hours ||
+            hours >= policyForDate!.standard_daily_hours ||
             (!attendance.check_out_time &&
               String(attendance.status).toUpperCase() === "PRESENT")
           ) {
             dayStatus =
               lateMinutes !== null && lateMinutes > 0 ? "LATE" : "PRESENT";
             payableDays = 1;
-          } else if (hours >= policy.half_day_hours) {
+          } else if (hours >= policyForDate!.half_day_hours) {
             dayStatus = "HALF_DAY";
             payableDays = 0.5;
           }

@@ -8,7 +8,7 @@ type ReviewKind = "attendance" | "salary";
 type ReviewDay = {
   date: string; attendance_id: string | null; check_in_time: string | null; check_out_time: string | null;
   status: string; hours: number; late_minutes: number | null; overtime_hours: number | null;
-  late_pay_relevant: boolean; overtime_pay_relevant: boolean; policy_effective_on_date: boolean;
+  late_pay_relevant: boolean; overtime_pay_relevant: boolean; policy_effective_on_date: boolean; policy_reference: string | null;
   payroll_impact: string; classification: "NO_ACTION_REQUIRED" | "CONFIRM_POLICY" | "CORRECT_ATTENDANCE" | "PAY_RELEVANT_REVIEW";
 };
 type ReviewContext = {
@@ -17,8 +17,9 @@ type ReviewContext = {
   attendance?: {
     affected: ReviewDay[]; actionable_days: number; complete: boolean;
     policy: { gap_from: string | null; gap_to: string | null; effective_from: string | null; reference: string; late_pay_relevant: boolean; overtime_pay_relevant: boolean };
+    policy_templates: Array<{ id: string; label: string; policy: Record<string, any> }>;
   };
-  salary?: { legacy_warning: boolean; ctc: number | null; components: Array<{
+  salary?: { legacy_warning: boolean; resolved: boolean; ctc: number | null; components: Array<{
     id: string; type: string; name: string; amount: number; effective_from: string | null;
     effective_to: string | null; ctc_revised_date: string | null; needs_start_date: boolean;
   }> };
@@ -31,12 +32,28 @@ const statusLabel: Record<ReviewDay["classification"], string> = {
   NO_ACTION_REQUIRED: "No action needed", CONFIRM_POLICY: "Confirm policy",
   CORRECT_ATTENDANCE: "Correct attendance", PAY_RELEVANT_REVIEW: "Review pay effect",
 };
+const numericPolicyFields = [
+  ["Late grace (minutes)", "late_grace_minutes"], ["Full-day hours", "standard_daily_hours"],
+  ["Half-day hours", "half_day_hours"], ["Overtime starts after hours", "overtime_after_hours"],
+  ["Overtime multiplier", "overtime_multiplier"], ["Half-day overtime above hours", "overtime_half_day_after_hours"],
+  ["Full-day overtime above hours", "overtime_full_day_after_hours"],
+  ["Holiday overtime minimum hours", "holiday_overtime_min_hours"],
+  ["Late marks per half-day", "late_marks_per_half_day"],
+] as const;
 
 export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
   const [query, setQuery] = useState("");
   const [review, setReview] = useState<ReviewContext | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [sourcePolicyId, setSourcePolicyId] = useState("");
+  const [historicalPolicy, setHistoricalPolicy] = useState<Record<string, any>>({});
+  const [effectiveFrom, setEffectiveFrom] = useState("");
+  const [effectiveTo, setEffectiveTo] = useState("");
+  const [reason, setReason] = useState("");
+  const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([]);
 
   useEffect(() => {
     const nextQuery = window.location.search.slice(1);
@@ -61,11 +78,42 @@ export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
       const response = await apiClient.get<ReviewContext>(`/hr/payroll/control/month/${encodeURIComponent(month)}/review?${request.toString()}`);
       const result = (response as any)?.data || response;
       setReview(result);
+      if (result?.salary) setSelectedComponentIds(result.salary.components.filter((row: any) => row.needs_start_date).map((row: any) => row.id));
     } catch {
       setReview(null); setError("This employee review could not be opened. Return to payroll and reopen it from the current batch.");
     } finally { setBusy(false); }
   }, [query, kind]);
   useEffect(() => { void load(); }, [load]);
+
+  const selectPolicy = (id: string) => {
+    setSourcePolicyId(id);
+    const template = review?.attendance?.policy_templates.find((item) => item.id === id);
+    setHistoricalPolicy(template ? { ...template.policy } : {});
+  };
+  const setPolicyField = (field: string, value: unknown) => setHistoricalPolicy((current) => ({ ...current, [field]: value }));
+
+  const saveConfirmation = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!review || !effectiveFrom || !reason.trim()) return;
+    setSaving(true); setSaveError("");
+    try {
+      const path = kind === "attendance" ? "attendance-policy" : "salary-effective-date";
+      const payload = kind === "attendance"
+        ? { employee: review.employee.id, batch: review.batch_id, source_policy_id: sourcePolicyId,
+            effective_from: effectiveFrom, effective_to: effectiveTo || null, reason: reason.trim(), policy: historicalPolicy }
+        : { employee: review.employee.id, batch: review.batch_id, component_ids: selectedComponentIds,
+            effective_from: effectiveFrom, reason: reason.trim() };
+      const response = await apiClient.post<ReviewContext>(`/hr/payroll/control/month/${encodeURIComponent(review.month)}/review/${path}`, payload);
+      const result = (response as any)?.data || response;
+      setReview(result);
+      if (result?.salary) setSelectedComponentIds(result.salary.components.filter((row: any) => row.needs_start_date).map((row: any) => row.id));
+      setEffectiveFrom(""); setEffectiveTo(""); setReason(""); setSourcePolicyId(""); setHistoricalPolicy({});
+    } catch (failure: any) {
+      const message = String(failure?.message || "");
+      setSaveError(/overlap/i.test(message) ? "These dates overlap another recorded policy or salary period. Choose the actual non-overlapping dates." :
+        "The confirmation could not be saved. Check the dates, selected records, and reason, then try again.");
+    } finally { setSaving(false); }
+  };
 
   const managementHref = (action: "attendance" | "policy" | "salary", date?: string, recordId?: string) => {
     if (!review) return "#";
@@ -90,7 +138,7 @@ export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-900">{error}</p>}
     {review?.attendance && <>
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-        {review.attendance.complete ? <h2 className="text-lg font-bold text-emerald-800">Attendance review complete</h2> : <h2 className="text-lg font-bold text-stone-900">{review.attendance.actionable_days} attendance days need review</h2>}
+        {review.attendance.complete ? <h2 className="text-lg font-bold text-emerald-800">Attendance review resolved ✓</h2> : <h2 className="text-lg font-bold text-stone-900">{review.attendance.actionable_days} attendance days need review</h2>}
         <p className="mt-1 text-sm text-stone-600">Only dates with an unresolved payroll attendance issue are listed below.</p>
         <button type="button" disabled={busy} onClick={() => void load()} className="mt-3 rounded-lg border border-stone-300 px-3 py-2 text-sm font-semibold">Refresh review</button>
       </section>
@@ -102,6 +150,44 @@ export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
         <p className="mt-2 text-sm text-stone-700">HR must confirm the rule that actually applied. The later policy is never applied backward automatically.</p>
         <Link href={managementHref("policy")} className="mt-3 inline-block text-sm font-semibold text-blue-700 hover:underline">Open attendance policy</Link>
       </section>
+      {!review.attendance.complete && <form onSubmit={(event) => void saveConfirmation(event)} className="space-y-4 rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+        <div><h2 className="text-lg font-bold text-stone-900">Confirm Historical Policy</h2>
+          <p className="mt-1 text-sm text-stone-600">Select a recorded policy as a template or enter the rule that actually applied. Review every value and confirm its dates; the later policy is never copied backward automatically.</p></div>
+        <label className="block text-sm font-semibold">Policy that applied
+          <select required value={sourcePolicyId} onChange={(event) => selectPolicy(event.target.value)} className="mt-1 block w-full rounded-lg border border-stone-300 p-2">
+            <option value="">Choose a policy</option>
+            {review.attendance.policy_templates.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+            <option value="custom">Create policy from recorded evidence</option>
+          </select>
+        </label>
+        {sourcePolicyId && <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {([ ["Time zone", "timezone", "text"], ["Shift starts", "shift_start", "time"], ["Shift ends", "shift_end", "time"] ] as const).map(([label, field, type]) =>
+            <label key={field} className="text-sm font-semibold">{label}<input required type={type} value={String(historicalPolicy[field] || "").slice(0, type === "time" ? 5 : undefined)} onChange={(event) => setPolicyField(field, event.target.value)} className="mt-1 block w-full rounded-lg border border-stone-300 p-2" /></label>)}
+          {numericPolicyFields.map(([label, field]) => <label key={field} className="text-sm font-semibold">{label}
+            <input required type="number" min="0" step="0.01" value={historicalPolicy[field] ?? ""} onChange={(event) => setPolicyField(field, event.target.value === "" ? "" : Number(event.target.value))} className="mt-1 block w-full rounded-lg border border-stone-300 p-2" />
+          </label>)}
+          <label className="text-sm font-semibold">Overtime calculation
+            <select required value={historicalPolicy.overtime_calculation_mode || ""} onChange={(event) => setPolicyField("overtime_calculation_mode", event.target.value)} className="mt-1 block w-full rounded-lg border border-stone-300 p-2"><option value="">Choose</option><option value="HOURLY">Hourly</option><option value="DAY_CREDIT">Half/full-day credit</option></select>
+          </label>
+          <label className="text-sm font-semibold">Late deduction rule
+            <select required value={historicalPolicy.late_deduction_mode || ""} onChange={(event) => setPolicyField("late_deduction_mode", event.target.value)} className="mt-1 block w-full rounded-lg border border-stone-300 p-2"><option value="">Choose</option><option value="NONE">No deduction</option><option value="PER_MINUTE">Per minute</option><option value="HALF_DAY_AFTER_MARKS">Half day after marks</option></select>
+          </label>
+          <label className="text-sm font-semibold">Overtime earnings apply
+            <select required value={typeof historicalPolicy.overtime_enabled === "boolean" ? String(historicalPolicy.overtime_enabled) : ""} onChange={(event) => setPolicyField("overtime_enabled", event.target.value === "true")} className="mt-1 block w-full rounded-lg border border-stone-300 p-2"><option value="">Choose</option><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+          <label className="text-sm font-semibold">Working weekdays (0=Sunday through 6=Saturday)
+            <input required value={Array.isArray(historicalPolicy.working_weekdays) ? historicalPolicy.working_weekdays.join(",") : ""} onChange={(event) => setPolicyField("working_weekdays", event.target.value.split(",").filter(Boolean).map(Number))} className="mt-1 block w-full rounded-lg border border-stone-300 p-2" />
+          </label>
+          <label className="text-sm font-semibold">Paid leave types (comma separated)
+            <input value={Array.isArray(historicalPolicy.paid_leave_types) ? historicalPolicy.paid_leave_types.join(",") : ""} onChange={(event) => setPolicyField("paid_leave_types", event.target.value.split(",").map((item) => item.trim()).filter(Boolean))} className="mt-1 block w-full rounded-lg border border-stone-300 p-2" />
+          </label>
+        </div>}
+        <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold">Effective From<input required type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} className="mt-1 block w-full rounded-lg border border-stone-300 p-2" /></label>
+          <label className="text-sm font-semibold">Effective To (optional)<input type="date" value={effectiveTo} onChange={(event) => setEffectiveTo(event.target.value)} className="mt-1 block w-full rounded-lg border border-stone-300 p-2" /></label></div>
+        <label className="block text-sm font-semibold">Reason for confirmation<textarea required value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 block min-h-20 w-full rounded-lg border border-stone-300 p-2" /></label>
+        {saveError && <p role="alert" className="text-sm text-red-800">{saveError}</p>}
+        <button type="submit" disabled={saving || !sourcePolicyId} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : "Confirm Historical Policy"}</button>
+      </form>}
       <section className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
         <div className="border-b border-stone-100 p-5"><h2 className="font-bold text-stone-900">Affected dates</h2></div>
         {review.attendance.affected.length === 0 ? <p className="p-5 text-sm text-stone-600">No affected attendance dates remain.</p> : <table className="min-w-[1050px] w-full text-left text-sm">
@@ -112,7 +198,7 @@ export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
             <td className="px-3 py-3">{day.status.replace(/_/g, " ")}</td><td className="px-3 py-3">{day.hours}</td>
             <td className="px-3 py-3">{day.late_minutes === null ? (day.late_pay_relevant ? "Needs policy" : "Not needed for pay") : `${day.late_minutes} min`}<span className="block text-xs text-stone-500">Pay relevant: {day.late_pay_relevant ? "Yes" : "No"}</span></td>
             <td className="px-3 py-3">{day.overtime_hours === null ? (day.overtime_pay_relevant ? "Needs policy" : "Not needed for pay") : `${day.overtime_hours} hr`}<span className="block text-xs text-stone-500">Pay relevant: {day.overtime_pay_relevant ? "Yes" : "No"}</span></td>
-            <td className="px-3 py-3">{day.policy_effective_on_date ? review.attendance!.policy.reference : "None recorded"}</td>
+            <td className="px-3 py-3">{day.policy_reference || "None recorded"}</td>
             <td className="px-3 py-3">{day.payroll_impact}</td><td className="px-3 py-3 font-semibold">{statusLabel[day.classification]}</td>
           </tr>)}</tbody>
         </table>}
@@ -122,15 +208,28 @@ export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-stone-900">Salary components for {formatMonth(review.month)}</h2>
         <p className="mt-1 text-sm text-stone-600">CTC: {review.salary.ctc === null ? "Not recorded" : review.salary.ctc.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-        {review.salary.legacy_warning ? <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Some salary entries have no confirmed effective start date. HR should verify when they began before approving the payslip.</p> : <p className="mt-3 text-sm font-semibold text-emerald-800">Salary start dates are recorded.</p>}
+        {review.salary.resolved ? <p className="mt-3 text-sm font-semibold text-emerald-800">Salary setup review resolved ✓</p> : review.salary.legacy_warning ? <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Some salary entries have no confirmed effective start date. HR should verify when they began before approving the payslip.</p> : <p className="mt-3 text-sm text-amber-900">The recorded salary does not yet cover this payroll month.</p>}
         <Link href={managementHref("salary")} className="mt-4 inline-block rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white">Open employee salary editor</Link>
       </section>
+      {review.salary.legacy_warning && <form onSubmit={(event) => void saveConfirmation(event)} className="space-y-4 rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+        <div><h2 className="text-lg font-bold text-stone-900">Confirm Effective Date</h2>
+          <p className="mt-1 text-sm text-stone-600">Select the undated components that belong to the same salary package. One confirmed date will be recorded for those rows; their amounts will not change.</p></div>
+        <div className="grid gap-2 sm:grid-cols-2">{review.salary.components.filter((row) => row.needs_start_date).map((row) =>
+          <label key={row.id} className="flex items-center gap-2 rounded-lg border border-stone-200 p-3 text-sm">
+            <input type="checkbox" checked={selectedComponentIds.includes(row.id)} onChange={(event) => setSelectedComponentIds((current) => event.target.checked ? [...current, row.id] : current.filter((id) => id !== row.id))} />
+            <span>{row.name || row.type} · {row.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+          </label>)}</div>
+        <label className="block text-sm font-semibold">Confirmed effective date<input required type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} className="mt-1 block w-full rounded-lg border border-stone-300 p-2" /></label>
+        <label className="block text-sm font-semibold">Reason and supporting evidence<textarea required value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 block min-h-20 w-full rounded-lg border border-stone-300 p-2" /></label>
+        {saveError && <p role="alert" className="text-sm text-red-800">{saveError}</p>}
+        <button type="submit" disabled={saving || selectedComponentIds.length === 0} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : "Confirm Effective Date"}</button>
+      </form>}
       <section className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
         <table className="min-w-[700px] w-full text-left text-sm"><thead className="bg-stone-50 text-xs uppercase text-stone-600"><tr>{["Component", "Amount", "Effective from", "Effective to", "Recorded CTC revision", "Review"].map(label => <th key={label} className="px-4 py-3">{label}</th>)}</tr></thead>
           <tbody className="divide-y divide-stone-100">{review.salary.components.map(row => <tr key={row.id}><td className="px-4 py-3 font-semibold">{row.name || row.type}</td><td className="px-4 py-3">{row.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td><td className="px-4 py-3">{formatDate(row.effective_from)}</td><td className="px-4 py-3">{formatDate(row.effective_to)}</td><td className="px-4 py-3">{formatDate(row.ctc_revised_date)}</td><td className="px-4 py-3">{row.needs_start_date ? "Confirm start date" : "Recorded"}</td></tr>)}</tbody>
         </table>
       </section>
-      <p className="text-sm text-stone-600">Use the existing dated salary revision workflow after confirming a valid date and reason. No date is assumed here.</p>
+      <p className="text-sm text-stone-600">Only HR can confirm a date from authoritative evidence. No date or salary amount is assumed here.</p>
     </>}
   </main>;
 }

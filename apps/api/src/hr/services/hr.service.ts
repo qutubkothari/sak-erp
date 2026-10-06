@@ -7,6 +7,7 @@ import {
   hasPermission,
 } from "../../auth/utils/permission-utils";
 import { AccountingService } from "../../accounting/accounting.service";
+import { calculateDatedAttendanceAdjustments } from "../payroll-attendance-adjustments";
 import {
   HrAttendanceControlService,
   requiresAttendanceDerivedMetricsReview,
@@ -3405,6 +3406,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         ...common,
         salary: {
           legacy_warning: legacyRows.length > 0,
+          resolved: legacyRows.length === 0 && effectiveRows.some((row: any) =>
+            ["BASIC", "HRA", "ALLOWANCE", "BONUS"].includes(String(row.component_type).toUpperCase()) && Number(row.amount) > 0),
           ctc: effectiveRows.find((row: any) => String(row.component_type).toUpperCase() === "CTC")?.amount ?? null,
           components: components.map((row: any) => ({
             id: String(row.id), type: String(row.component_type || ""), name: String(row.component_name || ""),
@@ -3424,7 +3427,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       (row.derived_metrics_status || ["PENDING", "REJECTED"].includes(String(row.approval_status || "").toUpperCase())),
     ).map((row: any) => {
       const approvalNeedsCorrection = ["PENDING", "REJECTED"].includes(String(row.approval_status || "").toUpperCase());
-      const payRelevant = Boolean(row.derived_metrics_status && (latePayRelevant || overtimePayRelevant));
+      const rowLatePayRelevant = row.policy ? row.policy.late_deduction_mode !== "NONE" : latePayRelevant;
+      const rowOvertimePayRelevant = row.policy ? Boolean(row.policy.overtime_enabled && employee.overtime_eligible !== false) : overtimePayRelevant;
+      const payRelevant = Boolean(row.derived_metrics_status && (rowLatePayRelevant || rowOvertimePayRelevant));
       const classification = approvalNeedsCorrection ? "CORRECT_ATTENDANCE"
         : !payRelevant ? "NO_ACTION_REQUIRED"
           : row.policy_resolution_status === "POLICY_FOR_DATE_NOT_FOUND" ? "CONFIRM_POLICY" : "PAY_RELEVANT_REVIEW";
@@ -3433,17 +3438,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         check_in_time: row.check_in_time, check_out_time: row.check_out_time,
         status: row.status, hours: row.work_hours,
         late_minutes: row.late_minutes, overtime_hours: row.overtime_hours,
-        late_pay_relevant: latePayRelevant, overtime_pay_relevant: overtimePayRelevant,
+        late_pay_relevant: rowLatePayRelevant, overtime_pay_relevant: rowOvertimePayRelevant,
         policy_effective_on_date: row.policy_resolution_status === "POLICY_FOR_DATE_FOUND",
+        policy_reference: row.policy ? `Policy effective ${String(row.policy.effective_from).slice(0, 10)}` : null,
         payroll_impact: classification === "NO_ACTION_REQUIRED" ? "No late or overtime pay effect under the current rule."
           : classification === "CORRECT_ATTENDANCE" ? "Attendance approval or correction is needed."
-            : [latePayRelevant ? "Late deductions" : null, overtimePayRelevant ? "Overtime pay" : null].filter(Boolean).join(" and ") + " may change.",
+            : [rowLatePayRelevant ? "Late deductions" : null, rowOvertimePayRelevant ? "Overtime pay" : null].filter(Boolean).join(" and ") + " may change.",
         classification, review_status: classification,
       };
     });
+    const missingPolicyDates = affected.filter((row: any) => !row.policy_effective_on_date).map((row: any) => row.date).sort();
     const policyFrom = String(policy?.effective_from || "").slice(0, 10);
-    const dayBefore = policyFrom ? new Date(new Date(`${policyFrom}T00:00:00Z`).getTime() - 86400000).toISOString().slice(0, 10) : range.end;
-    const gapEnd = dayBefore < range.end ? dayBefore : range.end;
+    const templates = await this.attendanceControl.getPolicyTemplates(tenantId);
     return {
       ...common,
       attendance: {
@@ -3451,15 +3457,98 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         actionable_days: affected.filter((row: any) => row.classification !== "NO_ACTION_REQUIRED").length,
         complete: affected.every((row: any) => row.classification === "NO_ACTION_REQUIRED"),
         policy: {
-          gap_from: policyFrom > range.start ? range.start : null,
-          gap_to: policyFrom > range.start ? gapEnd : null,
+          gap_from: missingPolicyDates[0] || null,
+          gap_to: missingPolicyDates[missingPolicyDates.length - 1] || null,
           effective_from: policyFrom || null,
           reference: policyFrom ? `Attendance policy effective ${policyFrom}` : "No attendance policy recorded",
           late_pay_relevant: latePayRelevant,
           overtime_pay_relevant: overtimePayRelevant,
         },
+        policy_templates: templates,
       },
     };
+  }
+
+  private confirmedAttendancePolicySnapshot(value: any) {
+    const fields = ["timezone", "shift_start", "shift_end", "late_grace_minutes", "standard_daily_hours",
+      "half_day_hours", "overtime_after_hours", "overtime_multiplier", "overtime_enabled",
+      "overtime_calculation_mode", "overtime_half_day_after_hours", "overtime_full_day_after_hours",
+      "holiday_overtime_min_hours", "late_deduction_mode", "late_marks_per_half_day",
+      "working_weekdays", "paid_leave_types"];
+    if (!value || typeof value !== "object" || fields.some((field) => value[field] === undefined)) {
+      throw new BadRequestException("Select or enter the complete historical attendance policy.");
+    }
+    const snapshot = Object.fromEntries(fields.map((field) => [field, value[field]])) as Record<string, any>;
+    const finiteHours = ["overtime_half_day_after_hours", "overtime_full_day_after_hours", "holiday_overtime_min_hours"];
+    const validClock = (clock: unknown) => /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(String(clock));
+    if (validatePayrollAttendancePolicy(snapshot).length ||
+      !validClock(snapshot.shift_start) || !validClock(snapshot.shift_end) ||
+      typeof snapshot.overtime_enabled !== "boolean" ||
+      !["HOURLY", "DAY_CREDIT"].includes(snapshot.overtime_calculation_mode) ||
+      !["NONE", "PER_MINUTE", "HALF_DAY_AFTER_MARKS"].includes(snapshot.late_deduction_mode) ||
+      !Array.isArray(snapshot.paid_leave_types) ||
+      snapshot.paid_leave_types.some((item: unknown) => typeof item !== "string") ||
+      finiteHours.some((field) => !Number.isFinite(Number(snapshot[field])) || Number(snapshot[field]) < 0 || Number(snapshot[field]) > 24) ||
+      !Number.isInteger(Number(snapshot.late_grace_minutes)) ||
+      Number(snapshot.late_grace_minutes) < 0 || Number(snapshot.late_grace_minutes) > 240 ||
+      !Number.isInteger(Number(snapshot.late_marks_per_half_day)) || Number(snapshot.late_marks_per_half_day) < 1) {
+      throw new BadRequestException("Historical attendance policy values are incomplete or invalid.");
+    }
+    try { new Intl.DateTimeFormat("en", { timeZone: String(snapshot.timezone) }); }
+    catch { throw new BadRequestException("Choose a valid attendance policy time zone."); }
+    return snapshot;
+  }
+
+  async confirmHistoricalPayrollAttendancePolicy(tenantId: string, month: string, actorId: string, body: any) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequestException("Choose a valid payroll month.");
+    const review: any = await this.getPayrollReviewContext(tenantId, month, String(body?.employee || ""),
+      String(body?.batch || ""), "attendance", `${month}-01`, monthToRange(month).end, "PAYROLL_ATTENDANCE_REVIEW");
+    const effectiveFrom = String(body?.effective_from || "");
+    const effectiveTo = body?.effective_to ? String(body.effective_to) : null;
+    const reason = String(body?.reason || "").trim();
+    if (!isValidIsoDate(effectiveFrom) || (effectiveTo && !isValidIsoDate(effectiveTo)) ||
+      (effectiveTo && effectiveTo < effectiveFrom) || !reason) {
+      throw new BadRequestException("Enter valid effective dates and a reason for this historical policy.");
+    }
+    const unresolved = review.attendance.affected.filter((row: any) => row.classification === "CONFIRM_POLICY");
+    if (!unresolved.some((row: any) => row.date >= effectiveFrom && (!effectiveTo || row.date <= effectiveTo))) {
+      throw new BadRequestException("The confirmed policy must cover an affected payroll attendance date.");
+    }
+    const sourceId = String(body?.source_policy_id || "");
+    if (sourceId !== "custom" && !review.attendance.policy_templates.some((row: any) => row.id === sourceId)) {
+      throw new BadRequestException("Select an available attendance policy or create one.");
+    }
+    const snapshot = this.confirmedAttendancePolicySnapshot(body?.policy);
+    const { error } = await this.supabase.rpc("hr_confirm_historical_attendance_policy", {
+      p_tenant_id: tenantId, p_employee_id: review.employee.id, p_batch_id: review.batch_id,
+      p_month: month, p_actor_id: actorId, p_policy: snapshot, p_source_policy_id: sourceId,
+      p_effective_from: effectiveFrom, p_effective_to: effectiveTo, p_reason: reason,
+    });
+    if (error) throw new ConflictException(error.message);
+    return this.getPayrollReviewContext(tenantId, month, review.employee.id, review.batch_id,
+      "attendance", review.from, review.to, "PAYROLL_ATTENDANCE_REVIEW");
+  }
+
+  async confirmPayrollSalaryEffectiveDate(tenantId: string, month: string, actorId: string, body: any) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequestException("Choose a valid payroll month.");
+    const review: any = await this.getPayrollReviewContext(tenantId, month, String(body?.employee || ""),
+      String(body?.batch || ""), "salary", `${month}-01`, monthToRange(month).end, "PAYROLL_SALARY_REVIEW");
+    const effectiveFrom = String(body?.effective_from || "");
+    const reason = String(body?.reason || "").trim();
+    const ids = Array.isArray(body?.component_ids) ? body.component_ids.map(String) : [];
+    const undated = new Set(review.salary.components.filter((row: any) => row.needs_start_date).map((row: any) => row.id));
+    if (!isValidIsoDate(effectiveFrom) || effectiveFrom > review.to || !reason || !ids.length || ids.length !== new Set(ids).size ||
+      ids.some((id: string) => !undated.has(id))) {
+      throw new BadRequestException("Select undated salary components, a valid effective date, and a reason.");
+    }
+    const { error } = await this.supabase.rpc("hr_confirm_legacy_salary_effective_date", {
+      p_tenant_id: tenantId, p_employee_id: review.employee.id, p_batch_id: review.batch_id,
+      p_month: month, p_actor_id: actorId, p_component_ids: ids,
+      p_effective_from: effectiveFrom, p_reason: reason,
+    });
+    if (error) throw new ConflictException(error.message);
+    return this.getPayrollReviewContext(tenantId, month, review.employee.id, review.batch_id,
+      "salary", review.from, review.to, "PAYROLL_SALARY_REVIEW");
   }
 
   private async payrollInputChecksum(tenantId: string, month: string, employeeIds: string[] | null = null) {
@@ -3485,16 +3574,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           || selectedIds.has(String(table === "employees" ? row.id : row.employee_id)),
       ).sort((a: any, b: any) => String(a.id || "").localeCompare(String(b.id || "")));
     };
-    const [employees, salaries, attendance, attendanceRecords, leaves, rules, overrides] = await Promise.all([
+    const [employees, salaries, attendance, attendanceRecords, leaves, rules, overrides, attendancePolicies] = await Promise.all([
       load("employees"), load("salary_components"), load("attendance", "attendance_date"),
       load("attendance_records", "attendance_date"), load("leave_requests"),
-      load("hr_payroll_rule_versions"), load("hr_employee_payroll_rule_overrides"),
+      load("hr_payroll_rule_versions"), load("hr_employee_payroll_rule_overrides"), load("hr_attendance_policies"),
     ]);
     const monthLeaves = leaves.filter((row: any) => String(row.end_date || "") >= start && String(row.start_date || "") <= end);
     const applicableRules = rules.filter((row: any) => String(row.effective_from || "") <= end && (!row.effective_to || String(row.effective_to) >= start));
     const applicableOverrides = overrides.filter((row: any) => String(row.effective_from || "") <= end && (!row.effective_to || String(row.effective_to) >= start));
     const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
-    const checksumInputs = { month, employees, salaries, attendance, attendanceRecords, leaves: monthLeaves, rules: applicableRules, overrides: applicableOverrides };
+    const checksumInputs = { month, employees, salaries, attendance, attendanceRecords, leaves: monthLeaves, rules: applicableRules, overrides: applicableOverrides, attendancePolicies };
     return createHash("sha256").update(JSON.stringify(canonical(employeeIds ? { ...checksumInputs, employee_ids: employeeIds } : checksumInputs))).digest("hex");
   }
 
@@ -3504,15 +3593,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   private async payrollResolutionReferences(tenantId: string, month: string, employeeIds: string[] | null = null) {
-    const effectiveDate = monthToRange(month).end;
+    const { start, end: effectiveDate } = monthToRange(month);
     const [employees, salaries, rulesResult] = await Promise.all([
       this.getEmployees(tenantId), this.getSalaryComponents(tenantId),
-      this.supabase.from("hr_payroll_rule_versions").select("id,effective_from,effective_to").eq("tenant_id", tenantId).lte("effective_from", effectiveDate).or(`effective_to.is.null,effective_to.gte.${effectiveDate}`),
+      this.supabase.from("hr_payroll_rule_versions").select("id,effective_from,effective_to").eq("tenant_id", tenantId).lte("effective_from", effectiveDate).or(`effective_to.is.null,effective_to.gte.${start}`),
     ]);
     if (rulesResult.error && !isMissingRelationError(rulesResult.error, "hr_payroll_rule_versions")) throw new ConflictException(rulesResult.error.message);
     const selectedIds = employeeIds ? new Set(employeeIds) : null;
     const salaryIds = employees.filter((employee: any) => !selectedIds || selectedIds.has(String(employee.id))).flatMap((employee: any) => resolveSalaryComponentsAtDate((salaries || []).filter((row: any) => String(row.employee_id) === String(employee.id)), effectiveDate).map((row: any) => row.id).filter(Boolean)).sort();
-    const { data: overrides, error: overrideError } = await this.supabase.from("hr_employee_payroll_rule_overrides").select("id,employee_id,effective_from,effective_to").eq("tenant_id", tenantId).lte("effective_from", effectiveDate).or(`effective_to.is.null,effective_to.gte.${effectiveDate}`);
+    const { data: overrides, error: overrideError } = await this.supabase.from("hr_employee_payroll_rule_overrides").select("id,employee_id,effective_from,effective_to").eq("tenant_id", tenantId).lte("effective_from", effectiveDate).or(`effective_to.is.null,effective_to.gte.${start}`);
     if (overrideError && !isMissingRelationError(overrideError, "hr_employee_payroll_rule_overrides")) throw new ConflictException(overrideError.message);
     return { payroll_effective_date: effectiveDate, salary_component_version_ids: salaryIds, payroll_rule_version_ids: (rulesResult.data || []).map((row: any) => row.id).filter(Boolean).sort(), employee_override_version_ids: (overrides || []).filter((row: any) => !selectedIds || selectedIds.has(String(row.employee_id))).map((row: any) => row.id).filter(Boolean).sort() };
   }
@@ -4330,7 +4419,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
       const summary: any =
         attendanceSummaryByEmployee.get(String(employee.id)) || {};
-      const attendanceEvidenceRows = (attendanceRegister.daily || []).filter((day: any) => String(day.employee_id) === String(employee.id)).map((day: any) => ({ attendance_id: day.attendance_id || null, date: day.date, status: day.status, payable_days: day.payable_days, overtime_hours: day.overtime_hours, approval_status: day.approval_status, leave_type: day.leave_type || null }));
+      const employeeAttendanceDays = (attendanceRegister.daily || []).filter((day: any) => String(day.employee_id) === String(employee.id));
+      const attendanceEvidenceRows = employeeAttendanceDays.map((day: any) => ({ attendance_id: day.attendance_id || null, date: day.date, status: day.status, payable_days: day.payable_days, late_minutes: day.late_minutes, overtime_hours: day.overtime_hours, overtime_credit_days: day.overtime_credit_days, policy_version_id: day.policy?.policy_version_id || null, policy_effective_from: day.policy?.effective_from || null, approval_status: day.approval_status, leave_type: day.leave_type || null }));
       const workingDays = Number(summary.working_days || 0);
       const attendanceDays =
         Number(summary.present_days || 0) +
@@ -4354,24 +4444,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       );
       const lateDays = Number(summary.late_days || 0);
       const lateMinutes = Number(summary.late_minutes || 0);
-      let lateDeduction = 0;
-      if (attendanceRegister.policy.late_deduction_mode === "PER_MINUTE") {
-        lateDeduction = roundCurrency(
-          (dailyGrossRate /
-            Math.max(1, attendanceRegister.policy.standard_daily_hours * 60)) *
-            lateMinutes,
-        );
-      } else if (
-        attendanceRegister.policy.late_deduction_mode === "HALF_DAY_AFTER_MARKS"
-      ) {
-        lateDeduction = roundCurrency(
-          Math.floor(
-            lateDays / attendanceRegister.policy.late_marks_per_half_day,
-          ) *
-            0.5 *
-            dailyGrossRate,
-        );
-      }
       const overtimeHours = Number(summary.overtime_hours || 0);
       const overtimeCreditDays = Number(summary.overtime_credit_days || 0);
       const basicSalary = employeeSalaryComponents
@@ -4386,17 +4458,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
             (workingDays *
               Math.max(1, attendanceRegister.policy.standard_daily_hours))
           : 0;
-      const overtimeAmount =
-        attendanceRegister.policy.overtime_enabled &&
-        employee.overtime_eligible !== false
-          ? attendanceRegister.policy.overtime_calculation_mode === "DAY_CREDIT"
-            ? roundCurrency(dailyGrossRate * overtimeCreditDays)
-            : roundCurrency(
-                baseHourlyRate *
-                  overtimeHours *
-                  effectiveOvertimeRate,
-              )
-          : 0;
+      const adjustments = calculateDatedAttendanceAdjustments({
+        days: employeeAttendanceDays, dailyGrossRate, basicSalary, workingDays,
+        overtimeEligible: employee.overtime_eligible !== false,
+        overtimeRateForDate: (date, profileRate) => {
+          const rule = resolvePayrollRule({ ruleKey: "overtime_rate", effectiveDate: date, profileDefault: profileRate,
+            tenantRules: overtimeRules || [], employeeOverrides: (overtimeOverrides || []).filter((row: any) => String(row.employee_id) === String(employee.id)) });
+          return Number(rule.value ?? profileRate);
+        },
+      });
+      const lateDeduction = roundCurrency(adjustments.lateDeduction);
+      const overtimeAmount = roundCurrency(adjustments.overtimeAmount);
       const employerPf = employeeSalaryComponents
         .filter((sc: any) => String(sc.component_type) === "PF_EMPLOYER")
         .reduce(

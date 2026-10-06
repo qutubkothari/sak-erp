@@ -242,6 +242,12 @@ export default function PayrollMonthlyProcessingPage() {
       )}
 
       {cockpit?.enabled && <>
+        {cockpit.stage === "READY_TO_CLOSE" && !cockpit.scope_conflict &&
+          (cockpit.counts?.blocker_count || 0) === 0 && (cockpit.counts?.warning_count || 0) === 0 &&
+          <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-5 text-emerald-950" role="status">
+            <h2 className="text-lg font-bold">PAYROLL READY</h2>
+            <p className="mt-1 text-sm">The selected employees have no remaining payroll review issues. Continue with the normal approval steps when HR is ready.</p>
+          </div>}
         <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>

@@ -676,6 +676,18 @@ export class HrController {
     return this.hrService.getPayrollReviewContext(req.user.tenantId, month, employee, batch, kind, from, to, reviewMode);
   }
 
+  @Post("payroll/control/month/:month/review/attendance-policy")
+  @RequireUpdate("hr")
+  confirmHistoricalPayrollAttendancePolicy(@Request() req: any, @Param("month") month: string, @Body() body: any) {
+    return this.hrService.confirmHistoricalPayrollAttendancePolicy(req.user.tenantId, month, req.user.userId, body);
+  }
+
+  @Post("payroll/control/month/:month/review/salary-effective-date")
+  @RequireUpdate("hr")
+  confirmPayrollSalaryEffectiveDate(@Request() req: any, @Param("month") month: string, @Body() body: any) {
+    return this.hrService.confirmPayrollSalaryEffectiveDate(req.user.tenantId, month, req.user.userId, body);
+  }
+
   @Put("payroll/control/maker-checker")
   @RequireUpdate("hr")
   setPayrollMakerCheckerConfig(@Request() req: any, @Body() body: any) {

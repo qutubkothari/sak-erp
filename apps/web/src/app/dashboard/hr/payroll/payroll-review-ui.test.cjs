@@ -42,3 +42,15 @@ test("return restores and validates the same employee and payroll batch", () => 
   assert.match(management, /setPayrollReviewReturnHref\(review\.return_href\)/);
   assert.match(management, /review\?\.employee\?\.id !== employee/);
 });
+
+test("HR confirms dated policy and salary evidence without a payroll processing action", () => {
+  assert.match(view, /Confirm Historical Policy/);
+  assert.match(view, /Confirm Effective Date/);
+  assert.match(view, /source_policy_id: sourcePolicyId/);
+  assert.match(view, /component_ids: selectedComponentIds/);
+  assert.match(view, /effective_from: effectiveFrom/);
+  assert.match(view, /reason: reason\.trim\(\)/);
+  assert.match(view, /review\/\$\{path\}/);
+  assert.match(payroll, /PAYROLL READY/);
+  assert.doesNotMatch(view, /generatePayslip|processPayroll|markPaid|approvePayroll/);
+});
