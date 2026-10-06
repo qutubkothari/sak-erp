@@ -18,8 +18,12 @@ describe("payroll run register query", () => {
         for (const method of ["select", "eq", "or", "in", "gte", "lte", "order", "range"]) {
           builder[method] = (...args: unknown[]) => {
             calls.push({ table, method, args });
-            if (method === "select") columns = String(args[0]);
-            if (method === "range") result = table === "payroll_runs" ? duplicateMonthRuns : result;
+            if (method === "select") {
+              columns = String(args[0]);
+              if (table === "payroll_runs" && columns === "id") result = duplicateMonthRuns.map((run) => ({ id: run.id }));
+              if (table === "payroll_runs" && columns.startsWith("id,tenant_id")) result = duplicateMonthRuns;
+            }
+            if (method === "range" && table === "payroll_runs" && columns.startsWith("id,tenant_id")) result = duplicateMonthRuns;
             return builder;
           };
         }
@@ -50,7 +54,7 @@ describe("payroll run register query", () => {
     expect(result.data[0].created_by_name).toBe("Asha Rao");
     expect(result.data.map((run) => run.payroll_month)).toEqual(["2026-09", "2026-09"]);
     const runCalls = calls.filter((call) => call.table === "payroll_runs");
-    const rangeCall = runCalls.findIndex((call) => call.method === "range");
+    const rangeCall = runCalls.map((call) => call.method).lastIndexOf("range");
     expect(runCalls.filter((call) => ["eq", "or", "gte", "lte", "order"].includes(call.method)).every((call) => runCalls.indexOf(call) < rangeCall)).toBe(true);
     expect(runCalls).toContainEqual({ table: "payroll_runs", method: "eq", args: ["tenant_id", tenantId] });
     expect(runCalls).toContainEqual({ table: "payroll_runs", method: "eq", args: ["payroll_month", "2026-09"] });
@@ -77,7 +81,7 @@ describe("payroll run register query", () => {
     const { service, calls } = makeService();
     await service.getPayrollRuns(tenantId, { search: "RUN-10000000" });
     const runSearch = calls.find((call) => call.table === "payroll_runs" && call.method === "or");
-    expect(runSearch?.args[0]).toContain("id::text.ilike.%10000000%");
+    expect(runSearch?.args[0]).toContain("id.in.(10000000-0000-0000-0000-000000000001)");
   });
 
   it("sorts ascending when requested and rejects statuses outside the payroll domain", async () => {

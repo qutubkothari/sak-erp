@@ -3643,6 +3643,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     const sortDirection = String(query.sortDirection || "").toLowerCase() === "asc";
 
     let matchingCreatorIds: string[] = [];
+    let matchingRunIds: string[] | null = null;
     if (search) {
       const escaped = search.replace(/[\\%_(),]/g, "\\$&");
       const { data: creators, error: creatorError } = await this.supabase
@@ -3652,6 +3653,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         .or(`first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%,username.ilike.%${escaped}%,email.ilike.%${escaped}%`);
       if (creatorError) throw new Error(creatorError.message);
       matchingCreatorIds = (creators || []).map((creator: any) => creator.id);
+
+      const referenceSearch = /^RUN[-\s]/i.test(search) || (/^[0-9a-f-]+$/i.test(search) && search.replace(/-/g, "").length >= 8);
+      if (referenceSearch) {
+        const referencePrefix = search.replace(/^RUN[-\s]*/i, "").replace(/-/g, "").toLowerCase();
+        matchingRunIds = [];
+        if (referencePrefix) {
+          const tenantRunIds: string[] = [];
+          for (let offset = 0; ; offset += 1000) {
+            const { data: runIds, error: runIdsError } = await this.supabase
+              .from("payroll_runs")
+              .select("id")
+              .eq("tenant_id", tenantId)
+              .range(offset, offset + 999);
+            if (runIdsError) throw new Error(runIdsError.message);
+            tenantRunIds.push(...(runIds || []).map((run: any) => String(run.id)));
+            if ((runIds || []).length < 1000) break;
+          }
+          matchingRunIds = tenantRunIds.filter((id) => id.replace(/-/g, "").toLowerCase().startsWith(referencePrefix));
+        }
+      }
     }
 
     let request = this.supabase
@@ -3668,8 +3689,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         `payroll_month.ilike.%${escaped}%`,
         `remarks.ilike.%${escaped}%`,
       ];
-      const referenceTerm = search.replace(/^RUN[-\s]*/i, "").replace(/-/g, "").trim();
-      if (referenceTerm) alternatives.push(`id::text.ilike.%${referenceTerm.replace(/[\\%_(),]/g, "\\$&")}%`);
+      if (matchingRunIds?.length) alternatives.push(`id.in.(${matchingRunIds.join(",")})`);
       if (matchingCreatorIds.length) {
         alternatives.push(`created_by.in.(${matchingCreatorIds.join(",")})`);
       }
