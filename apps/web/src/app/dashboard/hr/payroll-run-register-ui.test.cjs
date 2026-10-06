@@ -6,7 +6,7 @@ const source = fs.readFileSync(path.join(__dirname, "page.tsx"), "utf8");
 const checks = [
   ["search controls", /Search<input value=\{payrollRunSearch\}/],
   ["month filter", /type="month" value=\{payrollRunMonth\}/],
-  ["supported payroll statuses", /PAYROLL_RUN_STATUSES = \["PENDING", "COMPLETED", "APPROVED", "REJECTED", "LOCKED"\]/],
+  ["supported payroll statuses", /PAYROLL_RUN_STATUSES = \["PENDING", "PARTIAL", "COMPLETED", "APPROVED", "REJECTED", "LOCKED"\]/],
   ["inclusive date range query", /query\.set\("from", payrollRunFrom\)[\s\S]*query\.set\("to", payrollRunTo\)/],
   ["sort headers", /togglePayrollRunSort\(key\)/],
   ["server pagination request", /page: String\(payrollRunPage\)[\s\S]*limit: String\(payrollRunLimit\)/],
@@ -16,7 +16,7 @@ const checks = [
   ["distinct empty states", /No payroll runs yet\.[\s\S]*No payroll runs match these filters\./],
   ["short reference", /RUN-\{run\.id\.replace\(\/-\/g, ""\)\.slice\(0, 10\)/],
   ["creation metadata", /Created By[\s\S]*Created At/],
-  ["existing payslip action retained", /Generate Payslips/],
+  ["controlled payroll action", /Review payroll controls/],
   ["responsive filter grid", /grid-cols-1 gap-3 sm:grid-cols-2/],
 ];
 

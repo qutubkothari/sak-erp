@@ -19,6 +19,9 @@ type Blocker = {
 type Cockpit = {
   enabled: boolean;
   month: string;
+  employee_ids?: string[] | null;
+  scope_locked?: boolean;
+  scope_conflict?: boolean;
   version?: number;
   stage?: string;
   responsible?: string;
@@ -54,6 +57,9 @@ const fmt = (amount: number | undefined) =>
 
 export default function PayrollMonthlyProcessingPage() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [employees, setEmployees] = useState<Array<{ id: string; employee_name: string; employee_code: string; department?: string; status?: string }>>([]);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[] | null>(null);
+  const [employeeSearch, setEmployeeSearch] = useState("");
   const [cockpit, setCockpit] = useState<Cockpit | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -63,19 +69,24 @@ export default function PayrollMonthlyProcessingPage() {
     setBusy(true);
     setError("");
     try {
-      const response = await apiClient.get<any>(`/hr/payroll/control/month/${encodeURIComponent(month)}`);
-      setCockpit(response?.data || response);
+      if (selectedEmployeeIds?.length === 0) { setCockpit(null); return; }
+      const scopeQuery = selectedEmployeeIds === null ? "" : `?employee_ids=${encodeURIComponent(selectedEmployeeIds.join(","))}`;
+      const response = await apiClient.get<any>(`/hr/payroll/control/month/${encodeURIComponent(month)}${scopeQuery}`);
+      const next = response?.data || response;
+      setCockpit(next);
+      if (selectedEmployeeIds === null && Array.isArray(next?.employee_ids)) setSelectedEmployeeIds(next.employee_ids);
     } catch (e: any) {
       setError(e?.message || "Could not load payroll month status.");
     } finally {
       setBusy(false);
     }
-  }, [month]);
+  }, [month, selectedEmployeeIds]);
 
   const act = async (action: string) => {
     setBusy(true); setError("");
     try {
-      await apiClient.post(`/hr/payroll/control/month/${encodeURIComponent(month)}/${action}`, {});
+      await apiClient.post(`/hr/payroll/control/month/${encodeURIComponent(month)}/${action}`,
+        action === "check-again" && selectedEmployeeIds !== null ? { employee_ids: selectedEmployeeIds } : {});
       await refresh();
     } catch (e: any) { setError(e?.message || `Could not ${action.replace(/-/g, " ")} payroll.`); }
     finally { setBusy(false); }
@@ -104,7 +115,19 @@ export default function PayrollMonthlyProcessingPage() {
     finally { setBusy(false); }
   };
 
+  useEffect(() => {
+    const requestedMonth = new URLSearchParams(window.location.search).get("month");
+    if (requestedMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)) setMonth(requestedMonth);
+    void apiClient.get<any>("/hr/employees").then((response) => {
+      const rows = response?.data || response;
+      setEmployees((Array.isArray(rows) ? rows : []).filter((row: any) =>
+        ["ACTIVE", "ON_LEAVE"].includes(String(row.status || "ACTIVE").toUpperCase())));
+    }).catch(() => setError("Employee selection could not be loaded."));
+  }, []);
   useEffect(() => { void refresh(); }, [refresh]);
+
+  const visibleEmployees = employees.filter((row) =>
+    `${row.employee_name} ${row.employee_code} ${row.department || ""}`.toLowerCase().includes(employeeSearch.toLowerCase()));
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
@@ -118,14 +141,37 @@ export default function PayrollMonthlyProcessingPage() {
         <div className="flex items-center gap-2">
           <Link href="/dashboard/hr/team-desk" className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50">Team Desk</Link>
           <label className="text-sm font-semibold text-stone-700" htmlFor="payroll-month">Month</label>
-          <input id="payroll-month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm" />
-          <button onClick={() => void act("check-again")} disabled={busy} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 disabled:opacity-50">
+          <input id="payroll-month" type="month" value={month} onChange={(event) => { setSelectedEmployeeIds(null); setMonth(event.target.value); }} className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm" />
+          <button onClick={() => void act("check-again")} disabled={busy || selectedEmployeeIds?.length === 0 || cockpit?.scope_conflict} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} /> Check Again
           </button>
         </div>
       </div>
 
       {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+
+      <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 className="text-lg font-bold text-stone-900">Employees in this payroll batch</h2><p className="mt-1 text-sm text-stone-600">Close checks, payslips, and approvals apply to the selected employees. Finish a paid batch before opening another group for the same month.</p></div>
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900">{selectedEmployeeIds?.length ?? employees.length} selected</span>
+        </div>
+        {cockpit?.scope_conflict && <p role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Finish the current payroll batch before changing its employees.</p>}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <input type="search" value={employeeSearch} onChange={(event) => setEmployeeSearch(event.target.value)} placeholder="Search employee" aria-label="Search employees" className="min-h-10 flex-1 rounded-lg border border-stone-300 px-3 text-sm" />
+          <button type="button" disabled={cockpit?.scope_locked || busy} onClick={() => setSelectedEmployeeIds(employees.map((row) => row.id))} className="rounded-lg border border-stone-300 px-3 text-sm font-semibold disabled:opacity-50">Select all</button>
+          <button type="button" disabled={cockpit?.scope_locked || busy} onClick={() => setSelectedEmployeeIds([])} className="rounded-lg border border-stone-300 px-3 text-sm font-semibold disabled:opacity-50">Clear</button>
+        </div>
+        <div className="mt-3 max-h-60 divide-y divide-stone-100 overflow-y-auto rounded-lg border border-stone-200">
+          {visibleEmployees.map((row) => <label key={row.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm text-stone-800">
+            <input type="checkbox" disabled={cockpit?.scope_locked || busy} checked={selectedEmployeeIds === null || selectedEmployeeIds.includes(row.id)} onChange={() => setSelectedEmployeeIds((current) => {
+              const chosen = current ?? employees.map((employee) => employee.id);
+              return chosen.includes(row.id) ? chosen.filter((id) => id !== row.id) : [...chosen, row.id];
+            })} />
+            <span className="min-w-0 flex-1 truncate">{row.employee_name} <span className="text-stone-500">{row.employee_code}</span></span>
+            <button type="button" disabled={cockpit?.scope_locked || busy} onClick={(event) => { event.preventDefault(); setSelectedEmployeeIds([row.id]); }} className="text-xs font-semibold text-amber-800 hover:underline disabled:opacity-50">Only this employee</button>
+          </label>)}
+        </div>
+      </section>
 
       {cockpit && !cockpit.enabled && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
@@ -201,7 +247,7 @@ export default function PayrollMonthlyProcessingPage() {
           </article>)}</div>
         </section>}
         <div className="flex flex-wrap gap-2">
-          {cockpit.stage === "READY_TO_CLOSE" && <button disabled={busy || (cockpit.counts?.blocker_count || 0) > 0} onClick={() => void act("close")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Close month</button>}
+          {cockpit.stage === "READY_TO_CLOSE" && <button disabled={busy || (cockpit.counts?.blocker_count || 0) > 0} onClick={() => void act("close")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Close selected payroll</button>}
           {cockpit.stage === "CLOSED" && <button disabled={busy} onClick={() => void act("calculate")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Calculate</button>}
           {cockpit.stage === "CALCULATED" && <button disabled={busy} onClick={() => void act("submit")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Send for approval</button>}
           {cockpit.stage === "APPROVAL_PENDING" && <button disabled={busy} onClick={() => void act("approve")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Approve</button>}
