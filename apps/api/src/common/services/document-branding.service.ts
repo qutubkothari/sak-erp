@@ -82,13 +82,15 @@ export class DocumentBrandingService {
     const useTenantBranding = this.hasStructuredBranding(tenant);
 
     const letterhead = this.getLetterheadSettings(tenant);
+    const organization = this.getOrganizationSettings(tenant);
     const companyName = this.normalizeCompanyName(this.getFirstNonEmptyValue(
       letterhead.companyName,
+      organization.tradingName,
       useTenantBranding ? tenant?.name : '',
       overrides?.companyName,
       fallback.companyName,
     ));
-    const legalName = this.getFirstNonEmptyValue(letterhead.legalName, overrides?.legalName, companyName);
+    const legalName = this.getFirstNonEmptyValue(letterhead.legalName, useTenantBranding ? tenant?.name : '', overrides?.legalName, companyName);
     const address = this.getFirstNonEmptyValue(
       letterhead.address,
       useTenantBranding ? tenant?.address : '',
@@ -364,7 +366,7 @@ export class DocumentBrandingService {
         .from('tenants')
         // The canonical tenant table stores branding inside settings.  Keep
         // this projection compatible with both current and legacy schemas.
-        .select('name, domain, settings')
+        .select('name, domain, address, phone, email, tax_id, logo_url, settings')
         .eq('id', tenantId)
         .single();
 
@@ -461,6 +463,15 @@ export class DocumentBrandingService {
     }
 
     return letterhead;
+  }
+
+  private getOrganizationSettings(tenant?: Record<string, unknown> | null): Record<string, any> {
+    const settings = tenant?.settings;
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return {};
+    const organization = (settings as Record<string, unknown>).organization;
+    return organization && typeof organization === 'object' && !Array.isArray(organization)
+      ? organization as Record<string, any>
+      : {};
   }
 
   private async tryEmbedImage(pdfDoc: PDFDocument, imageUrl: string, label: string): Promise<PDFImage | undefined> {

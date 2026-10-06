@@ -13,6 +13,12 @@ interface RegisterDto {
   lastName?: string;
   name?: string; // Full name from frontend
   companyName?: string; // Company name for new tenant creation
+  tradingName?: string;
+  address?: string;
+  phone?: string;
+  companyEmail?: string;
+  taxId?: string;
+  marketProfile?: 'INDIA' | 'UAE' | 'EGYPT';
   tenantId?: string; // Optional: for inviting users to existing tenant
   roleId?: string;
 }
@@ -342,12 +348,32 @@ export class AuthService {
       }
 
       // Create new tenant for this company
+      const marketProfile = ['INDIA', 'UAE', 'EGYPT'].includes(String(dto.marketProfile || '').toUpperCase())
+        ? String(dto.marketProfile).toUpperCase()
+        : 'INDIA';
+      const regionalDefaults = marketProfile === 'EGYPT'
+        ? { default_currency: 'EGP', tax_regime: 'EGYPT_VAT', locale: 'ar-EG', timezone: 'Africa/Cairo' }
+        : marketProfile === 'UAE'
+          ? { default_currency: 'AED', tax_regime: 'UAE_VAT', locale: 'en-AE', timezone: 'Asia/Dubai' }
+          : { default_currency: 'INR', tax_regime: 'GST', locale: 'en-IN', timezone: 'Asia/Kolkata' };
       const { data: newTenant, error: tenantError } = await this.supabase
         .from('tenants')
         .insert({
           name: dto.companyName,
           subdomain: subdomainToUse,
           domain: dto.companyName.toLowerCase().replace(/\s+/g, '-'),
+          address: String(dto.address || '').trim() || null,
+          phone: String(dto.phone || '').trim() || null,
+          email: String(dto.companyEmail || '').trim().toLowerCase() || null,
+          tax_id: String(dto.taxId || '').trim().toUpperCase() || null,
+          market_profile: marketProfile,
+          ...regionalDefaults,
+          settings: {
+            organization: {
+              tradingName: String(dto.tradingName || '').trim(),
+              country: marketProfile === 'EGYPT' ? 'Egypt' : marketProfile === 'UAE' ? 'United Arab Emirates' : 'India',
+            },
+          },
           is_active: true,
           created_at: new Date().toISOString(),
         })

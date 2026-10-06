@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Building2, Globe2, MapPin, Phone, Mail, Save } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 import { hasModulePermission, readStoredUser } from '@/lib/rbac';
@@ -31,6 +32,10 @@ type OrganizationForm = {
   phone: string;
   email: string;
   taxId: string;
+  tradingName: string;
+  secondaryPhone: string;
+  accountsEmail: string;
+  logoUrl: string;
   timezone: string;
   language: string;
   marketProfile: 'INDIA' | 'UAE' | 'EGYPT';
@@ -47,13 +52,20 @@ const defaultForm: OrganizationForm = {
   phone: '',
   email: '',
   taxId: '',
-  timezone: '(+05:30) India Standard Time (Asia/Kolkata)',
+  tradingName: '',
+  secondaryPhone: '',
+  accountsEmail: '',
+  logoUrl: '',
+  timezone: 'Asia/Kolkata',
   language: 'English',
   marketProfile: 'INDIA',
 };
 
 function parseOrganization(company: Company): OrganizationForm {
   const saved = company.settings?.organization || {};
+  const marketProfile = ['UAE', 'EGYPT'].includes(String(company.market_profile))
+    ? company.market_profile as 'UAE' | 'EGYPT'
+    : 'INDIA';
   return {
     ...defaultForm,
     companyName: company.name || '',
@@ -62,16 +74,29 @@ function parseOrganization(company: Company): OrganizationForm {
     city: saved.city || '',
     state: saved.state || '',
     postalCode: saved.postalCode || '',
-    country: saved.country || defaultForm.country,
+    country: marketProfile === 'EGYPT' ? 'Egypt' : marketProfile === 'UAE' ? 'United Arab Emirates' : saved.country || defaultForm.country,
     phone: company.phone || saved.phone || '',
     email: company.email || saved.email || '',
     taxId: company.tax_id || saved.taxId || '',
-    timezone: saved.timezone || defaultForm.timezone,
-    language: saved.language || defaultForm.language,
-    marketProfile: ['UAE', 'EGYPT'].includes(String(company.market_profile))
-      ? company.market_profile as 'UAE' | 'EGYPT'
-      : 'INDIA',
+    tradingName: saved.tradingName || '',
+    secondaryPhone: saved.secondaryPhone || '',
+    accountsEmail: saved.accountsEmail || '',
+    logoUrl: company.logo_url || '',
+    timezone: normalizeTimezone(saved.timezone) || (marketProfile === 'EGYPT' ? 'Africa/Cairo' : marketProfile === 'UAE' ? 'Asia/Dubai' : defaultForm.timezone),
+    language: saved.language || (marketProfile === 'EGYPT' ? 'Arabic' : defaultForm.language),
+    marketProfile,
   };
+}
+
+function normalizeTimezone(value: unknown): string {
+  const timezone = String(value || '').trim();
+  if (!timezone) return '';
+  if (timezone.includes('Africa/Cairo')) return 'Africa/Cairo';
+  if (timezone.includes('Asia/Dubai')) return 'Asia/Dubai';
+  if (timezone.includes('Asia/Kolkata')) return 'Asia/Kolkata';
+  if (timezone.includes('Etc/UTC') || timezone.includes('Greenwich')) return 'Etc/UTC';
+  if (timezone.includes('America/New_York') || timezone.includes('Eastern Time')) return 'America/New_York';
+  return timezone;
 }
 
 function buildAddress(form: OrganizationForm): string {
@@ -87,6 +112,7 @@ export default function OrganizationSettings() {
   const [form, setForm] = useState<OrganizationForm>(defaultForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -111,6 +137,27 @@ export default function OrganizationSettings() {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
+  const uploadLogo = async (file?: File) => {
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(file.type)) {
+      setMessage('Choose a PNG, JPG, WebP, or SVG logo file.');
+      return;
+    }
+    setUploadingLogo(true);
+    setMessage('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const result = await apiClient.postForm<{ url: string }>('/upload', formData);
+      updateField('logoUrl', result.url);
+      setMessage('Logo uploaded. Save organization details to apply it.');
+    } catch (error: any) {
+      setMessage(error.message || 'Logo upload failed.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!company) return;
@@ -126,6 +173,9 @@ export default function OrganizationSettings() {
       const nextSettings = {
         ...(company.settings || {}),
         organization: {
+          tradingName: form.tradingName,
+          secondaryPhone: form.secondaryPhone,
+          accountsEmail: form.accountsEmail,
           street: form.street,
           city: form.city,
           state: form.state,
@@ -144,6 +194,7 @@ export default function OrganizationSettings() {
         phone: form.phone,
         email: form.email,
         tax_id: form.taxId,
+        logo_url: form.logoUrl,
         market_profile: form.marketProfile,
         settings: nextSettings,
       });
@@ -171,6 +222,17 @@ export default function OrganizationSettings() {
         <div>
           <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#8B6F47' }}>Settings</p>
           <h1 className="text-2xl font-bold" style={{ color: '#3B2A1E' }}>Organization</h1>
+        </div>
+      </div>
+
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-white p-4" style={{ borderColor: '#E8DCC4' }}>
+        <div>
+          <p className="font-semibold" style={{ color: '#3B2A1E' }}>Company identity and delivery</p>
+          <p className="text-sm" style={{ color: '#8B6F47' }}>Set legal and contact details here, then configure outbound email and WhatsApp.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/dashboard/settings?tab=email" className="rounded-md border px-3 py-2 text-sm font-semibold" style={{ borderColor: '#D7C29E', color: '#6F4E37' }}>Email sending settings</Link>
+          <Link href="/dashboard/settings/whatsapp" className="rounded-md px-3 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#167C55' }}>WhatsApp setup</Link>
         </div>
       </div>
 
@@ -202,11 +264,23 @@ export default function OrganizationSettings() {
           <div className="space-y-8 p-5">
             <SectionTitle title="Company Information" />
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <TextField label="Company Name" required value={form.companyName} onChange={(value) => updateField('companyName', value)} />
+              <TextField label="Legal Company Name" required value={form.companyName} onChange={(value) => updateField('companyName', value)} />
+              <TextField label="Trading / Display Name" value={form.tradingName} onChange={(value) => updateField('tradingName', value)} />
               <TextField label="Portal URL" required value={form.portalUrl} onChange={(value) => updateField('portalUrl', value)} />
               <TextField label="Official Phone" value={form.phone} onChange={(value) => updateField('phone', value)} />
+              <TextField label="Additional Contact Number" value={form.secondaryPhone} onChange={(value) => updateField('secondaryPhone', value)} />
               <TextField label="Official Email" value={form.email} onChange={(value) => updateField('email', value)} />
-              <TextField label="GSTIN / Tax ID" value={form.taxId} onChange={(value) => updateField('taxId', value.toUpperCase())} />
+              <TextField label="Accounts / Invoicing Email" value={form.accountsEmail} onChange={(value) => updateField('accountsEmail', value)} />
+              <TextField label={form.country === 'Egypt' || form.marketProfile === 'EGYPT' ? 'Egypt VAT Registration Number' : form.marketProfile === 'UAE' ? 'TRN / Tax Registration Number' : 'GSTIN / Tax ID'} value={form.taxId} onChange={(value) => updateField('taxId', value.toUpperCase())} />
+              <div className="block text-sm font-medium" style={{ color: '#6F4E37' }}>
+                Company Logo
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  {form.logoUrl && <img src={form.logoUrl} alt="Company logo preview" className="h-14 max-w-36 rounded border bg-white object-contain p-1" />}
+                  <input aria-label="Upload company logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" disabled={!canEditSettings || uploadingLogo} onChange={(event) => uploadLogo(event.target.files?.[0])} className="min-w-0 flex-1 text-sm" />
+                </div>
+                <input type="url" value={form.logoUrl} onChange={(event) => updateField('logoUrl', event.target.value)} placeholder="Or paste a hosted image URL" className="mt-2 w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-[#8B6F47]" style={{ borderColor: '#D7C29E', color: '#3B2A1E' }} />
+                <span className="mt-1 block text-xs font-normal" style={{ color: '#8B6F47' }}>{uploadingLogo ? 'Uploading logo…' : 'PNG, JPG, WebP, or SVG. Used on company documents and email branding.'}</span>
+              </div>
             </div>
 
             <SectionTitle title="Address Information" />
@@ -215,21 +289,37 @@ export default function OrganizationSettings() {
               <TextField label="City" required value={form.city} onChange={(value) => updateField('city', value)} />
               <TextField label="State" required value={form.state} onChange={(value) => updateField('state', value)} />
               <TextField label="Zip / Postal Code" required value={form.postalCode} onChange={(value) => updateField('postalCode', value)} />
-              <SelectField label="Country" required value={form.country} options={['India', 'Egypt', 'United Arab Emirates', 'United States', 'United Kingdom']} onChange={(value) => updateField('country', value)} />
+              <SelectField label="Country" required value={form.country} options={['India', 'Egypt', 'United Arab Emirates', 'United States', 'United Kingdom']} onChange={(value) => {
+                updateField('country', value);
+                const profile = value === 'Egypt' ? 'EGYPT' : value === 'United Arab Emirates' ? 'UAE' : value === 'India' ? 'INDIA' : null;
+                if (profile) updateField('marketProfile', profile);
+                if (value === 'Egypt') updateField('timezone', 'Africa/Cairo');
+                else if (value === 'United Arab Emirates') updateField('timezone', 'Asia/Dubai');
+                else if (value === 'India') updateField('timezone', 'Asia/Kolkata');
+              }} />
             </div>
 
             <SectionTitle title="Regional Information" />
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <SelectField label="Market Profile" required value={form.marketProfile} options={['INDIA', 'UAE', 'EGYPT']} onChange={(value) => updateField('marketProfile', value as 'INDIA' | 'UAE' | 'EGYPT')} />
+              <SelectField label="Market Profile" required value={form.marketProfile} options={['INDIA', 'UAE', 'EGYPT']} onChange={(value) => {
+                const profile = value as OrganizationForm['marketProfile'];
+                updateField('marketProfile', profile);
+                if (!form.country || ['India', 'Egypt', 'United Arab Emirates'].includes(form.country)) {
+                  updateField('country', profile === 'EGYPT' ? 'Egypt' : profile === 'UAE' ? 'United Arab Emirates' : 'India');
+                }
+                if (form.timezone === defaultForm.timezone || ['Africa/Cairo', 'Asia/Dubai', 'Asia/Kolkata'].includes(form.timezone)) {
+                  updateField('timezone', profile === 'EGYPT' ? 'Africa/Cairo' : profile === 'UAE' ? 'Asia/Dubai' : 'Asia/Kolkata');
+                }
+              }} />
               <SelectField
                 label="Time Zone"
                 value={form.timezone}
                 options={[
-                  '(+05:30) India Standard Time (Asia/Kolkata)',
-                  '(+04:00) Gulf Standard Time (Asia/Dubai)',
-                  '(+02:00) Eastern European Time (Africa/Cairo)',
-                  '(+00:00) Greenwich Mean Time',
-                  '(-05:00) Eastern Time',
+                  { value: 'Asia/Kolkata', label: 'India Standard Time (Asia/Kolkata, UTC+05:30)' },
+                  { value: 'Asia/Dubai', label: 'Gulf Standard Time (Asia/Dubai, UTC+04:00)' },
+                  { value: 'Africa/Cairo', label: 'Cairo, Egypt (Africa/Cairo, UTC+02:00 winter / UTC+03:00 summer)' },
+                  { value: 'Etc/UTC', label: 'Greenwich Mean Time (UTC)' },
+                  { value: 'America/New_York', label: 'Eastern Time (America/New_York)' },
                 ]}
                 onChange={(value) => updateField('timezone', value)}
               />
@@ -298,7 +388,7 @@ function TextField({ label, value, onChange, required }: { label: string; value:
   );
 }
 
-function SelectField({ label, value, options, onChange, required }: { label: string; value: string; options: string[]; onChange: (value: string) => void; required?: boolean }) {
+function SelectField({ label, value, options, onChange, required }: { label: string; value: string; options: Array<string | { value: string; label: string }>; onChange: (value: string) => void; required?: boolean }) {
   return (
     <label className="block text-sm font-medium" style={{ color: '#6F4E37' }}>
       {label} {required ? <span className="text-red-600">*</span> : null}
@@ -309,7 +399,11 @@ function SelectField({ label, value, options, onChange, required }: { label: str
         className="mt-2 w-full rounded-md border px-3 py-2 text-sm outline-none focus:border-[#8B6F47]"
         style={{ borderColor: '#D7C29E', color: '#3B2A1E' }}
       >
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        {options.map((option) => {
+          const optionValue = typeof option === 'string' ? option : option.value;
+          const optionLabel = typeof option === 'string' ? option : option.label;
+          return <option key={optionValue} value={optionValue}>{optionLabel}</option>;
+        })}
       </select>
     </label>
   );

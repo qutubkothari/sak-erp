@@ -19,6 +19,12 @@ export default function RegisterPage() {
     password: '',
     confirmPassword: '',
     company: '',
+    tradingName: '',
+    marketProfile: 'EGYPT' as 'INDIA' | 'UAE' | 'EGYPT',
+    address: '',
+    phone: '',
+    companyEmail: '',
+    taxId: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -53,6 +59,12 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         companyName: formData.company,
+        tradingName: formData.tradingName,
+        marketProfile: formData.marketProfile,
+        address: formData.address,
+        phone: formData.phone,
+        companyEmail: formData.companyEmail,
+        taxId: formData.taxId,
       });
 
       if (response.success) {
@@ -71,11 +83,11 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12" style={{ backgroundColor: '#FAF9F6' }}>
-      <div className="w-full max-w-md p-8 rounded-lg shadow-lg" style={{ backgroundColor: 'white' }}>
+      <div className="w-full max-w-2xl p-8 rounded-lg shadow-lg" style={{ backgroundColor: 'white' }}>
         {/* Logo/Brand */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold mb-2" style={{ color: '#8B6F47' }}>
-            Create Account
+            Set Up Your Company
           </h1>
           <p className="text-sm" style={{ color: '#6F4E37' }}>
             Join {appBranding.companyName} ERP Platform
@@ -120,7 +132,7 @@ export default function RegisterPage() {
 
           <div>
             <label htmlFor="company" className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-              Company Name
+              Legal Company Name
             </label>
             <input
               id="company"
@@ -133,6 +145,24 @@ export default function RegisterPage() {
               style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
             />
           </div>
+
+          <section className="space-y-4 rounded-lg border p-4" style={{ borderColor: '#E8DCC4' }}>
+            <h2 className="font-semibold" style={{ color: '#6F4E37' }}>Company formation details</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Trading / Display Name" name="tradingName" value={formData.tradingName} onChange={handleChange} />
+              <label className="block text-sm font-medium" style={{ color: '#6F4E37' }}>Country / Market
+                <select value={formData.marketProfile} onChange={(e) => setFormData((prev) => ({ ...prev, marketProfile: e.target.value as typeof prev.marketProfile }))} className="mt-2 w-full rounded-lg border-2 px-4 py-2" style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}>
+                  <option value="EGYPT">Egypt</option><option value="UAE">United Arab Emirates</option><option value="INDIA">India</option>
+                </select>
+              </label>
+              <Field label="Main Contact Number" name="phone" value={formData.phone} onChange={handleChange} type="tel" />
+              <Field label="Company Email" name="companyEmail" value={formData.companyEmail} onChange={handleChange} type="email" />
+              <Field label={formData.marketProfile === 'EGYPT' ? 'VAT Registration Number' : formData.marketProfile === 'UAE' ? 'TRN / Tax Registration Number' : 'GSTIN / Tax ID'} name="taxId" value={formData.taxId} onChange={handleChange} />
+              <label className="block text-sm font-medium sm:col-span-2" style={{ color: '#6F4E37' }}>Registered Address
+                <textarea name="address" value={formData.address} onChange={(event) => setFormData((prev) => ({ ...prev, address: event.target.value }))} rows={3} className="mt-2 w-full rounded-lg border-2 px-4 py-2" style={{ borderColor: '#E8DCC4', color: '#6F4E37' }} placeholder="Street, city, governorate, postal code" />
+              </label>
+            </div>
+          </section>
 
           <div>
             <label htmlFor="username" className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
@@ -238,4 +268,10 @@ export default function RegisterPage() {
       </div>
     </div>
   );
+}
+
+function Field({ label, name, value, onChange, type = 'text' }: { label: string; name: string; value: string; onChange: (event: React.ChangeEvent<HTMLInputElement>) => void; type?: string }) {
+  return <label className="block text-sm font-medium" style={{ color: '#6F4E37' }}>{label}
+    <input name={name} type={type} value={value} onChange={onChange} className="mt-2 w-full rounded-lg border-2 px-4 py-2" style={{ borderColor: '#E8DCC4', color: '#6F4E37' }} />
+  </label>;
 }

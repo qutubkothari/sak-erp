@@ -129,6 +129,12 @@ interface RegisterData {
   email: string;
   password: string;
   companyName: string;
+  tradingName?: string;
+  address?: string;
+  phone?: string;
+  companyEmail?: string;
+  taxId?: string;
+  marketProfile?: 'INDIA' | 'UAE' | 'EGYPT';
 }
 
 interface LoginData {
@@ -177,6 +183,12 @@ interface LoginResponse {
     accountId: string;
     tenantId: string;
     companyName: string;
+  tradingName?: string;
+  address?: string;
+  phone?: string;
+  companyEmail?: string;
+  taxId?: string;
+  marketProfile?: 'INDIA' | 'UAE' | 'EGYPT';
     displayName?: string;
     username?: string;
     email?: string;
