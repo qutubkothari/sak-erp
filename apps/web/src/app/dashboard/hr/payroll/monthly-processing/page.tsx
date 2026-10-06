@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { RefreshCw, ShieldAlert, WalletCards } from "lucide-react";
 import { apiClient } from "../../../../../../lib/api-client";
@@ -92,6 +92,8 @@ function friendlyPayrollError(error: unknown, fallback: string) {
 
 export default function PayrollMonthlyProcessingPage() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [monthReady, setMonthReady] = useState(false);
+  const requestSequence = useRef(0);
   const [employees, setEmployees] = useState<Array<{ id: string; employee_name: string; employee_code: string; department?: string; status?: string }>>([]);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[] | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState("");
@@ -101,21 +103,24 @@ export default function PayrollMonthlyProcessingPage() {
   const [varianceFilter, setVarianceFilter] = useState<"Everyone" | "Changed" | "Flagged">("Everyone");
 
   const refresh = useCallback(async () => {
+    if (!monthReady) return;
+    const requestId = ++requestSequence.current;
     setBusy(true);
     setError("");
     try {
       if (selectedEmployeeIds?.length === 0) { setCockpit(null); return; }
       const scopeQuery = selectedEmployeeIds === null ? "" : `?employee_ids=${encodeURIComponent(selectedEmployeeIds.join(","))}`;
       const response = await apiClient.get<any>(`/hr/payroll/control/month/${encodeURIComponent(month)}${scopeQuery}`);
+      if (requestId !== requestSequence.current) return;
       const next = response?.data || response;
       setCockpit(next);
       if (selectedEmployeeIds === null && Array.isArray(next?.employee_ids)) setSelectedEmployeeIds(next.employee_ids);
     } catch (e: any) {
-      setError(friendlyPayrollError(e, "Payroll status could not be loaded. Please try again."));
+      if (requestId === requestSequence.current) setError(friendlyPayrollError(e, "Payroll status could not be loaded. Please try again."));
     } finally {
-      setBusy(false);
+      if (requestId === requestSequence.current) setBusy(false);
     }
-  }, [month, selectedEmployeeIds]);
+  }, [month, monthReady, selectedEmployeeIds]);
 
   const act = async (action: string) => {
     setBusy(true); setError("");
@@ -153,13 +158,17 @@ export default function PayrollMonthlyProcessingPage() {
   useEffect(() => {
     const requestedMonth = new URLSearchParams(window.location.search).get("month");
     if (requestedMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)) setMonth(requestedMonth);
+    setMonthReady(true);
     void apiClient.get<any>("/hr/employees").then((response) => {
       const rows = response?.data || response;
       setEmployees((Array.isArray(rows) ? rows : []).filter((row: any) =>
         ["ACTIVE", "ON_LEAVE"].includes(String(row.status || "ACTIVE").toUpperCase())));
     }).catch(() => setError("Employee selection could not be loaded."));
   }, []);
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+    return () => { requestSequence.current += 1; };
+  }, [refresh]);
 
   const visibleEmployees = employees.filter((row) =>
     `${row.employee_name} ${row.employee_code} ${row.department || ""}`.toLowerCase().includes(employeeSearch.toLowerCase()));
@@ -176,7 +185,7 @@ export default function PayrollMonthlyProcessingPage() {
         <div className="flex items-center gap-2">
           <Link href="/dashboard/hr/team-desk" className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50">Team Desk</Link>
           <label className="text-sm font-semibold text-stone-700" htmlFor="payroll-month">Month</label>
-          <input id="payroll-month" type="month" value={month} onChange={(event) => { setSelectedEmployeeIds(null); setMonth(event.target.value); }} className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm" />
+          <input id="payroll-month" type="month" value={month} onChange={(event) => { setCockpit(null); setSelectedEmployeeIds(null); setMonth(event.target.value); }} className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm" />
           <button onClick={() => void act("check-again")} disabled={busy || selectedEmployeeIds?.length === 0 || cockpit?.scope_conflict} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} /> Recheck payroll
           </button>
