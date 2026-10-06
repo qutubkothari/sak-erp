@@ -27,12 +27,12 @@ export function getProfileBranding(
 ): ProfileBranding {
   if (profile && profile in BRANDING) return BRANDING[profile as TenantProfile];
   return {
-    brand: 'Mizantra',
-    companyName: 'Mizantra ERP',
-    logo: '/branding/sak-solutions-mark.png',
-    icon: '/pwa-icon-192.png',
-    manifest: '/manifest-mizantra.webmanifest',
-    shortName: 'Mizantra ERP',
+    brand: 'ERP',
+    companyName: 'ERP',
+    logo: '/branding/erp-generic.svg',
+    icon: '/branding/erp-generic.svg',
+    manifest: '/manifest-generic.webmanifest',
+    shortName: 'ERP',
   };
 }
 

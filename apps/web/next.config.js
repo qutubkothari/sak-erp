@@ -1,4 +1,7 @@
 const enableStandalone = process.env.NEXT_STANDALONE === 'true';
+const tenantProfile = String(
+  process.env.NEXT_PUBLIC_ERP_TENANT_PROFILE || process.env.ERP_TENANT_PROFILE || '',
+).trim().toUpperCase();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -22,6 +25,7 @@ const nextConfig = {
   // Environment variables
   env: {
     API_URL: process.env.API_URL || 'http://localhost:4000',
+    NEXT_PUBLIC_ERP_TENANT_PROFILE: tenantProfile,
   },
 
   // Image optimization

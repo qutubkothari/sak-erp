@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Production worktrees may move HEAD only for the explicitly approved release SHA.
+[[ "${1:-}" == prepared ]] || exit 0
+
+while read -r old_sha new_sha ref_name; do
+  case "$ref_name" in
+    HEAD|refs/heads/*) ;;
+    *) continue ;;
+  esac
+
+  release_sha="$(printf '%s' "${SAK_LIVE_RELEASE_SHA:-}" | tr '[:upper:]' '[:lower:]')"
+  ticket="${SAK_LIVE_RELEASE_TICKET:-}"
+  if [[ "${SAK_LIVE_RELEASE_APPROVED:-}" != YES || -z "$ticket" || ! "$release_sha" =~ ^[0-9a-f]{40}$ || "$new_sha" != "$release_sha" ]]; then
+    printf 'PRODUCTION SOURCE MOVE BLOCKED: %s -> %s on %s requires explicit release approval, ticket, and matching SAK_LIVE_RELEASE_SHA.\n' \
+      "$old_sha" "$new_sha" "$ref_name" >&2
+    exit 1
+  fi
+done

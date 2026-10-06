@@ -8,12 +8,12 @@ import ModalEnhancer from '@/components/ModalEnhancer';
 import VersionRefreshNotice from '@/components/VersionRefreshNotice';
 import PWARegister from '@/components/PWARegister';
 import PWAStatus from '@/components/PWAStatus';
-import { getProfileBranding } from '@/lib/profile-branding';
+import { getProfileBranding, getTenantProfile } from '@/lib/profile-branding';
 import GlobalSmartSelect from '@/components/GlobalSmartSelect';
 
 const inter = Inter({ subsets: ['latin'] });
 const appBranding = getProfileBranding();
-const profile = process.env.ERP_TENANT_PROFILE || 'MIZANTRA';
+const profile = getTenantProfile() || 'ERP';
 
 export const metadata: Metadata = {
   title: `${appBranding.brand} ERP`,

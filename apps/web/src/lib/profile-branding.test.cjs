@@ -22,11 +22,17 @@ test('ARWA, MIZANTRA, and SAIFSEAS retain profile-specific names and marks', () 
   assert.deepEqual([profiles.ARWA.shellLogo, profiles.MIZANTRA.shellLogo, profiles.SAIFSEAS.shellLogo], ['/branding/arwa-logo.png', '/branding/sak-solutions-mark.png', '/branding/saif-seas-logo.png']);
   assert.deepEqual([profiles.ARWA.brand, profiles.MIZANTRA.brand, profiles.SAIFSEAS.brand], ['Arwa', 'Mizantra', 'SaifSeas']);
 });
-test('unknown profile falls back to generic Mizantra configuration, never Saif', () => {
+test('unknown profile falls back to neutral ERP branding, never another tenant', () => {
   const source = read('apps/web/src/lib/profile-branding.ts');
+  const nextConfig = read('apps/web/next.config.js');
   assert.match(source, /NEXT_PUBLIC_ERP_TENANT_PROFILE \|\| process\.env\.ERP_TENANT_PROFILE/);
-  assert.match(source, /brand: 'Mizantra'[\s\S]*?companyName: 'Mizantra ERP'/);
-  assert.doesNotMatch(source.slice(source.indexOf('return {', source.indexOf('export function getProfileBranding')), source.indexOf('\n  };', source.indexOf('export function getProfileBranding'))), /Saif/);
+  assert.match(nextConfig, /NEXT_PUBLIC_ERP_TENANT_PROFILE: tenantProfile/);
+  const fallback = source.slice(source.indexOf('return {', source.indexOf('export function getProfileBranding')), source.indexOf('\n  };', source.indexOf('export function getProfileBranding')));
+  assert.match(fallback, /brand: 'ERP'[\s\S]*?companyName: 'ERP'/);
+  assert.match(fallback, /erp-generic\.svg/);
+  assert.doesNotMatch(fallback, /Mizantra|Saif|Arwa|SAK/i);
+  assert.ok(fs.existsSync(path.join(root, 'apps/web/public/branding/erp-generic.svg')));
+  assert.ok(fs.existsSync(path.join(root, 'apps/web/public/manifest-generic.webmanifest')));
 });
 test('desktop and collapsed desktop sidebar consume the same profile logo/name provider', () => {
   assert.match(sidebar, /const appBranding = getProfileBranding\(\)/);
@@ -52,6 +58,8 @@ test('login host resolution and profile fallback use shared branding configurati
 test('metadata title, favicon, and manifest are profile aware', () => {
   assert.match(layout, /getProfileBranding/);
   assert.match(layout, /title: `\$\{appBranding\.brand\} ERP`/);
+  assert.match(layout, /const profile = getTenantProfile\(\) \|\| 'ERP'/);
+  assert.doesNotMatch(layout, /process\.env\.ERP_TENANT_PROFILE \|\| 'MIZANTRA'/);
   assert.match(layout, /manifest: appBranding\.manifest/);
   assert.match(layout, /icon: appBranding\.icon/);
   assert.match(dashboardLayout, /document\.title = `\$\{pageTitle\} \| \$\{getProfileBranding\(\)\.brand\} ERP`/);
@@ -64,15 +72,15 @@ test('each profile has a separate PWA manifest and service-worker cache identity
   assert.match(worker, /erp-shell-v8-\$\{profile\.toLowerCase\(\)\}/);
   assert.ok(fs.existsSync(path.join(root, 'apps/web/public/manifest-arwa.webmanifest')));
   assert.ok(fs.existsSync(path.join(root, 'apps/web/public/manifest-mizantra.webmanifest')));
+  assert.ok(fs.existsSync(path.join(root, 'apps/web/public/manifest-generic.webmanifest')));
 });
 test('branding changes are shared source rather than per-client forks', () => {
   assert.equal(fs.existsSync(path.join(root, 'apps/web/src/app/arwa')), false);
   assert.equal(fs.existsSync(path.join(root, 'apps/web/src/components/arwa/')), false);
 });
-test('branding-only change leaves ERP business data and AI capability configuration untouched', () => {
+test('branding and release-source safeguards do not change ERP business data or AI capability configuration', () => {
   const { execFileSync } = require('node:child_process');
   const changed = execFileSync('git', ['diff', 'HEAD^', 'HEAD', '--name-only'], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean);
   assert.ok(changed.length > 0);
-  assert.ok(changed.every((file) => file === 'tenant/profiles.json' || file.startsWith('apps/web/')));
-  assert.ok(!changed.some((file) => /migration|\.sql$|business-data|capability/i.test(file)));
+  assert.ok(!changed.some((file) => /^(apps\/api|database\/|supabase\/)|migration|\.sql$|business-data|capability/i.test(file)));
 });
