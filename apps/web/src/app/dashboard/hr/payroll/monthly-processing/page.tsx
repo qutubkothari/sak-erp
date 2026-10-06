@@ -59,8 +59,11 @@ const stageLabels: Record<string, string> = {
   SECOND_APPROVAL_REQUIRED: "Awaiting final approval", APPROVED: "Approved", PAID: "Marked paid",
 };
 
+const formatPayrollMonth = (month: string) =>
+  new Intl.DateTimeFormat("en", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
+
 function issueCopy(item: Blocker, month: string) {
-  const period = new Date(`${month}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const period = formatPayrollMonth(month);
   if (item.kind === "attendance-derived-metrics") return {
     title: "Review attendance before payroll",
     description: `${item.affected_days || "Some"} attendance day${item.affected_days === 1 ? "" : "s"} for ${item.employee_name || "this employee"} need HR review. Confirm the late and overtime rules that applied in ${period}, then recheck payroll.`,
@@ -227,7 +230,7 @@ export default function PayrollMonthlyProcessingPage() {
         <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-bold text-stone-900">{new Date(`${cockpit.month}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" })} payroll</h2>
+              <h2 className="text-xl font-bold text-stone-900">{formatPayrollMonth(cockpit.month)} payroll</h2>
               <p className="mt-1 text-sm text-stone-600">Status: {stageLabels[cockpit.stage || "OPEN"] || "Needs review"}{cockpit.last_action_at ? ` · Updated ${new Date(cockpit.last_action_at).toLocaleString()}` : ""}</p>
             </div>
             {cockpit.read_only && <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800">Preview</span>}
