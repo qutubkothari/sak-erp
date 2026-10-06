@@ -3436,6 +3436,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       return {
         date: row.date, attendance_id: row.attendance_id,
         check_in_time: row.check_in_time, check_out_time: row.check_out_time,
+        timezone: String(row.policy?.timezone || policy?.timezone || ""),
         status: row.status, hours: row.work_hours,
         late_minutes: row.late_minutes, overtime_hours: row.overtime_hours,
         late_pay_relevant: rowLatePayRelevant, overtime_pay_relevant: rowOvertimePayRelevant,
@@ -3454,6 +3455,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       ...common,
       attendance: {
         affected,
+        timezones: [...new Set(affected.map((row: any) => row.timezone).filter((timezone: string) => Boolean(timezone)))],
         actionable_days: affected.filter((row: any) => row.classification !== "NO_ACTION_REQUIRED").length,
         complete: affected.every((row: any) => row.classification === "NO_ACTION_REQUIRED"),
         policy: {

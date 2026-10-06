@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiClient } from "../../../../../lib/api-client";
+import { formatPayrollAttendanceTime } from "./payroll-attendance-time";
 
 type ReviewKind = "attendance" | "salary";
 type ReviewDay = {
   date: string; attendance_id: string | null; check_in_time: string | null; check_out_time: string | null;
+  timezone: string;
   status: string; hours: number; late_minutes: number | null; overtime_hours: number | null;
   late_pay_relevant: boolean; overtime_pay_relevant: boolean; policy_effective_on_date: boolean; policy_reference: string | null;
   payroll_impact: string; classification: "NO_ACTION_REQUIRED" | "CONFIRM_POLICY" | "CORRECT_ATTENDANCE" | "PAY_RELEVANT_REVIEW";
@@ -16,6 +18,7 @@ type ReviewContext = {
   employee: { id: string; code: string; name: string };
   attendance?: {
     affected: ReviewDay[]; actionable_days: number; complete: boolean;
+    timezones: string[];
     policy: { gap_from: string | null; gap_to: string | null; effective_from: string | null; reference: string; late_pay_relevant: boolean; overtime_pay_relevant: boolean };
     policy_templates: Array<{ id: string; label: string; policy: Record<string, any> }>;
   };
@@ -27,7 +30,6 @@ type ReviewContext = {
 
 const formatMonth = (month: string) => new Intl.DateTimeFormat("en", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
 const formatDate = (date: string | null) => date ? new Intl.DateTimeFormat("en", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${date.slice(0, 10)}T00:00:00Z`)) : "Not recorded";
-const formatTime = (value: string | null) => value ? (/T\d{2}:\d{2}/.exec(value)?.[0].slice(1) || /\d{2}:\d{2}/.exec(value)?.[0] || value) : "Not recorded";
 const statusLabel: Record<ReviewDay["classification"], string> = {
   NO_ACTION_REQUIRED: "No action needed", CONFIRM_POLICY: "Confirm policy",
   CORRECT_ATTENDANCE: "Correct attendance", PAY_RELEVANT_REVIEW: "Review pay effect",
@@ -189,12 +191,12 @@ export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
         <button type="submit" disabled={saving || !sourcePolicyId} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : "Confirm Historical Policy"}</button>
       </form>}
       <section className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
-        <div className="border-b border-stone-100 p-5"><h2 className="font-bold text-stone-900">Affected dates</h2></div>
+        <div className="border-b border-stone-100 p-5"><h2 className="font-bold text-stone-900">Affected dates</h2><p className="mt-1 text-xs text-stone-600">Times shown in: {review.attendance.timezones.join(", ") || "business timezone"}</p></div>
         {review.attendance.affected.length === 0 ? <p className="p-5 text-sm text-stone-600">No affected attendance dates remain.</p> : <table className="min-w-[1050px] w-full text-left text-sm">
           <thead className="bg-stone-50 text-xs uppercase text-stone-600"><tr>{["Date", "Check in", "Check out", "Status", "Hours", "Late", "Overtime", "Policy on date", "Payroll impact", "Review status"].map(label => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead>
           <tbody className="divide-y divide-stone-100">{review.attendance.affected.map(day => <tr key={day.date}>
             <td className="px-3 py-3 font-semibold">{formatDate(day.date)}{day.attendance_id && <Link href={managementHref("attendance", day.date, day.attendance_id)} className="mt-1 block text-xs text-blue-700 hover:underline">Open record</Link>}</td>
-            <td className="px-3 py-3">{formatTime(day.check_in_time)}</td><td className="px-3 py-3">{formatTime(day.check_out_time)}</td>
+            <td className="px-3 py-3">{formatPayrollAttendanceTime(day.check_in_time, day.timezone)}</td><td className="px-3 py-3">{formatPayrollAttendanceTime(day.check_out_time, day.timezone)}</td>
             <td className="px-3 py-3">{day.status.replace(/_/g, " ")}</td><td className="px-3 py-3">{day.hours}</td>
             <td className="px-3 py-3">{day.late_minutes === null ? (day.late_pay_relevant ? "Needs policy" : "Not needed for pay") : `${day.late_minutes} min`}<span className="block text-xs text-stone-500">Pay relevant: {day.late_pay_relevant ? "Yes" : "No"}</span></td>
             <td className="px-3 py-3">{day.overtime_hours === null ? (day.overtime_pay_relevant ? "Needs policy" : "Not needed for pay") : `${day.overtime_hours} hr`}<span className="block text-xs text-stone-500">Pay relevant: {day.overtime_pay_relevant ? "Yes" : "No"}</span></td>

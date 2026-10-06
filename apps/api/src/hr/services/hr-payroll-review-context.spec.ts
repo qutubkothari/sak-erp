@@ -17,7 +17,7 @@ function setup() {
   service.payrollControl = jest.fn().mockResolvedValue({ id: batchId, resolution_snapshot: { employee_ids: [employeeId] } });
   service.getSalaryComponents = jest.fn().mockResolvedValue([]);
   service.attendanceControl = { getPolicyTemplates: jest.fn().mockResolvedValue([{ id: "current-policy", label: "Current policy from 2026-09-19", policy: { timezone: "Asia/Kolkata" } }]), buildRegister: jest.fn().mockResolvedValue({
-    policy: { effective_from: "2026-09-19", late_deduction_mode: "NONE", overtime_enabled: true },
+    policy: { effective_from: "2026-09-19", timezone: "Asia/Kolkata", late_deduction_mode: "NONE", overtime_enabled: true },
     daily: [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 15, 16, 17, 18].map((day, index) => ({
       employee_id: employeeId, date: `2026-09-${String(day).padStart(2, "0")}`,
       attendance_id: `attendance-${index + 1}`, check_in_time: "09:35", check_out_time: "20:55",
@@ -37,6 +37,18 @@ const open = (service: any, kind: "attendance" | "salary" = "attendance", overri
   );
 
 describe("payroll review context", () => {
+  it("preserves elapsed work-hour calculation parity for Padma's raw punches", () => {
+    const service: any = Object.create(HrService.prototype);
+    expect(service.workHoursFromPunches([
+      { punch_type: "IN", punch_at: "2026-09-01T03:18:02.507+00:00" },
+      { punch_type: "OUT", punch_at: "2026-09-01T12:44:03.222+00:00" },
+    ])).toBe(9.43);
+    expect(service.workHoursFromPunches([
+      { punch_type: "IN", punch_at: "2026-09-17T03:57:41.469+00:00" },
+      { punch_type: "OUT", punch_at: "2026-09-17T12:43:58.464+00:00" },
+    ])).toBe(8.77);
+  });
+
   it("links Review attendance to Padma's focused September review", () => {
     const href = payrollReviewHref({ month: "2026-09", control: { id: batchId } }, { key: `attendance-derived-metrics:${employeeId}`, entity_id: employeeId, employee_code: "SAS-10075" });
     const url = new URL(href, "https://mizantra.saksolution.com");
@@ -73,6 +85,28 @@ describe("payroll review context", () => {
     expect(review.attendance.policy).toMatchObject({ gap_from: "2026-09-01", gap_to: "2026-09-18", effective_from: "2026-09-19", late_pay_relevant: false, overtime_pay_relevant: true });
     expect(review.attendance.affected[0]).toMatchObject({ late_minutes: null, overtime_hours: null, classification: "CONFIRM_POLICY", policy_effective_on_date: false });
     expect(review.attendance.complete).toBe(false);
+  });
+
+  it("passes raw punches, attendance date, policy timezone, and unresolved metrics through unchanged", async () => {
+    const { service } = setup();
+    service.attendanceControl.buildRegister.mockResolvedValue({
+      policy: { effective_from: "2026-09-19", timezone: "Asia/Kolkata", late_deduction_mode: "NONE", overtime_enabled: true },
+      daily: [{
+        employee_id: employeeId, date: "2026-09-01", attendance_id: "padma-sep-1",
+        check_in_time: "2026-09-01T03:18:02.507+00:00", check_out_time: "2026-09-01T12:44:03.222+00:00",
+        status: "PRESENT", work_hours: 9.43, late_minutes: null, overtime_hours: null,
+        derived_metrics_status: "HISTORICAL_POLICY_UNAVAILABLE", policy_resolution_status: "POLICY_FOR_DATE_NOT_FOUND",
+        approval_status: "NOT_REQUIRED",
+      }],
+    });
+    const review = await open(service);
+    expect(review.attendance.timezones).toEqual(["Asia/Kolkata"]);
+    expect(review.attendance.affected[0]).toMatchObject({
+      date: "2026-09-01", timezone: "Asia/Kolkata",
+      check_in_time: "2026-09-01T03:18:02.507+00:00", check_out_time: "2026-09-01T12:44:03.222+00:00",
+      hours: 9.43, late_minutes: null, overtime_hours: null,
+      policy_effective_on_date: false, classification: "CONFIRM_POLICY",
+    });
   });
 
   it("marks attendance review complete once no pay-relevant dates remain", async () => {
