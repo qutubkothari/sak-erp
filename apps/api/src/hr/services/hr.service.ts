@@ -3615,13 +3615,117 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (error) throw new Error(error.message);
     return result;
   }
-  async getPayrollRuns(tenantId: string) {
-    const { data, error } = await this.supabase
+  async getPayrollRuns(tenantId: string, query: Record<string, unknown> = {}) {
+    const requestedPage = Number(query.page);
+    const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const requestedLimit = Math.floor(Number(query.limit) || 25);
+    const limit = [10, 25, 50, 100].includes(requestedLimit) ? requestedLimit : 25;
+    const search = String(query.search || "").trim().slice(0, 100);
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(query.month || ""))
+      ? String(query.month)
+      : "";
+    const status = ["PENDING", "COMPLETED", "APPROVED", "REJECTED", "LOCKED"].includes(
+      String(query.status || "").toUpperCase(),
+    )
+      ? String(query.status).toUpperCase()
+      : "";
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(String(query.from || ""))
+      ? String(query.from)
+      : "";
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(String(query.to || ""))
+      ? String(query.to)
+      : "";
+    const sortBy = ["run_date", "payroll_month", "status"].includes(
+      String(query.sortBy || ""),
+    )
+      ? String(query.sortBy)
+      : "run_date";
+    const sortDirection = String(query.sortDirection || "").toLowerCase() === "asc";
+
+    let matchingCreatorIds: string[] = [];
+    let matchingRunIds: string[] | null = null;
+    if (search) {
+      const escaped = search.replace(/[\\%_(),]/g, "\\$&");
+      const { data: creators, error: creatorError } = await this.supabase
+        .from("users")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .or(`first_name.ilike.%${escaped}%,last_name.ilike.%${escaped}%,username.ilike.%${escaped}%,email.ilike.%${escaped}%`);
+      if (creatorError) throw new Error(creatorError.message);
+      matchingCreatorIds = (creators || []).map((creator: any) => creator.id);
+
+      const referenceSearch = /^RUN[-\s]/i.test(search) || (/^[0-9a-f-]+$/i.test(search) && search.replace(/-/g, "").length >= 8);
+      if (referenceSearch) {
+        const referencePrefix = search.replace(/^RUN[-\s]*/i, "").replace(/-/g, "").toLowerCase();
+        matchingRunIds = [];
+        if (referencePrefix) {
+          const tenantRunIds: string[] = [];
+          for (let offset = 0; ; offset += 1000) {
+            const { data: runIds, error: runIdsError } = await this.supabase
+              .from("payroll_runs")
+              .select("id")
+              .eq("tenant_id", tenantId)
+              .range(offset, offset + 999);
+            if (runIdsError) throw new Error(runIdsError.message);
+            tenantRunIds.push(...(runIds || []).map((run: any) => String(run.id)));
+            if ((runIds || []).length < 1000) break;
+          }
+          matchingRunIds = tenantRunIds.filter((id) => id.replace(/-/g, "").toLowerCase().startsWith(referencePrefix));
+        }
+      }
+    }
+
+    let request = this.supabase
       .from("payroll_runs")
-      .select("*")
+      .select("id,tenant_id,payroll_month,run_date,status,remarks,created_by,created_at", { count: "exact" })
       .eq("tenant_id", tenantId);
+    if (month) request = request.eq("payroll_month", month);
+    if (status) request = request.eq("status", status);
+    if (from) request = request.gte("run_date", from);
+    if (to) request = request.lte("run_date", to);
+    if (search) {
+      const escaped = search.replace(/[\\%_(),]/g, "\\$&");
+      const alternatives = [
+        `payroll_month.ilike.%${escaped}%`,
+        `remarks.ilike.%${escaped}%`,
+      ];
+      if (matchingRunIds?.length) alternatives.push(`id.in.(${matchingRunIds.join(",")})`);
+      if (matchingCreatorIds.length) {
+        alternatives.push(`created_by.in.(${matchingCreatorIds.join(",")})`);
+      }
+      request = request.or(alternatives.join(","));
+    }
+    request = request.order(sortBy, { ascending: sortDirection });
+    request = request.order(sortBy === "payroll_month" ? "run_date" : "payroll_month", { ascending: false });
+    request = request.order("created_at", { ascending: false });
+    const offset = (page - 1) * limit;
+    const { data, error, count } = await request.range(offset, offset + limit - 1);
     if (error) throw new Error(error.message);
-    return data || [];
+
+    const creatorIds = [...new Set((data || []).map((run: any) => run.created_by).filter(Boolean))];
+    const { data: creators, error: namesError } = creatorIds.length
+      ? await this.supabase
+          .from("users")
+          .select("id,first_name,last_name,username,email")
+          .eq("tenant_id", tenantId)
+          .in("id", creatorIds)
+      : { data: [], error: null };
+    if (namesError) throw new Error(namesError.message);
+    const namesById = new Map(
+      (creators || []).map((creator: any) => [
+        creator.id,
+        [creator.first_name, creator.last_name].filter(Boolean).join(" ") || creator.username || creator.email || "Unknown",
+      ]),
+    );
+    return {
+      data: (data || []).map((run: any) => ({
+        ...run,
+        created_by_name: run.created_by ? namesById.get(run.created_by) || "Unknown" : "-",
+      })),
+      total: count || 0,
+      page,
+      limit,
+    };
   }
 
   // Payslip Generation

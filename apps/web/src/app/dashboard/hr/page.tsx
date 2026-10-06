@@ -335,7 +335,13 @@ interface PayrollRun {
   run_date: string;
   status: string;
   remarks?: string;
+  created_by?: string | null;
+  created_by_name?: string;
+  created_at?: string;
 }
+
+const PAYROLL_RUN_STATUSES = ["PENDING", "COMPLETED", "APPROVED", "REJECTED", "LOCKED"] as const;
+type PayrollRunSortKey = "run_date" | "payroll_month" | "status";
 
 interface EmployeeDocument {
   id: string;
@@ -1574,10 +1580,45 @@ function HrPageContent() {
   const [salaryComponentPage, setSalaryComponentPage] = useState(1);
   const [expandedSalaryEmployeeId, setExpandedSalaryEmployeeId] = useState<string | null>(null);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
+  const [payrollRunTotal, setPayrollRunTotal] = useState(0);
+  const [payrollRunSearch, setPayrollRunSearch] = useState(() => searchParams.get("runSearch") || "");
+  const [payrollRunMonth, setPayrollRunMonth] = useState(() => searchParams.get("runMonth") || "");
+  const [payrollRunStatus, setPayrollRunStatus] = useState(() => searchParams.get("runStatus") || "");
+  const [payrollRunFrom, setPayrollRunFrom] = useState(() => searchParams.get("runFrom") || "");
+  const [payrollRunTo, setPayrollRunTo] = useState(() => searchParams.get("runTo") || "");
+  const [payrollRunPage, setPayrollRunPage] = useState(() => Math.max(1, Number(searchParams.get("runPage")) || 1));
+  const [payrollRunLimit, setPayrollRunLimit] = useState(() => [10, 25, 50, 100].includes(Number(searchParams.get("runLimit"))) ? Number(searchParams.get("runLimit")) : 25);
+  const [payrollRunSort, setPayrollRunSort] = useState<PayrollRunSortKey>(() => (["run_date", "payroll_month", "status"].includes(searchParams.get("runSort") || "") ? searchParams.get("runSort") as PayrollRunSortKey : "run_date"));
+  const [payrollRunSortDirection, setPayrollRunSortDirection] = useState<"asc" | "desc">(() => searchParams.get("runDirection") === "asc" ? "asc" : "desc");
   const [monthlyPayrolls, setMonthlyPayrolls] = useState<MonthlyPayroll[]>([]);
   const [payrollSubTab, setPayrollSubTab] = useState<
     "salary" | "runs" | "payslips" | "monthly"
   >("salary");
+  const updatePayrollRunFilters = (update: () => void) => {
+    update();
+    setPayrollRunPage(1);
+  };
+  const togglePayrollRunSort = (key: PayrollRunSortKey) => {
+    setPayrollRunPage(1);
+    if (payrollRunSort === key) {
+      setPayrollRunSortDirection((direction) => direction === "asc" ? "desc" : "asc");
+    } else {
+      setPayrollRunSort(key);
+      setPayrollRunSortDirection("asc");
+    }
+  };
+  const clearPayrollRunFilters = () => {
+    setPayrollRunSearch("");
+    setPayrollRunMonth("");
+    setPayrollRunStatus("");
+    setPayrollRunFrom("");
+    setPayrollRunTo("");
+    setPayrollRunPage(1);
+    setPayrollRunLimit(25);
+    setPayrollRunSort("run_date");
+    setPayrollRunSortDirection("desc");
+  };
+  const payrollRunHasFilters = Boolean(payrollRunSearch || payrollRunMonth || payrollRunStatus || payrollRunFrom || payrollRunTo);
 
   // Payroll modals
   const [showSalaryForm, setShowSalaryForm] = useState(false);
@@ -2286,7 +2327,38 @@ function HrPageContent() {
     attendanceFromDate,
     attendanceToDate,
     attendanceEmployeeFilter,
+    payrollRunSearch,
+    payrollRunMonth,
+    payrollRunStatus,
+    payrollRunFrom,
+    payrollRunTo,
+    payrollRunPage,
+    payrollRunLimit,
+    payrollRunSort,
+    payrollRunSortDirection,
   ]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const values: Record<string, string> = {
+      runSearch: payrollRunSearch,
+      runMonth: payrollRunMonth,
+      runStatus: payrollRunStatus,
+      runFrom: payrollRunFrom,
+      runTo: payrollRunTo,
+      runPage: String(payrollRunPage),
+      runLimit: String(payrollRunLimit),
+      runSort: payrollRunSort,
+      runDirection: payrollRunSortDirection,
+    };
+    for (const [key, value] of Object.entries(values)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    if (params.toString() !== searchParams.toString()) {
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [payrollRunSearch, payrollRunMonth, payrollRunStatus, payrollRunFrom, payrollRunTo, payrollRunPage, payrollRunLimit, payrollRunSort, payrollRunSortDirection, searchParams, pathname, router]);
 
   useEffect(() => {
     const token =
@@ -2676,6 +2748,7 @@ function HrPageContent() {
         const allEmployees = Array.isArray(empData)
           ? empData
           : empData.data || [];
+        setEmployees(allEmployees);
 
         if (payrollSubTab === "salary") {
           const salaryData = await apiClient.get<any>("/hr/salary-components");
@@ -2692,10 +2765,20 @@ function HrPageContent() {
             })),
           );
         } else if (payrollSubTab === "runs") {
-          const runsData = await apiClient.get<any>("/hr/payroll/runs");
-          setPayrollRuns(
-            Array.isArray(runsData) ? runsData : runsData.data || [],
-          );
+          const query = new URLSearchParams({
+            page: String(payrollRunPage),
+            limit: String(payrollRunLimit),
+            sortBy: payrollRunSort,
+            sortDirection: payrollRunSortDirection,
+          });
+          if (payrollRunSearch.trim()) query.set("search", payrollRunSearch.trim());
+          if (payrollRunMonth) query.set("month", payrollRunMonth);
+          if (payrollRunStatus) query.set("status", payrollRunStatus);
+          if (payrollRunFrom) query.set("from", payrollRunFrom);
+          if (payrollRunTo) query.set("to", payrollRunTo);
+          const runsData = await apiClient.get<any>(`/hr/payroll/runs?${query.toString()}`);
+          setPayrollRuns(Array.isArray(runsData) ? runsData : runsData.data || []);
+          setPayrollRunTotal(Array.isArray(runsData) ? runsData.length : Number(runsData.total || 0));
         } else if (payrollSubTab === "payslips") {
           const slipsData = await apiClient.get<any>("/hr/payroll/payslips");
           const slips = Array.isArray(slipsData)
@@ -10133,20 +10216,31 @@ function HrPageContent() {
                     </button>
                   )}
                 </div>
+                <div className="mb-4 rounded-2xl border border-[#E8DCC4] bg-white p-4 shadow-sm">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+                    <label className="min-w-0 text-xs font-semibold text-[#6F5A49] sm:col-span-2 xl:col-span-2">Search<input value={payrollRunSearch} onChange={(event) => updatePayrollRunFilters(() => setPayrollRunSearch(event.target.value))} placeholder="Month, remarks, run reference, creator" className="mt-1 min-h-10 w-full rounded-lg border border-[#DCCDB5] px-3 text-sm font-normal text-[#2F1B12]" /></label>
+                    <label className="min-w-0 text-xs font-semibold text-[#6F5A49]">Month<input type="month" value={payrollRunMonth} onChange={(event) => updatePayrollRunFilters(() => setPayrollRunMonth(event.target.value))} className="mt-1 min-h-10 w-full rounded-lg border border-[#DCCDB5] px-3 text-sm font-normal text-[#2F1B12]" /></label>
+                    <label className="min-w-0 text-xs font-semibold text-[#6F5A49]">Status<select value={payrollRunStatus} onChange={(event) => updatePayrollRunFilters(() => setPayrollRunStatus(event.target.value))} className="mt-1 min-h-10 w-full rounded-lg border border-[#DCCDB5] bg-white px-3 text-sm font-normal text-[#2F1B12]"><option value="">All statuses</option>{PAYROLL_RUN_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+                    <label className="min-w-0 text-xs font-semibold text-[#6F5A49]">Run date from<input type="date" value={payrollRunFrom} onChange={(event) => updatePayrollRunFilters(() => setPayrollRunFrom(event.target.value))} className="mt-1 min-h-10 w-full rounded-lg border border-[#DCCDB5] px-3 text-sm font-normal text-[#2F1B12]" /></label>
+                    <label className="min-w-0 text-xs font-semibold text-[#6F5A49]">Run date to<input type="date" value={payrollRunTo} onChange={(event) => updatePayrollRunFilters(() => setPayrollRunTo(event.target.value))} className="mt-1 min-h-10 w-full rounded-lg border border-[#DCCDB5] px-3 text-sm font-normal text-[#2F1B12]" /></label>
+                    <div className="flex items-end"><button type="button" onClick={clearPayrollRunFilters} className="min-h-10 w-full rounded-lg border border-[#DCCDB5] px-3 text-sm font-semibold text-[#6F4E37] hover:bg-[#FAF9F6]">Clear filters</button></div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[#4A3426]">{payrollRunTotal} {payrollRunTotal === 1 ? "run" : "runs"}</p>
+                    <label className="flex items-center gap-2 text-sm text-[#6F5A49]">Rows per page<select value={payrollRunLimit} onChange={(event) => updatePayrollRunFilters(() => setPayrollRunLimit(Number(event.target.value)))} className="min-h-9 rounded-lg border border-[#DCCDB5] bg-white px-2 text-sm text-[#2F1B12]">{[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
+                  </div>
+                </div>
                 <div className="overflow-hidden rounded-2xl border border-[#E8DCC4] bg-white shadow-sm">
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-[#E8DCC4]">
                       <thead className="bg-[#F7F3EA]">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
-                            Month
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
-                            Run Date
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
-                            Status
-                          </th>
+                          {([["payroll_month", "Month"], ["run_date", "Run Date"], ["status", "Status"]] as [PayrollRunSortKey, string][]).map(([key, label]) => (
+                            <th key={key} aria-sort={payrollRunSort === key ? payrollRunSortDirection === "asc" ? "ascending" : "descending" : "none"} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]"><button type="button" onClick={() => togglePayrollRunSort(key)} className="inline-flex items-center gap-1 hover:text-[#2F1B12]">{label}<span aria-hidden="true">{payrollRunSort === key ? payrollRunSortDirection.toUpperCase() : "SORT"}</span></button></th>
+                          ))}
+                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">Run Reference</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">Created By</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">Created At</th>
                           <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
                             Remarks
                           </th>
@@ -10159,10 +10253,10 @@ function HrPageContent() {
                         {payrollRuns.length === 0 && (
                           <tr>
                             <td
-                              colSpan={5}
+                              colSpan={8}
                               className="px-6 py-10 text-center text-sm text-[#7A6555]"
                             >
-                              No payroll runs created yet.
+                              {payrollRunTotal === 0 && !payrollRunHasFilters ? "No payroll runs yet." : "No payroll runs match these filters."}
                             </td>
                           </tr>
                         )}
@@ -10183,6 +10277,9 @@ function HrPageContent() {
                                 {run.status}
                               </span>
                             </td>
+                            <td className="whitespace-nowrap px-6 py-4 font-mono text-xs font-semibold text-[#4A3426]">RUN-{run.id.replace(/-/g, "").slice(0, 10).toUpperCase()}</td>
+                            <td className="whitespace-nowrap px-6 py-4 text-sm text-[#6F5A49]">{run.created_by_name || "-"}</td>
+                            <td className="whitespace-nowrap px-6 py-4 text-sm text-[#6F5A49]">{run.created_at ? new Date(run.created_at).toLocaleString("en-IN") : "-"}</td>
                             <td className="px-6 py-4 text-sm text-[#6F5A49]">
                               {run.remarks || "-"}
                             </td>
@@ -10201,6 +10298,13 @@ function HrPageContent() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E8DCC4] px-4 py-3">
+                    <p className="text-sm text-[#6F5A49]">Page {payrollRunPage} of {Math.max(1, Math.ceil(payrollRunTotal / payrollRunLimit))}</p>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setPayrollRunPage((page) => Math.max(1, page - 1))} disabled={payrollRunPage <= 1} className="min-h-9 rounded-lg border border-[#DCCDB5] px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+                      <button type="button" onClick={() => setPayrollRunPage((page) => Math.min(Math.max(1, Math.ceil(payrollRunTotal / payrollRunLimit)), page + 1))} disabled={payrollRunPage >= Math.max(1, Math.ceil(payrollRunTotal / payrollRunLimit))} className="min-h-9 rounded-lg border border-[#DCCDB5] px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+                    </div>
                   </div>
                 </div>
               </>
