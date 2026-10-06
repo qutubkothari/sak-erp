@@ -497,8 +497,8 @@ export class HrController {
     );
   }
   @Get("payroll/runs")
-  getPayrollRuns(@Request() req: any) {
-    return this.hrService.getPayrollRuns(req.user.tenantId);
+  getPayrollRuns(@Request() req: any, @Query() query: any) {
+    return this.hrService.getPayrollRuns(req.user.tenantId, query);
   }
 
   @Get("payroll/control/features")
