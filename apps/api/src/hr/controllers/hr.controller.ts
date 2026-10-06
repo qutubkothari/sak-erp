@@ -35,6 +35,23 @@ import { HrHistoricalAttendanceImportService } from "../services/hr-historical-a
 
 // Payroll evidence and database snapshots stay in the audit record. The
 // employee-facing page receives only the fields needed to explain next steps.
+export function payrollReviewHref(cockpit: any, item: any) {
+  const kind = String(item.key || "").split(":")[0];
+  const mode = kind.startsWith("salary-") ? "salary" : kind.startsWith("attendance") ? "attendance" : null;
+  const employee = String(item.employee_code || item.entity_id || "");
+  const month = String(cockpit.month || "");
+  const batch = String(cockpit.control?.id || "");
+  if (!mode || !employee || !batch || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return item.fix_href;
+  const [year, monthNumber] = month.split("-").map(Number);
+  const to = new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+  const query = new URLSearchParams({
+    employee, month, batch, from: `${month}-01`, to,
+    review_mode: mode === "attendance" ? "PAYROLL_ATTENDANCE_REVIEW" : "PAYROLL_SALARY_REVIEW",
+    origin: "/dashboard/hr/payroll/monthly-processing",
+  });
+  return `${mode === "attendance" ? "/dashboard/hr/attendance/payroll-review" : "/dashboard/hr/payroll/salary-review"}?${query.toString()}`;
+}
+
 function payrollMonthClientView(cockpit: any) {
   return {
     enabled: cockpit.enabled, month: cockpit.month, employee_ids: cockpit.employee_ids,
@@ -43,8 +60,9 @@ function payrollMonthClientView(cockpit: any) {
     blockers: (cockpit.blockers || []).map((item: any, index: number) => ({
       key: `${String(item.key || "issue").split(":")[0]}-${index}`,
       kind: String(item.key || "issue").split(":")[0],
+      employee_id: item.entity_id,
       employee_name: item.employee_name,
-      fix_href: item.fix_href, severity: item.severity,
+      fix_href: payrollReviewHref(cockpit, item), severity: item.severity,
       affected_days: String(item.key || "").startsWith("attendance-derived-metrics:")
         ? Number(item.evidence?.unresolved_days || 0) : undefined,
     })),
@@ -641,6 +659,21 @@ export class HrController {
   @RequireRead("hr")
   async getPayrollMonthCockpit(@Request() req: any, @Param("month") month: string, @Query("employee_ids") employeeIds?: string) {
     return payrollMonthClientView(await this.hrService.getPayrollMonthCockpit(req.user.tenantId, month, employeeIds === undefined ? undefined : employeeIds.split(",")));
+  }
+
+  @Get("payroll/control/month/:month/review")
+  @RequireRead("hr")
+  getPayrollReviewContext(
+    @Request() req: any,
+    @Param("month") month: string,
+    @Query("employee") employee: string,
+    @Query("batch") batch: string,
+    @Query("kind") kind: string,
+    @Query("from") from: string,
+    @Query("to") to: string,
+    @Query("review_mode") reviewMode: string,
+  ) {
+    return this.hrService.getPayrollReviewContext(req.user.tenantId, month, employee, batch, kind, from, to, reviewMode);
   }
 
   @Put("payroll/control/maker-checker")

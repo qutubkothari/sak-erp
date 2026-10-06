@@ -195,8 +195,8 @@ const validateAttendanceCoordinates = (data: {
 const monthToRange = (month: string) => {
   // month: YYYY-MM
   const [y, m] = month.split("-").map((x) => parseInt(x, 10));
-  const start = new Date(y, m - 1, 1);
-  const end = new Date(y, m, 0);
+  const start = new Date(Date.UTC(y, m - 1, 1));
+  const end = new Date(Date.UTC(y, m, 0));
   const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
   return { start: toIsoDate(start), end: toIsoDate(end) };
 };
@@ -3126,6 +3126,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       !selectedIds || selectedIds.has(String(row.employee_id)),
     );
     const employeeNames = new Map((employees || []).map((employee: any) => [String(employee.id), employee.employee_name || employee.employee_code || "Employee"]));
+    const employeeCodes = new Map((employees || []).map((employee: any) => [String(employee.id), String(employee.employee_code || "")]));
     const conflictingPeriods = findOverlappingEffectivePeriods(salaryRows).filter(({ first, second }) =>
       monthContainsEffectiveDate(first.effective_from, first.effective_to, month) && monthContainsEffectiveDate(second.effective_from, second.effective_to, month),
     );
@@ -3134,6 +3135,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         key: `salary-overlap:${first.id}:${second.id}`,
         entity_id: String(first.employee_id),
         employee_name: employeeNames.get(String(first.employee_id)) || "Employee",
+        employee_code: employeeCodes.get(String(first.employee_id)) || "",
         reason: `Overlapping effective salary periods exist for ${first.component_name || first.component_type}.`,
         responsible: "HR",
         fix_href: "/dashboard/hr/management?section=management&tab=payroll",
@@ -3146,6 +3148,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         key: `salary-negative:${row.id}`,
         entity_id: String(row.employee_id),
         employee_name: employeeNames.get(String(row.employee_id)) || "Employee",
+        employee_code: employeeCodes.get(String(row.employee_id)) || "",
         reason: `Salary component ${row.component_name || row.component_type} has a negative amount.`,
         responsible: "HR / Payroll",
         fix_href: "/dashboard/hr/management?section=management&tab=payroll",
@@ -3159,7 +3162,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       const resolved = resolveSalaryComponentsAtDate(salaryRows.filter((row: any) => String(row.employee_id) === String(employee.id)), monthEnd);
       if (resolved.some((row: any) => ["BASIC", "HRA", "ALLOWANCE", "BONUS"].includes(String(row.component_type).toUpperCase()) && Number(row.amount) > 0)) salaryByEmployee.add(String(employee.id));
       if (resolved.some((row: any) => !row.effective_from)) blockers.push({
-        key: `salary-legacy-date:${employee.id}`, entity_id: String(employee.id), employee_name: employee.employee_name || employee.employee_code || "Employee",
+        key: `salary-legacy-date:${employee.id}`, entity_id: String(employee.id), employee_name: employee.employee_name || employee.employee_code || "Employee", employee_code: employee.employee_code || "",
         reason: "A salary component has an unknown legacy effective start date; the current resolver retains it as fallback evidence.",
         responsible: "HR / Payroll", fix_href: "/dashboard/hr/management?section=management&tab=payroll",
         evidence: { component_ids: resolved.filter((row: any) => !row.effective_from).map((row: any) => row.id), payroll_effective_date: monthEnd }, severity: "WARNING",
@@ -3171,6 +3174,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         key: `salary-missing:${employee.id}`,
         entity_id: String(employee.id),
         employee_name: employee.employee_name || employee.employee_code || "Employee",
+        employee_code: employee.employee_code || "",
         reason: "No salary component is configured for this month.",
         responsible: "HR",
         fix_href: "/dashboard/hr/management?section=management&tab=payroll",
@@ -3192,6 +3196,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           key: `attendance:${row.id}`,
           entity_id: String(row.employee_id || row.id),
           employee_name: employeeNames.get(String(row.employee_id)) || "Employee",
+          employee_code: employeeCodes.get(String(row.employee_id)) || "",
           reason: state === "PENDING" ? "Attendance correction is awaiting review." : "Attendance correction was rejected and needs resolution.",
           responsible: "Attendance reviewer",
           fix_href: "/dashboard/hr/management?section=management&tab=attendance",
@@ -3212,6 +3217,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         key: `attendance-derived-metrics:${employee.id}`,
         entity_id: String(employee.id),
         employee_name: employee.employee_name || employee.employee_code || "Employee",
+        employee_code: employee.employee_code || "",
         reason: "Historical late or overtime metrics are unverified and could affect this employee's pay. Review the attendance policy for this payroll period.",
         responsible: "HR / Payroll",
         fix_href: "/dashboard/hr/management?section=management&tab=attendance",
@@ -3354,6 +3360,106 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .eq("tenant_id", tenantId).eq("payroll_month", month).order("version", { ascending: false }).limit(1).maybeSingle();
     if (error) throw new ConflictException(error.message);
     return data;
+  }
+
+  async getPayrollReviewContext(
+    tenantId: string,
+    month: string,
+    employeeRef: string,
+    batchId: string,
+    kind: string,
+    from: string,
+    to: string,
+    reviewMode: string,
+  ) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequestException("Choose a valid payroll month.");
+    const range = monthToRange(month);
+    if (from !== range.start || to !== range.end) throw new BadRequestException("Review dates must match the payroll month.");
+    if (!(["attendance", "salary"].includes(kind)) || reviewMode !== `PAYROLL_${kind.toUpperCase()}_REVIEW`) {
+      throw new BadRequestException("Choose a valid payroll review.");
+    }
+    if (!employeeRef || !batchId) throw new BadRequestException("Employee and payroll batch are required.");
+    const control = await this.payrollControl(tenantId, month);
+    if (!control || String(control.id) !== batchId) throw new NotFoundException("This payroll batch is no longer available. Return to payroll and reopen the review.");
+    const employeeQuery = this.supabase.from("employees").select("id,employee_code,employee_name,overtime_eligible,status")
+      .eq("tenant_id", tenantId)
+      .eq(/^[0-9a-f-]{36}$/i.test(employeeRef) ? "id" : "employee_code", employeeRef);
+    const { data: employee, error: employeeError } = await employeeQuery.maybeSingle();
+    if (employeeError) throw new ConflictException(employeeError.message);
+    if (!employee) throw new NotFoundException("Employee not found in this tenant.");
+    const scope = this.payrollScopeEmployeeIds(control);
+    if (scope && !scope.includes(String(employee.id))) throw new NotFoundException("Employee is not in this payroll batch.");
+    const returnQuery = new URLSearchParams({ month, employee: String(employee.id), batch: String(control.id) });
+    const common = {
+      kind, month, from, to, batch_id: String(control.id),
+      review_mode: reviewMode,
+      origin_route: "/dashboard/hr/payroll/monthly-processing",
+      return_href: `/dashboard/hr/payroll/monthly-processing?${returnQuery.toString()}`,
+      employee: { id: String(employee.id), code: String(employee.employee_code || ""), name: String(employee.employee_name || employee.employee_code || "Employee") },
+    };
+    if (kind === "salary") {
+      const components = await this.getSalaryComponents(tenantId, String(employee.id));
+      const effectiveRows = resolveSalaryComponentsAtDate(components, range.end);
+      const legacyRows = effectiveRows.filter((row: any) => !row.effective_from);
+      return {
+        ...common,
+        salary: {
+          legacy_warning: legacyRows.length > 0,
+          ctc: effectiveRows.find((row: any) => String(row.component_type).toUpperCase() === "CTC")?.amount ?? null,
+          components: components.map((row: any) => ({
+            id: String(row.id), type: String(row.component_type || ""), name: String(row.component_name || ""),
+            amount: Number(row.amount || 0), effective_from: row.effective_from || null,
+            effective_to: row.effective_to || null, ctc_revised_date: row.ctc_revised_date || null,
+            needs_start_date: legacyRows.some((legacy: any) => String(legacy.id) === String(row.id)),
+          })),
+        },
+      };
+    }
+    const register = await this.attendanceControl.buildRegister(tenantId, range.start, range.end, String(employee.id));
+    const policy = register.policy;
+    const latePayRelevant = Boolean(policy && policy.late_deduction_mode !== "NONE");
+    const overtimePayRelevant = Boolean(policy?.overtime_enabled && employee.overtime_eligible !== false);
+    const affected = register.daily.filter((row: any) =>
+      String(row.employee_id) === String(employee.id) &&
+      (row.derived_metrics_status || ["PENDING", "REJECTED"].includes(String(row.approval_status || "").toUpperCase())),
+    ).map((row: any) => {
+      const approvalNeedsCorrection = ["PENDING", "REJECTED"].includes(String(row.approval_status || "").toUpperCase());
+      const payRelevant = Boolean(row.derived_metrics_status && (latePayRelevant || overtimePayRelevant));
+      const classification = approvalNeedsCorrection ? "CORRECT_ATTENDANCE"
+        : !payRelevant ? "NO_ACTION_REQUIRED"
+          : row.policy_resolution_status === "POLICY_FOR_DATE_NOT_FOUND" ? "CONFIRM_POLICY" : "PAY_RELEVANT_REVIEW";
+      return {
+        date: row.date, attendance_id: row.attendance_id,
+        check_in_time: row.check_in_time, check_out_time: row.check_out_time,
+        status: row.status, hours: row.work_hours,
+        late_minutes: row.late_minutes, overtime_hours: row.overtime_hours,
+        late_pay_relevant: latePayRelevant, overtime_pay_relevant: overtimePayRelevant,
+        policy_effective_on_date: row.policy_resolution_status === "POLICY_FOR_DATE_FOUND",
+        payroll_impact: classification === "NO_ACTION_REQUIRED" ? "No late or overtime pay effect under the current rule."
+          : classification === "CORRECT_ATTENDANCE" ? "Attendance approval or correction is needed."
+            : [latePayRelevant ? "Late deductions" : null, overtimePayRelevant ? "Overtime pay" : null].filter(Boolean).join(" and ") + " may change.",
+        classification, review_status: classification,
+      };
+    });
+    const policyFrom = String(policy?.effective_from || "").slice(0, 10);
+    const dayBefore = policyFrom ? new Date(new Date(`${policyFrom}T00:00:00Z`).getTime() - 86400000).toISOString().slice(0, 10) : range.end;
+    const gapEnd = dayBefore < range.end ? dayBefore : range.end;
+    return {
+      ...common,
+      attendance: {
+        affected,
+        actionable_days: affected.filter((row: any) => row.classification !== "NO_ACTION_REQUIRED").length,
+        complete: affected.every((row: any) => row.classification === "NO_ACTION_REQUIRED"),
+        policy: {
+          gap_from: policyFrom > range.start ? range.start : null,
+          gap_to: policyFrom > range.start ? gapEnd : null,
+          effective_from: policyFrom || null,
+          reference: policyFrom ? `Attendance policy effective ${policyFrom}` : "No attendance policy recorded",
+          late_pay_relevant: latePayRelevant,
+          overtime_pay_relevant: overtimePayRelevant,
+        },
+      },
+    };
   }
 
   private async payrollInputChecksum(tenantId: string, month: string, employeeIds: string[] | null = null) {

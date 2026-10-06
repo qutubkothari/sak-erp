@@ -1603,6 +1603,10 @@ function HrPageContent() {
   const [payrollSubTab, setPayrollSubTab] = useState<
     "salary" | "runs" | "payslips" | "monthly"
   >("salary");
+  const [payrollReviewReturnHref, setPayrollReviewReturnHref] = useState<string | null>(null);
+  const [payrollReviewEmployeeLabel, setPayrollReviewEmployeeLabel] = useState("");
+  const payrollReviewApplied = useRef(false);
+  const payrollAttendanceRecordOpened = useRef(false);
   const updatePayrollRunFilters = (update: () => void) => {
     update();
     setPayrollRunPage(1);
@@ -3264,6 +3268,61 @@ function HrPageContent() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!currentUser || payrollReviewApplied.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const employee = params.get("review_employee");
+    const month = params.get("review_month");
+    const batch = params.get("review_batch");
+    const action = params.get("review_action");
+    const date = params.get("review_date");
+    const recordId = params.get("review_record");
+    if (!employee || !month || !batch || !["attendance", "policy", "salary"].includes(action || "")) return;
+    payrollReviewApplied.current = true;
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) { setError("Invalid payroll review month."); return; }
+    const [year, monthNumber] = month.split("-").map(Number);
+    const from = `${month}-01`;
+    const to = new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+    const kind = action === "salary" ? "salary" : "attendance";
+    const query = new URLSearchParams({ employee, batch, from, to, kind, review_mode: kind === "salary" ? "PAYROLL_SALARY_REVIEW" : "PAYROLL_ATTENDANCE_REVIEW" });
+    void apiClient.get<any>(`/hr/payroll/control/month/${encodeURIComponent(month)}/review?${query.toString()}`).then((response) => {
+      const review = response?.data || response;
+      if (review?.employee?.id !== employee || (date && !review?.attendance?.affected?.some((row: any) => row.date === date && (!recordId || row.attendance_id === recordId)))) {
+        setError("This payroll review is no longer available. Reopen it from payroll."); return;
+      }
+      setPayrollReviewReturnHref(review.return_href);
+      setPayrollReviewEmployeeLabel(`${review.employee.name} (${review.employee.code})`);
+      setActiveSection("management");
+      if (action === "salary") {
+        setActiveTab("payroll"); setPayrollSubTab("salary");
+        setSalaryComponentSearch(review.employee.name); setExpandedSalaryEmployeeId(employee);
+        void openComprehensiveSalaryEdit(employee);
+      } else {
+        setActiveTab("attendance");
+        setAttendanceEmployeeFilter(employee);
+        setAttendanceFromDate(date || from);
+        setAttendanceToDate(date || to);
+        if (action === "policy") setShowAttendancePolicy(true);
+      }
+    }).catch(() => setError("This payroll review could not be opened. Reopen it from payroll."));
+    // Review context is validated once for the opened route.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!payrollReviewReturnHref || payrollAttendanceRecordOpened.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("review_action") !== "attendance") return;
+    const date = params.get("review_date");
+    const employee = params.get("review_employee");
+    const recordId = params.get("review_record");
+    const record = attendance.find((row) => String(row.employee_id) === employee && String(row.attendance_date).slice(0, 10) === date && (!recordId || String(row.id) === recordId));
+    if (!record) return;
+    payrollAttendanceRecordOpened.current = true;
+    setSelectedAttendance(record);
+    setShowAttendanceDetails(true);
+  }, [attendance, payrollReviewReturnHref]);
 
   const handleCreatePayrollRun = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -6071,6 +6130,10 @@ function HrPageContent() {
     <div
       className={`space-y-4 ${isEmployeePortal ? "px-3 pb-24 pt-3 md:p-5 md:pb-5" : "p-4 sm:p-5"}`}
     >
+      {payrollReviewReturnHref && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-stone-800">
+        <strong>Payroll review: {payrollReviewEmployeeLabel}</strong>
+        <Link href={payrollReviewReturnHref} className="ml-3 font-semibold text-blue-700 hover:underline">Return to Payroll</Link>
+      </div>}
       {isEmployeePortal && (
         <div className="sticky top-0 z-30 -mx-3 -mt-3 flex items-center justify-between gap-2 border-b border-[#E8DCC4] bg-[#FFFDF8]/95 px-3 py-3 shadow-sm backdrop-blur md:hidden">
           <div className="min-w-0">

@@ -17,6 +17,7 @@ export interface PayrollBlocker {
   key: string;
   entity_id?: string;
   employee_name?: string;
+  employee_code?: string;
   reason: string;
   responsible?: string;
   fix_href?: string;

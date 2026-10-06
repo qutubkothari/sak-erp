@@ -8,6 +8,7 @@ import { apiClient } from "../../../../../../lib/api-client";
 type Blocker = {
   key: string;
   kind?: string;
+  employee_id?: string;
   employee_name?: string;
   fix_href?: string;
   affected_days?: number;
@@ -95,6 +96,7 @@ function friendlyPayrollError(error: unknown, fallback: string) {
 export default function PayrollMonthlyProcessingPage() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [monthReady, setMonthReady] = useState(false);
+  const [returnContext, setReturnContext] = useState<{ employee: string; batch: string } | null>(null);
   const requestSequence = useRef(0);
   const [employees, setEmployees] = useState<Array<{ id: string; employee_name: string; employee_code: string; department?: string; status?: string }>>([]);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[] | null>(null);
@@ -115,6 +117,11 @@ export default function PayrollMonthlyProcessingPage() {
       const response = await apiClient.get<any>(`/hr/payroll/control/month/${encodeURIComponent(month)}${scopeQuery}`);
       if (requestId !== requestSequence.current) return;
       const next = response?.data || response;
+      if (returnContext && (next?.control?.id !== returnContext.batch || (Array.isArray(next?.employee_ids) && !next.employee_ids.includes(returnContext.employee)))) {
+        setCockpit(null);
+        setError("This payroll batch changed. Reopen the employee review from the current payroll batch.");
+        return;
+      }
       setCockpit(next);
       if (selectedEmployeeIds === null && Array.isArray(next?.employee_ids)) setSelectedEmployeeIds(next.employee_ids);
     } catch (e: any) {
@@ -122,7 +129,7 @@ export default function PayrollMonthlyProcessingPage() {
     } finally {
       if (requestId === requestSequence.current) setBusy(false);
     }
-  }, [month, monthReady, selectedEmployeeIds]);
+  }, [month, monthReady, returnContext, selectedEmployeeIds]);
 
   const act = async (action: string) => {
     setBusy(true); setError("");
@@ -159,6 +166,8 @@ export default function PayrollMonthlyProcessingPage() {
 
   useEffect(() => {
     const requestedMonth = new URLSearchParams(window.location.search).get("month");
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("employee") && params.get("batch")) setReturnContext({ employee: params.get("employee")!, batch: params.get("batch")! });
     if (requestedMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)) setMonth(requestedMonth);
     setMonthReady(true);
     void apiClient.get<any>("/hr/employees").then((response) => {
@@ -174,6 +183,9 @@ export default function PayrollMonthlyProcessingPage() {
 
   const visibleEmployees = employees.filter((row) =>
     `${row.employee_name} ${row.employee_code} ${row.department || ""}`.toLowerCase().includes(employeeSearch.toLowerCase()));
+  const reviewedEmployee = returnContext ? employees.find((row) => row.id === returnContext.employee) : null;
+  const orderedBlockers = [...(cockpit?.blockers || [])].sort((a, b) =>
+    Number(b.employee_id === returnContext?.employee) - Number(a.employee_id === returnContext?.employee));
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
@@ -187,7 +199,7 @@ export default function PayrollMonthlyProcessingPage() {
         <div className="flex items-center gap-2">
           <Link href="/dashboard/hr/team-desk" className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50">Team Desk</Link>
           <label className="text-sm font-semibold text-stone-700" htmlFor="payroll-month">Month</label>
-          <input id="payroll-month" type="month" value={month} onChange={(event) => { setCockpit(null); setSelectedEmployeeIds(null); setMonth(event.target.value); }} className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm" />
+          <input id="payroll-month" type="month" value={month} onChange={(event) => { setCockpit(null); setReturnContext(null); setSelectedEmployeeIds(null); setMonth(event.target.value); }} className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm" />
           <button onClick={() => void act("check-again")} disabled={busy || selectedEmployeeIds?.length === 0 || cockpit?.scope_conflict} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} /> Recheck payroll
           </button>
@@ -195,6 +207,9 @@ export default function PayrollMonthlyProcessingPage() {
       </div>
 
       {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
+      {cockpit && reviewedEmployee && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-stone-800">
+        Returned to {reviewedEmployee.employee_name} ({reviewedEmployee.employee_code}) in the {formatPayrollMonth(month)} payroll batch. Their review items appear first.
+      </div>}
 
       <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -277,7 +292,7 @@ export default function PayrollMonthlyProcessingPage() {
             </div>
           </div>
           {!cockpit.blockers?.length ? <div className="p-6 text-sm text-stone-600">No issues need your attention. You can continue with payroll.</div> :
-            <div className="divide-y divide-stone-100">{cockpit.blockers.map((item) => { const copy = issueCopy(item, cockpit.month); return <article key={item.key} className="p-4 sm:p-5">
+            <div className="divide-y divide-stone-100">{orderedBlockers.map((item) => { const copy = issueCopy(item, cockpit.month); return <article key={item.key} className="p-4 sm:p-5">
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${item.severity === "BLOCKER" ? "bg-red-100 text-red-800" : item.severity === "WARNING" ? "bg-amber-100 text-amber-900" : "bg-sky-100 text-sky-800"}`}>{item.severity === "BLOCKER" ? "Action needed" : item.severity === "WARNING" ? "Please review" : "For your information"}</span>
                 <h3 className="font-semibold text-stone-900">{copy.title}</h3>
