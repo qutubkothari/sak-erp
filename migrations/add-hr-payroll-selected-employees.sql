@@ -69,7 +69,9 @@ BEGIN
       (tenant_id, payroll_month, version, opened_by, last_action_by)
     VALUES (p_tenant_id, p_month, v_version, p_actor_id, p_actor_id)
     RETURNING * INTO v_control;
-  ELSIF v_control.stage NOT IN ('OPEN', 'READY_TO_CLOSE') THEN
+  ELSIF v_control.stage = 'CLOSED' AND v_control.payroll_run_id IS NOT NULL THEN
+    RAISE EXCEPTION 'A payroll calculation is already linked to this closed control';
+  ELSIF v_control.stage NOT IN ('OPEN', 'READY_TO_CLOSE', 'CLOSED') THEN
     RAISE EXCEPTION 'PAYROLL_STATE_CHANGED';
   END IF;
 
