@@ -52,6 +52,7 @@ const baseline = `
 describe("HR Payroll Control migration rehearsal", () => {
   const migration = readFileSync(resolve(__dirname, "../../../../migrations/add-hr-payroll-control-v1.sql"), "utf8");
   const attendancePolicyMigration = readFileSync(resolve(__dirname, "../../../../migrations/add-hr-attendance-policy-effective-dates.sql"), "utf8");
+  const selectedEmployeeMigration = readFileSync(resolve(__dirname, "../../../../migrations/add-hr-payroll-selected-employees.sql"), "utf8");
   const profiles = ["SAIFSEAS", "MIZANTRA", "ARWA"];
 
 function isolatedDatabase() {
@@ -109,6 +110,28 @@ function isolatedDatabase() {
         await expect(db.query("UPDATE hr_payroll_month_controls SET calculation_checksum='altered' WHERE id=$1", [controlId])).rejects.toThrow("Finalized payroll calculation checksum and control evidence are immutable");
         await db.query("UPDATE hr_payroll_month_controls SET stage='PAID' WHERE id=$1", [controlId]);
       }
+      await db.exec("ALTER TABLE public.employees ADD COLUMN status text DEFAULT 'ACTIVE'");
+      await db.exec(selectedEmployeeMigration);
+      await db.exec(selectedEmployeeMigration);
+      const first = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+      const second = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+      const actor = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+      await db.query("INSERT INTO employees(id,tenant_id) VALUES($1,$3),($2,$3)", [first, second, tenantId]);
+      const checkScope = (ids: string[]) => db.query(
+        "SELECT id,version,stage,resolution_snapshot FROM hr_payroll_scope_check_again($1::uuid,$2::varchar(7),$3::uuid,$4::jsonb,$5::jsonb,$6::int,$7::int,$8::text,$9::jsonb)",
+        [tenantId, "2026-10", actor, JSON.stringify(ids), "[]", 0, 0, `input-${ids[0]}`, "{}"],
+      );
+      const firstControl = (await checkScope([first]) as any).rows[0];
+      expect(firstControl.stage).toBe("READY_TO_CLOSE");
+      expect(firstControl.resolution_snapshot.employee_ids).toEqual([first]);
+      await db.query("UPDATE hr_payroll_month_controls SET stage='CLOSED' WHERE id=$1", [firstControl.id]);
+      expect(((await checkScope([first]) as any).rows[0]).stage).toBe("READY_TO_CLOSE");
+      await db.query("UPDATE hr_payroll_month_controls SET stage='PAID' WHERE id=$1", [firstControl.id]);
+      await expect(checkScope([first])).rejects.toThrow("already have approved payroll");
+      const secondControl = (await checkScope([second]) as any).rows[0];
+      expect(secondControl.version).toBe(firstControl.version + 1);
+      expect(secondControl.resolution_snapshot.employee_ids).toEqual([second]);
+      expect(((await db.query("SELECT stage FROM hr_payroll_month_controls WHERE id=$1", [firstControl.id])) as any).rows[0].stage).toBe("PAID");
     } finally {
       await db.close();
     }

@@ -33,6 +33,60 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { HrHistoricalAttendanceImportService } from "../services/hr-historical-attendance-import.service";
 
+// Payroll evidence and database snapshots stay in the audit record. The
+// employee-facing page receives only the fields needed to explain next steps.
+export function payrollReviewHref(cockpit: any, item: any) {
+  const kind = String(item.key || "").split(":")[0];
+  const mode = kind.startsWith("salary-") ? "salary" : kind.startsWith("attendance") ? "attendance" : null;
+  const employee = String(item.employee_code || item.entity_id || "");
+  const month = String(cockpit.month || "");
+  const batch = String(cockpit.control?.id || "");
+  if (!mode || !employee || !batch || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return item.fix_href;
+  const [year, monthNumber] = month.split("-").map(Number);
+  const to = new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+  const query = new URLSearchParams({
+    employee, month, batch, from: `${month}-01`, to,
+    review_mode: mode === "attendance" ? "PAYROLL_ATTENDANCE_REVIEW" : "PAYROLL_SALARY_REVIEW",
+    origin: "/dashboard/hr/payroll/monthly-processing",
+  });
+  return `${mode === "attendance" ? "/dashboard/hr/attendance/payroll-review" : "/dashboard/hr/payroll/salary-review"}?${query.toString()}`;
+}
+
+function payrollMonthClientView(cockpit: any) {
+  return {
+    enabled: cockpit.enabled, month: cockpit.month, employee_ids: cockpit.employee_ids,
+    scope_locked: cockpit.scope_locked, scope_conflict: cockpit.scope_conflict,
+    version: cockpit.version, stage: cockpit.stage, last_action_at: cockpit.last_action_at,
+    blockers: (cockpit.blockers || []).map((item: any, index: number) => ({
+      key: `${String(item.key || "issue").split(":")[0]}-${index}`,
+      kind: String(item.key || "issue").split(":")[0],
+      employee_id: item.entity_id,
+      employee_name: item.employee_name,
+      fix_href: payrollReviewHref(cockpit, item), severity: item.severity,
+      affected_days: String(item.key || "").startsWith("attendance-derived-metrics:")
+        ? Number(item.evidence?.unresolved_days || 0) : undefined,
+    })),
+    counts: cockpit.counts, employee_count: cockpit.employee_count,
+    payroll_employee_count: cockpit.payroll_employee_count,
+    gross: cockpit.gross, deductions: cockpit.deductions, net: cockpit.net,
+    approval_state: cockpit.approval_state, payment_state: cockpit.payment_state,
+    read_only: cockpit.read_only,
+    control: cockpit.control ? { id: cockpit.control.id, stage: cockpit.control.stage, version: cockpit.control.version } : null,
+    variance: (cockpit.variance || []).map((row: any) => ({
+      employee_id: row.employee_id, employee_name: row.employee_name,
+      previous_month: row.previous_month, previous_net: row.previous_net,
+      current_net: row.current_net, difference: row.difference,
+      difference_percent: row.difference_percent, known_reasons: row.known_reasons,
+      flagged: row.flagged,
+    })),
+    corrections: (cockpit.corrections || []).map((row: any) => ({
+      id: row.id, source_version: row.source_version, correction_version: row.correction_version,
+      reason: row.reason, status: row.status, control_stage: row.control_stage,
+      difference_total: row.difference_total,
+    })),
+  };
+}
+
 @Controller("hr")
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class HrController {
@@ -603,8 +657,23 @@ export class HrController {
 
   @Get("payroll/control/month/:month")
   @RequireRead("hr")
-  getPayrollMonthCockpit(@Request() req: any, @Param("month") month: string) {
-    return this.hrService.getPayrollMonthCockpit(req.user.tenantId, month);
+  async getPayrollMonthCockpit(@Request() req: any, @Param("month") month: string, @Query("employee_ids") employeeIds?: string) {
+    return payrollMonthClientView(await this.hrService.getPayrollMonthCockpit(req.user.tenantId, month, employeeIds === undefined ? undefined : employeeIds.split(",")));
+  }
+
+  @Get("payroll/control/month/:month/review")
+  @RequireRead("hr")
+  getPayrollReviewContext(
+    @Request() req: any,
+    @Param("month") month: string,
+    @Query("employee") employee: string,
+    @Query("batch") batch: string,
+    @Query("kind") kind: string,
+    @Query("from") from: string,
+    @Query("to") to: string,
+    @Query("review_mode") reviewMode: string,
+  ) {
+    return this.hrService.getPayrollReviewContext(req.user.tenantId, month, employee, batch, kind, from, to, reviewMode);
   }
 
   @Put("payroll/control/maker-checker")
@@ -615,8 +684,8 @@ export class HrController {
 
   @Post("payroll/control/month/:month/check-again")
   @RequirePermissions("hr:read")
-  checkPayrollMonthAgain(@Request() req: any, @Param("month") month: string) {
-    return this.hrService.checkPayrollMonthAgain(req.user.tenantId, month, req.user.userId);
+  async checkPayrollMonthAgain(@Request() req: any, @Param("month") month: string, @Body() body?: { employee_ids?: string[] }) {
+    return payrollMonthClientView(await this.hrService.checkPayrollMonthAgain(req.user.tenantId, month, req.user.userId, body?.employee_ids));
   }
 
   @Post("payroll/control/month/:month/close")
