@@ -7,12 +7,11 @@ import { apiClient } from "../../../../../../lib/api-client";
 
 type Blocker = {
   key: string;
+  kind?: string;
   employee_name?: string;
-  entity_id?: string;
   reason: string;
-  responsible?: string;
   fix_href?: string;
-  evidence?: Record<string, unknown>;
+  affected_days?: number;
   severity: "BLOCKER" | "WARNING" | "INFO";
 };
 
@@ -55,6 +54,42 @@ type Cockpit = {
 const fmt = (amount: number | undefined) =>
   new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(amount || 0));
 
+const stageLabels: Record<string, string> = {
+  OPEN: "Needs review", READY_TO_CLOSE: "Ready to prepare", CLOSED: "Details confirmed",
+  CALCULATED: "Payslips prepared", APPROVAL_PENDING: "Awaiting approval",
+  SECOND_APPROVAL_REQUIRED: "Awaiting final approval", APPROVED: "Approved", PAID: "Marked paid",
+};
+
+function issueCopy(item: Blocker, month: string) {
+  const period = new Date(`${month}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  if (item.kind === "attendance-derived-metrics") return {
+    title: "Review attendance before payroll",
+    description: `${item.affected_days || "Some"} attendance day${item.affected_days === 1 ? "" : "s"} for ${item.employee_name || "this employee"} need HR review. Confirm the late and overtime rules that applied in ${period}, then recheck payroll.`,
+    action: "Review attendance",
+  };
+  if (item.kind === "salary-legacy-date") return {
+    title: "Confirm salary start date",
+    description: `The start date for ${item.employee_name || "this employee"}'s salary is missing. Confirm that this salary applied in ${period} before approving the payslip.`,
+    action: "Review salary setup",
+  };
+  if (item.kind === "salary-missing") return { title: "Add salary details", description: `${item.employee_name || "This employee"} needs a salary setup for ${period} before payroll can continue.`, action: "Review salary setup" };
+  if (item.kind === "salary-overlap") return { title: "Review salary dates", description: `${item.employee_name || "This employee"} has salary entries that overlap. Confirm which salary applies in ${period}.`, action: "Review salary setup" };
+  if (item.kind === "salary-negative") return { title: "Review salary amount", description: `${item.employee_name || "This employee"} has a salary amount that needs correction before payroll can continue.`, action: "Review salary setup" };
+  if (item.kind === "attendance") return { title: "Review attendance", description: `${item.employee_name || "This employee"} has an attendance entry awaiting review or correction.`, action: "Review attendance" };
+  if (item.kind === "leave") return { title: "Review pending leave", description: `${item.employee_name || "This employee"} has a leave request during ${period} that has not been decided.`, action: "Review leave" };
+  if (item.kind === "payroll-configuration") return { title: "Review attendance settings", description: "The attendance rules needed for payroll are incomplete. Ask HR to review them before continuing.", action: "Review attendance settings" };
+  if (item.kind === "payroll-selection") return { title: "Select an employee", description: "Choose at least one active employee to prepare payroll.", action: "Choose employees" };
+  return { title: item.employee_name || "Payroll item", description: item.reason, action: "Review this item" };
+}
+
+function friendlyPayrollError(error: unknown, fallback: string) {
+  const message = String((error as any)?.message || "");
+  if (/ATTENDANCE_DERIVED_METRICS|attendance late or overtime metrics/i.test(message)) return "Attendance needs HR review before this payroll can continue. Review the attendance item below, then recheck payroll.";
+  if (/PAYROLL_STATE_CHANGED|checksum|inputs changed/i.test(message)) return "Payroll information changed. Select Recheck payroll and review the updated items.";
+  if (/permission|forbidden|unauthorized/i.test(message)) return "Your account cannot complete this payroll step. Ask your payroll administrator for access.";
+  return fallback;
+}
+
 export default function PayrollMonthlyProcessingPage() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [employees, setEmployees] = useState<Array<{ id: string; employee_name: string; employee_code: string; department?: string; status?: string }>>([]);
@@ -76,7 +111,7 @@ export default function PayrollMonthlyProcessingPage() {
       setCockpit(next);
       if (selectedEmployeeIds === null && Array.isArray(next?.employee_ids)) setSelectedEmployeeIds(next.employee_ids);
     } catch (e: any) {
-      setError(e?.message || "Could not load payroll month status.");
+      setError(friendlyPayrollError(e, "Payroll status could not be loaded. Please try again."));
     } finally {
       setBusy(false);
     }
@@ -88,14 +123,14 @@ export default function PayrollMonthlyProcessingPage() {
       await apiClient.post(`/hr/payroll/control/month/${encodeURIComponent(month)}/${action}`,
         action === "check-again" && selectedEmployeeIds !== null ? { employee_ids: selectedEmployeeIds } : {});
       await refresh();
-    } catch (e: any) { setError(e?.message || `Could not ${action.replace(/-/g, " ")} payroll.`); }
+    } catch (e: any) { setError(friendlyPayrollError(e, "This payroll step could not be completed. Please try again or contact support.")); }
     finally { setBusy(false); }
   };
 
   const correctionAct = async (id: string, action: string) => {
     setBusy(true); setError("");
     try { await apiClient.post(`/hr/payroll/control/corrections/${encodeURIComponent(id)}/${action}`, {}); await refresh(); }
-    catch (e: any) { setError(e?.message || `Could not ${action.replace(/-/g, " ")} payroll correction.`); }
+    catch (e: any) { setError(friendlyPayrollError(e, "This correction could not be completed. Please try again or contact support.")); }
     finally { setBusy(false); }
   };
   const openCorrection = async () => {
@@ -103,7 +138,7 @@ export default function PayrollMonthlyProcessingPage() {
     if (!reason?.trim() || !cockpit?.control?.id) return;
     setBusy(true); setError("");
     try { await apiClient.post("/hr/payroll/control/corrections", { month, source_control_id: cockpit.control.id, reason: reason.trim() }); await refresh(); }
-    catch (e: any) { setError(e?.message || "Could not open payroll correction."); }
+    catch (e: any) { setError(friendlyPayrollError(e, "This correction could not be opened. Please try again or contact support.")); }
     finally { setBusy(false); }
   };
   const returnCorrection = async (id: string) => {
@@ -111,7 +146,7 @@ export default function PayrollMonthlyProcessingPage() {
     if (!reason?.trim()) return;
     setBusy(true); setError("");
     try { await apiClient.post(`/hr/payroll/control/corrections/${encodeURIComponent(id)}/return`, { reason: reason.trim() }); await refresh(); }
-    catch (e: any) { setError(e?.message || "Could not return payroll correction."); }
+    catch (e: any) { setError(friendlyPayrollError(e, "This correction could not be returned. Please try again or contact support.")); }
     finally { setBusy(false); }
   };
 
@@ -136,14 +171,14 @@ export default function PayrollMonthlyProcessingPage() {
           <Link href="/dashboard/hr/management?section=management&tab=payroll" className="text-sm font-semibold text-amber-800 hover:underline">HR / Payroll</Link>
           <p className="mt-3 text-xs font-bold uppercase tracking-widest text-amber-800">Payroll control</p>
           <h1 className="mt-1 text-2xl font-bold text-stone-900 sm:text-3xl">Monthly Processing</h1>
-          <p className="mt-2 max-w-2xl text-sm text-stone-600">Read the month’s existing payroll state and refresh deterministic close checks. Amounts use the tenant’s configured currency.</p>
+          <p className="mt-2 max-w-2xl text-sm text-stone-600">Choose employees, review anything that needs attention, then prepare their payslips.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/dashboard/hr/team-desk" className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50">Team Desk</Link>
           <label className="text-sm font-semibold text-stone-700" htmlFor="payroll-month">Month</label>
           <input id="payroll-month" type="month" value={month} onChange={(event) => { setSelectedEmployeeIds(null); setMonth(event.target.value); }} className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm" />
           <button onClick={() => void act("check-again")} disabled={busy || selectedEmployeeIds?.length === 0 || cockpit?.scope_conflict} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 disabled:opacity-50">
-            <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} /> Check Again
+            <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} /> Recheck payroll
           </button>
         </div>
       </div>
@@ -152,7 +187,7 @@ export default function PayrollMonthlyProcessingPage() {
 
       <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h2 className="text-lg font-bold text-stone-900">Employees in this payroll batch</h2><p className="mt-1 text-sm text-stone-600">Close checks, payslips, and approvals apply to the selected employees. Finish a paid batch before opening another group for the same month.</p></div>
+          <div><h2 className="text-lg font-bold text-stone-900">Employees in this payroll</h2><p className="mt-1 text-sm text-stone-600">Only the selected employees are included. You can prepare another group after this one is complete.</p></div>
           <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900">{selectedEmployeeIds?.length ?? employees.length} selected</span>
         </div>
         {cockpit?.scope_conflict && <p role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Finish the current payroll batch before changing its employees.</p>}
@@ -175,8 +210,8 @@ export default function PayrollMonthlyProcessingPage() {
 
       {cockpit && !cockpit.enabled && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
-          <div className="font-bold">Payroll Month Cockpit is not enabled for this tenant.</div>
-          <p className="mt-1">All five payroll control flags default to OFF until the tenant schema and payroll data are validated.</p>
+          <div className="font-bold">Payroll processing is unavailable for this company.</div>
+          <p className="mt-1">Contact your payroll administrator for help.</p>
         </div>
       )}
 
@@ -184,29 +219,32 @@ export default function PayrollMonthlyProcessingPage() {
         <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-bold text-stone-900">{new Date(`${cockpit.month}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" })} · Version {cockpit.version || 1}</h2>
-              <p className="mt-1 text-sm text-stone-600">Responsible: {cockpit.responsible || "Unassigned"} · Last action: {cockpit.last_action || "None"}{cockpit.last_action_at ? ` · ${new Date(cockpit.last_action_at).toLocaleString()}` : ""}</p>
+              <h2 className="text-xl font-bold text-stone-900">{new Date(`${cockpit.month}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" })} payroll</h2>
+              <p className="mt-1 text-sm text-stone-600">Status: {stageLabels[cockpit.stage || "OPEN"] || "Needs review"}{cockpit.last_action_at ? ` · Updated ${new Date(cockpit.last_action_at).toLocaleString()}` : ""}</p>
             </div>
-            {cockpit.read_only && <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800">READ ONLY PREVIEW</span>}
+            {cockpit.read_only && <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800">Preview</span>}
           </div>
           <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {["OPEN", "READY_TO_CLOSE", "CLOSED", "CALCULATED", "APPROVAL_PENDING", "SECOND_APPROVAL_REQUIRED", "APPROVED", "PAID"].map((stage) => {
-              const stages = ["OPEN", "READY_TO_CLOSE", "CLOSED", "CALCULATED", "APPROVAL_PENDING", "SECOND_APPROVAL_REQUIRED", "APPROVED", "PAID"];
-              const done = stages.indexOf(cockpit.stage || "OPEN") >= stages.indexOf(stage);
-              return <div key={stage} className={`rounded-xl border px-3 py-3 text-center text-xs font-bold sm:text-sm ${done ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-stone-200 bg-stone-50 text-stone-500"}`}>{stage}</div>;
-            })}
+            {[
+              { label: "Review", done: !["OPEN", "READY_TO_CLOSE"].includes(cockpit.stage || "OPEN") },
+              { label: "Calculate", done: ["CALCULATED", "APPROVAL_PENDING", "SECOND_APPROVAL_REQUIRED", "APPROVED", "PAID"].includes(cockpit.stage || "") },
+              { label: "Approve", done: ["APPROVED", "PAID"].includes(cockpit.stage || "") },
+              { label: "Record payment", done: cockpit.stage === "PAID" },
+            ].map((step) => <div key={step.label} className={`rounded-xl border px-3 py-3 text-center text-xs font-bold sm:text-sm ${step.done ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-stone-200 bg-stone-50 text-stone-500"}`}>{step.label}</div>)}
           </div>
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Metric label="Employees" value={cockpit.employee_count || 0} />
-            <Metric label="Calculated" value={cockpit.payroll_employee_count || 0} />
-            <Metric label="Gross" value={fmt(cockpit.gross)} />
-            <Metric label="Deductions" value={fmt(cockpit.deductions)} />
-            <Metric label="Net" value={fmt(cockpit.net)} />
+            <Metric label="Payslips prepared" value={cockpit.payroll_employee_count || 0} />
+            {(cockpit.payroll_employee_count || 0) > 0 && <>
+              <Metric label="Gross" value={fmt(cockpit.gross)} />
+              <Metric label="Deductions" value={fmt(cockpit.deductions)} />
+              <Metric label="Net" value={fmt(cockpit.net)} />
+            </>}
           </div>
-          <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
-            <span className="rounded-full bg-stone-100 px-3 py-1 text-stone-700">Approval: {cockpit.approval_state}</span>
-            <span className="rounded-full bg-stone-100 px-3 py-1 text-stone-700">Payment: {cockpit.payment_state}</span>
-          </div>
+          {(cockpit.payroll_employee_count || 0) > 0 && <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="rounded-full bg-stone-100 px-3 py-1 text-stone-700">{cockpit.approval_state === "APPROVED" ? "Approved" : "Approval pending"}</span>
+            <span className="rounded-full bg-stone-100 px-3 py-1 text-stone-700">{cockpit.payment_state === "PAID" ? "Payment recorded" : "Payment not recorded"}</span>
+          </div>}
         </section>
 
         {Boolean(cockpit.variance?.length) && <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
@@ -223,21 +261,19 @@ export default function PayrollMonthlyProcessingPage() {
           <div className="flex items-start gap-3 border-b border-stone-100 p-4 sm:p-5">
             <ShieldAlert className="mt-0.5 h-5 w-5 text-amber-700" />
             <div className="flex-1">
-              <h2 className="font-bold text-stone-900">In the way of close</h2>
-              <p className="mt-1 text-sm text-stone-600">{cockpit.counts?.blocker_count || 0} blockers · {cockpit.counts?.warning_count || 0} warnings · {cockpit.counts?.info_count || 0} info</p>
+              <h2 className="font-bold text-stone-900">What needs attention</h2>
+              <p className="mt-1 text-sm text-stone-600">{cockpit.counts?.blocker_count || 0} to resolve before payroll · {cockpit.counts?.warning_count || 0} to review</p>
             </div>
           </div>
-          {!cockpit.blockers?.length ? <div className="p-6 text-sm text-stone-600">No supported close issues were found in this scan.</div> :
-            <div className="divide-y divide-stone-100">{cockpit.blockers.map((item) => <article key={item.key} className="p-4 sm:p-5">
+          {!cockpit.blockers?.length ? <div className="p-6 text-sm text-stone-600">No issues need your attention. You can continue with payroll.</div> :
+            <div className="divide-y divide-stone-100">{cockpit.blockers.map((item) => { const copy = issueCopy(item, cockpit.month); return <article key={item.key} className="p-4 sm:p-5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${item.severity === "BLOCKER" ? "bg-red-100 text-red-800" : item.severity === "WARNING" ? "bg-amber-100 text-amber-900" : "bg-sky-100 text-sky-800"}`}>{item.severity}</span>
-                <h3 className="font-semibold text-stone-900">{item.employee_name || "Payroll"}</h3>
-                <span className="text-xs text-stone-500">Owner: {item.responsible || "HR / Payroll"}</span>
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${item.severity === "BLOCKER" ? "bg-red-100 text-red-800" : item.severity === "WARNING" ? "bg-amber-100 text-amber-900" : "bg-sky-100 text-sky-800"}`}>{item.severity === "BLOCKER" ? "Action needed" : item.severity === "WARNING" ? "Please review" : "For your information"}</span>
+                <h3 className="font-semibold text-stone-900">{copy.title}</h3>
               </div>
-              <p className="mt-2 text-sm text-stone-700">{item.reason}</p>
-              {item.evidence && <pre className="mt-2 overflow-x-auto rounded-lg bg-stone-50 p-2 text-xs text-stone-600">{JSON.stringify(item.evidence, null, 2)}</pre>}
-              {item.fix_href && <Link href={item.fix_href} className="mt-3 inline-block text-sm font-semibold text-blue-700 hover:underline">Open / Fix</Link>}
-            </article>)}</div>}
+              <p className="mt-2 text-sm text-stone-700">{copy.description}</p>
+              {item.fix_href && <Link href={item.fix_href} className="mt-3 inline-block text-sm font-semibold text-blue-700 hover:underline">{copy.action}</Link>}
+            </article>; })}</div>}
         </section>
         {Boolean(cockpit.corrections?.length) && <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
           <div className="border-b border-stone-100 p-4 sm:p-5"><h2 className="font-bold text-stone-900">Payroll correction versions</h2><p className="mt-1 text-sm text-stone-600">Source payslips remain accessible. Negative differences stay in human recovery review; no bank transfer or salary deduction is automatic.</p></div>
@@ -247,15 +283,15 @@ export default function PayrollMonthlyProcessingPage() {
           </article>)}</div>
         </section>}
         <div className="flex flex-wrap gap-2">
-          {cockpit.stage === "READY_TO_CLOSE" && <button disabled={busy || (cockpit.counts?.blocker_count || 0) > 0} onClick={() => void act("close")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Close selected payroll</button>}
-          {cockpit.stage === "CLOSED" && <button disabled={busy} onClick={() => void act("calculate")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Calculate</button>}
+          {cockpit.stage === "READY_TO_CLOSE" && <button disabled={busy || (cockpit.counts?.blocker_count || 0) > 0} onClick={() => void act("close")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Confirm payroll details</button>}
+          {cockpit.stage === "CLOSED" && <button disabled={busy} onClick={() => void act("calculate")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Prepare payslips</button>}
           {cockpit.stage === "CALCULATED" && <button disabled={busy} onClick={() => void act("submit")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Send for approval</button>}
           {cockpit.stage === "APPROVAL_PENDING" && <button disabled={busy} onClick={() => void act("approve")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Approve</button>}
           {cockpit.stage === "SECOND_APPROVAL_REQUIRED" && <button disabled={busy} onClick={() => void act("countersign")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Countersign</button>}
           {cockpit.stage === "APPROVED" && <button disabled={busy} onClick={() => void act("pay")} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Mark paid</button>}
           {(["APPROVED", "PAID"].includes(cockpit.stage || "") && !cockpit.corrections?.some((correction) => ["OPEN", "CALCULATED", "APPROVAL_PENDING"].includes(correction.status))) && <button disabled={busy || !cockpit.control?.id} onClick={() => void openCorrection()} className="rounded-lg border border-amber-400 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-950 disabled:opacity-50">Correct as new version…</button>}
         </div>
-        <p className="flex items-center gap-2 text-xs text-stone-500"><WalletCards className="h-4 w-4" />Mark paid records workflow status only. It does not initiate a payment.</p>
+        <p className="flex items-center gap-2 text-xs text-stone-500"><WalletCards className="h-4 w-4" />Recording payment status here does not transfer money.</p>
       </>}
     </main>
   );
