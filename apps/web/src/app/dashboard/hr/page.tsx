@@ -19,6 +19,11 @@ import { getTodayDateInputValue } from "@/lib/date";
 import { AttendanceDateCell } from "./AttendanceDateCell";
 import { buildAttendanceHolidayMap } from "./attendance-date-display";
 import {
+  attendanceHoursToMinutes,
+  formatAttendanceDuration,
+  formatAttendanceHours,
+} from "./attendance-duration";
+import {
   buildDocumentBranding,
   escapeHtml,
   renderStandardLetterheadHtml,
@@ -4744,7 +4749,7 @@ function HrPageContent() {
         const overtimeHours = Number(record.overtime_hours || 0);
         if (overtimeAmount > 0) {
           salaryRows.push({
-            label: `Overtime (${overtimeHours.toFixed(2)} hrs)`,
+            label: `Overtime (${formatAttendanceHours(overtimeHours)})`,
             amount: overtimeAmount,
           });
         }
@@ -4820,7 +4825,7 @@ function HrPageContent() {
             label: "Late Days / Minutes",
             value: `${Number(record.late_days || 0)} / ${Number(record.late_minutes || 0)}`,
           },
-          { label: "Overtime Hours", value: overtimeHours.toFixed(2) },
+          { label: "Overtime", value: formatAttendanceHours(overtimeHours) },
           { label: "Paid for Total Days", value: paidDays },
         ];
 
@@ -5656,8 +5661,8 @@ function HrPageContent() {
     const missingOut = attendance.filter(
       (record) => record.check_in_time && !record.check_out_time,
     ).length;
-    const totalHours = attendance.reduce(
-      (sum, record) => sum + Number(record.work_hours || 0),
+    const totalWorkMinutes = attendance.reduce(
+      (sum, record) => sum + (attendanceHoursToMinutes(record.work_hours) || 0),
       0,
     );
     return {
@@ -5665,7 +5670,7 @@ function HrPageContent() {
       late,
       absent,
       missingOut,
-      totalHours,
+      totalWorkMinutes,
       records: attendance.length,
     };
   }, [attendance]);
@@ -8042,10 +8047,10 @@ function HrPageContent() {
                     <div className="rounded-xl border border-[#E8DCC4] bg-white p-4">
                       <div className="flex items-center gap-2 text-sm font-semibold text-[#8B6F47]">
                         <GaugeCircle className="h-4 w-4" />
-                        Work hours
+                        Work Time
                       </div>
                       <div className="mt-2 text-2xl font-bold text-[#2F1B12]">
-                        {attendanceSummary.totalHours.toFixed(1)}
+                        {formatAttendanceDuration(attendanceSummary.totalWorkMinutes)}
                       </div>
                     </div>
                   </div>
@@ -8441,10 +8446,10 @@ function HrPageContent() {
               {todayAttendance?.work_hours && (
                 <div className="rounded-xl border border-[#B2DDFF] bg-[#F5FAFF] p-3 text-center">
                   <p className="text-xs font-bold uppercase tracking-wide text-[#175CD3]">
-                    Today Hours
+                    Today Work Time
                   </p>
                   <p className="text-lg font-bold text-[#2F1B12]">
-                    {todayAttendance.work_hours} hrs
+                    {formatAttendanceHours(todayAttendance.work_hours)}
                   </p>
                 </div>
               )}
@@ -8792,7 +8797,7 @@ function HrPageContent() {
                             )}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-[#4A3426]">
-                            {record.work_hours || "-"}
+                            {formatAttendanceHours(record.work_hours)}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-[#4A3426]">
                             {formatPayDayCredit(record)}
@@ -9093,7 +9098,7 @@ function HrPageContent() {
                 </div>
                 {record.work_hours && (
                   <div className="mt-3 rounded-xl border border-[#B2DDFF] bg-[#F5FAFF] p-3 text-sm font-bold text-[#175CD3]">
-                    {record.work_hours} hrs worked
+                    {formatAttendanceHours(record.work_hours)} worked
                   </div>
                 )}
                 {record.is_outstation_travel && (
@@ -10478,8 +10483,7 @@ function HrPageContent() {
                               <div className="mt-1 text-xs">
                                 {Number(slip.absent_days || 0)} absent ·{" "}
                                 {Number(slip.late_days || 0)} late ·{" "}
-                                {Number(slip.overtime_hours || 0).toFixed(2)} OT
-                                hrs
+                                {formatAttendanceHours(slip.overtime_hours)} OT
                               </div>
                             </td>
                             <td className="whitespace-nowrap px-6 py-4 text-sm">
@@ -14319,9 +14323,9 @@ function HrPageContent() {
                       </div>
                     </div>
                     <div>
-                      <div className="font-medium">Overtime Hours</div>
+                      <div className="font-medium">Overtime</div>
                       <div className="text-2xl font-bold text-purple-600">
-                        {kpiMetrics.overtime_hours}
+                        {formatAttendanceHours(kpiMetrics.overtime_hours)}
                       </div>
                     </div>
                   </div>

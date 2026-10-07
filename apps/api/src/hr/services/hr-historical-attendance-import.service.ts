@@ -192,7 +192,7 @@ export class HrHistoricalAttendanceImportService {
       if (row.check_in && row.check_out) {
         const inMinutes = this.minutes(row.check_in); const outMinutes = this.minutes(row.check_out);
         if (outMinutes < inMinutes) this.issue(row, "INVALID_TIME", "Check Out is earlier than Check In; overnight shift is not enabled by the tenant-wide policy");
-        else { row.check_in_timestamp = istTimestamp(row.date, row.check_in); row.check_out_timestamp = istTimestamp(row.date, row.check_out); row.work_hours = Math.round(((outMinutes - inMinutes) / 60) * 100) / 100; }
+        else { row.check_in_timestamp = istTimestamp(row.date, row.check_in); row.check_out_timestamp = istTimestamp(row.date, row.check_out); row.work_minutes = outMinutes - inMinutes; row.work_hours = Math.round((row.work_minutes / 60) * 100) / 100; }
       }
       if (row.outstation_travel !== "YES" && (row.travel_departure || row.travel_arrival)) this.issue(row, "WARNING", "Travel times were supplied while Outstation Travel is not YES");
       if (row.status === "LEAVE" && !row.leave_type) this.issue(row, "WARNING", "Leave Type is missing; no leave request will be created");
@@ -216,7 +216,8 @@ export class HrHistoricalAttendanceImportService {
       const holiday = (holidayResult.data || []).some((entry: any) => String(entry.start_date) <= row.date && String(entry.end_date || entry.start_date) >= row.date);
       if (holiday || !policy.working_weekdays.includes(weekday)) this.issue(row, "WARNING", "Date is a holiday or week-off according to the ERP calendar");
       if (row.classification === "READY" && row.check_in_timestamp) {
-        return { ...row, late_minutes: this.minutes(row.check_in) > this.minutes(policy.shift_start) + Number(policy.late_grace_minutes || 0) ? this.minutes(row.check_in) - this.minutes(policy.shift_start) - Number(policy.late_grace_minutes || 0) : 0, overtime_hours: policy.overtime_enabled ? Math.max(0, row.work_hours - Number(policy.overtime_after_hours || 0)) : 0 };
+        const overtimeMinutes = policy.overtime_enabled ? Math.max(0, Number(row.work_minutes || 0) - Number(policy.overtime_after_hours || 0) * 60) : 0;
+        return { ...row, late_minutes: this.minutes(row.check_in) > this.minutes(policy.shift_start) + Number(policy.late_grace_minutes || 0) ? this.minutes(row.check_in) - this.minutes(policy.shift_start) - Number(policy.late_grace_minutes || 0) : 0, overtime_hours: overtimeMinutes / 60, overtime_minutes: overtimeMinutes };
       }
       return row;
     });

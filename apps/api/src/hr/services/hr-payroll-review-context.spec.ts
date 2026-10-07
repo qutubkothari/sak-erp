@@ -40,16 +40,16 @@ const open = (service: any, kind: "attendance" | "salary" = "attendance", overri
   );
 
 describe("payroll review context", () => {
-  it("preserves elapsed work-hour calculation parity for Padma's raw punches", () => {
+  it("preserves elapsed work-minute calculation parity for Padma's raw punches", () => {
     const service: any = Object.create(HrService.prototype);
-    expect(service.workHoursFromPunches([
+    expect(service.workMinutesFromPunches([
       { punch_type: "IN", punch_at: "2026-09-01T03:18:02.507+00:00" },
       { punch_type: "OUT", punch_at: "2026-09-01T12:44:03.222+00:00" },
-    ])).toBe(9.43);
-    expect(service.workHoursFromPunches([
+    ])).toBe(566);
+    expect(service.workMinutesFromPunches([
       { punch_type: "IN", punch_at: "2026-09-17T03:57:41.469+00:00" },
       { punch_type: "OUT", punch_at: "2026-09-17T12:43:58.464+00:00" },
-    ])).toBe(8.77);
+    ])).toBe(526);
   });
 
   it("links Review attendance to Padma's focused September review", () => {

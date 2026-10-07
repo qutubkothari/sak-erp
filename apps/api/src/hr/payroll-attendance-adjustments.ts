@@ -36,15 +36,16 @@ export function calculateOvertimeDayCredit(input: {
   if (!rule.eligible || rule.method !== "DAY_CREDIT") return 0;
   const minutes = Math.max(0, Math.round(input.workMinutes));
   if (minutes === 0) return 0;
-  const hours = minutes / 60;
   if (["PAID_HOLIDAY", "WEEKLY_OFF", "PAID_LEAVE"].includes(String(input.dayType || ""))) {
-    return Number(rule.holiday_work_credit_days ?? (hours >= Number(rule.holiday_min_hours) ? 1 : 0.5));
+    return Number(rule.holiday_work_credit_days ?? (minutes >= wholeMinutes(rule.holiday_min_hours) ? 1 : 0.5));
   }
-  if (hours < Number(rule.minimum_hours || 0)) return 0;
+  if (minutes < wholeMinutes(rule.minimum_hours)) return 0;
   return rule.holiday_work_credit_days !== undefined
-    ? minutes > Number(rule.full_day_after_hours) * 60 ? 1 : minutes > Number(rule.half_day_after_hours) * 60 ? 0.5 : 0
-    : hours >= Number(rule.full_day_after_hours) ? 1 : hours > Number(rule.half_day_after_hours) ? 0.5 : 0;
+    ? minutes > wholeMinutes(rule.full_day_after_hours) ? 1 : minutes > wholeMinutes(rule.half_day_after_hours) ? 0.5 : 0
+    : minutes >= wholeMinutes(rule.full_day_after_hours) ? 1 : minutes > wholeMinutes(rule.half_day_after_hours) ? 0.5 : 0;
 }
+const wholeMinutes = (hours: unknown) =>
+  Math.max(0, Math.round(Number(hours || 0) * 60));
 
 /** Calculates late from attendance policy and overtime solely from the dated employee rule. */
 export function calculateDatedAttendanceAdjustments(input: {
@@ -76,20 +77,20 @@ export function calculateDatedAttendanceAdjustments(input: {
 
     const rule = input.overtimeRuleForDate(day.date);
     if (!rule?.eligible) continue;
-    const minutes = Math.max(0, Math.round(Number(day.work_minutes ?? Number(day.work_hours || 0) * 60)));
-    const hours = minutes / 60;
-    const minimumHours = Number(rule.minimum_hours || 0);
-    if (hours < minimumHours) continue;
+    const workMinutes = Math.max(0, Math.round(Number(day.work_minutes ?? wholeMinutes(day.work_hours))));
     if (rule.method === "DAY_CREDIT") {
       const dayType = day.day_type || input.dayTypeForDate?.(day.date) || (day.scheduled === false ? "WEEKLY_OFF" : "NORMAL");
-      const creditDays = calculateOvertimeDayCredit({ workMinutes: minutes, dayType, rule });
+      const creditDays = calculateOvertimeDayCredit({ workMinutes, dayType, rule });
       overtimeCreditDays += creditDays;
       overtimeAmount += input.dailyGrossRate * creditDays;
       continue;
     }
-    const rawOvertimeHours = Math.max(0, hours - Number(rule.starts_after_hours));
-    if (rawOvertimeHours < minimumHours) continue;
-    const payableHours = Math.min(rawOvertimeHours, rule.cap_hours === undefined ? rawOvertimeHours : Number(rule.cap_hours));
+    const minimumMinutes = wholeMinutes(rule.minimum_hours);
+    if (workMinutes < minimumMinutes) continue;
+    const rawOvertimeMinutes = Math.max(0, workMinutes - wholeMinutes(rule.starts_after_hours));
+    if (rawOvertimeMinutes < minimumMinutes) continue;
+    const payableMinutes = Math.min(rawOvertimeMinutes, rule.cap_hours === undefined ? rawOvertimeMinutes : wholeMinutes(rule.cap_hours));
+    const payableHours = payableMinutes / 60;
     const hourlyRate = input.workingDays > 0
       ? input.basicSalary / (input.workingDays * Math.max(1, Number(policy?.standard_daily_hours || 8))) : 0;
     overtimeHours += payableHours;

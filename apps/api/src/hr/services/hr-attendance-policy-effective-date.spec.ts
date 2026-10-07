@@ -70,7 +70,7 @@ describe("attendance policy effective dates", () => {
       "tenant-1",
       "2026-09-01",
       "2026-09-01T09:35:39.717+05:30",
-      11.33,
+      680,
     );
     expect(filters.tenant_id).toBe("tenant-1");
     expect(result).toMatchObject({
@@ -100,29 +100,29 @@ describe("attendance policy effective dates", () => {
       "tenant-1",
       "2026-09-16",
       "2026-09-16T09:35:39.717+05:30",
-      11.33,
+      680,
     );
     expect(result.lateMinutes).toBe(20);
-    expect(result.overtimeHours).toBe(2.33);
+    expect(result.overtimeHours).toBeCloseTo(2.33);
     expect(result.derivedMetricsStatus).toBeNull();
   });
 
   it("keeps Padma's September work-hour, late, and overtime calculations in tenant local time", async () => {
     const { service } = controlWithPolicy(policy("tenant-1", { effective_from: "2026-09-01" }));
     const sep1 = await service.calculateAttendanceMetrics(
-      "tenant-1", "2026-09-01", "2026-09-01T03:18:02.507Z", 9.43,
+      "tenant-1", "2026-09-01", "2026-09-01T03:18:02.507Z", 566,
     );
     const sep17 = await service.calculateAttendanceMetrics(
-      "tenant-1", "2026-09-17", "2026-09-17T03:57:41.469Z", 8.77,
+      "tenant-1", "2026-09-17", "2026-09-17T03:57:41.469Z", 526,
     );
-    expect(sep1).toMatchObject({ lateMinutes: 0, overtimeHours: 0.43, derivedMetricsStatus: null, policy: { timezone: "Asia/Kolkata" } });
+    expect(sep1).toMatchObject({ lateMinutes: 0, overtimeHours: 26 / 60, derivedMetricsStatus: null, policy: { timezone: "Asia/Kolkata" } });
     expect(sep17).toMatchObject({ lateMinutes: 12, overtimeHours: 0, derivedMetricsStatus: null, policy: { timezone: "Asia/Kolkata" } });
   });
 
   it("resolves policy by attendance date when a UTC punch belongs to the previous calendar day", async () => {
     const { service, filters } = controlWithPolicy(policy("tenant-1", { effective_from: "2026-09-01", shift_start: "00:00:00" }));
     const result = await service.calculateAttendanceMetrics(
-      "tenant-1", "2026-09-01", "2026-08-31T18:30:00.000Z", 8,
+      "tenant-1", "2026-09-01", "2026-08-31T18:30:00.000Z", 480,
     );
     expect(filters.tenant_id).toBe("tenant-1");
     expect(result).toMatchObject({ lateMinutes: 0, overtimeHours: 0, derivedMetricsStatus: null, policy: { effective_from: "2026-09-01" } });
@@ -130,13 +130,13 @@ describe("attendance policy effective dates", () => {
 
   it("keeps legacy attendance metrics date scoped while payroll OT is resolved separately", async () => {
     const { service } = controlWithPolicy(policy("tenant-1", { effective_from: "2026-09-19", late_deduction_mode: "NONE" }));
-    const earlier = await service.calculateAttendanceMetrics("tenant-1", "2026-09-01", "2026-09-01T09:35:39.717+05:30", 11.33);
+    const earlier = await service.calculateAttendanceMetrics("tenant-1", "2026-09-01", "2026-09-01T09:35:39.717+05:30", 680);
     expect(earlier.overtimeHours).toBeNull();
     expect(requiresAttendanceDerivedMetricsReview({ derived_metrics_status: earlier.derivedMetricsStatus }, policy("tenant-1", { late_deduction_mode: "NONE" }), { overtime_eligible: true })).toBe(false);
     jest.spyOn(service, "getHistoricalPolicyVersions").mockResolvedValue([{ id: "historical-rule", rule_key: "attendance_policy", rule_value: policy("tenant-1", { late_deduction_mode: "NONE" }), effective_from: "2026-09-01", effective_to: "2026-09-18" }]);
-    const confirmed = await service.calculateAttendanceMetrics("tenant-1", "2026-09-01", "2026-09-01T09:35:39.717+05:30", 11.33);
+    const confirmed = await service.calculateAttendanceMetrics("tenant-1", "2026-09-01", "2026-09-01T09:35:39.717+05:30", 680);
     expect(confirmed.lateMinutes).toBe(20);
-    expect(confirmed.overtimeHours).toBe(2.33);
+    expect(confirmed.overtimeHours).toBeCloseTo(2.33);
     expect(confirmed.derivedMetricsStatus).toBeNull();
     expect(requiresAttendanceDerivedMetricsReview({ derived_metrics_status: confirmed.derivedMetricsStatus }, policy("tenant-1", { late_deduction_mode: "NONE" }), { overtime_eligible: true })).toBe(false);
   });
@@ -147,7 +147,7 @@ describe("attendance policy effective dates", () => {
       "tenant-1",
       "2026-09-01",
       "2026-09-01T09:35:39.717+05:30",
-      11.33,
+      680,
     );
     expect(result.lateMinutes).toBeNull();
     expect(result.overtimeHours).toBeNull();
@@ -269,7 +269,7 @@ describe("attendance policy effective dates", () => {
         tenant,
         "2026-09-01",
         "2026-09-01T09:00:00+05:30",
-        8,
+        480,
       );
       expect(filters.tenant_id).toBe(tenant);
       expect(result.error).toBeNull();
@@ -295,6 +295,8 @@ describe("attendance policy effective dates", () => {
           check_in_time: "2026-09-01T09:35:39.717+05:30",
           check_out_time: "2026-09-01T20:55:33.017+05:30",
           work_hours: 11.33,
+          work_time: "11:20",
+          work_minutes: 680,
           payable_days: 1,
           leave_type: "",
           late_minutes: null,
@@ -324,11 +326,13 @@ describe("attendance policy effective dates", () => {
     const row = daily.getRow(2);
     const value = (name: string) => row.getCell(headers.indexOf(name)).value;
     expect(value("Late Minutes")).toBeNull();
-    expect(value("Overtime Hours")).toBeNull();
+    expect(value("Overtime Decimal Hours")).toBeNull();
     expect(value("Derived Metrics Status")).toBe(
       "HISTORICAL_POLICY_UNAVAILABLE",
     );
     expect(value("Status")).toBe("PRESENT");
-    expect(value("Worked Hours")).toBe(11.33);
+    expect(value("Decimal Hours")).toBe(11.33);
+    expect(value("Work Time")).toBe("11:20");
+    expect(value("Work Minutes")).toBe(680);
   });
 });

@@ -1526,15 +1526,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
     const checkIn = toIndiaAttendanceDateTime(attendanceDate, checkInTime);
     const checkOut = toIndiaAttendanceDateTime(attendanceDate, checkOutTime);
-    const workHours =
+    const workMinutes =
       checkIn && checkOut
-        ? Math.max(0, (Date.parse(checkOut) - Date.parse(checkIn)) / 3_600_000)
+        ? Math.max(0, Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 60_000))
         : null;
     const timing = await this.attendanceControl.calculateAttendanceMetrics(
       tenantId,
       attendanceDate,
       checkIn,
-      workHours || 0,
+      workMinutes || 0,
     );
     const result = await this.supabase
       .from("attendance")
@@ -1554,7 +1554,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           status === "PRESENT"
             ? "LATE"
             : status,
-        work_hours: workHours === null ? null : roundCurrency(workHours),
+        work_hours: workMinutes === null ? null : roundCurrency(workMinutes / 60),
         late_minutes: timing.lateMinutes ?? 0,
         overtime_hours: timing.overtimeHours ?? 0,
         approval_status: "NOT_REQUIRED",
@@ -1762,19 +1762,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       attendanceDate,
       data.check_out_time,
     );
-    const workHours =
+    const workMinutes =
       checkIn && checkOut
         ? Math.max(
             0,
-            (new Date(checkOut).getTime() - new Date(checkIn).getTime()) /
-              3_600_000,
+            Math.round(
+              (new Date(checkOut).getTime() - new Date(checkIn).getTime()) /
+                60_000,
+            ),
           )
         : null;
     const timing = await this.attendanceControl.calculateAttendanceMetrics(
       tenantId,
       attendanceDate,
       checkIn,
-      workHours || 0,
+      workMinutes || 0,
     );
     const requestedStatus = String(data?.status || "PRESENT").toUpperCase();
     const canonicalStatus =
@@ -1794,7 +1796,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         canonicalStatus === "PRESENT"
           ? "LATE"
           : canonicalStatus,
-      work_hours: workHours === null ? null : roundCurrency(workHours),
+      work_hours: workMinutes === null ? null : roundCurrency(workMinutes / 60),
       late_minutes: timing.lateMinutes ?? 0,
       overtime_hours: timing.overtimeHours ?? 0,
       approval_status: "NOT_REQUIRED",
@@ -1910,15 +1912,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (attendanceData.check_in_time && attendanceData.check_out_time) {
       const inTime = new Date(attendanceData.check_in_time);
       const outTime = new Date(attendanceData.check_out_time);
-      const hours = (outTime.getTime() - inTime.getTime()) / (1000 * 60 * 60);
+      const minutes = Math.round(
+        (outTime.getTime() - inTime.getTime()) / 60_000,
+      );
       attendanceData.work_hours =
-        Number.isFinite(hours) && hours >= 0 ? hours.toFixed(2) : null;
+        Number.isFinite(minutes) && minutes >= 0
+          ? (minutes / 60).toFixed(2)
+          : null;
     }
     const timing = await this.attendanceControl.calculateAttendanceMetrics(
       tenantId,
       attendanceDate,
       attendanceData.check_in_time,
-      Number(attendanceData.work_hours || 0),
+      attendanceData.check_in_time && attendanceData.check_out_time
+        ? Math.max(
+            0,
+            Math.round(
+              (new Date(attendanceData.check_out_time).getTime() -
+                new Date(attendanceData.check_in_time).getTime()) /
+                60_000,
+            ),
+          )
+        : 0,
     );
     if (timing.derivedMetricsStatus) {
       attendanceData.metadata = {
@@ -2242,19 +2257,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         attendanceDate,
         r?.check_out_time,
       );
-      const workHours =
+      const workMinutes =
         checkIn && checkOut
           ? Math.max(
               0,
-              (new Date(checkOut).getTime() - new Date(checkIn).getTime()) /
-                3_600_000,
+              Math.round(
+                (new Date(checkOut).getTime() - new Date(checkIn).getTime()) /
+                  60_000,
+              ),
             )
           : null;
       const timing = await this.attendanceControl.calculateAttendanceMetrics(
         tenantId,
         attendanceDate,
         checkIn,
-        workHours || 0,
+        workMinutes || 0,
       );
       const requestedStatus = String(r?.status || "PRESENT").toUpperCase();
 
@@ -2274,7 +2291,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
               ? "WFH"
               : requestedStatus,
         check_in_notes: r?.remarks || null,
-        work_hours: workHours === null ? null : roundCurrency(workHours),
+        work_hours: workMinutes === null ? null : roundCurrency(workMinutes / 60),
         late_minutes: timing.lateMinutes ?? 0,
         overtime_hours: timing.overtimeHours ?? 0,
         ...(timing.derivedMetricsStatus
@@ -3487,16 +3504,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       const overtimeRule = overtimeResolution.value as any;
       const rowOvertimePayRelevant = overtimeResolution.source === "MISSING" || overtimeRule?.eligible === true;
       const payRelevant = Boolean(row.derived_metrics_status && rowLatePayRelevant);
-      const workedHours = Math.max(0, Number(row.work_hours || 0));
+      const workedMinutes = Math.max(0, Math.round(Number(row.work_minutes ?? Number(row.work_hours || 0) * 60)));
       let overtimeHours: number | null = overtimeRule ? 0 : null;
       let overtimeCreditDays: number | null = overtimeRule ? 0 : null;
       if (overtimeRule?.eligible && overtimeRule.method === "HOURLY") {
-        const rawHours = Math.max(0, workedHours - Number(overtimeRule.starts_after_hours));
-        overtimeHours = rawHours < Number(overtimeRule.minimum_hours || 0) ? 0 : Math.min(rawHours, overtimeRule.cap_hours === undefined ? rawHours : Number(overtimeRule.cap_hours));
+        const rawMinutes = Math.max(0, workedMinutes - Math.round(Number(overtimeRule.starts_after_hours) * 60));
+        const minimumMinutes = Math.round(Number(overtimeRule.minimum_hours || 0) * 60);
+        const capMinutes = overtimeRule.cap_hours === undefined ? rawMinutes : Math.round(Number(overtimeRule.cap_hours) * 60);
+        overtimeHours = rawMinutes < minimumMinutes ? 0 : Math.min(rawMinutes, capMinutes) / 60;
         overtimeCreditDays = null;
       } else if (overtimeRule?.eligible && overtimeRule.method === "DAY_CREDIT") {
         overtimeHours = null;
-        const workMinutes = Math.max(0, Math.round(Number(row.work_minutes ?? workedHours * 60)));
+        const workMinutes = Math.max(0, Math.round(Number(row.work_minutes ?? workedMinutes)));
         const dayType = String(row.status).includes("HOLIDAY") ? "PAID_HOLIDAY" : String(row.status).includes("WEEK_OFF") ? "WEEKLY_OFF" : String(row.status) === "PAID_LEAVE_WORKED" ? "PAID_LEAVE" : String(row.status) === "UNPAID_LEAVE" ? "UNPAID_LEAVE" : "NORMAL";
         overtimeCreditDays = calculateOvertimeDayCredit({ workMinutes, dayType, rule: overtimeRule });
       }
@@ -4083,7 +4102,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       const start = `${today.slice(0, 7)}-01`;
       const end = monthToRange(today.slice(0, 7)).end;
       const register = canAllHr ? await this.attendanceControl.buildRegister(tenantId, start, end) : await this.attendanceControl.buildRegisterForUser(user, start, end);
-      for (const day of register.daily.filter((row: any) => Number(row.overtime_hours || 0) > 0 && String(row.overtime_approval_status || "").toUpperCase() === "PENDING")) items.push({ id: `overtime:${day.employee_id}:${day.date}`, type: "OVERTIME", employee: day.employee_name || "Employee", reason: `${day.overtime_hours} overtime hours have an explicit pending review state`, requested_at: day.created_at || day.date, due_date: day.date, impact: "Pending in existing attendance workflow", owner: "Attendance reviewer", state: "PENDING", href: "/dashboard/hr/management?section=management&tab=attendance", evidence: { date: day.date, overtime_hours: day.overtime_hours }, actor_id: actorId });
+      for (const day of register.daily.filter((row: any) => Number(row.overtime_hours || 0) > 0 && String(row.overtime_approval_status || "").toUpperCase() === "PENDING")) {
+        const overtimeMinutes = Math.round(Number(day.overtime_hours || 0) * 60);
+        const overtimeTime = `${String(Math.floor(overtimeMinutes / 60)).padStart(2, "0")}:${String(overtimeMinutes % 60).padStart(2, "0")}`;
+        items.push({ id: `overtime:${day.employee_id}:${day.date}`, type: "OVERTIME", employee: day.employee_name || "Employee", reason: `${overtimeTime} overtime recorded; awaiting review`, requested_at: day.created_at || day.date, due_date: day.date, impact: "Pending in existing attendance workflow", owner: "Attendance reviewer", state: "PENDING", href: "/dashboard/hr/management?section=management&tab=attendance", evidence: { date: day.date, overtime_hours: day.overtime_hours, overtime_minutes: overtimeMinutes, overtime_time: overtimeTime }, actor_id: actorId });
+      }
     }
     if (hasPermission(user, "hr:read") || hasPermission(user, "PAYROLL_CLOSE") || hasPermission(user, "PAYROLL_CALCULATE") || hasPermission(user, "PAYROLL_APPROVE") || hasPermission(user, "PAYROLL_COUNTERSIGN") || hasPermission(user, "PAYROLL_PAY")) {
       const { data: controls, error } = await this.supabase.from("hr_payroll_month_controls").select("id,tenant_id,payroll_month,version,stage,blocker_count,warning_count,last_action_at").eq("tenant_id", tenantId).order("payroll_month", { ascending: false });
@@ -6027,7 +6050,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return result;
   }
 
-  private workHoursFromPunches(punches: any[]) {
+  private workMinutesFromPunches(punches: any[]) {
     let startedAt: Date | null = null;
     let milliseconds = 0;
     for (const punch of punches || []) {
@@ -6064,9 +6087,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         );
       }
     }
-    return (
-      Math.round(((milliseconds + lunchAllowanceMs) / 3_600_000) * 100) / 100
-    );
+    return Math.max(0, Math.round((milliseconds + lunchAllowanceMs) / 60_000));
   }
 
   async checkIn(
@@ -6294,7 +6315,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
     const now = new Date();
     const temporaryPunch = { punch_type: "OUT", punch_at: now.toISOString() };
-    const workHours = this.workHoursFromPunches([...punches, temporaryPunch]);
+    const workMinutes = this.workMinutesFromPunches([...punches, temporaryPunch]);
 
     if (!endDay) {
       await this.addAttendancePunch(existing, "OUT", {
@@ -6303,7 +6324,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       });
       const { error } = await this.supabase
         .from("attendance")
-        .update({ work_hours: workHours.toFixed(2) })
+        .update({ work_hours: (workMinutes / 60).toFixed(2) })
         .eq("id", existing.id);
       if (error) throw new Error(error.message);
       return this.getTodayAttendance(userId);
@@ -6313,7 +6334,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       String(existing.tenant_id || ""),
       String(existing.attendance_date || today).slice(0, 10),
       existing.check_in_time,
-      workHours,
+      workMinutes,
     );
     const payload = {
       check_out_time: now.toISOString(),
@@ -6328,7 +6349,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       outside_zone_reason: isNonEmptyString(data.notes)
         ? data.notes
         : existing.outside_zone_reason,
-      work_hours: workHours.toFixed(2),
+      work_hours: (workMinutes / 60).toFixed(2),
       ...(timing.lateMinutes === null
         ? {}
         : { late_minutes: timing.lateMinutes }),

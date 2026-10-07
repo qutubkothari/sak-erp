@@ -64,6 +64,8 @@ const DEFAULT_POLICY: Omit<Policy, "tenant_id"> = {
 };
 
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
+const formatMinutes = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 const n = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -329,7 +331,7 @@ export class HrAttendanceControlService {
     tenantId: string,
     attendanceDate: string,
     checkInTime: unknown,
-    workHours = 0,
+    workMinutes = 0,
   ) {
     const resolved = await this.getPolicyForDate(tenantId, attendanceDate);
     if (!resolved.policy) {
@@ -355,7 +357,7 @@ export class HrAttendanceControlService {
     return {
       lateMinutes,
       overtimeHours: policy.overtime_enabled
-        ? round2(Math.max(0, n(workHours) - policy.overtime_after_hours))
+        ? Math.max(0, Math.round(n(workMinutes)) - policy.overtime_after_hours * 60) / 60
         : 0,
       policy,
       derivedMetricsStatus: null,
@@ -642,7 +644,8 @@ export class HrAttendanceControlService {
         ).toUpperCase();
         const approvalValid =
           approval === "NOT_REQUIRED" || approval === "APPROVED";
-        const hours = n(attendance?.work_hours);
+        const workMinutes = attendance ? authoritativeWorkMinutes(attendance) : 0;
+        const hours = workMinutes / 60;
         const metricsUnresolved = Boolean(attendance && !policyForDate);
         const checkInMinutes = this.localClockMinutes(
           attendance?.check_in_time,
@@ -659,14 +662,15 @@ export class HrAttendanceControlService {
               )
             : 0;
         const overtimeEligible = employee.overtime_eligible !== false;
-        const overtimeHours = metricsUnresolved
+        const overtimeMinutes = metricsUnresolved
           ? null
           : scheduled &&
               approvalValid &&
               policyForDate!.overtime_enabled &&
               overtimeEligible
-            ? Math.max(0, hours - policyForDate!.overtime_after_hours)
+            ? Math.max(0, workMinutes - policyForDate!.overtime_after_hours * 60)
             : 0;
+        const overtimeHours = overtimeMinutes === null ? null : overtimeMinutes / 60;
         let overtimeCreditDays: number | null = metricsUnresolved ? null : 0;
         if (
           policyForDate &&
@@ -678,10 +682,10 @@ export class HrAttendanceControlService {
         ) {
           if (!scheduled && hours > 0) {
             overtimeCreditDays =
-              hours >= policyForDate.holiday_overtime_min_hours ? 1 : 0.5;
-          } else if (hours >= policyForDate.overtime_full_day_after_hours) {
+              workMinutes >= policyForDate.holiday_overtime_min_hours * 60 ? 1 : 0.5;
+          } else if (workMinutes >= policyForDate.overtime_full_day_after_hours * 60) {
             overtimeCreditDays = 1;
-          } else if (hours > policyForDate.overtime_half_day_after_hours) {
+          } else if (workMinutes > policyForDate.overtime_half_day_after_hours * 60) {
             overtimeCreditDays = 0.5;
           }
         }
@@ -731,14 +735,14 @@ export class HrAttendanceControlService {
             dayStatus = holiday ? "HOLIDAY_WORKED" : "WEEK_OFF_WORKED";
             payableDays = 1;
           } else if (
-            hours >= policyForDate!.standard_daily_hours ||
+            workMinutes >= policyForDate!.standard_daily_hours * 60 ||
             (!attendance.check_out_time &&
               String(attendance.status).toUpperCase() === "PRESENT")
           ) {
             dayStatus =
               lateMinutes !== null && lateMinutes > 0 ? "LATE" : "PRESENT";
             payableDays = 1;
-          } else if (hours >= policyForDate!.half_day_hours) {
+          } else if (workMinutes >= policyForDate!.half_day_hours * 60) {
             dayStatus = "HALF_DAY";
             payableDays = 0.5;
           }
@@ -758,11 +762,14 @@ export class HrAttendanceControlService {
           check_in_time: attendance?.check_in_time || null,
           check_out_time: attendance?.check_out_time || null,
           work_hours: round2(hours),
-          work_minutes: attendance ? authoritativeWorkMinutes(attendance) : 0,
+          work_minutes: workMinutes,
+          work_time: formatMinutes(workMinutes),
           payable_days: payableDays,
           leave_type: leaveType || "",
           late_minutes: lateMinutes,
-          overtime_hours: overtimeHours === null ? null : round2(overtimeHours),
+          overtime_hours: overtimeHours,
+          overtime_minutes: overtimeMinutes,
+          overtime_time: overtimeMinutes === null ? null : formatMinutes(overtimeMinutes),
           overtime_credit_days: overtimeCreditDays,
           derived_metrics_status: metricsUnresolved
             ? "HISTORICAL_POLICY_UNAVAILABLE"
@@ -805,9 +812,13 @@ export class HrAttendanceControlService {
           : rows.reduce((sum, row) => sum + (row.late_minutes || 0), 0),
         overtime_hours: rows.some((row) => row.derived_metrics_status)
           ? null
-          : round2(
-              rows.reduce((sum, row) => sum + (row.overtime_hours || 0), 0),
-            ),
+          : rows.reduce((sum, row) => sum + (row.overtime_hours || 0), 0),
+        overtime_minutes: rows.some((row) => row.derived_metrics_status)
+          ? null
+          : rows.reduce((sum, row) => sum + (row.overtime_minutes || 0), 0),
+        overtime_time: rows.some((row) => row.derived_metrics_status)
+          ? null
+          : formatMinutes(rows.reduce((sum, row) => sum + (row.overtime_minutes || 0), 0)),
         overtime_credit_days: rows.some((row) => row.derived_metrics_status)
           ? null
           : round2(
@@ -817,6 +828,8 @@ export class HrAttendanceControlService {
               ),
             ),
         work_hours: round2(rows.reduce((sum, row) => sum + row.work_hours, 0)),
+        work_minutes: rows.reduce((sum, row) => sum + row.work_minutes, 0),
+        work_time: formatMinutes(rows.reduce((sum, row) => sum + row.work_minutes, 0)),
         payable_days: round2(
           rows.reduce((sum, row) => sum + row.payable_days, 0),
         ),
@@ -896,10 +909,14 @@ export class HrAttendanceControlService {
       ["Absent", "absent_days", 10],
       ["Late Days", "late_days", 11],
       ["Late Minutes", "late_minutes", 13],
-      ["Overtime Hours", "overtime_hours", 15],
+      ["Overtime Time", "overtime_time", 15],
+      ["Overtime Minutes", "overtime_minutes", 15],
+      ["Overtime Decimal Hours", "overtime_hours", 20],
       ["Overtime Credit Days", "overtime_credit_days", 20],
       ["Derived Metrics Status", "derived_metrics_status", 32],
-      ["Worked Hours", "work_hours", 14],
+      ["Decimal Hours", "work_hours", 14],
+      ["Work Time", "work_time", 14],
+      ["Work Minutes", "work_minutes", 14],
       ["Payable Days", "payable_days", 14],
       ["Outside Pending", "outside_pending", 16],
       ["Outside Rejected", "outside_rejected", 17],
@@ -921,11 +938,15 @@ export class HrAttendanceControlService {
       ["Status", "status", 20],
       ["Check In", "check_in_time", 23],
       ["Check Out", "check_out_time", 23],
-      ["Worked Hours", "work_hours", 14],
+      ["Decimal Hours", "work_hours", 14],
+      ["Work Time", "work_time", 14],
+      ["Work Minutes", "work_minutes", 14],
       ["Payable Days", "payable_days", 14],
       ["Leave Type", "leave_type", 16],
       ["Late Minutes", "late_minutes", 13],
-      ["Overtime Hours", "overtime_hours", 15],
+      ["Overtime Decimal Hours", "overtime_hours", 20],
+      ["Overtime Time", "overtime_time", 15],
+      ["Overtime Minutes", "overtime_minutes", 15],
       ["Overtime Credit Days", "overtime_credit_days", 20],
       ["Derived Metrics Status", "derived_metrics_status", 32],
       ["Outside Zone", "is_outside_zone", 13],

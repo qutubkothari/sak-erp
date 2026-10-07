@@ -65,4 +65,21 @@ describe("dated payroll attendance adjustments", () => {
     expect(result.overtimeAmount).toBe(0);
     expect(result.overtimeHours).toBe(0);
   });
+
+  it("preserves 29 overtime minutes for payroll rate calculations", () => {
+    const result = calculateDatedAttendanceAdjustments({
+      days: [{ date: "2026-09-01", scheduled: true, work_hours: 9.48, policy }],
+      dailyGrossRate: 1000,
+      basicSalary: 24000,
+      workingDays: 24,
+      overtimeRuleForDate: () => ({
+        eligible: true,
+        method: "HOURLY",
+        starts_after_hours: 9,
+        rate_multiplier: 1.5,
+      }),
+    });
+    expect(result.overtimeHours).toBe(29 / 60);
+    expect(result.overtimeAmount).toBe(90.625);
+  });
 });

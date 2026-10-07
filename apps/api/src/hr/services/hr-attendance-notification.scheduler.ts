@@ -118,7 +118,9 @@ export class HrAttendanceNotificationScheduler {
         add(employee, "HOLIDAY_ATTENDANCE", "Holiday attendance recorded", `${employee.employee_name || employee.employee_code} worked on a holiday or weekly off on ${now.date}.`);
       }
       if (Number(attendance?.work_hours || 0) >= fullDayHours) {
-        add(employee, "LONG_SHIFT", "Long attendance shift requires review", `${employee.employee_name || employee.employee_code} recorded ${Number(attendance.work_hours).toFixed(2)} working hours on ${now.date}.`);
+        const workMinutes = Math.max(0, Math.round(Number(attendance.work_hours || 0) * 60));
+        const workTime = `${String(Math.floor(workMinutes / 60)).padStart(2, "0")}:${String(workMinutes % 60).padStart(2, "0")}`;
+        add(employee, "LONG_SHIFT", "Long attendance shift requires review", `${employee.employee_name || employee.employee_code} recorded ${workTime} of work time on ${now.date}.`);
       }
     }
 

@@ -21,9 +21,12 @@ test("attendance review separates employee OT rules from attendance policy and l
   assert.match(view, /EMPLOYEE_OT_RULE_REQUIRED/);
   assert.match(view, /Confirm Overtime Rule/);
   assert.match(view, /Attendance \/ Shift Policy/);
-  assert.match(view, /Employee OT Rule/);
+  assert.match(view, /OT Rule Source/);
+  assert.match(view, /Employee Override/);
+  assert.match(view, /Extra Day Credit/);
+  assert.match(view, /formatAttendanceDuration\(day\.work_minutes\)/);
   assert.match(view, /Pay relevant: \{day\.late_pay_relevant/);
-  assert.match(view, /Pay relevant: \{day\.overtime_pay_relevant/);
+  assert.match(view, /day\.calculation_reason/);
   assert.match(view, /statusLabel\[day\.classification\]/);
 });
 

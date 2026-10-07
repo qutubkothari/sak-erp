@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiClient } from "../../../../../lib/api-client";
 import { formatPayrollAttendanceTime } from "./payroll-attendance-time";
+import { formatAttendanceDuration } from "../attendance-duration";
 
 type ReviewKind = "attendance" | "salary";
 type ReviewDay = {
@@ -239,7 +240,7 @@ export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
           <thead className="bg-stone-50 text-xs uppercase text-stone-600"><tr>{["Date", "Work Time", "Day Type", "OT Rule Source", "OT Rule", "Extra Day Credit", "Total Pay Days", "Reason / Calculation", "Attendance / Shift Policy", "Late", "Review status"].map(label => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead>
           <tbody className="divide-y divide-stone-100">{review.attendance.affected.map(day => <tr key={day.date}>
             <td className="px-3 py-3 font-semibold">{formatDate(day.date)}{day.attendance_id && <Link href={managementHref("attendance", day.date, day.attendance_id)} className="mt-1 block text-xs text-blue-700 hover:underline">Open record</Link>}</td>
-            <td className="px-3 py-3"><strong>{Math.floor(day.work_minutes / 60)}h {String(day.work_minutes % 60).padStart(2, "0")}m</strong><span className="block text-xs text-stone-500">{formatPayrollAttendanceTime(day.check_in_time, day.timezone)} – {formatPayrollAttendanceTime(day.check_out_time, day.timezone)}</span></td>
+            <td className="px-3 py-3"><strong>{formatAttendanceDuration(day.work_minutes)}</strong><span className="block text-xs text-stone-500">{formatPayrollAttendanceTime(day.check_in_time, day.timezone)} – {formatPayrollAttendanceTime(day.check_out_time, day.timezone)}</span></td>
             <td className="px-3 py-3">{day.day_type.replace(/_/g, " ")}<span className="block text-xs text-stone-500">{day.status.replace(/_/g, " ")}</span></td>
             <td className="px-3 py-3">{day.overtime_rule?.source === "EMPLOYEE_OVERRIDE" ? "Employee Override" : day.overtime_rule ? "Company Default" : "Review Required"}</td>
             <td className="px-3 py-3">{day.overtime_rule ? `${day.overtime_rule.eligible ? day.overtime_rule.method : "Not eligible"} · ${formatDate(day.overtime_rule.effective_from)}` : "No effective rule"}</td>
