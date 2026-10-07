@@ -78,28 +78,56 @@ const attendanceClockMinutes = (value: unknown): number | null => {
   return hour * 60 + minute + second / 60;
 };
 
-const attendanceWindowsOverlap = (left: any, right: any): boolean => {
-  let leftStart = attendanceClockMinutes(left?.check_in_time);
-  let leftEnd = attendanceClockMinutes(left?.check_out_time);
-  let rightStart = attendanceClockMinutes(right?.check_in_time);
-  let rightEnd = attendanceClockMinutes(right?.check_out_time);
+const attendanceWindow = (record: any) => {
+  const leftStart = attendanceClockMinutes(record?.check_in_time);
+  let leftEnd = attendanceClockMinutes(record?.check_out_time);
   if (
     leftStart === null ||
-    leftEnd === null ||
-    rightStart === null ||
-    rightEnd === null
+    leftEnd === null
+  ) {
+    return null;
+  }
+  if (leftEnd < leftStart) leftEnd += 24 * 60;
+  return { start: leftStart, end: leftEnd };
+};
+
+const attendanceWindowsOverlap = (left: any, right: any): boolean => {
+  const leftWindow = attendanceWindow(left);
+  const rightWindow = attendanceWindow(right);
+  if (!leftWindow || !rightWindow) return false;
+  return (
+    Math.min(leftWindow.end, rightWindow.end) -
+      Math.max(leftWindow.start, rightWindow.start) >=
+    1
+  );
+};
+
+const attendanceWindowsMatch = (left: any, right: any): boolean => {
+  const leftWindow = attendanceWindow(left);
+  const rightWindow = attendanceWindow(right);
+  if (!leftWindow || !rightWindow) return false;
+  return (
+    Math.abs(leftWindow.start - rightWindow.start) <= 2 &&
+    Math.abs(leftWindow.end - rightWindow.end) <= 2
+  );
+};
+
+const isLegacyAttendanceShadow = (canonical: any, legacy: any): boolean => {
+  if (
+    String(canonical?.status || "").toUpperCase() !==
+    String(legacy?.status || "").toUpperCase()
   ) {
     return false;
   }
-  if (leftEnd < leftStart) leftEnd += 24 * 60;
-  if (rightEnd < rightStart) rightEnd += 24 * 60;
-  return Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart) >= 1;
+  const explicitReloginEvidence =
+    /re[ -]?login|logged\s+in\s+again|log\s+in\s+again|software\s+issue/i.test(
+      String(legacy?.remarks || ""),
+    );
+  return (
+    attendanceWindowsMatch(canonical, legacy) ||
+    (explicitReloginEvidence && attendanceWindowsOverlap(canonical, legacy))
+  );
 };
-
-const isLegacyAttendanceShadow = (canonical: any, legacy: any): boolean =>
-  String(canonical?.status || "").toUpperCase() ===
-    String(legacy?.status || "").toUpperCase() &&
-  attendanceWindowsOverlap(canonical, legacy);
 
 // The movement ledger can retain the opening IN even when the summary was
 // overwritten. Use that recorded evidence consistently in all attendance reads.

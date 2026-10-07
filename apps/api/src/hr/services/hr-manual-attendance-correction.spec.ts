@@ -207,6 +207,28 @@ describe("manual attendance correction duplicate validation", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it("does not treat an overlapping legacy row as a shadow without a matching punch window or re-login evidence", async () => {
+    const unrelated = {
+      ...currentLegacy,
+      id: "legacy-overlapping-independent",
+      check_in_time: "2026-10-07 09:00:00",
+      check_out_time: "2026-10-07 16:55:00",
+      remarks: null,
+    };
+    const { service, update } = serviceForCorrection({
+      attendance_records: [unrelated],
+    });
+    await expect(
+      service.correctManualAttendance(
+        "tenant-1",
+        user,
+        currentCanonical.id,
+        correction,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it("supports correction of a legacy-only record without creating a canonical row", async () => {
     const { service, update } = serviceForCorrection({}, "attendance_records");
     await service.correctManualAttendance(
