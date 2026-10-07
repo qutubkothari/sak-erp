@@ -10,6 +10,7 @@ import {
   hasPermission,
 } from "../../auth/utils/permission-utils";
 import { resolvePayrollRule } from "../payroll-control.domain";
+import { DEFAULT_HR_HOLIDAYS_2026 } from "../holiday-calendar";
 
 type Policy = {
   tenant_id: string;
@@ -598,7 +599,7 @@ export class HrAttendanceControlService {
         .from("hr_holidays")
         .select("start_date,end_date,holiday_name")
         .eq("tenant_id", tenantId)
-        .lte("start_date", end).order("id")),
+        .order("id")),
     ]);
     if (employeeError) throw new Error(employeeError.message);
     if (attendanceResult.error) throw new Error(attendanceResult.error.message);
@@ -606,7 +607,13 @@ export class HrAttendanceControlService {
       throw new Error(legacyAttendanceResult.error.message);
     if (leaveResult.error) throw new Error(leaveResult.error.message);
     if (holidayResult.error) throw new Error(holidayResult.error.message);
-    const holidays = holidayResult.data || [];
+    // Match the existing Holidays screen's calendar when this tenant has no
+    // saved holidays. Reads must not seed rows or invent a separate calendar.
+    // Load the full saved calendar so a tenant's future custom calendar also
+    // suppresses the default rather than accidentally reinstating holidays.
+    const holidays = holidayResult.data?.length
+      ? holidayResult.data
+      : DEFAULT_HR_HOLIDAYS_2026;
     // Preserve historical manual/biometric rows written by the retired
     // attendance_records path. A canonical mobile attendance row always wins,
     // so the same employee/day can never be counted twice.

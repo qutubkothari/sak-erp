@@ -1,0 +1,100 @@
+// Existing company calendar shared by the Holidays screen and read-only register.
+export const DEFAULT_HR_HOLIDAYS_2026 = [
+  {
+    holiday_name: "Bhogi",
+    start_date: "2026-01-14",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Makara Sankranti",
+    start_date: "2026-01-15",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Kanuma",
+    start_date: "2026-01-16",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Republic Day",
+    start_date: "2026-01-26",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Holi",
+    start_date: "2026-03-03",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Ugadi",
+    start_date: "2026-03-19",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Ramzan Eid",
+    start_date: "2026-03-20",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Bakri Eid",
+    start_date: "2026-05-27",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Mohurram",
+    start_date: "2026-06-16",
+    end_date: "2026-06-24",
+    holiday_type: "PUBLIC",
+    notes: "Imported from Holiday List 2026 reference.",
+  },
+  {
+    holiday_name: "Independence Day",
+    start_date: "2026-08-15",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Vinayaka Chavithi",
+    start_date: "2026-08-21",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Eid ul Milad un Nabi",
+    start_date: "2026-08-25",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Mahatma Gandhi Jayanti",
+    start_date: "2026-10-02",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Dusshera",
+    start_date: "2026-10-20",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Diwali",
+    start_date: "2026-11-08",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+  {
+    holiday_name: "Christmas",
+    start_date: "2026-12-25",
+    end_date: null,
+    holiday_type: "PUBLIC",
+  },
+];
