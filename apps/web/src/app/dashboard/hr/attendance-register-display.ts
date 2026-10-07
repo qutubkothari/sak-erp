@@ -51,7 +51,7 @@ export function mergeAttendanceRegister(
       calendar_holiday: day.holiday || "",
       calendar_weekly_off: day.weekly_off === true,
       calendar_leave_type: day.leave_approved ? day.leave_type || "Leave" : "",
-      calendar_working_weekdays: day.policy?.working_weekdays || null,
+      calendar_working_weekdays: day.working_weekdays || day.policy?.working_weekdays || null,
       calendar_status: day.status,
     };
   });

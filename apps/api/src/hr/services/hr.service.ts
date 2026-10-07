@@ -4645,7 +4645,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           total_pay_days: Number(day.payable_days || 0) + extraCredit, overtime_rule_id: overtimeRule.version?.id || null,
           overtime_rule_source: overtimeRule.source === "EMPLOYEE" ? "EMPLOYEE_OVERRIDE" : overtimeRule.source === "TENANT" ? "COMPANY_DEFAULT" : "MISSING",
           overtime_rule_value: overtimeRule.value || null, overtime_rule_reason: overtimeRule.version?.reason || null,
-          policy_version_id: day.policy?.policy_version_id || null, policy_effective_from: day.policy?.effective_from || null, approval_status: day.approval_status, leave_type: day.leave_type || null };
+          policy_version_id: day.policy?.policy_version_id || null, policy_effective_from: day.policy?.effective_from || null,
+          schedule_rule_version_id: day.schedule_rule_version_id || null, approval_status: day.approval_status, leave_type: day.leave_type || null };
       });
       const workingDays = Number(summary.working_days || 0);
       const specialWorkedBaseDays = employeeAttendanceDays.filter((day: any) => ["HOLIDAY_WORKED", "WEEK_OFF_WORKED", "PAID_LEAVE_WORKED"].includes(String(day.status))).reduce((sum: number, day: any) => sum + Number(day.payable_days || 1), 0);
