@@ -138,7 +138,7 @@ export const requiresAttendanceDerivedMetricsReview = (
   employee?: any,
 ) =>
   summary?.derived_metrics_status === "HISTORICAL_POLICY_UNAVAILABLE" &&
-  hasAttendanceDerivedMetricsPayrollEffect(policy, employee);
+  (summary?.late_deduction_pay_relevant ?? hasAttendanceDerivedMetricsPayrollEffect(policy, employee));
 
 export function resolveAttendancePolicyForDate(current: Policy | null, versions: any[], date: string, employeeOverrides: any[] = []): Policy | null {
   const candidates = [
@@ -656,6 +656,9 @@ export class HrAttendanceControlService {
           (employeePolicies || []).filter((row: any) => row.employee_id === employee.id));
         const employeeDatedRules = (employeePolicies || []).filter((row: any) => row.employee_id === employee.id);
         const weeklyRule = resolvePayrollRule({ ruleKey: "weekly_working_days", effectiveDate: date, employeeOverrides: employeeDatedRules });
+        const lateRule = resolvePayrollRule({ ruleKey: "late_policy", effectiveDate: date, employeeOverrides: employeeDatedRules });
+        const confirmedLateMode = (lateRule.value as any)?.deduction_mode;
+        if (policyForDate && confirmedLateMode) policyForDate.late_deduction_mode = confirmedLateMode;
         const workingWeekdays = Array.isArray(weeklyRule.value) ? weeklyRule.value.map(Number) : policyForDate?.working_weekdays;
         const scheduled = workingWeekdays
           ? workingWeekdays.includes(weekday) && !holiday
@@ -799,6 +802,8 @@ export class HrAttendanceControlService {
           holiday: holiday?.holiday_name || "",
           weekly_off: workingWeekdays ? !workingWeekdays.includes(weekday) : null,
           schedule_rule_version_id: weeklyRule.version?.id || null,
+          late_pay_rule_version_id: lateRule.version?.id || null,
+          late_deduction_policy: confirmedLateMode || policyForDate?.late_deduction_mode || null,
           working_weekdays: workingWeekdays || null,
           leave_approved: Boolean(leave),
           status: dayStatus,
@@ -848,6 +853,7 @@ export class HrAttendanceControlService {
         unpaid_leave_days: count("UNPAID_LEAVE"),
         paid_weekly_off_days: count("WEEK_OFF"),
         base_payable_calendar_days: round2(rows.reduce((sum, row) => sum + row.payable_days, 0) + count("WEEK_OFF")),
+        late_deduction_pay_relevant: rows.some((row) => (row.late_deduction_policy || policy.late_deduction_mode) !== "NONE"),
         absent_days: count("ABSENT"),
         late_days: rows.some((row) => row.derived_metrics_status)
           ? null
