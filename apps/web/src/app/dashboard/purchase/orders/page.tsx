@@ -26,6 +26,7 @@ import { poRegisterQuery } from './register-query';
 import { ListTable, type ListTableColumn } from '../../../../components/ui/ListTable';
 import { confirmDialog } from '../../../../components/ui/ConfirmDialog';
 import { ErpButton, ErpMetricStrip, ErpPageHeader } from '../../../../components/ui/ErpPrimitives';
+import { resolveRegionalProfile } from '@/lib/market-profile';
 import {
   Check,
   Copy,
@@ -101,13 +102,24 @@ function normalizeItemCategory(category: unknown): string {
 
 const AUTO_REFRESH_MS = 30000;
 
-const inrFmt = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-function fmtINR(val: number | undefined | null): string {
-  return inrFmt.format(val ?? 0);
+const REGIONAL_PROFILE = resolveRegionalProfile(
+  process.env.NEXT_PUBLIC_ERP_TENANT_PROFILE || process.env.ERP_TENANT_PROFILE,
+);
+// Egypt VAT must come from approved tax setup. Keep new Egyptian PO lines untaxed
+// until ARWA's tax codes are configured; other profiles retain their declared rate.
+const DEFAULT_PO_TAX_RATE = REGIONAL_PROFILE.marketProfile === 'EGYPT'
+  ? 0
+  : REGIONAL_PROFILE.defaultTaxRate;
+const regionalNumberFormat = new Intl.NumberFormat(REGIONAL_PROFILE.locale, {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+function fmtMoney(val: number | undefined | null): string {
+  return regionalNumberFormat.format(val ?? 0);
 }
 
-function fmtRoundedINR(val: number | undefined | null): string {
-  return inrFmt.format(Math.round(Number(val ?? 0)));
+function fmtRoundedMoney(val: number | undefined | null): string {
+  return regionalNumberFormat.format(Math.round(Number(val ?? 0)));
 }
 
 function calcRoundingAdjustment(val: number | undefined | null): number {
@@ -118,7 +130,7 @@ function calcRoundingAdjustment(val: number | undefined | null): number {
 
 function fmtPercent(val: number | undefined | null): string {
   const value = Number(val || 0) || 0;
-  return value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  return value.toLocaleString(REGIONAL_PROFILE.locale, { maximumFractionDigits: 2 });
 }
 
 function calcFreightGstAmount(freightAmount: number | undefined | null, applicable: boolean, percent: number | undefined | null): number {
@@ -148,7 +160,7 @@ function fmtDate(value: unknown): string {
   if (!value) return '-';
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString('en-IN');
+  return date.toLocaleDateString(REGIONAL_PROFILE.locale);
 }
 
 function FullScreenPortal({ children }: { children: ReactNode }) {
@@ -486,7 +498,7 @@ function PurchaseOrdersContent() {
     customsDuty: 0,
     otherCharges: 0,
     isImportPurchase: false,
-    supplierCurrency: 'INR',
+    supplierCurrency: REGIONAL_PROFILE.currency,
     customsExchangeRate: 0,
     importNotes: '',
     trackingNumber: '',
@@ -611,7 +623,7 @@ function PurchaseOrdersContent() {
 
   useEffect(() => {
     if (!showModal) return;
-    if (!formData.isImportPurchase && String(formData.supplierCurrency || 'INR').toUpperCase() === 'INR') return;
+    if (!formData.isImportPurchase && String(formData.supplierCurrency || REGIONAL_PROFILE.currency).toUpperCase() === REGIONAL_PROFILE.currency) return;
     if (!formData.items.some((item) => Number(item.taxRate || 0) !== 0)) return;
     setFormData((current) => ({
       ...current,
@@ -1181,7 +1193,7 @@ function PurchaseOrdersContent() {
           vendorName: preferredVendorName,
           quantity: quantity,
           unitPrice: unitPrice,
-          taxRate: 18, // Default GST rate
+          taxRate: DEFAULT_PO_TAX_RATE,
           totalPrice: totalWithTax,
           specifications: item.remarks || '',
           paymentTerms: item.payment_terms || '',
@@ -1633,7 +1645,7 @@ function PurchaseOrdersContent() {
           customsDuty: customsDuty,
           otherCharges: otherCharges,
           isImportPurchase: formData.isImportPurchase,
-          supplierCurrency: formData.supplierCurrency || 'INR',
+          supplierCurrency: formData.supplierCurrency || REGIONAL_PROFILE.currency,
           customsExchangeRate: formData.customsExchangeRate || 0,
           importNotes: formData.importNotes || undefined,
           status: poStatus,
@@ -1854,7 +1866,7 @@ function PurchaseOrdersContent() {
         customsDuty,
         otherCharges,
         isImportPurchase: formData.isImportPurchase,
-        supplierCurrency: formData.supplierCurrency || 'INR',
+        supplierCurrency: formData.supplierCurrency || REGIONAL_PROFILE.currency,
         customsExchangeRate: formData.customsExchangeRate || 0,
         importNotes: formData.importNotes || undefined,
         ...(Array.isArray(formData.attachments) && formData.attachments.length > 0
@@ -1946,7 +1958,7 @@ function PurchaseOrdersContent() {
           quantity: 1,
           unitPrice: 0,
           discount: 0,
-          taxRate: 18,
+          taxRate: DEFAULT_PO_TAX_RATE,
           totalPrice: 0,
           specifications: '',
           paymentTerms: '',
@@ -2144,7 +2156,7 @@ function PurchaseOrdersContent() {
         } catch (error) {
         }
       } else {
-        // Item not found in loaded list — record the selection and trigger a re-fetch.
+        // Item not found in loaded list â€” record the selection and trigger a re-fetch.
         // This handles the race condition where the user selects before items finish loading.
         updatedItems[index] = { ...updatedItems[index], itemId: value };
         if (items.length === 0) fetchItems();
@@ -2200,7 +2212,7 @@ function PurchaseOrdersContent() {
     // Recalculate total price (including discount)
     if (field === 'quantity' || field === 'unitPrice' || field === 'taxRate' || field === 'discount' || field === 'itemId' || field === 'vendorId') {
       const item = updatedItems[index];
-      if (formData.isImportPurchase || String(formData.supplierCurrency || 'INR').toUpperCase() !== 'INR') {
+      if (formData.isImportPurchase || String(formData.supplierCurrency || REGIONAL_PROFILE.currency).toUpperCase() !== REGIONAL_PROFILE.currency) {
         item.taxRate = 0;
       }
       item.totalPrice = calcPoLineTotal(item.quantity, item.unitPrice, item.discount || 0, item.taxRate);
@@ -2313,7 +2325,7 @@ function PurchaseOrdersContent() {
       quantity: 1,
       unitPrice,
       discount: 0,
-      taxRate: 18,
+      taxRate: DEFAULT_PO_TAX_RATE,
       totalPrice: subtotal + (subtotal * 0.18),
       specifications: String(item.description || 'Temporary R&D procurement item'),
       paymentTerms: '',
@@ -2419,7 +2431,7 @@ function PurchaseOrdersContent() {
       customsDuty: 0,
       otherCharges: 0,
       isImportPurchase: false,
-      supplierCurrency: 'INR',
+      supplierCurrency: REGIONAL_PROFILE.currency,
       customsExchangeRate: 0,
       importNotes: '',
       trackingNumber: '',
@@ -2813,10 +2825,10 @@ function PurchaseOrdersContent() {
         supplierCurrency: (() => {
           try {
             const tc = data.terms_and_conditions;
-            if (tc && typeof tc === 'string' && tc.startsWith('{')) return JSON.parse(tc).supplierCurrency || 'INR';
-            if (tc && typeof tc === 'object') return (tc as any).supplierCurrency || 'INR';
+            if (tc && typeof tc === 'string' && tc.startsWith('{')) return JSON.parse(tc).supplierCurrency || REGIONAL_PROFILE.currency;
+            if (tc && typeof tc === 'object') return (tc as any).supplierCurrency || REGIONAL_PROFILE.currency;
           } catch {}
-          return 'INR';
+          return REGIONAL_PROFILE.currency;
         })(),
         customsExchangeRate: (() => {
           try {
@@ -2970,7 +2982,7 @@ function PurchaseOrdersContent() {
         customsDuty: data.customs_duty || 0,
         otherCharges: data.other_charges || 0,
         isImportPurchase: readPoTermsValue(data, 'isImportPurchase', false) === true,
-        supplierCurrency: readPoTermsValue(data, 'supplierCurrency', 'INR') || 'INR',
+        supplierCurrency: readPoTermsValue(data, 'supplierCurrency', REGIONAL_PROFILE.currency) || REGIONAL_PROFILE.currency,
         customsExchangeRate: Number(readPoTermsValue(data, 'customsExchangeRate', 0)) || 0,
         importNotes: readPoTermsValue(data, 'importNotes', ''),
         trackingNumber: '',
@@ -3165,7 +3177,7 @@ function PurchaseOrdersContent() {
       // Open in new window
       window.open(htmlUrl, '_blank');
 
-      // Don't revoke quickly — user may interact with the PDF viewer tab
+      // Don't revoke quickly â€” user may interact with the PDF viewer tab
       setTimeout(() => { URL.revokeObjectURL(pdfUrl); URL.revokeObjectURL(htmlUrl); }, 300000);
     } catch (error: any) {
       setAlertMessage({
@@ -3579,7 +3591,7 @@ function PurchaseOrdersContent() {
         const otherCharges = o.other_charges || 0;
         const grandTotal = itemsSubtotal + freightAmount + freightGstAmount + customsDuty + otherCharges;
         return (
-          <span className="whitespace-nowrap font-semibold text-gray-900">₹{fmtRoundedINR(grandTotal)}</span>
+          <span className="whitespace-nowrap font-semibold text-gray-900">{REGIONAL_PROFILE.currency} {fmtRoundedMoney(grandTotal)}</span>
         );
       },
       minWidth: 150,
@@ -3654,11 +3666,11 @@ function PurchaseOrdersContent() {
       sortAccessor: (o) => ((o as any).last_edited_at ? new Date((o as any).last_edited_at).getTime() : 0),
       cell: (o) => {
         const d = (o as any).last_edited_at;
-        if (!d) return <span className="text-xs text-gray-400">—</span>;
+        if (!d) return <span className="text-xs text-gray-400">â€”</span>;
         const dt = new Date(d);
         return (
           <span className="text-xs text-gray-700 whitespace-nowrap">
-            {dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+            {dt.toLocaleDateString(REGIONAL_PROFILE.locale, { day: '2-digit', month: 'short', year: 'numeric' })}
             <span className="block text-gray-400">{dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </span>
         );
@@ -3674,7 +3686,7 @@ function PurchaseOrdersContent() {
       cell: (o) => {
         const count = (o as any).edit_count;
         const user = (o as any).updated_by;
-        if (!count) return <span className="text-xs text-gray-400">—</span>;
+        if (!count) return <span className="text-xs text-gray-400">â€”</span>;
         return (
           <span className="text-xs text-gray-700">
             {count} time{count !== 1 ? 's' : ''}
@@ -3844,7 +3856,7 @@ function PurchaseOrdersContent() {
             getRowId={(o) => o.id}
             defaultPageSize={10}
             pageSizeOptions={[10, 25, 50, 100]}
-            searchPlaceholder="Search PO number, vendor, PR ref, item code, name, description…"
+            searchPlaceholder="Search PO number, vendor, PR ref, item code, name, descriptionâ€¦"
             onSearchChange={setSearchTerm}
             manualFiltering
             resetPageKey={registerQuery}
@@ -3853,7 +3865,7 @@ function PurchaseOrdersContent() {
                 {canDownloadPO && (
                   <ErpButton type="button" onClick={handleExportOrders} disabled={exportingOrders || loading || searchTerm.trim() !== debouncedSearch} variant="secondary">
                     <Download className="h-4 w-4" />
-                    {exportingOrders ? 'Exporting…' : 'Export Excel'}
+                    {exportingOrders ? 'Exportingâ€¦' : 'Export Excel'}
                   </ErpButton>
                 )}
                 {orders.length > 0 && (
@@ -3910,7 +3922,7 @@ function PurchaseOrdersContent() {
             }
             emptyState={
               <div className="p-12 text-center">
-                <div className="text-6xl mb-4">📋</div>
+                <div className="text-6xl mb-4">ðŸ“‹</div>
                 <h3 className="text-xl font-semibold text-gray-700 mb-2">No Purchase Orders Yet</h3>
                 <p className="text-gray-500">Create your first purchase order to get started</p>
               </div>
@@ -4121,7 +4133,7 @@ function PurchaseOrdersContent() {
                                     {rfqItems.length > 0 ? `${rfqItems.length} item${rfqItems.length === 1 ? '' : 's'}` : '-'}
                                   </td>
                                   <td className="px-4 py-3 font-semibold text-[#2F241B]">
-                                    {quoteValue > 0 ? `₹${fmtINR(quoteValue)}` : '-'}
+                                    {quoteValue > 0 ? `${REGIONAL_PROFILE.currency} ${fmtMoney(quoteValue)}` : '-'}
                                   </td>
                                   <td className="px-4 py-3 text-[#4A3426]">
                                     {leadTimes.length > 0 ? Array.from(new Set(leadTimes)).join(', ') : '-'}
@@ -4289,7 +4301,7 @@ function PurchaseOrdersContent() {
                                 : 'bg-white text-amber-800 border-amber-300 hover:bg-amber-50'
                             }`}
                             >
-                              📍 {entry.name}
+                              ðŸ“ {entry.name}
                             </button>
                             <button
                               type="button"
@@ -4297,7 +4309,7 @@ function PurchaseOrdersContent() {
                               className="w-6 h-6 flex items-center justify-center rounded-full bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-800 text-sm font-bold transition-colors"
                               title="Delete this saved address"
                             >
-                              ×
+                              Ã—
                             </button>
                           </div>
                         ))}
@@ -4325,7 +4337,7 @@ function PurchaseOrdersContent() {
                       disabled={deliveryAddressSaving || !formData.deliveryAddress.trim()}
                       className="px-3 py-1.5 rounded-lg bg-amber-700 text-white text-xs font-semibold hover:bg-amber-800 disabled:opacity-50 whitespace-nowrap"
                     >
-                      {deliveryAddressSaving ? 'Saving…' : '💾 Save for reuse'}
+                      {deliveryAddressSaving ? 'Savingâ€¦' : 'ðŸ’¾ Save for reuse'}
                     </button>
                   </div>
                                   </div>
@@ -4537,7 +4549,7 @@ function PurchaseOrdersContent() {
                           <div>UOM</div>
                           <div>Unit Price</div>
                           <div className="text-right">Discount %</div>
-                          <div>GST %</div>
+                          <div>{REGIONAL_PROFILE.taxLabel} %</div>
                           <div className="text-right">Total</div>
                           <div></div>
                         </div>
@@ -4760,7 +4772,7 @@ function PurchaseOrdersContent() {
                                                       </div>
                                                       <div className="text-right">
                                                         <div className="text-sm font-semibold text-blue-600">
-                                                          ₹{fmtINR(record.unit_price)}
+                                                          {REGIONAL_PROFILE.currency} {fmtMoney(record.unit_price)}
                                                         </div>
                                                         <div className="text-xs text-gray-500 capitalize">
                                                           {record.po_status.replace('_', ' ')}
@@ -4797,7 +4809,7 @@ function PurchaseOrdersContent() {
                                 }
                                 return (
                                   <div className="mt-1 max-w-full break-words text-[11px] leading-tight text-gray-600">
-                                    Last: <span className="font-medium text-gray-800">₹{fmtINR(last.unit_price)}</span>
+                                    Last: <span className="font-medium text-gray-800">{REGIONAL_PROFILE.currency} {fmtMoney(last.unit_price)}</span>
                                   </div>
                                 );
                               })()}
@@ -4817,14 +4829,14 @@ function PurchaseOrdersContent() {
                               <input
                                 type="number"
                                 value={item.taxRate}
-                                disabled={formData.isImportPurchase || String(formData.supplierCurrency || 'INR').toUpperCase() !== 'INR'}
+                                disabled={formData.isImportPurchase || String(formData.supplierCurrency || REGIONAL_PROFILE.currency).toUpperCase() !== REGIONAL_PROFILE.currency}
                                 onChange={(e) => { const v = parseFloat(e.target.value); handleUpdateItem(index, 'taxRate', Number.isNaN(v) ? 0 : v); }}
-                                placeholder={(formData.isImportPurchase || String(formData.supplierCurrency || 'INR').toUpperCase() !== 'INR') ? 'Import GST via BOE' : 'Tax %'}
-                                className={`w-full rounded border px-3 py-2 ${(formData.isImportPurchase || String(formData.supplierCurrency || 'INR').toUpperCase() !== 'INR') ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-300'}`}
+                                placeholder={(formData.isImportPurchase || String(formData.supplierCurrency || REGIONAL_PROFILE.currency).toUpperCase() !== REGIONAL_PROFILE.currency) ? `Import ${REGIONAL_PROFILE.taxLabel} via customs evidence` : 'Tax %'}
+                                className={`w-full rounded border px-3 py-2 ${(formData.isImportPurchase || String(formData.supplierCurrency || REGIONAL_PROFILE.currency).toUpperCase() !== REGIONAL_PROFILE.currency) ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-300'}`}
                               />
                             </div>
                             <div className="flex min-w-0 items-center justify-start lg:justify-end pt-2 lg:pt-0">
-                              <span className="font-medium whitespace-nowrap">₹{fmtINR(item.totalPrice)}</span>
+                              <span className="font-medium whitespace-nowrap">{REGIONAL_PROFILE.currency} {fmtMoney(item.totalPrice)}</span>
                             </div>
                             <div className="flex items-center justify-end md:justify-start lg:justify-center">
                               <button
@@ -4832,7 +4844,7 @@ function PurchaseOrdersContent() {
                                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-red-100 text-lg font-bold text-red-600 hover:bg-red-200 hover:text-red-800"
                                 title="Remove this item"
                               >
-                                ×
+                                Ã—
                               </button>
                             </div>
                           </div>
@@ -4904,7 +4916,7 @@ function PurchaseOrdersContent() {
                                 <div>
                                   <div className="text-sm font-semibold text-[#4A3426]">{group.vendorName}</div>
                                   <div className="text-xs text-[#7A6555]">
-                                    {group.itemCount} line{group.itemCount === 1 ? '' : 's'} · Qty {group.quantity}
+                                    {group.itemCount} line{group.itemCount === 1 ? '' : 's'} Â· Qty {group.quantity}
                                   </div>
                                 </div>
                                 <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${attachments.length > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
@@ -4987,7 +4999,7 @@ function PurchaseOrdersContent() {
                 </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Freight Value (₹)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Freight Value ({REGIONAL_PROFILE.currency})</label>
                   <input
                     type="number"
                     step="0.01"
@@ -4999,7 +5011,7 @@ function PurchaseOrdersContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">GST on Freight</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">{REGIONAL_PROFILE.taxLabel} on Freight</label>
                   <label className="flex h-[42px] items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700">
                     <input
                       type="checkbox"
@@ -5015,7 +5027,7 @@ function PurchaseOrdersContent() {
                   </label>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Freight GST (%)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Freight {REGIONAL_PROFILE.taxLabel} (%)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -5029,7 +5041,7 @@ function PurchaseOrdersContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Customs Duty (₹)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Customs Duty ({REGIONAL_PROFILE.currency})</label>
                   <input
                     type="number"
                     step="0.01"
@@ -5041,7 +5053,7 @@ function PurchaseOrdersContent() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Additional Expenses (₹)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Additional Expenses ({REGIONAL_PROFILE.currency})</label>
                   <input
                     type="number"
                     step="0.01"
@@ -5063,7 +5075,7 @@ function PurchaseOrdersContent() {
                         setFormData({
                           ...formData,
                           isImportPurchase: isImport,
-                          supplierCurrency: isImport ? (formData.supplierCurrency === 'INR' ? 'USD' : formData.supplierCurrency || 'USD') : 'INR',
+                          supplierCurrency: isImport ? (formData.supplierCurrency === REGIONAL_PROFILE.currency ? 'USD' : formData.supplierCurrency || 'USD') : REGIONAL_PROFILE.currency,
                           customsExchangeRate: isImport ? formData.customsExchangeRate : 0,
                           freightGstApplicable: isImport ? false : formData.freightGstApplicable,
                           freightGstPercent: isImport ? 0 : formData.freightGstPercent,
@@ -5087,7 +5099,7 @@ function PurchaseOrdersContent() {
                           value={formData.supplierCurrency}
                           onChange={(e) => {
                             const nextCurrency = e.target.value;
-                            const isForeign = nextCurrency !== 'INR';
+                            const isForeign = nextCurrency !== REGIONAL_PROFILE.currency;
                             setFormData({
                               ...formData,
                               supplierCurrency: nextCurrency,
@@ -5105,7 +5117,7 @@ function PurchaseOrdersContent() {
                           <option value="AED">AED</option>
                           <option value="CNY">CNY</option>
                           <option value="JPY">JPY</option>
-                          <option value="INR">INR</option>
+                          <option value={REGIONAL_PROFILE.currency}>{REGIONAL_PROFILE.currency}</option><option value="INR">INR</option><option value="EGP">EGP</option>
                         </select>
                       </div>
                       <div>
@@ -5144,32 +5156,32 @@ function PurchaseOrdersContent() {
                 <div className="space-y-2 text-right">
                   <div className="flex justify-between text-sm text-gray-600">
                     <span>Items Subtotal:</span>
-                    <span>₹{fmtINR(formData.items.reduce((sum, item) => sum + item.totalPrice, 0))}</span>
+                    <span>{REGIONAL_PROFILE.currency} {fmtMoney(formData.items.reduce((sum, item) => sum + item.totalPrice, 0))}</span>
                   </div>
                   {(formData.freightAmount > 0 || calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) > 0 || formData.customsDuty > 0 || formData.otherCharges > 0) && (
                     <>
                       {formData.freightAmount > 0 && (
                         <div className="flex justify-between text-sm text-gray-600">
                           <span>Freight Value:</span>
-                          <span>₹{fmtINR(formData.freightAmount)}</span>
+                          <span>{REGIONAL_PROFILE.currency} {fmtMoney(formData.freightAmount)}</span>
                         </div>
                       )}
                       {calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) > 0 && (
                         <div className="flex justify-between text-sm text-gray-600">
-                          <span>Freight GST ({fmtPercent(formData.freightGstPercent)}%):</span>
-                          <span>₹{fmtINR(calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent))}</span>
+                          <span>Freight {REGIONAL_PROFILE.taxLabel} ({fmtPercent(formData.freightGstPercent)}%):</span>
+                          <span>{REGIONAL_PROFILE.currency} {fmtMoney(calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent))}</span>
                         </div>
                       )}
                       {formData.customsDuty > 0 && (
                         <div className="flex justify-between text-sm text-gray-600">
                           <span>Customs Duty:</span>
-                          <span>₹{fmtINR(formData.customsDuty)}</span>
+                          <span>{REGIONAL_PROFILE.currency} {fmtMoney(formData.customsDuty)}</span>
                         </div>
                       )}
                       {formData.otherCharges > 0 && (
                         <div className="flex justify-between text-sm text-gray-600">
                           <span>Additional Expenses:</span>
-                          <span>₹{fmtINR(formData.otherCharges)}</span>
+                          <span>{REGIONAL_PROFILE.currency} {fmtMoney(formData.otherCharges)}</span>
                         </div>
                       )}
                     </>
@@ -5183,7 +5195,7 @@ function PurchaseOrdersContent() {
                   )) >= 0.01 && (
                     <div className="flex justify-between text-sm text-gray-600">
                       <span>Rounding:</span>
-                      <span>₹{fmtINR(calcRoundingAdjustment(
+                      <span>{REGIONAL_PROFILE.currency} {fmtMoney(calcRoundingAdjustment(
                         formData.items.reduce((sum, item) => sum + item.totalPrice, 0) +
                         (formData.freightAmount || 0) +
                         calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) +
@@ -5194,7 +5206,7 @@ function PurchaseOrdersContent() {
                   )}
                   <div className="flex justify-between text-xl font-bold text-gray-900 border-t pt-2">
                     <span>Grand Total:</span>
-                    <span>₹{fmtRoundedINR(
+                    <span>{REGIONAL_PROFILE.currency} {fmtRoundedMoney(
                       formData.items.reduce((sum, item) => sum + item.totalPrice, 0) +
                       (formData.freightAmount || 0) +
                       calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) +
@@ -5404,7 +5416,7 @@ function PurchaseOrdersContent() {
                     <p className="text-sm text-gray-500">{[(selectedPO as any)?.vendor?.city, (selectedPO as any)?.vendor?.state, (selectedPO as any)?.vendor?.pincode].filter(Boolean).join(', ')}</p>
                   )}
                   {(selectedPO as any)?.vendor?.tax_id && (
-                    <p className="text-sm text-gray-500">GSTIN: {(selectedPO as any)?.vendor?.tax_id}</p>
+                    <p className="text-sm text-gray-500">{REGIONAL_PROFILE.taxRegistrationLabel}: {(selectedPO as any)?.vendor?.tax_id}</p>
                   )}
                 </div>
                 <div>
@@ -5421,7 +5433,7 @@ function PurchaseOrdersContent() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Total Amount</p>
-                  <p className="font-semibold text-lg">₹{fmtRoundedINR(selectedPO.total_amount)}</p>
+                  <p className="font-semibold text-lg">{REGIONAL_PROFILE.currency} {fmtRoundedMoney(selectedPO.total_amount)}</p>
                 </div>
               </section>
 
@@ -5453,41 +5465,41 @@ function PurchaseOrdersContent() {
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Items Subtotal:</span>
-                          <span className="font-medium">₹{fmtINR(itemsSubtotal)}</span>
+                          <span className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(itemsSubtotal)}</span>
                         </div>
                         {freightAmount > 0 && (
                           <div className="flex justify-between">
                             <span className="text-gray-600">Freight/Transportation:</span>
-                            <span className="font-medium">₹{fmtINR(freightAmount)}</span>
+                            <span className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(freightAmount)}</span>
                           </div>
                         )}
                         {freightGstAmount > 0 && (
                           <div className="flex justify-between">
-                            <span className="text-gray-600">Freight GST ({freightGstPercent}%):</span>
-                            <span className="font-medium">₹{fmtINR(freightGstAmount)}</span>
+                            <span className="text-gray-600">Freight {REGIONAL_PROFILE.taxLabel} ({freightGstPercent}%):</span>
+                            <span className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(freightGstAmount)}</span>
                           </div>
                         )}
                         {customsDuty > 0 && (
                           <div className="flex justify-between">
                             <span className="text-gray-600">Customs Duty:</span>
-                            <span className="font-medium">₹{fmtINR(customsDuty)}</span>
+                            <span className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(customsDuty)}</span>
                           </div>
                         )}
                         {otherCharges > 0 && (
                           <div className="flex justify-between">
                             <span className="text-gray-600">Additional Expenses:</span>
-                            <span className="font-medium">₹{fmtINR(otherCharges)}</span>
+                            <span className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(otherCharges)}</span>
                           </div>
                         )}
                         {Math.abs(roundingAdjustment) >= 0.01 && (
                           <div className="flex justify-between">
                             <span className="text-gray-600">Rounding:</span>
-                            <span className="font-medium">₹{fmtINR(roundingAdjustment)}</span>
+                            <span className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(roundingAdjustment)}</span>
                           </div>
                         )}
                         <div className="flex justify-between border-t border-blue-200 pt-2 mt-2">
                           <span className="font-semibold text-blue-900">Grand Total:</span>
-                          <span className="font-bold text-blue-900">₹{fmtRoundedINR(grandTotal)}</span>
+                          <span className="font-bold text-blue-900">{REGIONAL_PROFILE.currency} {fmtRoundedMoney(grandTotal)}</span>
                         </div>
                       </div>
                     );
@@ -5559,7 +5571,7 @@ function PurchaseOrdersContent() {
                         <th className="px-4 py-2 text-center text-xs font-medium text-gray-700">UOM</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Rate</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Discount %</th>
-                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">GST %</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">{REGIONAL_PROFILE.taxLabel} %</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Payment Terms</th>
                         <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Delivery Terms</th>
                         <th className="px-4 py-2 text-right text-xs font-medium text-gray-700">Amount</th>
@@ -5617,7 +5629,7 @@ function PurchaseOrdersContent() {
                             <td className="px-4 py-2 text-right">{item.quantity || item.ordered_qty || 0}</td>
                             <td className="px-4 py-2 text-center text-sm">{resolveUomFromPOLine(item) || '-'}</td>
                             <td className="px-4 py-2 text-right">
-                              <div>₹{fmtINR(item.rate)}</div>
+                              <div>{REGIONAL_PROFILE.currency} {fmtMoney(item.rate)}</div>
                               {(() => {
                                 const vendorId = resolveVendorIdFromPO(selectedPO);
                                 const itemId = resolveItemIdFromPOLine(item);
@@ -5634,7 +5646,7 @@ function PurchaseOrdersContent() {
                                 if (!last) return <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-400 italic">No previous prices available</div>;
                                 return (
                                   <div className="mt-0.5 ml-auto max-w-[160px] break-words text-[11px] leading-tight text-gray-600">
-                                    Last: <span className="font-medium text-gray-800">₹{fmtINR(last.unit_price)}</span>
+                                    Last: <span className="font-medium text-gray-800">{REGIONAL_PROFILE.currency} {fmtMoney(last.unit_price)}</span>
                                   </div>
                                 );
                               })()}
@@ -5643,7 +5655,7 @@ function PurchaseOrdersContent() {
                             <td className="px-4 py-2 text-right text-sm">{fmtPercent(item.tax_percent ?? item.taxPercent ?? item.taxRate ?? 0)}%</td>
                             <td className="px-4 py-2 text-sm text-gray-700">{item.payment_terms || (item as any).paymentTerms || '-'}</td>
                             <td className="px-4 py-2 text-sm text-gray-700">{item.delivery_terms || (item as any).deliveryTerms || '-'}</td>
-                            <td className="px-4 py-2 text-right font-medium">₹{fmtINR(item.amount)}</td>
+                            <td className="px-4 py-2 text-right font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(item.amount)}</td>
                           </tr>
                         ))
                       ) : (
@@ -5659,7 +5671,7 @@ function PurchaseOrdersContent() {
                             Total Amount
                           </td>
                           <td className="px-4 py-3 text-right text-base font-bold text-gray-900">
-                            ₹{fmtINR(selectedPO.purchase_order_items.reduce(
+                            {REGIONAL_PROFILE.currency} {fmtMoney(selectedPO.purchase_order_items.reduce(
                               (total: number, item: any) => total + (Number(item.amount) || 0),
                               0,
                             ))}
@@ -5768,7 +5780,7 @@ function PurchaseOrdersContent() {
                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-300 rounded text-sm text-blue-800 hover:bg-blue-100 max-w-xs truncate"
                                   title={att.name}
                                 >
-                                  📄 {att.name || 'Quotation'}
+                                  ðŸ“„ {att.name || 'Quotation'}
                                 </a>
                               ))}
                             </div>
@@ -5799,7 +5811,7 @@ function PurchaseOrdersContent() {
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-300 rounded-lg text-sm text-gray-800 hover:bg-gray-100 max-w-xs truncate"
                         title={att.name}
                       >
-                        📎 {att.name || 'Document'}
+                        ðŸ“Ž {att.name || 'Document'}
                       </a>
                     ))}
                   </div>
@@ -6043,7 +6055,7 @@ function PurchaseOrdersContent() {
                 }}
                 className="text-gray-500 hover:text-gray-700 text-2xl"
               >
-                ×
+                Ã—
               </button>
             </div>
 
@@ -6228,7 +6240,7 @@ function PurchaseOrdersContent() {
             <div className="p-5 border-b flex justify-between items-center bg-gradient-to-r from-[#FAF9F6] to-[#F5EFE3]">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <span className="text-2xl">📋</span> PO Trail: {trailPO.po_number}
+                  <span className="text-2xl">ðŸ“‹</span> PO Trail: {trailPO.po_number}
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
                   Complete lifecycle from PR to Payments
@@ -6238,7 +6250,7 @@ function PurchaseOrdersContent() {
                 onClick={() => setShowTrailModal(false)} 
                 className="text-gray-400 hover:text-gray-700 text-2xl"
               >
-                ×
+                Ã—
               </button>
             </div>
 
@@ -6253,7 +6265,7 @@ function PurchaseOrdersContent() {
                   {/* PR Section */}
                   <div className="border-l-4 border-blue-500 pl-4">
                     <h3 className="text-sm font-bold text-blue-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                      <span>📄</span> Source: Purchase Requisition
+                      <span>ðŸ“„</span> Source: Purchase Requisition
                     </h3>
                     {trailData.pr ? (
                       <div className="bg-blue-50 rounded-lg p-4">
@@ -6267,7 +6279,7 @@ function PurchaseOrdersContent() {
                               }}
                               className="font-semibold text-blue-900 hover:text-blue-600 hover:underline cursor-pointer bg-transparent border-0 p-0 text-left"
                             >
-                              {trailData.pr.pr_number} ↗
+                              {trailData.pr.pr_number} â†—
                             </button>
                           </div>
                           <div>
@@ -6286,7 +6298,7 @@ function PurchaseOrdersContent() {
                   {/* PO Details */}
                   <div className="border-l-4 border-[#A78B62] pl-4">
                     <h3 className="text-sm font-bold text-[#6F4E37] uppercase tracking-wide mb-3 flex items-center gap-2">
-                      <span>📑</span> Purchase Order
+                      <span>ðŸ“‘</span> Purchase Order
                     </h3>
                     <div className="bg-[#FAF9F6] rounded-lg p-4">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -6299,7 +6311,7 @@ function PurchaseOrdersContent() {
                             }}
                             className="font-semibold text-[#4A3426] hover:text-[#8B6F47] hover:underline cursor-pointer bg-transparent border-0 p-0 text-left block"
                           >
-                            {trailPO.po_number} ↗
+                            {trailPO.po_number} â†—
                           </button>
                         </div>
                         <div>
@@ -6311,7 +6323,7 @@ function PurchaseOrdersContent() {
                             }}
                             className="font-medium hover:text-amber-600 hover:underline cursor-pointer bg-transparent border-0 p-0 text-left block"
                           >
-                            {trailPO.vendor?.name} ↗
+                            {trailPO.vendor?.name} â†—
                           </button>
                         </div>
                         <div>
@@ -6320,7 +6332,7 @@ function PurchaseOrdersContent() {
                         </div>
                         <div>
                           <span className="text-gray-500">Amount:</span>
-                          <p className="font-semibold text-[#4A3426]">₹{fmtRoundedINR(Number((trailPO as any).grand_total ?? trailPO.total_amount ?? 0))}</p>
+                          <p className="font-semibold text-[#4A3426]">{REGIONAL_PROFILE.currency} {fmtRoundedMoney(Number((trailPO as any).grand_total ?? trailPO.total_amount ?? 0))}</p>
                         </div>
                         <div>
                           <span className="text-gray-500">Status:</span>
@@ -6379,7 +6391,7 @@ function PurchaseOrdersContent() {
                       ].map(([label, value]) => (
                         <div key={String(label)} className="bg-white p-3">
                           <div className="text-xs font-medium text-[#7A6555]">{label}</div>
-                          <div className="mt-1 text-base font-bold tabular-nums text-[#4A3426]">₹{fmtRoundedINR(Number(value || 0))}</div>
+                          <div className="mt-1 text-base font-bold tabular-nums text-[#4A3426]">{REGIONAL_PROFILE.currency} {fmtRoundedMoney(Number(value || 0))}</div>
                         </div>
                       ))}
                     </div>
@@ -6388,7 +6400,7 @@ function PurchaseOrdersContent() {
                   {/* GRNs Section */}
                   <div className="border-l-4 border-green-500 pl-4">
                     <h3 className="text-sm font-bold text-green-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                      <span>📦</span> Goods Receipt Notes (GRN)
+                      <span>ðŸ“¦</span> Goods Receipt Notes (GRN)
                       {trailData.grns?.length > 0 && (
                         <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs">
                           {trailData.grns.length}
@@ -6406,7 +6418,7 @@ function PurchaseOrdersContent() {
                                 rel="noopener noreferrer"
                                 className="font-semibold text-green-900 hover:text-green-600 hover:underline cursor-pointer bg-transparent border-0 p-0 text-left"
                               >
-                                GRN #{grn.grn_number} ↗
+                                GRN #{grn.grn_number} â†—
                               </a>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                                 grn.status === 'COMPLETED' ? 'bg-green-200 text-green-800' :
@@ -6427,18 +6439,18 @@ function PurchaseOrdersContent() {
                               </div>
                               <div>
                                 <span className="text-gray-500">Net Payable:</span>
-                                <p className="font-semibold">₹{fmtINR(grn.net_payable_amount || grn.gross_amount)}</p>
+                                <p className="font-semibold">{REGIONAL_PROFILE.currency} {fmtMoney(grn.net_payable_amount || grn.gross_amount)}</p>
                               </div>
                               <div>
                                 <span className="text-gray-500">QC Status:</span>
-                                <p className="font-medium">{grn.qc_completed ? '✅ Completed' : '⏳ Pending'}</p>
+                                <p className="font-medium">{grn.qc_completed ? 'âœ… Completed' : 'â³ Pending'}</p>
                               </div>
                             </div>
                             {/* Payment Entries for this GRN */}
                             {false && grn.payment_entries?.length > 0 && (
                               <div className="mt-3 pt-3 border-t border-green-200">
                                 <div className="flex justify-between items-center mb-2">
-                                  <h5 className="text-xs font-bold text-green-700">💳 Payments:</h5>
+                                  <h5 className="text-xs font-bold text-green-700">ðŸ’³ Payments:</h5>
                                   <button
                                     onClick={() => {
                                       setShowTrailModal(false);
@@ -6446,7 +6458,7 @@ function PurchaseOrdersContent() {
                                     }}
                                     className="text-xs text-green-600 hover:text-green-800 underline cursor-pointer bg-transparent border-0"
                                   >
-                                    View All Payments ↗
+                                    View All Payments â†—
                                   </button>
                                 </div>
                                 <div className="space-y-2">
@@ -6454,7 +6466,7 @@ function PurchaseOrdersContent() {
                                     <div key={payment.id} className="flex justify-between items-center text-sm bg-white rounded px-3 py-2">
                                       <div className="flex gap-3">
                                         <span className="text-gray-600">{new Date(payment.payment_date).toLocaleDateString()}</span>
-                                        <span className="font-medium">₹{fmtINR(payment.amount)}</span>
+                                        <span className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(payment.amount)}</span>
                                         <span className="text-gray-500">{payment.payment_method}</span>
                                         {payment.payment_reference && (
                                           <span className="text-gray-400">Ref: {payment.payment_reference}</span>
@@ -6523,13 +6535,13 @@ function PurchaseOrdersContent() {
 
                               <div className="grid grid-cols-2 gap-4 px-4 py-3 text-sm md:grid-cols-4 xl:grid-cols-8">
                                 <div><span className="text-xs text-gray-500">Invoice Date</span><p className="font-medium">{fmtDate(grn.invoice_date)}</p></div>
-                                <div><span className="text-xs text-gray-500">Gross</span><p className="font-medium">₹{fmtINR(Number(grn.gross_amount || 0))}</p></div>
-                                <div><span className="text-xs text-gray-500">Tax</span><p className="font-medium">₹{fmtINR(Number(grn.tax_amount || 0))}</p></div>
-                                <div><span className="text-xs text-gray-500">Debit Notes</span><p className="font-medium">₹{fmtINR(Number(grn.debit_note_amount || 0))}</p></div>
-                                <div><span className="text-xs text-gray-500">Net Payable</span><p className="font-semibold">₹{fmtINR(Number(settlement.net_payable || 0))}</p></div>
-                                <div><span className="text-xs text-gray-500">Advance Applied</span><p className="font-semibold text-[#8B6F47]">₹{fmtINR(Number(settlement.advance_applied || 0))}</p></div>
-                                <div><span className="text-xs text-gray-500">Total Settled</span><p className="font-semibold text-emerald-700">₹{fmtINR(Number(settlement.total_settled || 0))}</p></div>
-                                <div><span className="text-xs text-gray-500">Outstanding</span><p className="font-bold text-amber-700">₹{fmtINR(Number(settlement.outstanding || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Gross</span><p className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(Number(grn.gross_amount || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Tax</span><p className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(Number(grn.tax_amount || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Debit Notes</span><p className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(Number(grn.debit_note_amount || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Net Payable</span><p className="font-semibold">{REGIONAL_PROFILE.currency} {fmtMoney(Number(settlement.net_payable || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Advance Applied</span><p className="font-semibold text-[#8B6F47]">{REGIONAL_PROFILE.currency} {fmtMoney(Number(settlement.advance_applied || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Total Settled</span><p className="font-semibold text-emerald-700">{REGIONAL_PROFILE.currency} {fmtMoney(Number(settlement.total_settled || 0))}</p></div>
+                                <div><span className="text-xs text-gray-500">Outstanding</span><p className="font-bold text-amber-700">{REGIONAL_PROFILE.currency} {fmtMoney(Number(settlement.outstanding || 0))}</p></div>
                               </div>
 
                               <div className="border-t border-[#E8DCC4] px-4 py-3">
@@ -6555,9 +6567,9 @@ function PurchaseOrdersContent() {
                                             <td className="px-3 py-2 whitespace-nowrap">{payment.entry_type === 'RECORDED_PAYMENT' ? 'Recorded Payment' : payment.entry_type || 'Payment'}</td>
                                             <td className="px-3 py-2 whitespace-nowrap">{payment.payment_method || '-'}</td>
                                             <td className="px-3 py-2 whitespace-nowrap">{payment.payment_reference || '-'}</td>
-                                            <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">₹{fmtINR(Number(payment.amount || 0))}</td>
-                                            <td className="px-3 py-2 text-right whitespace-nowrap">₹{fmtINR(Number(payment.tds_amount || 0))}</td>
-                                            <td className="px-3 py-2 text-right whitespace-nowrap">₹{fmtINR(Number(payment.short_payment_amount || 0))}</td>
+                                            <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{REGIONAL_PROFILE.currency} {fmtMoney(Number(payment.amount || 0))}</td>
+                                            <td className="px-3 py-2 text-right whitespace-nowrap">{REGIONAL_PROFILE.currency} {fmtMoney(Number(payment.tds_amount || 0))}</td>
+                                            <td className="px-3 py-2 text-right whitespace-nowrap">{REGIONAL_PROFILE.currency} {fmtMoney(Number(payment.short_payment_amount || 0))}</td>
                                           </tr>
                                         ))}
                                       </tbody>
@@ -6596,7 +6608,7 @@ function PurchaseOrdersContent() {
                                             <td className="px-3 py-2 whitespace-nowrap">{reversal.original_payment_method || '-'}</td>
                                             <td className="px-3 py-2 whitespace-nowrap">{reversal.original_payment_reference || '-'}</td>
                                             <td className="px-3 py-2 text-right font-semibold text-red-700 whitespace-nowrap">
-                                              -Rs. {fmtINR(
+                                              -{REGIONAL_PROFILE.currency} {fmtMoney(
                                                 Number(reversal.original_amount || 0) +
                                                 Number(reversal.original_tds_amount || 0) +
                                                 Number(reversal.original_short_payment_amount || 0)
@@ -6617,7 +6629,7 @@ function PurchaseOrdersContent() {
                                   <div className="flex flex-wrap gap-2">
                                     {grn.debit_notes.map((note: any) => (
                                       <span key={note.id} className="border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-800">
-                                        {note.debit_note_number}: ₹{fmtINR(Number(note.total_amount || 0))} ({note.status})
+                                        {note.debit_note_number}: {REGIONAL_PROFILE.currency} {fmtMoney(Number(note.total_amount || 0))} ({note.status})
                                       </span>
                                     ))}
                                   </div>
@@ -6638,7 +6650,7 @@ function PurchaseOrdersContent() {
                   <div className="border-l-4 border-[#A78B62] pl-4">
                     <div className="flex justify-between items-center mb-3">
                       <h3 className="text-sm font-bold text-[#6F4E37] uppercase tracking-wide flex items-center gap-2">
-                        <span>💰</span> Advance Payments
+                        <span>ðŸ’°</span> Advance Payments
                         {trailData.advances?.length > 0 && (
                           <span className="bg-[#F5EFE3] text-[#5E4635] px-2 py-0.5 rounded-full text-xs">
                             {trailData.advances.length}
@@ -6652,7 +6664,7 @@ function PurchaseOrdersContent() {
                         }}
                         className="text-xs text-[#8B6F47] hover:text-[#5E4635] underline cursor-pointer bg-transparent border-0"
                       >
-                        Manage Advances ↗
+                        Manage Advances â†—
                       </button>
                     </div>
                     {trailData.advances?.length > 0 ? (
@@ -6662,7 +6674,7 @@ function PurchaseOrdersContent() {
                             <div key={adv.id} className="flex justify-between items-center text-sm bg-white rounded px-3 py-2">
                               <div className="flex gap-3">
                                 <span className="text-gray-600">{fmtDate(adv.payment_date)}</span>
-                                <span className="font-semibold text-[#4A3426]">₹{fmtINR(adv.amount)}</span>
+                                <span className="font-semibold text-[#4A3426]">{REGIONAL_PROFILE.currency} {fmtMoney(adv.amount)}</span>
                                 <span className="text-gray-500">{adv.payment_method}</span>
                                 {adv.payment_reference && (
                                   <span className="text-gray-400">Ref: {adv.payment_reference}</span>
@@ -6674,7 +6686,7 @@ function PurchaseOrdersContent() {
                         <div className="mt-3 pt-2 border-t border-[#E8DCC4] flex justify-between items-center">
                           <span className="text-sm text-gray-600">Total Advance for this PO:</span>
                           <span className="font-bold text-[#4A3426]">
-                            ₹{fmtINR(trailData.advances.reduce((s: number, a: any) => s + (a.amount || 0), 0))}
+                            {REGIONAL_PROFILE.currency} {fmtMoney(trailData.advances.reduce((s: number, a: any) => s + (a.amount || 0), 0))}
                           </span>
                         </div>
                       </div>
@@ -6690,7 +6702,7 @@ function PurchaseOrdersContent() {
                     <div className="border-l-4 border-amber-500 pl-4">
                       <div className="flex justify-between items-center mb-3">
                         <h3 className="text-sm font-bold text-amber-700 uppercase tracking-wide flex items-center gap-2">
-                          <span>🏦</span> Vendor Advance Balance
+                          <span>ðŸ¦</span> Vendor Advance Balance
                         </h3>
                         <button
                           onClick={() => {
@@ -6699,22 +6711,22 @@ function PurchaseOrdersContent() {
                           }}
                           className="text-xs text-amber-600 hover:text-amber-800 underline cursor-pointer bg-transparent border-0"
                         >
-                          View in Payables ↗
+                          View in Payables â†—
                         </button>
                       </div>
                       <div className="bg-amber-50 rounded-lg p-4">
                         <div className="grid grid-cols-3 gap-4 text-sm">
                           <div>
                             <span className="text-gray-500">Total Advance:</span>
-                            <p className="font-semibold text-amber-900">₹{fmtINR(trailData.vendorAdvanceBalance.total_advance)}</p>
+                            <p className="font-semibold text-amber-900">{REGIONAL_PROFILE.currency} {fmtMoney(trailData.vendorAdvanceBalance.total_advance)}</p>
                           </div>
                           <div>
                             <span className="text-gray-500">Utilized:</span>
-                            <p className="font-medium">₹{fmtINR(trailData.vendorAdvanceBalance.utilized_amount)}</p>
+                            <p className="font-medium">{REGIONAL_PROFILE.currency} {fmtMoney(trailData.vendorAdvanceBalance.utilized_amount)}</p>
                           </div>
                           <div>
                             <span className="text-gray-500">Available Balance:</span>
-                            <p className="font-bold text-green-700">₹{fmtINR(trailData.vendorAdvanceBalance.balance_amount)}</p>
+                            <p className="font-bold text-green-700">{REGIONAL_PROFILE.currency} {fmtMoney(trailData.vendorAdvanceBalance.balance_amount)}</p>
                           </div>
                         </div>
                       </div>
@@ -6723,7 +6735,7 @@ function PurchaseOrdersContent() {
 
                   {/* Summary */}
                   <div className="bg-gray-100 rounded-lg p-4 mt-6">
-                    <h3 className="text-sm font-bold text-gray-700 mb-3">📊 Trail Summary</h3>
+                    <h3 className="text-sm font-bold text-gray-700 mb-3">ðŸ“Š Trail Summary</h3>
                     <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4 xl:grid-cols-7">
                       <div className="text-center">
                         <div className="text-2xl font-bold text-blue-600">{trailData.pr ? '1' : '0'}</div>
@@ -6793,7 +6805,7 @@ function PurchaseOrdersContent() {
             <p className="font-semibold">PO #{data.po_number}</p>
             <p className="text-xs text-gray-600">Vendor: {data.vendor?.name}</p>
             <p className="text-xs text-gray-600">Items: {data.purchase_order_items?.length || 0}</p>
-            <p className="text-xs text-gray-600">Total: ₹{fmtRoundedINR(data.total_amount)}</p>
+            <p className="text-xs text-gray-600">Total: {REGIONAL_PROFILE.currency} {fmtRoundedMoney(data.total_amount)}</p>
             <p className="text-xs text-gray-600">Date: {new Date(data.po_date).toLocaleDateString()}</p>
           </div>
         )}

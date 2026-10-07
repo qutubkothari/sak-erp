@@ -46,7 +46,9 @@ export const EGYPT_PROFILE: RegionalProfile = {
 
 export function resolveRegionalProfile(value?: Partial<RegionalProfile> | string | null): RegionalProfile {
   const market = typeof value === 'string' ? value.toUpperCase() : value?.marketProfile;
-  return market === 'EGYPT' ? EGYPT_PROFILE : market === 'UAE' ? UAE_PROFILE : INDIA_PROFILE;
+  if (market === 'EGYPT' || market === 'ARWA') return EGYPT_PROFILE;
+  if (market === 'UAE' || market === 'MIZANTRA') return UAE_PROFILE;
+  return INDIA_PROFILE;
 }
 
 export function formatRegionalCurrency(amount: number | null | undefined, profile?: Partial<RegionalProfile> | string | null): string {

@@ -41,6 +41,7 @@ import { SlidePanel } from "../../../../components/ui/SlidePanel";
 import { exportToExcel } from "../../../../lib/export-excel";
 import { hasMakerCheckerOverride, hasModulePermission, isAdminLike } from "@/lib/rbac";
 import { useAuthStore } from "@/stores/auth.store";
+import { useRegionalProfile } from "@/hooks/useRegionalProfile";
 
 interface VendorContact {
   salutation?: string;
@@ -484,6 +485,14 @@ function SectionTitle({
 }
 
 export default function VendorsPage() {
+  const { profile } = useRegionalProfile();
+  const formatCompanyMoney = (value: number | undefined, currency: string = profile.currency) =>
+    new Intl.NumberFormat(profile.locale, {
+      style: "currency",
+      currency,
+      currencyDisplay: "code",
+      maximumFractionDigits: 2,
+    }).format(Number(value || 0));
   const { user, hydrate } = useAuthStore();
   const canCreate = hasModulePermission(user, "Purchase Management", "create");
   const canEdit = hasModulePermission(user, "Purchase Management", "edit");
@@ -1032,9 +1041,7 @@ export default function VendorsPage() {
         defaultVisible: false,
         align: "right",
         cell: (vendor) =>
-          vendor.credit_limit
-            ? `INR ${Number(vendor.credit_limit).toLocaleString("en-IN")}`
-            : "-",
+          vendor.credit_limit ? formatCompanyMoney(vendor.credit_limit) : "-",
       },
       {
         id: "rating",
@@ -1087,13 +1094,17 @@ export default function VendorsPage() {
       },
       {
         id: "gst",
-        label: "GSTIN Verification",
+        label: profile.marketProfile === "INDIA" ? "GSTIN Verification" : "Tax ID verification",
         accessor: (vendor) =>
-          vendor.gst_verification?.portalVerified ? "Portal verified" : vendor.gst_verification?.valid ? "Format checked" : "Not verified",
+          profile.marketProfile === "INDIA"
+            ? vendor.gst_verification?.portalVerified ? "Portal verified" : vendor.gst_verification?.valid ? "Format checked" : "Not verified"
+            : "Not applicable",
         sortable: true,
         minWidth: 120,
         defaultVisible: false,
-        cell: (vendor) => vendor.gst_verification?.portalVerified ? "Portal verified" : vendor.gst_verification?.valid ? "Format checked" : "-",
+        cell: (vendor) => profile.marketProfile === "INDIA"
+          ? vendor.gst_verification?.portalVerified ? "Portal verified" : vendor.gst_verification?.valid ? "Format checked" : "-"
+          : "Not applicable",
       },
       {
         id: "actions",
@@ -1217,7 +1228,7 @@ export default function VendorsPage() {
           onSelectionChange={setSelectedIds}
           defaultPageSize={25}
           pageSizeOptions={[10, 25, 50, 100]}
-          searchPlaceholder="Search vendor, code, GSTIN, contact, email, or location..."
+          searchPlaceholder="Search vendor, code, tax ID, contact, email, or location..."
           manualFiltering
           onSearchChange={(value) => { setSelectedIds([]); void fetchVendors(value); }}
           emptyState={
@@ -1427,25 +1438,18 @@ export default function VendorsPage() {
             <section>
               <SectionTitle title="Tax & Address" />
               <div className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
+                <DetailField label={profile.taxRegistrationLabel} value={viewingVendor.tax_id} />
                 <DetailField
-                  label="GSTIN / Tax ID"
-                  value={viewingVendor.tax_id}
-                />
-                <DetailField
-                  label="GST State"
+                  label={profile.marketProfile === "INDIA" ? "GST State" : "State / region"}
                   value={
-                    viewingVendor.gst_verification?.details?.stateName ||
+                    (profile.marketProfile === "INDIA" ? viewingVendor.gst_verification?.details?.stateName : null) ||
                     viewingVendor.state
                   }
                 />
-                <DetailField
-                  label="PAN"
-                  value={viewingVendor.gst_verification?.details?.pan}
-                />
-                <DetailField
-                  label="Verification Mode"
-                  value={viewingVendor.gst_verification?.verificationMode}
-                />
+                {profile.marketProfile === "INDIA" ? <>
+                  <DetailField label="PAN" value={viewingVendor.gst_verification?.details?.pan} />
+                  <DetailField label="Verification Mode" value={viewingVendor.gst_verification?.verificationMode} />
+                </> : null}
                 <div className="sm:col-span-2 lg:col-span-4">
                   <DetailField
                     label="Registered Address"
@@ -1511,7 +1515,7 @@ export default function VendorsPage() {
                     label="Credit Limit"
                     value={
                       viewingVendor.credit_limit
-                        ? `INR ${Number(viewingVendor.credit_limit).toLocaleString("en-IN")}`
+                        ? formatCompanyMoney(viewingVendor.credit_limit)
                         : "-"
                     }
                   />
@@ -1647,7 +1651,9 @@ export default function VendorsPage() {
                   <div>
                     <div className="text-xs font-semibold uppercase text-[#7A6555]">Landed Cost</div>
                     <div className="text-xl font-bold text-[#4A3426]">
-                      INR {vendorImportFiles.reduce((sum, row) => sum + Number(row.final_landed_cost || 0), 0).toLocaleString("en-IN")}
+                      {profile.marketProfile === "INDIA"
+                        ? `INR ${vendorImportFiles.reduce((sum, row) => sum + Number(row.final_landed_cost || 0), 0).toLocaleString("en-IN")}`
+                        : "See each file's transaction currency"}
                     </div>
                   </div>
                 </div>
@@ -1677,13 +1683,13 @@ export default function VendorsPage() {
                                 <FileText className="h-4 w-4 text-[#8B6F47]" />
                                 {row.import_number || row.id}
                               </div>
-                              <div className="text-xs font-normal text-[#7A6555]">{row.currency || "INR"}</div>
+                              <div className="text-xs font-normal text-[#7A6555]">{row.currency || profile.currency}</div>
                             </td>
                             <td className="px-3 py-2">{row.po?.po_number || "-"}</td>
                             <td className="px-3 py-2"><ErpStatusBadge status={row.status || "DRAFT"} /></td>
                             <td className="px-3 py-2 text-right">{row.costs?.length || 0}</td>
                             <td className="px-3 py-2 text-right">{row.payments?.length || 0}</td>
-                            <td className="px-3 py-2 text-right font-semibold">INR {Number(row.final_landed_cost || 0).toLocaleString("en-IN")}</td>
+                            <td className="px-3 py-2 text-right font-semibold">{formatCompanyMoney(row.final_landed_cost, row.currency || profile.currency)}</td>
                             <td className="px-3 py-2">
                               <a
                                 href={`/dashboard/purchase/import-files/${row.id}`}
@@ -1982,7 +1988,7 @@ export default function VendorsPage() {
             <section>
               <SectionTitle
                 title="Tax & Registered Address"
-                description="Verify GSTIN to populate registered legal and address information."
+                description={profile.marketProfile === "INDIA" ? "Verify GSTIN to populate registered legal and address information." : "Enter the supplier's tax registration details as provided by the business."}
               />
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <label className="md:col-span-2 xl:col-span-4 flex min-h-10 items-center gap-3 rounded-md border border-[#E8DCC4] bg-[#FFFCF7] px-3">
@@ -2000,11 +2006,11 @@ export default function VendorsPage() {
                     }
                   />
                   <span className="text-sm font-medium text-[#5E4635]">
-                    Unregistered vendor (no GST)
+                    {profile.marketProfile === "INDIA" ? "Unregistered vendor (no GST)" : "No tax registration number provided"}
                   </span>
                 </label>
                 <div className="md:col-span-2">
-                  <label className={labelClass}>GSTIN / Tax ID</label>
+                  <label className={labelClass}>{profile.taxRegistrationLabel}</label>
                   <div className="flex gap-2">
                     <input
                       className={inputClass}
@@ -2013,12 +2019,12 @@ export default function VendorsPage() {
                       onChange={(event) =>
                         setForm({
                           ...form,
-                          taxId: event.target.value.toUpperCase(),
+                          taxId: event.target.value,
                           gstVerification: null,
                         })
                       }
                     />
-                    <ErpButton
+                    {profile.marketProfile === "INDIA" ? <ErpButton
                       variant="secondary"
                       disabled={
                         form.isGstUnregistered ||
@@ -2029,11 +2035,11 @@ export default function VendorsPage() {
                     >
                       <ShieldCheck className="h-4 w-4" />
                       {verifyingGstin ? "Checking..." : "Verify GSTIN"}
-                    </ErpButton>
+                    </ErpButton> : null}
                   </div>
                   {form.isGstUnregistered ? (
                     <p className="mt-2 text-xs font-medium text-[#7A6555]">
-                      Marked as an unregistered vendor. GSTIN is not required.
+                      {profile.marketProfile === "INDIA" ? "Marked as an unregistered vendor. GSTIN is not required." : "No tax registration number is recorded."}
                     </p>
                   ) : form.gstVerification ? (
                     <p
@@ -2255,7 +2261,7 @@ export default function VendorsPage() {
                   />
                 </div>
                 <div>
-                  <label className={labelClass}>Credit Limit (INR)</label>
+                  <label className={labelClass}>Credit Limit ({profile.currency})</label>
                   <input
                     type="number"
                     min="0"
@@ -2419,7 +2425,7 @@ export default function VendorsPage() {
                   />
                   <DetailField
                     label="Credit Limit"
-                    value={`INR ${form.creditLimit.toLocaleString("en-IN")}`}
+                    value={formatCompanyMoney(form.creditLimit)}
                   />
                   <DetailField
                     label="Bank"
@@ -2449,7 +2455,7 @@ export default function VendorsPage() {
           <div className="text-sm">
             <p className="font-semibold">{data.name || data.legal_name}</p>
             <p className="text-xs text-[#7A6555]">
-              GST: {data.tax_id || "N/A"}
+              {profile.taxRegistrationLabel}: {data.tax_id || "N/A"}
             </p>
           </div>
         )}

@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '../../lib/api-client';
 import {
-  INDIA_PROFILE,
   resolveRegionalProfile,
   type RegionalProfile,
 } from '../lib/market-profile';
@@ -18,14 +17,16 @@ type TenantRegionalSettings = {
 
 /**
  * Resolves commercial terminology and defaults from the signed-in tenant.
- * The fallback is deliberately the existing India profile so a failed settings
- * request never exposes UAE terminology to an Indian tenant (or vice versa).
+ * The profile-specific build is the safe fallback when tenant settings cannot load.
  */
 export function useRegionalProfile(): {
   profile: RegionalProfile;
   loading: boolean;
 } {
-  const [profile, setProfile] = useState<RegionalProfile>(INDIA_PROFILE);
+  const buildProfile = resolveRegionalProfile(
+    process.env.NEXT_PUBLIC_ERP_TENANT_PROFILE || process.env.ERP_TENANT_PROFILE,
+  );
+  const [profile, setProfile] = useState<RegionalProfile>(buildProfile);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,7 +45,7 @@ export function useRegionalProfile(): {
         }
       })
       .catch(() => {
-        if (active) setProfile(INDIA_PROFILE);
+        if (active) setProfile(buildProfile);
       })
       .finally(() => {
         if (active) setLoading(false);
