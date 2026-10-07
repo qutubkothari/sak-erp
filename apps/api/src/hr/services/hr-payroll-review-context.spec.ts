@@ -92,6 +92,24 @@ describe("payroll review context", () => {
     expect(service.attendanceControl.buildRegister).toHaveBeenCalledWith(tenant, "2026-09-01", "2026-09-30", employeeId);
   });
 
+  it("accepts the October attendance review parameters from the Mizantra review link", async () => {
+    const { service, employeeQuery } = setup();
+    service.payrollControl.mockResolvedValue({ id: "2b24655b-9ffb-4def-9d81-d35dbdb12161", resolution_snapshot: { employee_ids: [employeeId] } });
+    employeeQuery.maybeSingle.mockResolvedValue({
+      data: { ...employee, employee_code: "SAS-10053" }, error: null,
+    });
+    const review = await service.getPayrollReviewContext(
+      tenant, "2026-10", "SAS-10053", "2b24655b-9ffb-4def-9d81-d35dbdb12161",
+      "attendance", "2026-10-01", "2026-10-31", "PAYROLL_ATTENDANCE_REVIEW",
+    );
+    expect(review).toMatchObject({
+      kind: "attendance", month: "2026-10", from: "2026-10-01", to: "2026-10-31",
+      batch_id: "2b24655b-9ffb-4def-9d81-d35dbdb12161",
+      employee: { code: "SAS-10053" },
+    });
+    expect(service.attendanceControl.buildRegister).toHaveBeenCalledWith(tenant, "2026-10-01", "2026-10-31", employeeId);
+  });
+
   it("shows the employee overtime gap without applying the later attendance policy", async () => {
     const { service } = setup();
     const review = await open(service);

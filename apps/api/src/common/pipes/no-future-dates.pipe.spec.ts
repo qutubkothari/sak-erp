@@ -87,4 +87,22 @@ describe("NoFutureDatesPipe", () => {
       BadRequestException,
     );
   });
+
+  it("allows future dates only in a shaped payroll review query", () => {
+    const query = {
+      employee: "SAS-10053",
+      batch: "2b24655b-9ffb-4def-9d81-d35dbdb12161",
+      from: "2026-10-01",
+      to: "2026-10-31",
+      kind: "attendance",
+      review_mode: "PAYROLL_ATTENDANCE_REVIEW",
+    };
+    expect(pipe.transform(query, { type: "query", metatype: Object })).toBe(query);
+  });
+
+  it("does not allow arbitrary future query dates", () => {
+    expect(() => pipe.transform({ to: "2999-12-31" }, { type: "query", metatype: Object })).toThrow(
+      BadRequestException,
+    );
+  });
 });

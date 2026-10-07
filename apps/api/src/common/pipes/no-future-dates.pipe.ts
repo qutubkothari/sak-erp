@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, PipeTransform } from "@nestjs/common";
+import { ArgumentMetadata, BadRequestException, Injectable, PipeTransform } from "@nestjs/common";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -6,6 +6,16 @@ const isPlainObject = (value: unknown): value is UnknownRecord => {
   if (value === null || typeof value !== "object") return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
+};
+
+const isPayrollReviewQuery = (value: unknown): value is UnknownRecord => {
+  if (!isPlainObject(value)) return false;
+  const kind = value.kind;
+  return (kind === "attendance" || kind === "salary") &&
+    value.review_mode === `PAYROLL_${String(kind).toUpperCase()}_REVIEW` &&
+    typeof value.employee === "string" && value.employee.length > 0 &&
+    typeof value.batch === "string" && value.batch.length > 0 &&
+    typeof value.from === "string" && typeof value.to === "string";
 };
 
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -159,7 +169,11 @@ const walk = (value: unknown, path: string) => {
 
 @Injectable()
 export class NoFutureDatesPipe implements PipeTransform {
-  transform(value: unknown) {
+  transform(value: unknown, metadata?: ArgumentMetadata) {
+    // A payroll review deliberately requests the complete payroll month, including
+    // its future dates when the month is still in progress. The review service
+    // validates these bounds against the month and this narrowly-shaped query.
+    if (metadata?.type === "query" && isPayrollReviewQuery(value)) return value;
     // This pipe is applied globally (body + query), so handle primitives safely.
     walk(value, "");
     return value;

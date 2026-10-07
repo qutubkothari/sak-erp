@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { apiClient } from "../../../../../lib/api-client";
+import { apiClient, getLastFailedApiContext } from "../../../../../lib/api-client";
 import { formatPayrollAttendanceTime } from "./payroll-attendance-time";
 import { formatAttendanceDuration } from "../attendance-duration";
 
@@ -50,6 +50,36 @@ const numericPolicyFields = [
   ["Late marks per half-day", "late_marks_per_half_day"],
 ] as const;
 
+function payrollReviewLoadError(error: unknown): string {
+  const message = String((error as any)?.message || "").trim();
+  const context = getLastFailedApiContext();
+  const isReviewRequest = Boolean(
+    context?.endpoint.includes("/hr/payroll/control/month/") && context.endpoint.endsWith("/review"),
+  );
+  const validationActions: Record<string, string> = {
+    "Choose a valid payroll month.": "The payroll month in this link is invalid. Return to payroll and reopen the review for the selected month.",
+    "Review dates must match the payroll month.": "The date range does not match this payroll month. Return to payroll and reopen the review from the current batch.",
+    "Choose a valid payroll review.": "This link does not match an attendance or salary review. Return to payroll and reopen the review.",
+    "Employee and payroll batch are required.": "Employee or batch details are missing. Return to payroll and reopen the review from the current batch.",
+    "A valid From and To date is required": "The review date range is invalid. Return to payroll and reopen the review for the selected month.",
+    "Attendance report range cannot exceed 366 days": "The review date range is too long. Return to payroll and reopen the review for one payroll month.",
+    "This payroll batch is no longer available. Return to payroll and reopen the review.": "This payroll batch is no longer current. Return to payroll and reopen the employee review from the current batch.",
+    "Employee not found in this tenant.": "This employee is no longer available in the current tenant. Return to payroll and reopen the review.",
+    "Employee is not in this payroll batch.": "This employee is not part of the current payroll batch. Return to payroll and reopen the review.",
+  };
+  const blockedByFutureDate = context?.status === 400 && /^Future dates are not allowed\./.test(message);
+  const detail = context?.status === 400
+    ? validationActions[message] || (blockedByFutureDate
+      ? "This payroll-month review was rejected because it includes dates after today. Reopen it from the current batch; if the error continues, share the reference ID with support."
+      : undefined)
+    : undefined;
+  const fallback = "This employee review could not be opened. Return to payroll and reopen it from the current batch.";
+  const requestId = isReviewRequest && context?.requestId && /^[A-Za-z0-9._:-]{1,128}$/.test(context.requestId)
+    ? ` Reference ID: ${context.requestId}.`
+    : "";
+  return `${detail || fallback}${requestId}`;
+}
+
 export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
   const [query, setQuery] = useState("");
   const [review, setReview] = useState<ReviewContext | null>(null);
@@ -94,8 +124,8 @@ export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
       const result = (response as any)?.data || response;
       setReview(result);
       if (result?.salary) setSelectedComponentIds(result.salary.components.filter((row: any) => row.needs_start_date).map((row: any) => row.id));
-    } catch {
-      setReview(null); setError("This employee review could not be opened. Return to payroll and reopen it from the current batch.");
+    } catch (failure) {
+      setReview(null); setError(payrollReviewLoadError(failure));
     } finally { setBusy(false); }
   }, [query, kind]);
   useEffect(() => { void load(); }, [load]);

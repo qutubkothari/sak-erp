@@ -49,6 +49,17 @@ test("return restores and validates the same employee and payroll batch", () => 
   assert.match(management, /review\?\.employee\?\.id !== employee/);
 });
 
+test("October payroll review validation errors give the next action and retain a safe request reference", () => {
+  assert.match(view, /Review dates must match the payroll month\./);
+  assert.match(view, /Return to payroll and reopen the review from the current batch\./);
+  assert.match(view, /getLastFailedApiContext\(\)/);
+  assert.match(view, /blockedByFutureDate/);
+  assert.match(view, /share the reference ID with support/);
+  assert.match(view, /Reference ID: \$\{context\.requestId\}/);
+  assert.match(view, /setError\(payrollReviewLoadError\(failure\)\)/);
+  assert.doesNotMatch(view, /setError\(String\(failure/);
+});
+
 test("HR confirms dated policy and salary evidence without a payroll processing action", () => {
   assert.match(view, /Confirm Historical Policy/);
   assert.match(view, /Confirm Effective Date/);

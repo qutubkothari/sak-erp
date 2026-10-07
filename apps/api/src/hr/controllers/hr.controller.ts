@@ -667,14 +667,12 @@ export class HrController {
   getPayrollReviewContext(
     @Request() req: any,
     @Param("month") month: string,
-    @Query("employee") employee: string,
-    @Query("batch") batch: string,
-    @Query("kind") kind: string,
-    @Query("from") from: string,
-    @Query("to") to: string,
-    @Query("review_mode") reviewMode: string,
+    @Query() query: any,
   ) {
-    return this.hrService.getPayrollReviewContext(req.user.tenantId, month, employee, batch, kind, from, to, reviewMode);
+    return this.hrService.getPayrollReviewContext(
+      req.user.tenantId, month, query.employee, query.batch, query.kind,
+      query.from, query.to, query.review_mode,
+    );
   }
 
   @Post("payroll/control/month/:month/review/attendance-policy")
