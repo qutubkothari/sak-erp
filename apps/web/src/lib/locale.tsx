@@ -410,7 +410,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
         tenant?.settings?.organization?.language || tenant?.language || "",
       ).toLowerCase();
       if (!stored && tenantLanguage.startsWith("arab")) setLanguageState("ar");
-      setCurrency(String(tenant?.default_currency || tenant?.currency || "AED").toUpperCase());
+      setCurrency(String(tenant?.default_currency || tenant?.currency || profileLocale.currency).toUpperCase());
       setLocale(String(tenant?.locale || (tenantLanguage.startsWith("arab") ? "ar-EG" : profileLocale.locale)));
     }).catch(() => undefined);
   }, []);

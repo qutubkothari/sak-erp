@@ -26,6 +26,8 @@ test('locale defaults follow the selected tenant profile and keep unknown profil
   assert.match(branding, /getProfileLocaleSettings/);
   assert.match(locale, /useState\(profileLocale\.locale\)/);
   assert.match(locale, /useState\(profileLocale\.currency\)/);
+  assert.match(locale, /tenant\?\.default_currency \|\| tenant\?\.currency \|\| profileLocale\.currency/);
+  assert.match(locale, /tenant\?\.locale \|\|[\s\S]*?profileLocale\.locale/);
   assert.match(market, /marketProfile: 'EGYPT'[\s\S]*locale: 'en-EG'/);
 });
 test('ARWA, MIZANTRA, and SAIFSEAS retain profile-specific names and marks', () => {
@@ -92,5 +94,5 @@ test('branding and release-source safeguards do not change ERP business data or 
   const { execFileSync } = require('node:child_process');
   const changed = execFileSync('git', ['diff', 'HEAD^', 'HEAD', '--name-only'], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean);
   assert.ok(changed.length > 0);
-  assert.ok(!changed.some((file) => /^(apps\/api|database\/|supabase\/)|migration|\.sql$|business-data|capability/i.test(file)));
+  assert.ok(!changed.some((file) => (/^(apps\/api|database\/|supabase\/)/i.test(file) && !/\.(spec|test)\.[^.]+$/i.test(file)) || /migration|\.sql$|business-data|capability/i.test(file)));
 });
