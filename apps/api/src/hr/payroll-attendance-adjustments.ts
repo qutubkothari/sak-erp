@@ -8,12 +8,15 @@ type EmployeeOvertimeRule = {
   half_day_after_hours?: number;
   full_day_after_hours?: number;
   holiday_min_hours?: number;
+  holiday_work_credit_days?: number;
 };
 
 type AttendanceDay = {
   date: string;
   scheduled?: boolean | null;
   work_hours?: number | null;
+  work_minutes?: number | null;
+  day_type?: "NORMAL" | "PAID_HOLIDAY" | "WEEKLY_OFF" | "PAID_LEAVE" | "UNPAID_LEAVE";
   late_minutes?: number | null;
   policy?: {
     policy_version_id?: string | null;
@@ -24,6 +27,25 @@ type AttendanceDay = {
   } | null;
 };
 
+export function calculateOvertimeDayCredit(input: {
+  workMinutes: number;
+  dayType?: AttendanceDay["day_type"];
+  rule: EmployeeOvertimeRule;
+}) {
+  const { rule } = input;
+  if (!rule.eligible || rule.method !== "DAY_CREDIT") return 0;
+  const minutes = Math.max(0, Math.round(input.workMinutes));
+  if (minutes === 0) return 0;
+  const hours = minutes / 60;
+  if (["PAID_HOLIDAY", "WEEKLY_OFF", "PAID_LEAVE"].includes(String(input.dayType || ""))) {
+    return Number(rule.holiday_work_credit_days ?? (hours >= Number(rule.holiday_min_hours) ? 1 : 0.5));
+  }
+  if (hours < Number(rule.minimum_hours || 0)) return 0;
+  return rule.holiday_work_credit_days !== undefined
+    ? minutes > Number(rule.full_day_after_hours) * 60 ? 1 : minutes > Number(rule.half_day_after_hours) * 60 ? 0.5 : 0
+    : hours >= Number(rule.full_day_after_hours) ? 1 : hours > Number(rule.half_day_after_hours) ? 0.5 : 0;
+}
+
 /** Calculates late from attendance policy and overtime solely from the dated employee rule. */
 export function calculateDatedAttendanceAdjustments(input: {
   days: AttendanceDay[];
@@ -31,6 +53,7 @@ export function calculateDatedAttendanceAdjustments(input: {
   basicSalary: number;
   workingDays: number;
   overtimeRuleForDate: (date: string) => EmployeeOvertimeRule | undefined;
+  dayTypeForDate?: (date: string) => AttendanceDay["day_type"];
 }) {
   const marksByPolicy = new Map<string, { count: number; threshold: number }>();
   let lateDeduction = 0;
@@ -53,14 +76,13 @@ export function calculateDatedAttendanceAdjustments(input: {
 
     const rule = input.overtimeRuleForDate(day.date);
     if (!rule?.eligible) continue;
-    const hours = Math.max(0, Number(day.work_hours || 0));
+    const minutes = Math.max(0, Math.round(Number(day.work_minutes ?? Number(day.work_hours || 0) * 60)));
+    const hours = minutes / 60;
     const minimumHours = Number(rule.minimum_hours || 0);
     if (hours < minimumHours) continue;
     if (rule.method === "DAY_CREDIT") {
-      const creditDays = day.scheduled === false
-        ? (hours >= Number(rule.holiday_min_hours) ? 1 : 0.5)
-        : hours >= Number(rule.full_day_after_hours) ? 1
-          : hours > Number(rule.half_day_after_hours) ? 0.5 : 0;
+      const dayType = day.day_type || input.dayTypeForDate?.(day.date) || (day.scheduled === false ? "WEEKLY_OFF" : "NORMAL");
+      const creditDays = calculateOvertimeDayCredit({ workMinutes: minutes, dayType, rule });
       overtimeCreditDays += creditDays;
       overtimeAmount += input.dailyGrossRate * creditDays;
       continue;

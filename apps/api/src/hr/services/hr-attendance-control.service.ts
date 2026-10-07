@@ -69,6 +69,25 @@ const n = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 const round2 = (value: number) => Math.round(value * 100) / 100;
+export const authoritativeWorkMinutes = (record: any) => {
+  const explicit = record?.work_minutes == null ? Number.NaN : Number(record.work_minutes);
+  if (Number.isFinite(explicit) && explicit >= 0) return Math.round(explicit);
+  const checkIn = String(record?.check_in_time || "");
+  const checkOut = String(record?.check_out_time || "");
+  if (/^\d{4}-\d{2}-\d{2}T/.test(checkIn) && /^\d{4}-\d{2}-\d{2}T/.test(checkOut)) {
+    const elapsed = Date.parse(checkOut) - Date.parse(checkIn);
+    if (Number.isFinite(elapsed) && elapsed >= 0) return Math.round(elapsed / 60000);
+  }
+  const inClock = checkIn.match(/(?:^|T)(\d{1,2}):(\d{2})/);
+  const outClock = checkOut.match(/(?:^|T)(\d{1,2}):(\d{2})/);
+  if (inClock && outClock) {
+    const start = Number(inClock[1]) * 60 + Number(inClock[2]);
+    let end = Number(outClock[1]) * 60 + Number(outClock[2]);
+    if (end < start) end += 1440;
+    return end - start;
+  }
+  return Math.max(0, Math.round(n(record?.work_hours) * 60));
+};
 const timeMinutes = (value: unknown) => {
   const match = String(value || "").match(/(\d{1,2}):(\d{2})/);
   return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
@@ -679,7 +698,7 @@ export class HrAttendanceControlService {
                 ? "HOLIDAY"
                 : "WEEK_OFF";
         let payableDays = 0;
-        if (scheduled && leave) {
+        if (scheduled && leave && !(attendance && approvalValid && paidLeave)) {
           dayStatus = paidLeave ? "PAID_LEAVE" : "UNPAID_LEAVE";
           payableDays = paidLeave ? 1 : 0;
         } else if (attendance && !approvalValid) {
@@ -705,8 +724,12 @@ export class HrAttendanceControlService {
             !attendance.check_out_time
           ) {
             dayStatus = "IN_PROGRESS";
+          } else if (scheduled && leave && paidLeave) {
+            dayStatus = "PAID_LEAVE_WORKED";
+            payableDays = 1;
           } else if (!scheduled) {
             dayStatus = holiday ? "HOLIDAY_WORKED" : "WEEK_OFF_WORKED";
+            payableDays = 1;
           } else if (
             hours >= policyForDate!.standard_daily_hours ||
             (!attendance.check_out_time &&
@@ -735,6 +758,7 @@ export class HrAttendanceControlService {
           check_in_time: attendance?.check_in_time || null,
           check_out_time: attendance?.check_out_time || null,
           work_hours: round2(hours),
+          work_minutes: attendance ? authoritativeWorkMinutes(attendance) : 0,
           payable_days: payableDays,
           leave_type: leaveType || "",
           late_minutes: lateMinutes,

@@ -111,6 +111,7 @@ export const HR_PAYROLL_RULE_KEYS = [
   "payroll_close_day",
   "approval_threshold",
   "PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT",
+  "employee_overtime_rule",
 ] as const;
 export type HrPayrollRuleKey = (typeof HR_PAYROLL_RULE_KEYS)[number] | "employee_overtime_rule";
 
@@ -147,7 +148,7 @@ export function validateHrPayrollRuleValue(ruleKey: HrPayrollRuleKey, value: unk
     case "employee_overtime_rule": {
       if (value && typeof value === "object" && !Array.isArray(value)) {
         const rule = value as Record<string, unknown>;
-        const allowed = ["eligible", "method", "starts_after_hours", "rate_multiplier", "minimum_hours", "cap_hours", "half_day_after_hours", "full_day_after_hours", "holiday_min_hours"];
+        const allowed = ["eligible", "method", "starts_after_hours", "rate_multiplier", "minimum_hours", "cap_hours", "half_day_after_hours", "full_day_after_hours", "holiday_min_hours", "holiday_work_credit_days"];
         const finite = (key: string, min = 0, max = 24) => rule[key] === undefined || (typeof rule[key] === "number" && Number.isFinite(rule[key]) && Number(rule[key]) >= min && Number(rule[key]) <= max);
         const method = String(rule.method || "").toUpperCase();
         const commonValid = Object.keys(rule).every((key) => allowed.includes(key)) && typeof rule.eligible === "boolean";
@@ -156,8 +157,10 @@ export function validateHrPayrollRuleValue(ruleKey: HrPayrollRuleKey, value: unk
         const optionalValid = finite("minimum_hours") && (method === "HOURLY" ? finite("cap_hours") : rule.cap_hours === undefined);
         const hourlyValid = method !== "HOURLY" || (finite("starts_after_hours") && typeof rule.starts_after_hours === "number" &&
           typeof rule.rate_multiplier === "number" && Number.isFinite(rule.rate_multiplier) && rule.rate_multiplier >= 0 && rule.rate_multiplier <= 10);
-        const dayCreditValid = method !== "DAY_CREDIT" || (["half_day_after_hours", "full_day_after_hours", "holiday_min_hours"].every((key) => typeof rule[key] === "number" && finite(key)) &&
-          Number(rule.half_day_after_hours) <= Number(rule.full_day_after_hours));
+        const dayCreditValid = method !== "DAY_CREDIT" || (["half_day_after_hours", "full_day_after_hours"].every((key) => typeof rule[key] === "number" && finite(key)) &&
+          Number(rule.half_day_after_hours) <= Number(rule.full_day_after_hours) &&
+          ((rule.holiday_work_credit_days === 1 && rule.holiday_min_hours === undefined) ||
+            (typeof rule.holiday_min_hours === "number" && finite("holiday_min_hours") && rule.holiday_work_credit_days === undefined)));
         if (commonValid && methodValid && optionalValid && hourlyValid && dayCreditValid) return { ...rule, method };
       }
       break;

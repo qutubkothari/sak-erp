@@ -9,9 +9,9 @@ type ReviewKind = "attendance" | "salary";
 type ReviewDay = {
   date: string; attendance_id: string | null; check_in_time: string | null; check_out_time: string | null;
   timezone: string;
-  status: string; hours: number; late_minutes: number | null; overtime_hours: number | null; overtime_credit_days: number | null;
+  status: string; hours: number; work_minutes: number; day_type: string; base_day_credit: number; total_pay_days: number; calculation_reason: string; late_minutes: number | null; overtime_hours: number | null; overtime_credit_days: number | null;
   late_pay_relevant: boolean; overtime_pay_relevant: boolean; policy_effective_on_date: boolean; policy_reference: string | null;
-  overtime_rule: { source: "EMPLOYEE"; id: string | null; effective_from: string; effective_to: string | null; eligible: boolean; method: "HOURLY" | "DAY_CREDIT"; [key: string]: any } | null;
+  overtime_rule: { source: "COMPANY_DEFAULT" | "EMPLOYEE_OVERRIDE"; id: string | null; effective_from: string; effective_to: string | null; reason?: string | null; eligible: boolean; method: "HOURLY" | "DAY_CREDIT"; [key: string]: any } | null;
   payroll_impact: string; classification: "NO_ACTION_REQUIRED" | "CONFIRM_POLICY" | "EMPLOYEE_OT_RULE_REQUIRED" | "CORRECT_ATTENDANCE" | "PAY_RELEVANT_REVIEW";
 };
 type ReviewContext = {
@@ -21,7 +21,7 @@ type ReviewContext = {
     affected: ReviewDay[]; actionable_days: number; complete: boolean;
     timezones: string[];
     policy: { gap_from: string | null; gap_to: string | null; effective_from: string | null; reference: string; late_pay_relevant: boolean; overtime_pay_relevant: boolean };
-    overtime_rule: { gap_from: string | null; gap_to: string | null; source: "EMPLOYEE" };
+    overtime_rule: { gap_from: string | null; gap_to: string | null; source: "EMPLOYEE_OVERRIDE_THEN_COMPANY_DEFAULT" };
     policy_templates: Array<{ id: string; label: string; policy: Record<string, any> }>;
   };
   salary?: { legacy_warning: boolean; resolved: boolean; ctc: number | null; components: Array<{
@@ -185,8 +185,8 @@ export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
         {review.attendance.policy.gap_from && review.attendance.policy.gap_to && <p className="mt-2 text-sm text-stone-800">{formatDate(review.attendance.policy.gap_from)} to {formatDate(review.attendance.policy.gap_to)}: No effective policy recorded.</p>}
         <p className="mt-2 text-sm text-stone-800">{review.attendance.policy.effective_from ? `${formatDate(review.attendance.policy.effective_from)} onward: ${review.attendance.policy.reference}.` : "No effective attendance policy recorded."}</p>
         <p className="mt-2 text-sm text-stone-700">Late pay relevant? <strong>{review.attendance.policy.late_pay_relevant ? "Yes" : "No"}</strong></p>
-        {review.attendance.overtime_rule.gap_from && review.attendance.overtime_rule.gap_to && <p className="mt-2 rounded-lg bg-white p-3 text-sm font-semibold text-amber-950">{review.employee.name}&apos;s overtime rule is not recorded for {formatDateSpan(review.attendance.overtime_rule.gap_from, review.attendance.overtime_rule.gap_to)}.</p>}
-        <p className="mt-2 text-sm text-stone-700">Overtime eligibility and calculation come from this employee&apos;s effective dated rule. The attendance policy does not supply OT values.</p>
+        {review.attendance.overtime_rule.gap_from && review.attendance.overtime_rule.gap_to && <p className="mt-2 rounded-lg bg-white p-3 text-sm font-semibold text-amber-950">No employee override or company default rule is effective for {formatDateSpan(review.attendance.overtime_rule.gap_from, review.attendance.overtime_rule.gap_to)}.</p>}
+        <p className="mt-2 text-sm text-stone-700">An employee effective-dated override takes precedence over the company default. Attendance policy still controls shift and attendance status separately.</p>
         <Link href={managementHref("policy")} className="mt-3 inline-block text-sm font-semibold text-blue-700 hover:underline">Open attendance policy</Link>
       </section>
       {review.attendance.overtime_rule.gap_from && <form onSubmit={(event) => void saveOvertimeRule(event)} className="space-y-4 rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
@@ -235,17 +235,20 @@ export default function PayrollReviewView({ kind }: { kind: ReviewKind }) {
       </form>}
       <section className="overflow-x-auto rounded-2xl border border-stone-200 bg-white shadow-sm">
         <div className="border-b border-stone-100 p-5"><h2 className="font-bold text-stone-900">Affected dates</h2><p className="mt-1 text-xs text-stone-600">Times shown in: {review.attendance.timezones.join(", ") || "business timezone"}</p></div>
-        {review.attendance.affected.length === 0 ? <p className="p-5 text-sm text-stone-600">No affected attendance dates remain.</p> : <table className="min-w-[1050px] w-full text-left text-sm">
-          <thead className="bg-stone-50 text-xs uppercase text-stone-600"><tr>{["Date", "Check in", "Check out", "Status", "Hours", "Late", "Overtime", "Attendance / Shift Policy", "Employee OT Rule", "Payroll impact", "Review status"].map(label => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead>
+        {review.attendance.affected.length === 0 ? <p className="p-5 text-sm text-stone-600">No affected attendance dates remain.</p> : <table className="min-w-[1250px] w-full text-left text-sm">
+          <thead className="bg-stone-50 text-xs uppercase text-stone-600"><tr>{["Date", "Work Time", "Day Type", "OT Rule Source", "OT Rule", "Extra Day Credit", "Total Pay Days", "Reason / Calculation", "Attendance / Shift Policy", "Late", "Review status"].map(label => <th key={label} className="px-3 py-3">{label}</th>)}</tr></thead>
           <tbody className="divide-y divide-stone-100">{review.attendance.affected.map(day => <tr key={day.date}>
             <td className="px-3 py-3 font-semibold">{formatDate(day.date)}{day.attendance_id && <Link href={managementHref("attendance", day.date, day.attendance_id)} className="mt-1 block text-xs text-blue-700 hover:underline">Open record</Link>}</td>
-            <td className="px-3 py-3">{formatPayrollAttendanceTime(day.check_in_time, day.timezone)}</td><td className="px-3 py-3">{formatPayrollAttendanceTime(day.check_out_time, day.timezone)}</td>
-            <td className="px-3 py-3">{day.status.replace(/_/g, " ")}</td><td className="px-3 py-3">{day.hours}</td>
-            <td className="px-3 py-3">{day.late_minutes === null ? (day.late_pay_relevant ? "Needs policy" : "Not needed for pay") : `${day.late_minutes} min`}<span className="block text-xs text-stone-500">Pay relevant: {day.late_pay_relevant ? "Yes" : "No"}</span></td>
-            <td className="px-3 py-3">{day.overtime_hours !== null ? `${day.overtime_hours} hr` : day.overtime_credit_days !== null ? `${day.overtime_credit_days} day credit` : day.overtime_pay_relevant ? "Needs employee rule" : "Not needed for pay"}<span className="block text-xs text-stone-500">Pay relevant: {day.overtime_pay_relevant ? "Yes" : "No"}</span></td>
+            <td className="px-3 py-3"><strong>{Math.floor(day.work_minutes / 60)}h {String(day.work_minutes % 60).padStart(2, "0")}m</strong><span className="block text-xs text-stone-500">{formatPayrollAttendanceTime(day.check_in_time, day.timezone)} – {formatPayrollAttendanceTime(day.check_out_time, day.timezone)}</span></td>
+            <td className="px-3 py-3">{day.day_type.replace(/_/g, " ")}<span className="block text-xs text-stone-500">{day.status.replace(/_/g, " ")}</span></td>
+            <td className="px-3 py-3">{day.overtime_rule?.source === "EMPLOYEE_OVERRIDE" ? "Employee Override" : day.overtime_rule ? "Company Default" : "Review Required"}</td>
+            <td className="px-3 py-3">{day.overtime_rule ? `${day.overtime_rule.eligible ? day.overtime_rule.method : "Not eligible"} · ${formatDate(day.overtime_rule.effective_from)}` : "No effective rule"}</td>
+            <td className="px-3 py-3">{day.overtime_credit_days === null ? "Review required" : `${Number(day.overtime_credit_days || 0).toFixed(1)} day`}</td>
+            <td className="px-3 py-3 font-semibold">{Number(day.total_pay_days || 0).toFixed(1)}</td>
+            <td className="px-3 py-3">{day.calculation_reason}</td>
             <td className="px-3 py-3">{day.policy_reference || "None recorded"}</td>
-            <td className="px-3 py-3">{day.overtime_rule ? `${day.overtime_rule.eligible ? day.overtime_rule.method : "Not eligible"} · ${formatDate(day.overtime_rule.effective_from)}` : "Employee rule required"}</td>
-            <td className="px-3 py-3">{day.payroll_impact}</td><td className="px-3 py-3 font-semibold">{statusLabel[day.classification]}</td>
+            <td className="px-3 py-3">{day.late_minutes === null ? (day.late_pay_relevant ? "Needs policy" : "Not needed for pay") : `${day.late_minutes} min`}<span className="block text-xs text-stone-500">Pay relevant: {day.late_pay_relevant ? "Yes" : "No"}</span></td>
+            <td className="px-3 py-3 font-semibold">{statusLabel[day.classification]}</td>
           </tr>)}</tbody>
         </table>}
       </section>

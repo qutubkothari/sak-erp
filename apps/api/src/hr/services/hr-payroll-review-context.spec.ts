@@ -96,7 +96,7 @@ describe("payroll review context", () => {
     const { service } = setup();
     const review = await open(service);
     expect(review.attendance.policy).toMatchObject({ gap_from: null, gap_to: null, effective_from: "2026-09-19", late_pay_relevant: false });
-    expect(review.attendance.overtime_rule).toMatchObject({ gap_from: "2026-09-01", gap_to: "2026-09-18", source: "EMPLOYEE" });
+    expect(review.attendance.overtime_rule).toMatchObject({ gap_from: "2026-09-01", gap_to: "2026-09-18", source: "EMPLOYEE_OVERRIDE_THEN_COMPANY_DEFAULT" });
     expect(review.attendance.affected[0]).toMatchObject({ late_minutes: null, overtime_hours: null, classification: "EMPLOYEE_OT_RULE_REQUIRED", policy_effective_on_date: false });
     expect(review.attendance.complete).toBe(false);
   });
@@ -196,9 +196,10 @@ describe("payroll review context", () => {
     const { service, from, overtimeQuery } = setup();
     expect(Reflect.getMetadata("permissions", HrController.prototype.getPayrollReviewContext)).toEqual(["hr:read"]);
     await open(service);
-    expect(from).toHaveBeenCalledTimes(2);
+    expect(from).toHaveBeenCalledTimes(3);
     expect(from).toHaveBeenCalledWith("employees");
     expect(from).toHaveBeenCalledWith("hr_employee_payroll_rule_overrides");
+    expect(from).toHaveBeenCalledWith("hr_payroll_rule_versions");
     expect(overtimeQuery.eq).toHaveBeenCalledWith("tenant_id", tenant);
     expect(overtimeQuery.eq).toHaveBeenCalledWith("employee_id", employeeId);
     expect(overtimeQuery.eq).toHaveBeenCalledWith("rule_key", "employee_overtime_rule");

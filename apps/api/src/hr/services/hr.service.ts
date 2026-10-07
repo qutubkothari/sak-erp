@@ -7,7 +7,7 @@ import {
   hasPermission,
 } from "../../auth/utils/permission-utils";
 import { AccountingService } from "../../accounting/accounting.service";
-import { calculateDatedAttendanceAdjustments } from "../payroll-attendance-adjustments";
+import { calculateDatedAttendanceAdjustments, calculateOvertimeDayCredit } from "../payroll-attendance-adjustments";
 import {
   HrAttendanceControlService,
   requiresAttendanceDerivedMetricsReview,
@@ -2988,7 +2988,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   async getEffectivePayrollRule(tenantId: string, ruleKey: string, effectiveDate: string, employeeId?: string) {
     if (!isSupportedHrPayrollRuleKey(ruleKey)) throw new BadRequestException("This HR/payroll rule is not supported.");
     if (!isValidIsoDate(effectiveDate)) throw new BadRequestException("A real effective date in YYYY-MM-DD format is required.");
-    if (ruleKey === "employee_overtime_rule" && !employeeId) throw new BadRequestException("An employee is required to resolve an employee overtime rule.");
     const [{ data: tenantRows, error: tenantError }, defaults] = await Promise.all([
       this.supabase.from("hr_payroll_rule_versions").select("*").eq("tenant_id", tenantId).eq("rule_key", ruleKey).order("effective_from", { ascending: false }),
       this.getProfileRuleDefaults(tenantId),
@@ -3001,10 +3000,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       if (error && !isMissingRelationError(error, "hr_employee_payroll_rule_overrides")) throw new Error(error.message);
       employeeRows = data || [];
     }
-    const employeeOnlyRule = ruleKey === "employee_overtime_rule";
-    const profileDefault = employeeOnlyRule ? undefined : defaults.profileDefaults?.[ruleKey];
-    const configuredTenantDefault = employeeOnlyRule ? undefined : defaults.tenantDefaults?.[ruleKey];
-    const storedTenant = employeeOnlyRule ? [] : tenantRows || [];
+    const overtimeRule = ruleKey === "employee_overtime_rule";
+    const profileDefault = overtimeRule ? undefined : defaults.profileDefaults?.[ruleKey];
+    const configuredTenantDefault = overtimeRule ? undefined : defaults.tenantDefaults?.[ruleKey];
+    const storedTenant = tenantRows || [];
     const resolved = resolvePayrollRule({
       ruleKey, effectiveDate,
       profileDefault,
@@ -3029,12 +3028,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
   async getEffectivePayrollRuleCatalog(tenantId: string, effectiveDate: string, employeeId?: string) {
     const results = await Promise.all(HR_PAYROLL_RULE_KEYS.map((ruleKey) => this.getEffectivePayrollRule(tenantId, ruleKey, effectiveDate, employeeId)));
-    return { effective_date: effectiveDate, employee_id: employeeId || null, rules: results };
+    const { data: overrides, error } = await this.supabase.from("hr_employee_payroll_rule_overrides")
+      .select("employee_id,effective_from,effective_to,rule_value,reason,created_at")
+      .eq("tenant_id", tenantId).eq("rule_key", "employee_overtime_rule").lte("effective_from", effectiveDate)
+      .or(`effective_to.is.null,effective_to.gte.${effectiveDate}`).order("effective_from", { ascending: false });
+    if (error && !isMissingRelationError(error, "hr_employee_payroll_rule_overrides")) throw new ConflictException(error.message);
+    const employeeIds = [...new Set((overrides || []).map((row: any) => String(row.employee_id)))];
+    const { data: employees, error: employeeError } = employeeIds.length
+      ? await this.supabase.from("employees").select("id,employee_name,employee_code").eq("tenant_id", tenantId).in("id", employeeIds)
+      : { data: [], error: null };
+    if (employeeError) throw new ConflictException(employeeError.message);
+    const employeeById = new Map((employees || []).map((row: any) => [String(row.id), row]));
+    const employeesWithOvertimeOverrides = (overrides || []).filter((row: any, index: number, rows: any[]) => rows.findIndex((candidate: any) => String(candidate.employee_id) === String(row.employee_id)) === index).map((row: any) => ({
+      employee_id: String(row.employee_id), employee_name: employeeById.get(String(row.employee_id))?.employee_name || "",
+      employee_code: employeeById.get(String(row.employee_id))?.employee_code || "", effective_from: row.effective_from,
+      effective_to: row.effective_to || null, rule_value: row.rule_value, reason: row.reason, created_at: row.created_at,
+    }));
+    return { effective_date: effectiveDate, employee_id: employeeId || null, rules: results, employees_with_overtime_overrides: employeesWithOvertimeOverrides };
   }
 
   async saveEffectivePayrollRule(tenantId: string, actorId: string, payload: { rule_key?: string; rule_value?: unknown; effective_from?: string; effective_to?: string | null; reason?: string; supersedes_id?: string | null }) {
     await this.assertEffectiveRulesEnabled(tenantId);
-    if (!isSupportedHrPayrollRuleKey(payload.rule_key) || payload.rule_key === "employee_overtime_rule") throw new BadRequestException("This HR/payroll rule is not supported as a company rule.");
+    if (!isSupportedHrPayrollRuleKey(payload.rule_key)) throw new BadRequestException("This HR/payroll rule is not supported as a company rule.");
     const effectiveFrom = String(payload.effective_from || ""), effectiveTo = payload.effective_to ? String(payload.effective_to) : null, reason = String(payload.reason || "").trim();
     if (!isValidIsoDate(effectiveFrom) || (effectiveTo && !isValidIsoDate(effectiveTo)) || (effectiveTo && effectiveTo < effectiveFrom) || !reason) throw new BadRequestException("Provide a valid effective period and a reason.");
     let ruleValue: unknown;
@@ -3220,18 +3235,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         .eq("tenant_id", tenantId).in("employee_id", overtimeEmployeeIds).eq("rule_key", "employee_overtime_rule")
       : { data: [], error: null };
     if (employeeOvertimeRuleError && !isMissingRelationError(employeeOvertimeRuleError, "hr_employee_payroll_rule_overrides")) throw new ConflictException(employeeOvertimeRuleError.message);
+    const { data: companyOvertimeRules, error: companyOvertimeRuleError } = await this.supabase.from("hr_payroll_rule_versions")
+      .select("id,rule_key,rule_value,effective_from,effective_to,created_at")
+      .eq("tenant_id", tenantId).eq("rule_key", "employee_overtime_rule").lte("effective_from", monthEnd)
+      .or(`effective_to.is.null,effective_to.gte.${monthStart}`);
+    if (companyOvertimeRuleError && !isMissingRelationError(companyOvertimeRuleError, "hr_payroll_rule_versions")) throw new ConflictException(companyOvertimeRuleError.message);
     for (const employee of eligibleEmployees) {
       const employeeId = String(employee.id);
       const employeeDays = (attendanceRegister.daily || []).filter((row: any) => String(row.employee_id) === employeeId && row.attendance_id);
       const rules = (employeeOvertimeRules || []).filter((row: any) => String(row.employee_id) === employeeId);
-      const missingDates = employeeDays.filter((row: any) => resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: String(row.date), employeeOverrides: rules }).source === "MISSING").map((row: any) => String(row.date)).sort();
+      const missingDates = employeeDays.filter((row: any) => resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: String(row.date), tenantRules: companyOvertimeRules || [], employeeOverrides: rules }).source === "MISSING").map((row: any) => String(row.date)).sort();
       if (!missingDates.length) continue;
       blockers.push({
         key: `employee-overtime-rule:${employeeId}`, entity_id: employeeId,
         employee_name: employee.employee_name || employee.employee_code || "Employee", employee_code: employee.employee_code || "",
         reason: `${employee.employee_name || employee.employee_code || "Employee"}'s overtime rule is not recorded for ${missingDates[0]} to ${missingDates[missingDates.length - 1]}.`,
         responsible: "HR / Payroll", fix_href: `/dashboard/hr/attendance/payroll-review?month=${month}&employee=${employeeId}`,
-        evidence: { missing_dates: missingDates, payroll_month: month, rule_source: "EMPLOYEE" }, severity: "BLOCKER",
+        evidence: { missing_dates: missingDates, payroll_month: month, rule_source: "EMPLOYEE_OVERRIDE_THEN_COMPANY_DEFAULT" }, severity: "BLOCKER",
       });
     }
     for (const employee of eligibleEmployees) {
@@ -3448,12 +3468,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .order("effective_from", { ascending: false });
     if (overtimeRuleError && !isMissingRelationError(overtimeRuleError, "hr_employee_payroll_rule_overrides")) throw new ConflictException(overtimeRuleError.message);
     const employeeOvertimeRules = overtimeRules || [];
+    const { data: companyOvertimeRules, error: companyOvertimeRuleError } = await this.supabase.from("hr_payroll_rule_versions")
+      .select("id,rule_key,rule_value,effective_from,effective_to,reason,created_by,created_at")
+      .eq("tenant_id", tenantId).eq("rule_key", "employee_overtime_rule").order("effective_from", { ascending: false });
+    if (companyOvertimeRuleError && !isMissingRelationError(companyOvertimeRuleError, "hr_payroll_rule_versions")) throw new ConflictException(companyOvertimeRuleError.message);
+    const tenantOvertimeRules = companyOvertimeRules || [];
     const policy = register.policy;
     const latePayRelevant = Boolean(policy && policy.late_deduction_mode !== "NONE");
-    const ruleOn = (date: string) => resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: date, employeeOverrides: employeeOvertimeRules });
+    const ruleOn = (date: string) => resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: date, tenantRules: tenantOvertimeRules, employeeOverrides: employeeOvertimeRules });
     const affected = register.daily.filter((row: any) =>
       String(row.employee_id) === String(employee.id) &&
-      (row.derived_metrics_status || ["PENDING", "REJECTED"].includes(String(row.approval_status || "").toUpperCase()) || (row.attendance_id && ruleOn(String(row.date)).source === "MISSING")),
+      (row.attendance_id || row.status === "PAID_LEAVE" || row.status === "UNPAID_LEAVE") &&
+      (row.derived_metrics_status || ["PENDING", "REJECTED"].includes(String(row.approval_status || "").toUpperCase()) || row.attendance_id || ruleOn(String(row.date)).source === "MISSING"),
     ).map((row: any) => {
       const approvalNeedsCorrection = ["PENDING", "REJECTED"].includes(String(row.approval_status || "").toUpperCase());
       const rowLatePayRelevant = row.policy ? row.policy.late_deduction_mode !== "NONE" : latePayRelevant;
@@ -3470,10 +3496,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         overtimeCreditDays = null;
       } else if (overtimeRule?.eligible && overtimeRule.method === "DAY_CREDIT") {
         overtimeHours = null;
-        if (workedHours >= Number(overtimeRule.minimum_hours || 0)) overtimeCreditDays = row.scheduled === false
-          ? workedHours >= Number(overtimeRule.holiday_min_hours) ? 1 : 0.5
-          : workedHours >= Number(overtimeRule.full_day_after_hours) ? 1
-            : workedHours > Number(overtimeRule.half_day_after_hours) ? 0.5 : 0;
+        const workMinutes = Math.max(0, Math.round(Number(row.work_minutes ?? workedHours * 60)));
+        const dayType = String(row.status).includes("HOLIDAY") ? "PAID_HOLIDAY" : String(row.status).includes("WEEK_OFF") ? "WEEKLY_OFF" : String(row.status) === "PAID_LEAVE_WORKED" ? "PAID_LEAVE" : String(row.status) === "UNPAID_LEAVE" ? "UNPAID_LEAVE" : "NORMAL";
+        overtimeCreditDays = calculateOvertimeDayCredit({ workMinutes, dayType, rule: overtimeRule });
       }
       const classification = approvalNeedsCorrection ? "CORRECT_ATTENDANCE"
         : overtimeResolution.source === "MISSING" && row.attendance_id ? "EMPLOYEE_OT_RULE_REQUIRED"
@@ -3483,15 +3508,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         date: row.date, attendance_id: row.attendance_id,
         check_in_time: row.check_in_time, check_out_time: row.check_out_time,
         timezone: String(row.policy?.timezone || policy?.timezone || ""),
-        status: row.status, hours: row.work_hours,
+        status: row.status, hours: row.work_hours, work_minutes: row.work_minutes ?? Math.round(Number(row.work_hours || 0) * 60),
         late_minutes: row.late_minutes, overtime_hours: overtimeHours, overtime_credit_days: overtimeCreditDays,
+        day_type: String(row.status).includes("HOLIDAY") ? "PAID_HOLIDAY" : String(row.status).includes("WEEK_OFF") ? "WEEKLY_OFF" : String(row.status).includes("PAID_LEAVE") ? "PAID_LEAVE" : String(row.status).includes("UNPAID_LEAVE") ? "UNPAID_LEAVE" : "NORMAL",
+        base_day_credit: Number(row.payable_days || 0), total_pay_days: Number(row.payable_days || 0) + Number(overtimeCreditDays || 0),
+        calculation_reason: overtimeRule ? `${Number(row.payable_days || 0).toFixed(1)} base day${Number(overtimeCreditDays || 0) ? ` + ${Number(overtimeCreditDays).toFixed(1)} ${String(row.status).includes("_WORKED") ? "worked paid day" : "OT credit"}` : "; no extra credit"}` : "Effective OT rule missing; review required",
         late_pay_relevant: rowLatePayRelevant, overtime_pay_relevant: rowOvertimePayRelevant,
         policy_effective_on_date: row.policy_resolution_status === "POLICY_FOR_DATE_FOUND",
         policy_reference: row.policy ? `Policy effective ${String(row.policy.effective_from).slice(0, 10)}` : null,
-        overtime_rule: overtimeRule ? { source: "EMPLOYEE", id: overtimeResolution.version?.id || null, effective_from: overtimeResolution.version?.effective_from || null, effective_to: overtimeResolution.version?.effective_to || null, ...overtimeRule } : null,
+        overtime_rule: overtimeRule ? { source: overtimeResolution.source === "EMPLOYEE" ? "EMPLOYEE_OVERRIDE" : "COMPANY_DEFAULT", id: overtimeResolution.version?.id || null, effective_from: overtimeResolution.version?.effective_from || null, effective_to: overtimeResolution.version?.effective_to || null, reason: overtimeResolution.version?.reason || null, ...overtimeRule } : null,
         payroll_impact: classification === "NO_ACTION_REQUIRED" ? "No late or overtime pay effect under the current rule."
           : classification === "CORRECT_ATTENDANCE" ? "Attendance approval or correction is needed."
-            : classification === "EMPLOYEE_OT_RULE_REQUIRED" ? "Overtime pay is unresolved until this employee's effective overtime rule is recorded."
+            : classification === "EMPLOYEE_OT_RULE_REQUIRED" ? "Overtime pay is unresolved until an effective employee override or company default rule is recorded."
               : [rowLatePayRelevant ? "Late deductions" : null, rowOvertimePayRelevant ? "Overtime pay" : null].filter(Boolean).join(" and ") + " may change.",
         classification, review_status: classification,
       };
@@ -3516,7 +3544,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           late_pay_relevant: latePayRelevant,
           overtime_pay_relevant: overtimePayRelevant,
         },
-        overtime_rule: { gap_from: missingOvertimeDates[0] || null, gap_to: missingOvertimeDates[missingOvertimeDates.length - 1] || null, source: "EMPLOYEE" },
+        overtime_rule: { gap_from: missingOvertimeDates[0] || null, gap_to: missingOvertimeDates[missingOvertimeDates.length - 1] || null, source: "EMPLOYEE_OVERRIDE_THEN_COMPANY_DEFAULT" },
         policy_templates: templates,
       },
     };
@@ -4014,6 +4042,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           hours: current.overtime_hours || 0,
           amount: current.overtime_amount || 0,
           overtime_credit_days: breakdown.overtime_credit_days || 0,
+          attendance_records: (Array.isArray(breakdown.calculation_lines) ? breakdown.calculation_lines : []).find((line: any) => line.label === "Overtime")?.source?.attendance_records || [],
         },
       },
       totals,
@@ -4389,6 +4418,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .lte("effective_from", monthEnd).or(`effective_to.is.null,effective_to.gte.${monthStart}`);
     if (overtimeOverrideError && !isMissingRelationError(overtimeOverrideError, "hr_employee_payroll_rule_overrides")) throw new ConflictException(overtimeOverrideError.message);
 
+    const { data: companyOvertimeRules, error: companyOvertimeError } = await this.supabase.from("hr_payroll_rule_versions")
+      .select("id,rule_key,rule_value,effective_from,effective_to,reason,created_at")
+      .eq("tenant_id", tenantId).eq("rule_key", "employee_overtime_rule").lte("effective_from", monthEnd)
+      .or(`effective_to.is.null,effective_to.gte.${monthStart}`);
+    if (companyOvertimeError && !isMissingRelationError(companyOvertimeError, "hr_payroll_rule_versions")) throw new ConflictException(companyOvertimeError.message);
+
     const grossTypes = new Set(["BASIC", "HRA", "ALLOWANCE", "BONUS"]);
     const employeesWithoutSalary = payrollEmployees.filter(
       (employee: any) =>
@@ -4418,7 +4453,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     const unresolvedEmployeeOvertimeRules = payableEmployees.map((employee: any) => {
       const employeeRules = (overtimeOverrides || []).filter((row: any) => String(row.employee_id) === String(employee.id));
       const missingDates = (attendanceRegister.daily || []).filter((day: any) => String(day.employee_id) === String(employee.id) && day.attendance_id &&
-        resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: String(day.date), employeeOverrides: employeeRules }).source === "MISSING")
+        resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: String(day.date), tenantRules: companyOvertimeRules || [], employeeOverrides: employeeRules }).source === "MISSING")
         .map((day: any) => String(day.date)).sort();
       return missingDates.length ? { employee_id: employee.id, employee_code: employee.employee_code, employee_name: employee.employee_name, missing_dates: missingDates } : null;
     }).filter(Boolean);
@@ -4500,15 +4535,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       const employeeAttendanceDays = (attendanceRegister.daily || []).filter((day: any) => String(day.employee_id) === String(employee.id));
       const employeeOvertimeRules = (overtimeOverrides || []).filter((row: any) => String(row.employee_id) === String(employee.id));
       const attendanceEvidenceRows = employeeAttendanceDays.map((day: any) => {
-        const overtimeRule = resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: String(day.date), employeeOverrides: employeeOvertimeRules });
+        const overtimeRule = resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: String(day.date), tenantRules: companyOvertimeRules || [], employeeOverrides: employeeOvertimeRules });
+        const dayType = String(day.status) === "HOLIDAY_WORKED" ? "PAID_HOLIDAY" : String(day.status) === "WEEK_OFF_WORKED" ? "WEEKLY_OFF" : String(day.status) === "PAID_LEAVE_WORKED" ? "PAID_LEAVE" : String(day.status) === "UNPAID_LEAVE" ? "UNPAID_LEAVE" : "NORMAL";
+        const workMinutes = Math.max(0, Math.round(Number(day.work_minutes ?? Number(day.work_hours || 0) * 60)));
+        const extraCredit = overtimeRule.value ? calculateOvertimeDayCredit({ workMinutes, dayType, rule: overtimeRule.value as any }) : 0;
         return { attendance_id: day.attendance_id || null, date: day.date, status: day.status, payable_days: day.payable_days, late_minutes: day.late_minutes,
-          work_hours: day.work_hours, overtime_rule_id: overtimeRule.version?.id || null, overtime_rule_source: overtimeRule.source,
+          work_hours: day.work_hours, work_minutes: workMinutes, day_type: dayType, base_pay_days: Number(day.payable_days || 0), extra_day_credit: extraCredit,
+          total_pay_days: Number(day.payable_days || 0) + extraCredit, overtime_rule_id: overtimeRule.version?.id || null,
+          overtime_rule_source: overtimeRule.source === "EMPLOYEE" ? "EMPLOYEE_OVERRIDE" : overtimeRule.source === "TENANT" ? "COMPANY_DEFAULT" : "MISSING",
+          overtime_rule_value: overtimeRule.value || null, overtime_rule_reason: overtimeRule.version?.reason || null,
           policy_version_id: day.policy?.policy_version_id || null, policy_effective_from: day.policy?.effective_from || null, approval_status: day.approval_status, leave_type: day.leave_type || null };
       });
       const workingDays = Number(summary.working_days || 0);
+      const specialWorkedBaseDays = employeeAttendanceDays.filter((day: any) => ["HOLIDAY_WORKED", "WEEK_OFF_WORKED", "PAID_LEAVE_WORKED"].includes(String(day.status))).reduce((sum: number, day: any) => sum + Number(day.payable_days || 1), 0);
       const attendanceDays =
         Number(summary.present_days || 0) +
-        Number(summary.half_days || 0) * 0.5;
+        Number(summary.half_days || 0) * 0.5 + specialWorkedBaseDays;
       const paidLeaveDays = Number(summary.paid_leave_days || 0);
       const unpaidLeaveDays = Number(summary.unpaid_leave_days || 0);
       const absentDays = Number(summary.absent_days || 0);
@@ -4542,7 +4584,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           : 0;
       const adjustments = calculateDatedAttendanceAdjustments({
         days: employeeAttendanceDays, dailyGrossRate, basicSalary, workingDays,
-        overtimeRuleForDate: (date) => resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: date, employeeOverrides: employeeOvertimeRules }).value as any,
+        overtimeRuleForDate: (date) => resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: date, tenantRules: companyOvertimeRules || [], employeeOverrides: employeeOvertimeRules }).value as any,
+        dayTypeForDate: (date) => { const day = employeeAttendanceDays.find((row: any) => String(row.date) === date); return String(day?.status || "") === "HOLIDAY_WORKED" ? "PAID_HOLIDAY" : String(day?.status || "") === "WEEK_OFF_WORKED" ? "WEEKLY_OFF" : String(day?.status || "") === "PAID_LEAVE_WORKED" ? "PAID_LEAVE" : String(day?.status || "") === "UNPAID_LEAVE" ? "UNPAID_LEAVE" : "NORMAL"; },
       });
       const lateDeduction = roundCurrency(adjustments.lateDeduction);
       const overtimeAmount = roundCurrency(adjustments.overtimeAmount);
@@ -4599,7 +4642,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         attendance_deduction: attendanceDeduction,
         late_deduction: lateDeduction,
         payroll_breakdown: {
-          policy: { ...attendanceRegister.policy, overtime_rule_source: "EMPLOYEE", overtime_rule_version_ids: [...new Set(attendanceEvidenceRows.map((day: any) => day.overtime_rule_id).filter(Boolean))] },
+          policy: { ...attendanceRegister.policy, overtime_rule_source: "EMPLOYEE_OVERRIDE_THEN_COMPANY_DEFAULT", overtime_rule_version_ids: [...new Set(attendanceEvidenceRows.map((day: any) => day.overtime_rule_id).filter(Boolean))] },
           present_days: Number(summary.present_days || 0),
           half_days: Number(summary.half_days || 0),
           payable_days: Number(summary.payable_days || 0),
@@ -4633,7 +4676,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
               source: { salary_component_id: component.id, component_type: component.component_type, effective_from: component.effective_from || null, effective_to: component.effective_to || null },
               formula: "Configured salary component amount, effective for the payroll month",
             })),
-            { kind: "EARNING", label: "Overtime", amount: overtimeAmount, source: { overtime_hours: overtimeHours, overtime_credit_days: overtimeCreditDays, attendance_records: attendanceEvidenceRows.filter((day: any) => day.overtime_rule_source === "EMPLOYEE"), rule_source: "EMPLOYEE", attendance_month: payrollRun.payroll_month, currency_rounding: "Math.round(value * 100) / 100" }, formula: "Effective employee overtime rule applied to attendance work hours" },
+            { kind: "EARNING", label: "Overtime", amount: overtimeAmount, source: { overtime_hours: overtimeHours, overtime_credit_days: overtimeCreditDays, attendance_records: attendanceEvidenceRows.filter((day: any) => day.overtime_rule_source !== "MISSING"), rule_source: "EMPLOYEE_OVERRIDE_THEN_COMPANY_DEFAULT", attendance_month: payrollRun.payroll_month, currency_rounding: "Math.round(value * 100) / 100" }, formula: "Effective employee override or company default overtime rule applied to work minutes; paid holiday, weekly off, and paid leave work receive the configured additional day credit without stacking normal-day thresholds" },
             { kind: "EARNING", label: "Travel per diem", amount: totalPerDiem, source: { travel_days: travelDays, per_diem_amount: perDiemAmount }, formula: "Approved travel days × employee per diem" },
             { kind: "DEDUCTION", label: "Attendance deduction", amount: attendanceDeduction, source: { unpaid_attendance_days: unpaidAttendanceDays, absent_days: absentDays + unapprovedOutsideDays, unpaid_leave_days: unpaidLeaveDays, half_days: Number(summary.half_days || 0), paid_days: attendanceDays + paidLeaveDays, attendance_month: payrollRun.payroll_month, attendance_records: attendanceEvidenceRows, daily_gross_rate: roundCurrency(dailyGrossRate), attendance_policy: attendanceRegister.policy, currency_rounding: "Math.round(value * 100) / 100" }, formula: "Daily gross rate × unpaid attendance days" },
             { kind: "DEDUCTION", label: "Late deduction", amount: lateDeduction, source: { late_days: lateDays, late_minutes: lateMinutes, policy: attendanceRegister.policy.late_deduction_mode, attendance_policy: attendanceRegister.policy, attendance_records: attendanceEvidenceRows.filter((day: any) => String(day.status).toUpperCase() === "LATE"), currency_rounding: "Math.round(value * 100) / 100" }, formula: "Tenant attendance policy late deduction" },

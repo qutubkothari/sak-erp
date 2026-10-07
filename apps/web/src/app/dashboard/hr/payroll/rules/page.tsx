@@ -10,6 +10,7 @@ const RULES = [
   ["weekly_working_days", "Weekly working days"],
   ["late_policy", "Late policy"], ["sandwich_leave_behavior", "Sandwich leave behavior"],
   ["payroll_close_day", "Payroll close day"], ["approval_threshold", "Approval threshold"],
+  ["employee_overtime_rule", "Company default overtime day credit"],
 ] as const;
 const today = () => new Date().toISOString().slice(0, 10);
 const unwrap = (value: any) => value?.data ?? value;
@@ -25,7 +26,9 @@ export default function PayrollRulesPage() {
   const [key, setKey] = useState<string>(RULES[0][0]);
   const [value, setValue] = useState("");
   const [reason, setReason] = useState("");
-  const [from, setFrom] = useState(today());
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [overrideRows, setOverrideRows] = useState<any[]>([]);
 
   const load = useCallback(async () => {
     setError("");
@@ -37,6 +40,7 @@ export default function PayrollRulesPage() {
       ]);
       const catalog = unwrap(catalogResult);
       setRules(catalog?.rules || []);
+      setOverrideRows(catalog?.employees_with_overtime_overrides || []);
       const employeeData = unwrap(employeeResult);
       setEmployees(Array.isArray(employeeData) ? employeeData : employeeData?.data || []);
       const flags = unwrap(flagsResult);
@@ -46,6 +50,10 @@ export default function PayrollRulesPage() {
 
   useEffect(() => { void load(); }, [load]);
   const selectedRule = useMemo(() => rules.find((item) => item.rule_key === key), [rules, key]);
+  const changeRuleKey = (nextKey: string) => {
+    setKey(nextKey);
+    if (nextKey === "employee_overtime_rule" && !value.trim()) setValue(JSON.stringify({ eligible: true, method: "DAY_CREDIT", half_day_after_hours: 10, full_day_after_hours: 12, holiday_work_credit_days: 1 }, null, 2));
+  };
 
   const save = async () => {
     if (!enabled || !reason.trim() || !from || !value.trim()) return;
@@ -53,7 +61,7 @@ export default function PayrollRulesPage() {
     try {
       let parsed: unknown;
       try { parsed = JSON.parse(value); } catch { parsed = value; }
-      const payload = { rule_key: key, rule_value: parsed, effective_from: from, reason: reason.trim() };
+      const payload = { rule_key: key, rule_value: parsed, effective_from: from, effective_to: to || null, reason: reason.trim() };
       if (employeeId) await apiClient.post(`/hr/employees/${employeeId}/payroll-rule-overrides`, payload);
       else await apiClient.post("/hr/payroll/control/rules", payload);
       setReason(""); setValue(""); await load();
@@ -83,6 +91,7 @@ export default function PayrollRulesPage() {
       <label className="text-sm">Employee override (optional)<select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="mt-1 block w-full rounded border p-2"><option value="">Company rules</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.employee_name || employee.employee_code || employee.id}</option>)}</select></label>
       <div className="self-end text-sm">{enabled ? <span className="text-emerald-700">Effective-dated changes enabled</span> : <span className="text-amber-800">Read only: feature is disabled</span>}</div>
     </div>
+    {!employeeId && <section className="mb-6 rounded-xl border bg-white p-4"><h2 className="font-semibold">Employees with overtime overrides</h2><p className="mt-1 text-sm text-stone-600">These effective-dated employee rules take precedence over the company default. Existing entries are listed without being changed.</p><p className="mt-2 text-sm font-semibold">{overrideRows.length} employee(s) with an override on {date}</p>{overrideRows.length > 0 && <div className="mt-3 overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr>{["Employee", "Effective dates", "Rule", "Reason"].map((label) => <th key={label} className="border-b p-2">{label}</th>)}</tr></thead><tbody>{overrideRows.map((row, index) => <tr key={`${row.employee_id}:${row.effective_from}:${index}`}><td className="border-b p-2">{row.employee_name || row.employee_code || row.employee_id}{row.employee_code ? ` (${row.employee_code})` : ""}</td><td className="border-b p-2">{row.effective_from} – {row.effective_to || "Open"}</td><td className="border-b p-2"><code>{JSON.stringify(row.rule_value)}</code></td><td className="border-b p-2">{row.reason || "—"}</td></tr>)}</tbody></table></div>}</section>}
     <div className="mb-6 grid gap-3 md:grid-cols-2">{RULES.map(([ruleKey, label]) => {
       const rule = rules.find((item) => item.rule_key === ruleKey);
       return <section key={ruleKey} className="rounded-xl border bg-white p-4"><div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold">{label}</h2><div className="mt-1 text-lg">{rule?.value === undefined ? <span className="text-sm text-stone-500">Not configured</span> : <code className="break-all text-sm">{JSON.stringify(rule.value)}</code>}</div><div className="mt-1 text-xs text-stone-500">Source: {rule?.source || "none"}</div></div></div>
@@ -90,6 +99,6 @@ export default function PayrollRulesPage() {
         <h3 className="mt-4 text-xs font-semibold uppercase text-stone-500">History</h3><ul className="mt-2 space-y-2 text-xs">{((employeeId ? rule?.employee_overrides : rule?.history) || []).length ? ((employeeId ? rule?.employee_overrides : rule?.history) || []).map((row: any) => <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2"><span>{row.effective_from} - {row.effective_to || "Open"}: {JSON.stringify(row.rule_value)}; {row.reason || "No reason"}<span className="block text-stone-500">Recorded by {row.created_by || "Unknown"}{row.created_at ? ` on ${new Date(row.created_at).toLocaleDateString()}` : ""}</span></span>{enabled && <button disabled={busy} className="text-amber-800 underline" onClick={() => void endRule(row, Boolean(employeeId))}>End From Date</button>}</li>) : <li className="text-stone-500">No saved history.</li>}</ul>
       </section>;
     })}</div>
-    <section className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Change From Date</h2><p className="mt-1 text-sm text-stone-600">{employeeId ? "Creates an employee-specific override." : "Creates a tenant rule version."}</p><div className="mt-3 grid gap-3 md:grid-cols-4"><label className="text-sm">Rule<select value={key} onChange={(e) => setKey(e.target.value)} className="mt-1 block w-full rounded border p-2">{RULES.map(([ruleKey, label]) => <option key={ruleKey} value={ruleKey}>{label}</option>)}</select></label><label className="text-sm">Effective from<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label><label className="text-sm">Rule value (JSON or text)<input value={value} onChange={(e) => setValue(e.target.value)} placeholder="Example: 5 or STANDARD" className="mt-1 block w-full rounded border p-2" /></label><label className="text-sm">Reason<input value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label></div><button disabled={!enabled || busy || !reason.trim() || !value.trim()} onClick={() => void save()} className="mt-4 rounded bg-amber-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving..." : "Save rule version"}</button><div className="mt-2 text-xs text-stone-500">Company value for this rule: {selectedRule?.company_value === undefined ? selectedRule?.value === undefined ? "Not configured" : JSON.stringify(selectedRule.value) : JSON.stringify(selectedRule.company_value)}</div></section>
+    <section className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Change From Date</h2><p className="mt-1 text-sm text-stone-600">{employeeId ? "Creates an employee-specific override." : "Creates a tenant rule version. Choose an effective date and enter the business reason."}</p>{key === "employee_overtime_rule" && !employeeId && <p className="mt-2 rounded bg-amber-50 p-3 text-sm text-amber-950">Default: up to 10:00 hours earns 0 extra; more than 10:00 through 12:00 earns 0.5 day; more than 12:00 earns 1 day. Paid holiday, weekly off, or paid leave work earns 1 additional day, without stacking.</p>}<div className="mt-3 grid gap-3 md:grid-cols-2"><label className="text-sm">Rule<select value={key} onChange={(e) => changeRuleKey(e.target.value)} className="mt-1 block w-full rounded border p-2">{RULES.map(([ruleKey, label]) => <option key={ruleKey} value={ruleKey}>{label}</option>)}</select></label><label className="text-sm">Effective from<input required type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label><label className="text-sm">Effective to (optional)<input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label><label className="text-sm md:col-span-2">Rule value (JSON)<textarea value={value} onChange={(e) => setValue(e.target.value)} placeholder="Choose a rule" className="mt-1 block min-h-28 w-full rounded border p-2 font-mono text-xs" /></label><label className="text-sm md:col-span-2">Reason<input value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label></div><button disabled={!enabled || busy || !reason.trim() || !value.trim() || !from} onClick={() => void save()} className="mt-4 rounded bg-amber-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving..." : "Save rule version"}</button><div className="mt-2 text-xs text-stone-500">Company value for this rule: {selectedRule?.company_value === undefined ? selectedRule?.value === undefined ? "Not configured" : JSON.stringify(selectedRule.value) : JSON.stringify(selectedRule.company_value)}</div></section>
   </main>;
 }

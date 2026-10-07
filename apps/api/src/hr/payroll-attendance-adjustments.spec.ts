@@ -1,8 +1,24 @@
-import { calculateDatedAttendanceAdjustments } from "./payroll-attendance-adjustments";
+import { calculateDatedAttendanceAdjustments, calculateOvertimeDayCredit } from "./payroll-attendance-adjustments";
 
 const policy = { standard_daily_hours: 8, late_deduction_mode: "NONE", late_marks_per_half_day: 3 };
 
 describe("dated payroll attendance adjustments", () => {
+  const companyRule = { eligible: true, method: "DAY_CREDIT" as const, half_day_after_hours: 10, full_day_after_hours: 12, holiday_work_credit_days: 1 };
+  it("applies company thresholds at exact work-minute boundaries", () => {
+    expect([600, 601, 719, 720, 721, 780].map((workMinutes) => calculateOvertimeDayCredit({ workMinutes, dayType: "NORMAL", rule: companyRule }))).toEqual([0, 0.5, 0.5, 0.5, 1, 1]);
+  });
+  it("uses recorded work minutes instead of rounded decimal-hour display", () => {
+    const result = calculateDatedAttendanceAdjustments({ days: [{ date: "2026-09-01", scheduled: true, work_hours: 10.01, work_minutes: 600, policy }], dailyGrossRate: 1000, basicSalary: 24000, workingDays: 24, overtimeRuleForDate: () => companyRule });
+    expect(result.overtimeCreditDays).toBe(0);
+  });
+  it("gives exactly one additional paid day for paid special-day work without stacking", () => {
+    for (const dayType of ["PAID_HOLIDAY", "WEEKLY_OFF", "PAID_LEAVE"] as const) {
+      expect([480, 660, 780].map((workMinutes) => 1 + calculateOvertimeDayCredit({ workMinutes, dayType, rule: companyRule }))).toEqual([2, 2, 2]);
+    }
+  });
+  it("does not add the holiday credit when there is no actual recorded work", () => {
+    expect(calculateOvertimeDayCredit({ workMinutes: 0, dayType: "PAID_HOLIDAY", rule: companyRule })).toBe(0);
+  });
   it("calculates different valid OT for two employees on the same local attendance date and shift", () => {
     const day = { date: "2026-09-01", scheduled: true, work_hours: 11, late_minutes: 0, policy };
     const padmaRule = { eligible: true, method: "HOURLY" as const, starts_after_hours: 9, rate_multiplier: 1.5 };

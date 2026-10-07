@@ -90,7 +90,17 @@ describe("payroll control domain", () => {
     expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: "2026-08-31", employeeOverrides: padmaRules })).toMatchObject({ source: "MISSING", value: undefined });
   });
 
+  it("prefers a dated employee overtime override over the company default and has no future fallback", () => {
+    const company = { rule_key: "employee_overtime_rule", rule_value: { eligible: true, method: "DAY_CREDIT", half_day_after_hours: 10, full_day_after_hours: 12, holiday_work_credit_days: 1 }, effective_from: "2026-09-01", id: "company-v1" };
+    const override = { rule_key: "employee_overtime_rule", rule_value: { eligible: true, method: "HOURLY", starts_after_hours: 9, rate_multiplier: 2 }, effective_from: "2026-09-10", id: "employee-v1" };
+    expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: "2026-09-01", tenantRules: [company] })).toMatchObject({ source: "TENANT", version: { id: "company-v1" } });
+    expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: "2026-09-10", tenantRules: [company], employeeOverrides: [override] })).toMatchObject({ source: "EMPLOYEE", version: { id: "employee-v1" } });
+    expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: "2026-08-31", tenantRules: [company] })).toMatchObject({ source: "MISSING", value: undefined });
+    expect(resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: "2026-09-09", tenantRules: [], employeeOverrides: [override] })).toMatchObject({ source: "MISSING", value: undefined });
+  });
+
   it("validates method-specific employee overtime values and rejects attendance-policy OT fields", () => {
+    expect(validateHrPayrollRuleValue("employee_overtime_rule", { eligible: true, method: "DAY_CREDIT", half_day_after_hours: 10, full_day_after_hours: 12, holiday_work_credit_days: 1 })).toMatchObject({ holiday_work_credit_days: 1 });
     expect(validateHrPayrollRuleValue("employee_overtime_rule", { eligible: true, method: "HOURLY", starts_after_hours: 9, rate_multiplier: 1.5 })).toMatchObject({ method: "HOURLY" });
     expect(validateHrPayrollRuleValue("employee_overtime_rule", { eligible: false })).toEqual({ eligible: false });
     expect(() => validateHrPayrollRuleValue("employee_overtime_rule", { eligible: true, method: "HOURLY", starts_after_hours: 9 })).toThrow("Invalid value");

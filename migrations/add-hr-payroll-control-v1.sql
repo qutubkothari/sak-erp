@@ -487,7 +487,7 @@ CREATE OR REPLACE FUNCTION public.hr_create_payroll_rule_version(
 LANGUAGE plpgsql SECURITY INVOKER AS $$
 DECLARE v_old public.hr_payroll_rule_versions%ROWTYPE; v_new public.hr_payroll_rule_versions%ROWTYPE;
 BEGIN
-  IF p_rule_key NOT IN ('weekly_working_days','overtime_rate','late_policy','sandwich_leave_behavior','payroll_close_day','approval_threshold','PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT')
+  IF p_rule_key NOT IN ('weekly_working_days','overtime_rate','late_policy','sandwich_leave_behavior','payroll_close_day','approval_threshold','PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT','employee_overtime_rule')
      OR p_rule_value IS NULL OR p_effective_from IS NULL OR COALESCE(trim(p_reason),'') = ''
      OR (p_effective_to IS NOT NULL AND p_effective_to < p_effective_from) THEN
     RAISE EXCEPTION 'Rule key, value, valid effective range, and reason are required';
@@ -533,7 +533,7 @@ CREATE OR REPLACE FUNCTION public.hr_create_employee_payroll_override(
 ) RETURNS SETOF public.hr_employee_payroll_rule_overrides LANGUAGE plpgsql SECURITY INVOKER AS $$
 DECLARE v_old public.hr_employee_payroll_rule_overrides%ROWTYPE;v_new public.hr_employee_payroll_rule_overrides%ROWTYPE;
 BEGIN
-  IF p_rule_key NOT IN ('weekly_working_days','overtime_rate','late_policy','sandwich_leave_behavior','payroll_close_day','approval_threshold','PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT')
+  IF p_rule_key NOT IN ('weekly_working_days','overtime_rate','late_policy','sandwich_leave_behavior','payroll_close_day','approval_threshold','PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT','employee_overtime_rule')
      OR p_rule_value IS NULL OR p_effective_from IS NULL OR COALESCE(trim(p_reason),'')=''
      OR (p_effective_to IS NOT NULL AND p_effective_to<p_effective_from) THEN RAISE EXCEPTION 'Override key, value, valid effective range, and reason are required'; END IF;
   IF NOT EXISTS(SELECT 1 FROM public.employees WHERE id=p_employee_id AND tenant_id=p_tenant_id) THEN RAISE EXCEPTION 'Employee does not belong to this tenant'; END IF;
