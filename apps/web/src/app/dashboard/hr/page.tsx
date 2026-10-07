@@ -247,6 +247,7 @@ interface Holiday {
 
 interface Payslip {
   id: string;
+  payroll_run_id: string;
   employee_id: string;
   employee_name: string;
   payslip_number: string;
@@ -1616,6 +1617,10 @@ function HrPageContent() {
   const [payrollSubTab, setPayrollSubTab] = useState<
     "salary" | "runs" | "payslips" | "monthly"
   >("salary");
+  const [payrollRunPayslipFilter, setPayrollRunPayslipFilter] = useState<string | null>(null);
+  const visiblePayrollPayslips = payrollRunPayslipFilter
+    ? payslips.filter((slip) => slip.payroll_run_id === payrollRunPayslipFilter)
+    : payslips;
   const [payrollReviewReturnHref, setPayrollReviewReturnHref] = useState<string | null>(null);
   const [payrollReviewEmployeeLabel, setPayrollReviewEmployeeLabel] = useState("");
   const payrollReviewApplied = useRef(false);
@@ -10363,6 +10368,18 @@ function HrPageContent() {
                                   Review payroll controls
                                 </button>
                               )}
+                              {run.status === "COMPLETED" && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPayrollRunPayslipFilter(run.id);
+                                    setPayrollSubTab("payslips");
+                                  }}
+                                  className="font-semibold text-[#175CD3] hover:underline"
+                                >
+                                  View payslips
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -10394,6 +10411,12 @@ function HrPageContent() {
                     Review and print employee salary slips generated from
                     processed payroll.
                   </p>
+                  {payrollRunPayslipFilter && (
+                    <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                      <span className="text-[#6F5A49]">Showing payslips for run RUN-{payrollRunPayslipFilter.replace(/-/g, "").slice(0, 10).toUpperCase()}</span>
+                      <button type="button" onClick={() => setPayrollRunPayslipFilter(null)} className="font-semibold text-[#175CD3] hover:underline">Show all payslips</button>
+                    </div>
+                  )}
                 </div>
                 <div className="overflow-hidden rounded-2xl border border-[#E8DCC4] bg-white shadow-sm">
                   <div className="overflow-x-auto">
@@ -10430,17 +10453,17 @@ function HrPageContent() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#EFE3CF] bg-white">
-                        {payslips.length === 0 && (
+                        {visiblePayrollPayslips.length === 0 && (
                           <tr>
                             <td
                               colSpan={9}
                               className="px-6 py-10 text-center text-sm text-[#7A6555]"
                             >
-                              No payslips generated yet.
+                              {payrollRunPayslipFilter ? "No payslips were found for this payroll run." : "No payslips generated yet."}
                             </td>
                           </tr>
                         )}
-                        {payslips.map((slip) => (
+                        {visiblePayrollPayslips.map((slip) => (
                           <tr key={slip.id} className="hover:bg-[#FAF9F6]">
                             <td className="whitespace-nowrap px-6 py-4 text-sm font-bold text-[#2F1B12]">
                               {slip.payslip_number}
