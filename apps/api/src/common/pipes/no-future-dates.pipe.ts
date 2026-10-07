@@ -1,4 +1,5 @@
 import { ArgumentMetadata, BadRequestException, Injectable, PipeTransform } from "@nestjs/common";
+import { ReadDateRangeQuery } from "../dto/read-date-range-query.dto";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -170,6 +171,11 @@ const walk = (value: unknown, path: string) => {
 @Injectable()
 export class NoFutureDatesPipe implements PipeTransform {
   transform(value: unknown, metadata?: ArgumentMetadata) {
+    if (metadata?.type === "query" && metadata.metatype === ReadDateRangeQuery && value && typeof value === "object") {
+      const { fromDate, toDate, ...otherFields } = value as UnknownRecord;
+      walk(otherFields, "");
+      return value;
+    }
     // A payroll review deliberately requests the complete payroll month, including
     // its future dates when the month is still in progress. The review service
     // validates these bounds against the month and this narrowly-shaped query.

@@ -32,6 +32,7 @@ import { hasSuperAdminBypass } from "../../auth/utils/permission-utils";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { HrHistoricalAttendanceImportService } from "../services/hr-historical-attendance-import.service";
+import { ReadDateRangeQuery } from "../../common/dto/read-date-range-query.dto";
 
 // Payroll evidence and database snapshots stay in the audit record. The
 // employee-facing page receives only the fields needed to explain next steps.
@@ -275,11 +276,9 @@ export class HrController {
   @Get("attendance")
   getAttendance(
     @Request() req: any,
-    @Query("month") month?: string,
-    @Query("employeeId") employeeId?: string,
-    @Query("fromDate") fromDate?: string,
-    @Query("toDate") toDate?: string,
+    @Query() query: ReadDateRangeQuery,
   ) {
+    const { month, employeeId, fromDate, toDate } = query;
     const currentMonth = month || new Date().toISOString().slice(0, 7);
     return this.hrService.getAttendanceForUser(
       req.user,
@@ -363,15 +362,13 @@ export class HrController {
   @Get("attendance/register")
   getAttendanceRegister(
     @Request() req: any,
-    @Query("fromDate") fromDate: string,
-    @Query("toDate") toDate: string,
-    @Query("employeeId") employeeId?: string,
+    @Query() query: ReadDateRangeQuery,
   ) {
     return this.attendanceControl.buildRegisterForUser(
       req.user,
-      fromDate,
-      toDate,
-      employeeId,
+      query.fromDate || "",
+      query.toDate || "",
+      query.employeeId,
     );
   }
 
@@ -379,10 +376,9 @@ export class HrController {
   async exportAttendanceRegister(
     @Request() req: any,
     @Res() response: Response,
-    @Query("fromDate") fromDate: string,
-    @Query("toDate") toDate: string,
-    @Query("employeeId") employeeId?: string,
+    @Query() query: ReadDateRangeQuery,
   ) {
+    const { fromDate = "", toDate = "", employeeId } = query;
     const workbook = await this.attendanceControl.exportRegisterForUser(
       req.user,
       fromDate,

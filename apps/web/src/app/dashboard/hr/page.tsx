@@ -16,8 +16,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiClient } from "../../../../lib/api-client";
 import { getTodayDateInputValue } from "@/lib/date";
-import { AttendanceDateCell } from "./AttendanceDateCell";
-import { buildAttendanceHolidayMap } from "./attendance-date-display";
+import { AttendanceDateCell, AttendanceDayLabel } from "./AttendanceDateCell";
+import { attendanceMonthRange, attendanceStatusLabel, mergeAttendanceRegister } from "./attendance-register-display";
 import {
   attendanceHoursToMinutes,
   formatAttendanceDuration,
@@ -184,6 +184,13 @@ interface AttendanceRecord {
   employee_per_diem_amount?: number | string | null;
   work_hours?: number;
   status: string;
+  calendar_only?: boolean;
+  can_edit_attendance?: boolean;
+  calendar_holiday?: string;
+  calendar_weekly_off?: boolean;
+  calendar_leave_type?: string;
+  calendar_working_weekdays?: number[] | null;
+  calendar_status?: string;
 }
 
 type AttendanceSortKey =
@@ -973,6 +980,7 @@ function HrPageContent() {
   const [designations, setDesignations] = useState<HrMasterOption[]>([]);
   const [branches, setBranches] = useState<HrBranchOption[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const attendanceHistoryRequest = useRef(0);
   const [attendanceApprovals, setAttendanceApprovals] = useState<
     AttendanceApproval[]
   >([]);
@@ -984,7 +992,7 @@ function HrPageContent() {
     direction: SortDirection;
   }>({
     key: "date",
-    direction: "desc",
+    direction: "asc",
   });
   const [attendancePage, setAttendancePage] = useState(1);
   const [attendanceColumnWidths, setAttendanceColumnWidths] = useState<
@@ -1797,11 +1805,11 @@ function HrPageContent() {
   const [attendanceFromDate, setAttendanceFromDate] = useState(
     `${serverSafeTodayDate.slice(0, 8)}01`,
   );
-  const [attendanceToDate, setAttendanceToDate] = useState(serverSafeTodayDate);
+  const [attendanceToDate, setAttendanceToDate] = useState(
+    attendanceMonthRange(serverSafeTodayDate.slice(0, 7))!.end,
+  );
   const [attendanceEmployeeFilter, setAttendanceEmployeeFilter] =
     useState("ALL");
-  const [attendanceWorkingWeekdays, setAttendanceWorkingWeekdays] = useState<number[] | null>(null);
-  const [attendanceHolidayMap, setAttendanceHolidayMap] = useState<Record<string, string>>({});
   const [attendanceForm, setAttendanceForm] = useState({
     employee_id: "",
     attendance_date: getTodayDateInputValue(),
@@ -1826,6 +1834,32 @@ function HrPageContent() {
       params.set("employeeId", selectedEmployeeId);
     }
     return params.toString();
+  };
+
+  const selectAttendanceMonth = (month: string) => {
+    const range = attendanceMonthRange(month);
+    if (!range) return;
+    setAttendanceFromDate(range.start);
+    setAttendanceToDate(range.end);
+  };
+
+  const loadAttendanceHistory = async (employeeId?: string) => {
+    const requestId = ++attendanceHistoryRequest.current;
+    setAttendance([]);
+    const query = buildAttendanceQuery(employeeId);
+    try {
+      const [registerData, punchData] = await Promise.all([
+        apiClient.get<any>(`/hr/attendance/register?${query}`),
+        apiClient.get<any>(`/hr/attendance?${query}`),
+      ]);
+      if (requestId !== attendanceHistoryRequest.current) return;
+      const register = registerData?.data || registerData;
+      const punches = Array.isArray(punchData) ? punchData : punchData?.data || [];
+      if (!Array.isArray(register?.daily)) throw new Error("The attendance calendar could not be loaded.");
+      setAttendance(mergeAttendanceRegister(register.daily, punches));
+    } catch (error) {
+      if (requestId === attendanceHistoryRequest.current) throw error;
+    }
   };
 
   const handleExportAttendance = async () => {
@@ -2604,17 +2638,7 @@ function HrPageContent() {
         }
 
         if (activeTab === "attendance") {
-          const query = buildAttendanceQuery(employee.id);
-          const attData = await apiClient.get<any>(`/hr/attendance?${query}`);
-          const records = Array.isArray(attData) ? attData : attData.data || [];
-          setAttendance(
-            records.map((record: any) => ({
-              ...record,
-              employee_name: employee.employee_name,
-              employee_code: employee.employee_code,
-              employee_email: employee.email,
-            })),
-          );
+          await loadAttendanceHistory(employee.id);
           return;
         }
 
@@ -2700,46 +2724,7 @@ function HrPageContent() {
           ? empData
           : empData.data || [];
         setEmployees(allEmployees);
-        const employeeById = new Map(
-          allEmployees.map((employee) => [employee.id, employee]),
-        );
-        const query = buildAttendanceQuery();
-        const firstYear = Number(attendanceFromDate.slice(0, 4));
-        const lastYear = Number(attendanceToDate.slice(0, 4));
-        const years = Number.isInteger(firstYear) && Number.isInteger(lastYear) && firstYear <= lastYear
-          ? Array.from({ length: lastYear - firstYear + 1 }, (_, index) => firstYear + index)
-          : [new Date().getFullYear()];
-        const [attData, policyData, holidayResults] = await Promise.all([
-          apiClient.get<any>(`/hr/attendance?${query}`),
-          apiClient.get<any>("/hr/attendance/policy").catch(() => null),
-          Promise.all(years.map((year) =>
-            apiClient.get<any>(`/hr/holidays?year=${encodeURIComponent(year)}`).catch(() => []),
-          )),
-        ]);
-        const records = Array.isArray(attData) ? attData : attData.data || [];
-        const policy = Array.isArray(policyData) ? null : policyData?.data || policyData;
-        setAttendanceWorkingWeekdays(
-          Array.isArray(policy?.working_weekdays) ? policy.working_weekdays.map(Number) : null,
-        );
-        const holidays = holidayResults.flatMap((result) =>
-          Array.isArray(result) ? result : result?.data || [],
-        );
-        setAttendanceHolidayMap(
-          buildAttendanceHolidayMap(holidays, attendanceFromDate, attendanceToDate),
-        );
-        setAttendance(
-          records.map((record: any) => {
-            const employee = employeeById.get(record.employee_id);
-            return {
-              ...record,
-              employee_name:
-                record.employee_name || employee?.employee_name || "-",
-              employee_code:
-                record.employee_code || employee?.employee_code || "",
-              employee_email: record.employee_email || employee?.email || "",
-            };
-          }),
-        );
+        await loadAttendanceHistory();
       } else if (activeTab === "leaves") {
         const empData = await apiClient.get<any>("/hr/employees");
         const allEmployees = Array.isArray(empData)
@@ -5166,6 +5151,7 @@ function HrPageContent() {
     );
   };
   const getAttendancePayDayCredit = (record: AttendanceRecord) => {
+    if (record.calendar_only) return 0;
     const status = normalizeStatus(record.status);
     if (status === "ABSENT" || status === "LEAVE") return 0;
 
@@ -5302,6 +5288,14 @@ function HrPageContent() {
       PRESENT: "bg-green-100 text-green-800",
       ABSENT: "bg-red-100 text-red-800",
       LEAVE: "bg-yellow-100 text-yellow-800",
+      PAID_LEAVE: "bg-yellow-100 text-yellow-800",
+      UNPAID_LEAVE: "bg-yellow-100 text-yellow-800",
+      HOLIDAY: "bg-blue-100 text-blue-800",
+      WEEK_OFF: "bg-rose-100 text-rose-800",
+      AWAITING_SCAN: "bg-amber-100 text-amber-800",
+      UPCOMING: "bg-stone-100 text-stone-600",
+      IN_PROGRESS: "bg-green-100 text-green-800",
+      POLICY_FOR_DATE_NOT_FOUND: "bg-amber-100 text-amber-800",
       LATE: "bg-orange-100 text-orange-800",
       HALF_DAY: "bg-blue-100 text-blue-800",
       PENDING: "bg-yellow-100 text-yellow-800",
@@ -5648,16 +5642,14 @@ function HrPageContent() {
 
   const attendanceSummary = useMemo(() => {
     const present = attendance.filter((record) =>
-      ["PRESENT", "LATE", "HALF_DAY", "WORK_FROM_HOME"].includes(
+      ["PRESENT", "LATE", "HALF_DAY", "WORK_FROM_HOME", "IN_PROGRESS", "HOLIDAY_WORKED", "WEEK_OFF_WORKED", "PAID_LEAVE_WORKED"].includes(
         normalizeStatus(record.status),
       ),
     ).length;
     const late = attendance.filter(
       (record) => normalizeStatus(record.status) === "LATE",
     ).length;
-    const absent = attendance.filter((record) =>
-      ["ABSENT", "LEAVE"].includes(normalizeStatus(record.status)),
-    ).length;
+    const absent = attendance.filter((record) => normalizeStatus(record.status) === "ABSENT").length;
     const missingOut = attendance.filter(
       (record) => record.check_in_time && !record.check_out_time,
     ).length;
@@ -5672,6 +5664,7 @@ function HrPageContent() {
       missingOut,
       totalWorkMinutes,
       records: attendance.length,
+      punches: attendance.filter((record) => !record.calendar_only).length,
     };
   }, [attendance]);
 
@@ -5731,7 +5724,7 @@ function HrPageContent() {
     });
   }, [attendance, attendanceSort, getAttendancePayDayCredit]);
 
-  const attendancePageSize = 25;
+  const attendancePageSize = 50;
   const attendancePageCount = Math.max(
     1,
     Math.ceil(sortedAttendance.length / attendancePageSize),
@@ -8543,7 +8536,6 @@ function HrPageContent() {
           )}
 
           {/* Attendance Report Controls */}
-          {!isEmployeePortal && (
             <div className="rounded-2xl border border-[#E8DCC4] bg-white p-5 shadow-sm">
               <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -8554,8 +8546,8 @@ function HrPageContent() {
                     Filter, review, and export attendance
                   </h4>
                   <p className="text-sm text-[#6F5A49]">
-                    Choose From / To dates and export the same filtered register
-                    to Excel.
+                    Every day is listed, including weekends, public holidays and approved leave.
+                    Missing scans are marked absent after a working day ends.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -8570,11 +8562,15 @@ function HrPageContent() {
                     </button>
                   )}
                   <span className="rounded-full border border-[#E8DCC4] bg-[#FAF9F6] px-3 py-1 text-xs font-semibold text-[#6F5A49]">
-                    {formatCount(attendance.length)} punch records
+                    {formatCount(attendanceSummary.punches)} attendance records · {formatCount(attendance.length)} daily entries
                   </span>
                 </div>
               </div>
-              <div className="grid gap-3 lg:grid-cols-[minmax(150px,1fr)_minmax(150px,1fr)_minmax(220px,1.5fr)_auto_auto] lg:items-end">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(150px,1fr)_minmax(150px,1fr)_minmax(150px,1fr)_minmax(220px,1.5fr)_auto_auto] xl:items-end">
+                <div>
+                  <label htmlFor="attendance-month" className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#6F5A49]">Month</label>
+                  <input id="attendance-month" type="month" value={attendanceFromDate.slice(0, 7)} onChange={(event) => selectAttendanceMonth(event.target.value)} className="min-h-10 w-full rounded-xl border border-[#D8C4A8] px-3 py-2 text-sm" />
+                </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#6F5A49]">
                     From
@@ -8594,7 +8590,6 @@ function HrPageContent() {
                     value={attendanceToDate}
                     onChange={setAttendanceToDate}
                     min={attendanceFromDate || undefined}
-                    max={serverSafeTodayDate}
                     className="w-full rounded-xl border border-[#D8C4A8] px-3 py-2 text-sm"
                   />
                 </div>
@@ -8647,7 +8642,6 @@ function HrPageContent() {
                 </button>
               </div>
             </div>
-          )}
 
           {/* Attendance History Table (Desktop View) */}
           <div className="hidden overflow-hidden rounded-2xl border border-[#E8DCC4] bg-white shadow-sm md:block">
@@ -8656,10 +8650,10 @@ function HrPageContent() {
                 <div className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">
                   Register
                 </div>
-                <h4 className="font-bold text-[#2F1B12]">Attendance history</h4>
+                <h4 className="font-bold text-[#2F1B12]">Monthly attendance register</h4>
               </div>
               <span className="rounded-full border border-[#E8DCC4] bg-white px-3 py-1 text-xs font-semibold text-[#6F5A49]">
-                {formatCount(attendanceSummary.records)} records
+                {formatCount(attendanceSummary.records)} daily entries
               </span>
             </div>
             <div className="overflow-x-auto">
@@ -8718,12 +8712,13 @@ function HrPageContent() {
                           <td className="whitespace-nowrap px-4 py-4">
                             <button
                               type="button"
+                              disabled={record.calendar_only}
                               onClick={() =>
                                 setExpandedAttendanceId(
                                   isExpanded ? null : record.id,
                                 )
                               }
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8DCC4] bg-white text-[#6F5A49] hover:bg-[#F5EFE3]"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#E8DCC4] bg-white text-[#6F5A49] hover:bg-[#F5EFE3] disabled:cursor-default disabled:opacity-30"
                               aria-label={
                                 isExpanded
                                   ? "Collapse attendance details"
@@ -8749,8 +8744,10 @@ function HrPageContent() {
                           )}
                           <AttendanceDateCell
                             attendanceDate={record.attendance_date}
-                            workingWeekdays={attendanceWorkingWeekdays}
-                            holidayName={attendanceHolidayMap[String(record.attendance_date).slice(0, 10)]}
+                            workingWeekdays={record.calendar_working_weekdays || null}
+                            holidayName={record.calendar_holiday}
+                            leaveType={record.calendar_leave_type}
+                            noScanStatus={record.calendar_only ? record.status : undefined}
                           />
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-[#4A3426]">
                             {record.check_in_time ? (
@@ -8828,7 +8825,7 @@ function HrPageContent() {
                             <span
                               className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${getStatusColor(record.status)}`}
                             >
-                              {record.status}
+                              {attendanceStatusLabel(record.status)}
                             </span>
                           </td>
                           {!isEmployeePortal && (
@@ -8849,7 +8846,7 @@ function HrPageContent() {
                                 </div>
                               ) : (
                                 <span className="text-xs text-[#B5A592]">
-                                  No photo
+                                  {record.calendar_only ? "No scan" : "No photo"}
                                 </span>
                               )}
                             </td>
@@ -8858,8 +8855,9 @@ function HrPageContent() {
                             <td className="whitespace-nowrap px-6 py-4 text-right">
                               <button
                                 type="button"
+                                disabled={!record.can_edit_attendance}
                                 onClick={() => openAttendanceCorrection(record)}
-                                className="inline-flex min-h-9 items-center justify-center rounded-lg border border-[#D8C4A8] bg-white px-3 text-xs font-bold text-[#4A3426] hover:bg-[#F5EFE3]"
+                                className="inline-flex min-h-9 items-center justify-center rounded-lg border border-[#D8C4A8] bg-white px-3 text-xs font-bold text-[#4A3426] hover:bg-[#F5EFE3] disabled:opacity-30 disabled:cursor-default"
                               >
                                 Correct
                               </button>
@@ -8869,8 +8867,9 @@ function HrPageContent() {
                             <td className="whitespace-nowrap px-6 py-4 text-right">
                               <button
                                 type="button"
+                                disabled={!record.can_edit_attendance}
                                 onClick={() => openOwnTravelUpdate(record)}
-                                className="inline-flex min-h-9 items-center justify-center rounded-lg border border-[#D8C4A8] bg-white px-3 text-xs font-bold text-[#4A3426] hover:bg-[#F5EFE3]"
+                                className="inline-flex min-h-9 items-center justify-center rounded-lg border border-[#D8C4A8] bg-white px-3 text-xs font-bold text-[#4A3426] hover:bg-[#F5EFE3] disabled:opacity-30 disabled:cursor-default"
                               >
                                 Travel details
                               </button>
@@ -9014,9 +9013,9 @@ function HrPageContent() {
           {/* Mobile Attendance History Cards */}
           <div className="space-y-3 md:hidden">
             <div className="flex items-center justify-between px-1">
-              <h4 className="font-bold text-[#2F1B12]">Recent history</h4>
+              <h4 className="font-bold text-[#2F1B12]">Monthly attendance register</h4>
               <span className="rounded-full border border-[#E8DCC4] bg-white px-3 py-1 text-xs font-semibold text-[#6F5A49]">
-                {formatCount(attendanceSummary.records)} records
+                {formatCount(attendanceSummary.records)} daily entries
               </span>
             </div>
             {attendance.length === 0 && (
@@ -9051,11 +9050,7 @@ function HrPageContent() {
                     <div className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">
                       Attendance date
                     </div>
-                    <span className="font-bold text-[#2F1B12]">
-                      {new Date(record.attendance_date).toLocaleDateString(
-                        "en-IN",
-                      )}
-                    </span>
+                    <AttendanceDayLabel attendanceDate={record.attendance_date} workingWeekdays={record.calendar_working_weekdays || null} holidayName={record.calendar_holiday} leaveType={record.calendar_leave_type} noScanStatus={record.calendar_only ? record.status : undefined} />
                     {!isEmployeePortal && record.employee_name && (
                       <p className="mt-1 text-xs font-semibold text-[#7A6555]">
                         {record.employee_name}
@@ -9065,7 +9060,7 @@ function HrPageContent() {
                   <span
                     className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${getStatusColor(record.status)}`}
                   >
-                    {record.status}
+                    {attendanceStatusLabel(record.status)}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
@@ -9137,7 +9132,7 @@ function HrPageContent() {
                     ))}
                   </div>
                 )}
-                {!isEmployeePortal && canCorrectAttendance && (
+                {!isEmployeePortal && canCorrectAttendance && record.can_edit_attendance && (
                   <button
                     type="button"
                     onClick={() => openAttendanceCorrection(record)}
@@ -9146,7 +9141,7 @@ function HrPageContent() {
                     Correct check-in / check-out
                   </button>
                 )}
-                {isEmployeePortal && (
+                {isEmployeePortal && record.can_edit_attendance && (
                   <button
                     type="button"
                     onClick={() => openOwnTravelUpdate(record)}

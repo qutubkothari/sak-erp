@@ -24,8 +24,9 @@ test('management route uses this cell for the attendance record date', () => {
   const route = fs.readFileSync(path.join(__dirname, 'management/page.tsx'), 'utf8');
   const page = fs.readFileSync(path.join(__dirname, 'page.tsx'), 'utf8');
   assert.match(route, /export \{ default, dynamic, fetchCache \} from '\.\.\/page'/);
-  assert.match(page, /import \{ AttendanceDateCell \} from "\.\/AttendanceDateCell"/);
-  assert.match(page, /<AttendanceDateCell[\s\S]*?attendanceDate=\{record\.attendance_date\}[\s\S]*?workingWeekdays=\{attendanceWorkingWeekdays\}[\s\S]*?holidayName=\{attendanceHolidayMap/);
+  assert.match(page, /import \{ AttendanceDateCell, AttendanceDayLabel \} from "\.\/AttendanceDateCell"/);
+  assert.match(page, /<AttendanceDateCell[\s\S]*?attendanceDate=\{record\.attendance_date\}[\s\S]*?workingWeekdays=\{record\.calendar_working_weekdays/);
+  assert.match(page, /\/hr\/attendance\/register/);
   assert.match(page, /\/hr\/attendance\/policy/);
   assert.match(page, /\/hr\/holidays\?year=/);
 });
@@ -44,7 +45,7 @@ for (const [input, primary, secondary] of [
 ]) {
   test(`actual attendance cell: ${input} -> ${primary} / ${secondary}`, () => {
     const html = renderToStaticMarkup(React.createElement(AttendanceDateCell, { attendanceDate: input, workingWeekdays: [1, 2, 3, 4, 5, 6] }));
-    assert.match(html, new RegExp(`<div>${primary}<p class="[^"]*">${secondary}</p></div>`));
+    assert.match(html, new RegExp(`${primary}<p class="[^"]*">${secondary}</p>`));
     assert.equal(html.split(primary).length - 1, 1, 'date must occur only on the primary line');
   });
 }
@@ -81,4 +82,12 @@ test('configured holiday is blue, includes its name, and overrides a weekly off'
   }));
   assert.match(sundayHtml, /text-blue-700/);
   assert.doesNotMatch(sundayHtml, /text-red-700/);
+});
+
+test('a missing scan explains absence beside the date; approved leave shows its reason instead', () => {
+  const absent = renderToStaticMarkup(React.createElement(AttendanceDateCell, { attendanceDate: '2026-10-05', workingWeekdays: [1, 2, 3, 4, 5, 6], noScanStatus: 'ABSENT' }));
+  assert.match(absent, /Absent · no scan/);
+  const leave = renderToStaticMarkup(React.createElement(AttendanceDateCell, { attendanceDate: '2026-10-05', workingWeekdays: [1, 2, 3, 4, 5, 6], leaveType: 'CASUAL', noScanStatus: 'LEAVE' }));
+  assert.match(leave, /On leave · CASUAL/);
+  assert.doesNotMatch(leave, /Absent/);
 });

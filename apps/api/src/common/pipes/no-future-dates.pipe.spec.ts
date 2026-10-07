@@ -1,8 +1,25 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ValidationPipe } from "@nestjs/common";
 import { NoFutureDatesPipe } from "./no-future-dates.pipe";
+import { ReadDateRangeQuery } from "../dto/read-date-range-query.dto";
 
 describe("NoFutureDatesPipe", () => {
   const pipe = new NoFutureDatesPipe();
+
+  it("allows full-month bounds only on the typed read-only attendance report query", async () => {
+    const metadata = { type: "query" as const, metatype: ReadDateRangeQuery };
+    const validation = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+    const query = await validation.transform({ fromDate: "2999-10-01", toDate: "2999-10-31", employeeId: "5a503a02-9133-4de4-8462-8f4297602d32" }, metadata);
+    expect(pipe.transform(query, metadata)).toBe(query);
+    expect(() => pipe.transform({ fromDate: "2999-10-01", toDate: "2999-10-31" }, { type: "query", metatype: Object })).toThrow(BadRequestException);
+    expect(() => pipe.transform({ attendance_date: "2999-10-01" }, { type: "body", metatype: Object })).toThrow(BadRequestException);
+  });
+
+  it("validates real dates and rejects transaction fields in the read report DTO", async () => {
+    const metadata = { type: "query" as const, metatype: ReadDateRangeQuery };
+    const validation = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+    await expect(validation.transform({ fromDate: "2999-02-30", toDate: "2999-03-01" }, metadata)).rejects.toThrow(BadRequestException);
+    await expect(validation.transform({ toDate: "2999-10-31", attendance_date: "2999-10-01" }, metadata)).rejects.toThrow(BadRequestException);
+  });
 
   it("allows a future quotation validity date", () => {
     const body = { quotation_date: "2026-08-16", valid_until: "2999-12-31" };

@@ -532,6 +532,18 @@ export class HrAttendanceControlService {
     return decided;
   }
 
+  private async reportRows(buildQuery: () => any) {
+    const data: any[] = [];
+    const pageSize = 1000;
+    for (let offset = 0; ; offset += pageSize) {
+      const result = await buildQuery().range(offset, offset + pageSize - 1);
+      if (result.error) return { data: [], error: result.error };
+      const page = result.data || [];
+      data.push(...page);
+      if (page.length < pageSize) return { data, error: null };
+    }
+  }
+
   async buildRegister(
     tenantId: string,
     start: string,
@@ -550,12 +562,27 @@ export class HrAttendanceControlService {
         "Attendance report range cannot exceed 366 days",
       );
     const [policy, historicalPolicies] = await Promise.all([this.getPolicy(tenantId), this.getHistoricalPolicyVersions(tenantId)]);
-    let employeeQuery = this.supabase
+    const employeeQuery = () => {
+      let query = this.supabase
       .from("employees")
       .select("*")
       .eq("tenant_id", tenantId)
       .in("status", ["ACTIVE", "ON_LEAVE"]);
-    if (employeeId) employeeQuery = employeeQuery.eq("id", employeeId);
+      if (employeeId) query = query.eq("id", employeeId);
+      return query.order("employee_name").order("id");
+    };
+    const attendanceQuery = (table: string) => {
+      let query = this.supabase.from(table).select("*").eq("tenant_id", tenantId)
+        .gte("attendance_date", start).lte("attendance_date", end);
+      if (employeeId) query = query.eq("employee_id", employeeId);
+      return query.order("id");
+    };
+    const leaveQuery = () => {
+      let query = this.supabase.from("leave_requests").select("*").eq("tenant_id", tenantId)
+        .eq("status", "APPROVED").lte("start_date", end).gte("end_date", start);
+      if (employeeId) query = query.eq("employee_id", employeeId);
+      return query.order("id");
+    };
     const [
       { data: employees, error: employeeError },
       attendanceResult,
@@ -563,39 +590,23 @@ export class HrAttendanceControlService {
       leaveResult,
       holidayResult,
     ] = await Promise.all([
-      employeeQuery.order("employee_name"),
-      this.supabase
-        .from("attendance")
-        .select("*")
-        .eq("tenant_id", tenantId)
-        .gte("attendance_date", start)
-        .lte("attendance_date", end),
-      this.supabase
-        .from("attendance_records")
-        .select("*")
-        .eq("tenant_id", tenantId)
-        .gte("attendance_date", start)
-        .lte("attendance_date", end),
-      this.supabase
-        .from("leave_requests")
-        .select("*")
-        .eq("tenant_id", tenantId)
-        .eq("status", "APPROVED")
-        .lte("start_date", end)
-        .gte("end_date", start),
-      this.supabase
+      this.reportRows(employeeQuery),
+      this.reportRows(() => attendanceQuery("attendance")),
+      this.reportRows(() => attendanceQuery("attendance_records")),
+      this.reportRows(leaveQuery),
+      this.reportRows(() => this.supabase
         .from("hr_holidays")
         .select("start_date,end_date,holiday_name")
         .eq("tenant_id", tenantId)
-        .lte("start_date", end),
+        .lte("start_date", end).order("id")),
     ]);
     if (employeeError) throw new Error(employeeError.message);
     if (attendanceResult.error) throw new Error(attendanceResult.error.message);
     if (legacyAttendanceResult.error)
       throw new Error(legacyAttendanceResult.error.message);
     if (leaveResult.error) throw new Error(leaveResult.error.message);
-    // Holiday table can be absent only during a partially applied deployment.
-    const holidays = holidayResult.error ? [] : holidayResult.data || [];
+    if (holidayResult.error) throw new Error(holidayResult.error.message);
+    const holidays = holidayResult.data || [];
     // Preserve historical manual/biometric rows written by the retired
     // attendance_records path. A canonical mobile attendance row always wins,
     // so the same employee/day can never be counted twice.
@@ -618,7 +629,7 @@ export class HrAttendanceControlService {
 
     for (const employee of employees || []) {
       for (const date of dates) {
-        if (employee.date_of_joining && String(employee.date_of_joining) > date)
+        if (employee.date_of_joining && String(employee.date_of_joining).slice(0, 10) > date)
           continue;
         const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
         const holiday = holidays.find(
@@ -694,15 +705,21 @@ export class HrAttendanceControlService {
           Boolean(leave) &&
           (policyForDate || policy).paid_leave_types.includes(leaveType);
         let dayStatus =
-          scheduled === null
+          holiday
+            ? "HOLIDAY"
+            : scheduled === null
             ? "POLICY_FOR_DATE_NOT_FOUND"
             : scheduled
-              ? "ABSENT"
-              : holiday
-                ? "HOLIDAY"
-                : "WEEK_OFF";
+              ? date > currentBusinessDate
+                ? "UPCOMING"
+                : date === currentBusinessDate
+                  ? "AWAITING_SCAN"
+                  : "ABSENT"
+              : "WEEK_OFF";
         let payableDays = 0;
-        if (scheduled && leave && !(attendance && approvalValid && paidLeave)) {
+        if (!policyForDate && leave && !attendance) {
+          dayStatus = "LEAVE";
+        } else if (scheduled && leave && !(attendance && approvalValid && paidLeave)) {
           dayStatus = paidLeave ? "PAID_LEAVE" : "UNPAID_LEAVE";
           payableDays = paidLeave ? 1 : 0;
         } else if (attendance && !approvalValid) {
@@ -758,6 +775,8 @@ export class HrAttendanceControlService {
           weekday,
           scheduled,
           holiday: holiday?.holiday_name || "",
+          weekly_off: policyForDate ? !policyForDate.working_weekdays.includes(weekday) : null,
+          leave_approved: Boolean(leave),
           status: dayStatus,
           check_in_time: attendance?.check_in_time || null,
           check_out_time: attendance?.check_out_time || null,
