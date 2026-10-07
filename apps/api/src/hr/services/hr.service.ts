@@ -1626,7 +1626,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .maybeSingle();
     if (priorError) throw new Error(priorError.message);
     let prior = canonicalPrior;
-    const priorIsCanonical = Boolean(canonicalPrior);
     if (!prior) {
       const legacy = await this.supabase
         .from("attendance_records")
@@ -1667,15 +1666,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .eq("tenant_id", tenantId)
       .eq("employee_id", prior.employee_id)
       .eq("attendance_date", attendanceDate);
-    if (priorIsCanonical) duplicateQuery = duplicateQuery.neq("id", id);
+    // The logical attendance day can appear in both the canonical and the
+    // legacy table during migration. Exclude the record being corrected from
+    // both queries while still detecting any other row in either table.
+    duplicateQuery = duplicateQuery.neq("id", id);
     let legacyDuplicateQuery = this.supabase
       .from("attendance_records")
       .select("id")
       .eq("tenant_id", tenantId)
       .eq("employee_id", prior.employee_id)
       .eq("attendance_date", attendanceDate);
-    if (!priorIsCanonical)
-      legacyDuplicateQuery = legacyDuplicateQuery.neq("id", id);
+    legacyDuplicateQuery = legacyDuplicateQuery.neq("id", id);
     const [duplicate, legacyDuplicate] = await Promise.all([
       duplicateQuery.maybeSingle(),
       legacyDuplicateQuery.maybeSingle(),
