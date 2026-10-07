@@ -134,7 +134,7 @@ describe("controlled manual attendance", () => {
       "tenant-1",
       validEntry.attendance_date,
       expect.any(String),
-      9.9,
+      594,
     );
     expect(audit.auditSnapshot).toMatchObject({
       action: "CREATE",

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ConflictException, NotFoundException } from "@nestjs/common";
 import { createHash } from "crypto";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -50,6 +50,56 @@ const isNonEmptyString = (value: unknown): value is string =>
 
 const roundCurrency = (value: number) =>
   Math.round((Number(value) || 0) * 100) / 100;
+
+const attendanceClockMinutes = (value: unknown): number | null => {
+  if (!isNonEmptyString(value)) return null;
+  const raw = value.trim();
+  const hasTimezone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(raw);
+  if (hasTimezone) {
+    const instant = new Date(raw);
+    if (Number.isNaN(instant.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(instant);
+    const part = (type: string) =>
+      Number(parts.find((entry) => entry.type === type)?.value);
+    return part("hour") * 60 + part("minute") + part("second") / 60;
+  }
+  const clock = raw.match(/(?:T|\s)(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!clock) return null;
+  const hour = Number(clock[1]);
+  const minute = Number(clock[2]);
+  const second = Number(clock[3] || 0);
+  if (hour > 23 || minute > 59 || second > 59) return null;
+  return hour * 60 + minute + second / 60;
+};
+
+const attendanceWindowsOverlap = (left: any, right: any): boolean => {
+  let leftStart = attendanceClockMinutes(left?.check_in_time);
+  let leftEnd = attendanceClockMinutes(left?.check_out_time);
+  let rightStart = attendanceClockMinutes(right?.check_in_time);
+  let rightEnd = attendanceClockMinutes(right?.check_out_time);
+  if (
+    leftStart === null ||
+    leftEnd === null ||
+    rightStart === null ||
+    rightEnd === null
+  ) {
+    return false;
+  }
+  if (leftEnd < leftStart) leftEnd += 24 * 60;
+  if (rightEnd < rightStart) rightEnd += 24 * 60;
+  return Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart) >= 1;
+};
+
+const isLegacyAttendanceShadow = (canonical: any, legacy: any): boolean =>
+  String(canonical?.status || "").toUpperCase() ===
+    String(legacy?.status || "").toUpperCase() &&
+  attendanceWindowsOverlap(canonical, legacy);
 
 // The movement ledger can retain the opening IN even when the summary was
 // overwritten. Use that recorded evidence consistently in all attendance reads.
@@ -706,6 +756,7 @@ const getDefaultHolidayIndex = (tenantId: string, id: string): number => {
 
 @Injectable()
 export class HrService {
+  private readonly logger = new Logger(HrService.name);
   private supabase: SupabaseClient;
   private holidayTableReady = false;
 
@@ -1620,7 +1671,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     });
     const { data: canonicalPrior, error: priorError } = await this.supabase
       .from("attendance")
-      .select("id,employee_id,attendance_date")
+      .select(
+        "id,employee_id,attendance_date,check_in_time,check_out_time,status",
+      )
       .eq("tenant_id", tenantId)
       .eq("id", id)
       .maybeSingle();
@@ -1629,7 +1682,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (!prior) {
       const legacy = await this.supabase
         .from("attendance_records")
-        .select("id,employee_id,attendance_date")
+        .select(
+          "id,employee_id,attendance_date,check_in_time,check_out_time,status",
+        )
         .eq("tenant_id", tenantId)
         .eq("id", id)
         .maybeSingle();
@@ -1660,34 +1715,54 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     const payrollReviewRequired = payrollStates.some(
       (state) => state.payrollReviewRequired,
     );
-    let duplicateQuery = this.supabase
+    const canonicalPriorIsBeingEdited = Boolean(canonicalPrior);
+    const canonicalDuplicatesQuery = this.supabase
       .from("attendance")
-      .select("id")
+      .select("id,attendance_date,check_in_time,check_out_time,status")
       .eq("tenant_id", tenantId)
       .eq("employee_id", prior.employee_id)
-      .eq("attendance_date", attendanceDate);
-    // The logical attendance day can appear in both the canonical and the
-    // legacy table during migration. Exclude the record being corrected from
-    // both queries while still detecting any other row in either table.
-    duplicateQuery = duplicateQuery.neq("id", id);
-    let legacyDuplicateQuery = this.supabase
+      .eq("attendance_date", attendanceDate)
+      .neq("id", id);
+    const legacyDuplicatesQuery = this.supabase
       .from("attendance_records")
-      .select("id")
+      .select("id,attendance_date,check_in_time,check_out_time,status,remarks")
       .eq("tenant_id", tenantId)
       .eq("employee_id", prior.employee_id)
-      .eq("attendance_date", attendanceDate);
-    legacyDuplicateQuery = legacyDuplicateQuery.neq("id", id);
-    const [duplicate, legacyDuplicate] = await Promise.all([
-      duplicateQuery.maybeSingle(),
-      legacyDuplicateQuery.maybeSingle(),
+      .eq("attendance_date", attendanceDate)
+      .neq("id", id);
+    const [canonicalDuplicates, legacyDuplicates] = await Promise.all([
+      canonicalDuplicatesQuery,
+      legacyDuplicatesQuery,
     ]);
-    if (duplicate.error) throw new Error(duplicate.error.message);
-    if (legacyDuplicate.error) throw new Error(legacyDuplicate.error.message);
-    if (duplicate.data || legacyDuplicate.data) {
+    if (canonicalDuplicates.error)
+      throw new Error(canonicalDuplicates.error.message);
+    if (legacyDuplicates.error) throw new Error(legacyDuplicates.error.message);
+
+    const canonicalConflicts = canonicalDuplicates.data || [];
+    const legacyRows = legacyDuplicates.data || [];
+    const sameAttendanceDay =
+      String(prior.attendance_date).slice(0, 10) === attendanceDate;
+    const legacyConflicts = legacyRows.filter(
+      (legacy: any) =>
+        !(
+          canonicalPriorIsBeingEdited &&
+          sameAttendanceDay &&
+          isLegacyAttendanceShadow(prior, legacy)
+        ),
+    );
+    const conflict = canonicalConflicts[0]
+      ? { source: "attendance", row: canonicalConflicts[0] }
+      : legacyConflicts[0]
+        ? { source: "attendance_records", row: legacyConflicts[0] }
+        : null;
+    if (conflict) {
+      this.logger.warn(
+        `Attendance correction blocked by existing ${conflict.source} row ${conflict.row.id} for employee ${prior.employee_id} on ${attendanceDate}`,
+      );
+      const [year, month, day] = attendanceDate.split("-");
       throw new ConflictException({
         code: "ATTENDANCE_ALREADY_EXISTS",
-        message:
-          "Another attendance record already exists for this employee and date.",
+        message: `Another attendance record exists for this employee on ${day}-${month}-${year}.`,
       });
     }
 
