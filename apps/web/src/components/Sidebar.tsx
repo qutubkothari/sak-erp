@@ -919,6 +919,7 @@ function filterNavigationByRouteAccess(
 
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { t } = useLocale();
+  const assistantName = `Ask ${appBranding.brand}`;
   const pathname = usePathname();
   const supportHref = pathname && pathname !== "/dashboard/support"
     ? `/dashboard/support?from=${encodeURIComponent(pathname)}`
@@ -1233,12 +1234,12 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   ? "border-[#F3D99B] bg-[#FFF4D6] text-[#4A3426]"
                   : "border-[#C9A96A] bg-[#8B6F47] text-white hover:bg-[#A48352]"
               }`}
-              title="Open Ask Mizantra"
+              title={`Open ${assistantName}`}
             >
               <span className="rounded-lg bg-white/15 p-1.5">
                 <Sparkles size={17} aria-hidden="true" />
               </span>
-              <span className="flex-1 text-left">{t("Ask Mizantra")}</span>
+              <span className="flex-1 text-left">{assistantName}</span>
               <span className="rounded-full bg-white/15 px-2 py-0.5 text-[9px] uppercase tracking-wide">
                 Prompt
               </span>
@@ -1255,8 +1256,8 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   ? "border-[#F3D99B] bg-[#FFF4D6] text-[#4A3426]"
                   : "border-[#C9A96A] bg-[#8B6F47] text-white hover:bg-[#A48352]"
               }`}
-              title="Ask Mizantra"
-              aria-label="Ask Mizantra"
+              title={assistantName}
+              aria-label={assistantName}
             >
               <Sparkles size={18} />
             </Link>

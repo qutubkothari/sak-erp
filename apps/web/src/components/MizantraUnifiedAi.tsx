@@ -8,6 +8,7 @@ import { AlertTriangle, Download, Expand, FileSearch, ListChecks, PackagePlus, R
 import { apiClient } from '../../lib/api-client';
 import { BRAIN_CONTEXT_KEY } from '../lib/brain-context';
 import { beginAttentionTask, type AttentionHandoff } from '../lib/unified-drawer-session';
+import { getProfileBranding } from '@/lib/profile-branding';
 
 export type UnifiedEnvelope = {
   type: string; content_type: string; route: string;
@@ -58,6 +59,7 @@ export function UnifiedResultHeader({envelope,message,busy,onAction,importPrevie
 }
 
 export function UnifiedAskEntry() {
+  const assistantName = `Ask ${getProfileBranding().brand}`;
   const pathname=usePathname(),[enabled,setEnabled]=useState(false),[open,setOpen]=useState(false);
   const [handoff,setHandoff]=useState<AttentionHandoff | null>(null),[taskKey,setTaskKey]=useState(0);
   const panel=useRef<HTMLElement>(null);
@@ -115,8 +117,8 @@ export function UnifiedAskEntry() {
     return ()=>{active=false;};
   },[]);
   if(!enabled||pathname==='/dashboard/active-planner')return null;
-  const trigger=<button type="button" onClick={openAsk} title="Ask Mizantra" className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 text-xs font-medium shadow-sm"><Sparkles className="h-4 w-4 shrink-0"/><span>Ask Mizantra</span></button>;
-  return <>{hasRecord?createPortal(<div className="fixed bottom-20 right-4 z-[2147483644]">{trigger}</div>,document.body):<div className="flex min-w-0 justify-end pb-2">{trigger}</div>}{open&&createPortal(<div className="fixed inset-0 z-[2147483645] bg-black/30" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false);}}><aside ref={panel} role="dialog" aria-modal="true" aria-labelledby="unified-ask-title" tabIndex={-1} className="absolute inset-y-0 right-0 flex h-[100dvh] w-full max-w-[760px] flex-col bg-white shadow-2xl outline-none"><div className="flex shrink-0 items-center justify-between border-b px-4 py-2"><h2 id="unified-ask-title" className="text-base font-semibold">Ask Mizantra</h2><div className="flex gap-1"><Link href="/dashboard/active-planner" title="Open full workspace" aria-label="Open full workspace" className="flex h-11 w-11 items-center justify-center"><Expand className="h-5 w-5"/></Link><button type="button" title="Close Ask Mizantra" aria-label="Close Ask Mizantra" onClick={()=>setOpen(false)} className="flex h-11 w-11 items-center justify-center"><X className="h-5 w-5"/></button></div></div><div className="min-h-0 flex-1 overflow-y-auto"><UnifiedDrawerContext.Provider value={true}><AttentionHandoffContext.Provider value={handoff}><AskWorkspace key={taskKey}/></AttentionHandoffContext.Provider></UnifiedDrawerContext.Provider></div></aside></div>,document.body)}</>;
+  const trigger=<button type="button" onClick={openAsk} title={assistantName} className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-md border border-stone-200 bg-white px-3 text-xs font-medium shadow-sm"><Sparkles className="h-4 w-4 shrink-0"/><span>{assistantName}</span></button>;
+  return <>{hasRecord?createPortal(<div className="fixed bottom-20 right-4 z-[2147483644]">{trigger}</div>,document.body):<div className="flex min-w-0 justify-end pb-2">{trigger}</div>}{open&&createPortal(<div className="fixed inset-0 z-[2147483645] bg-black/30" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false);}}><aside ref={panel} role="dialog" aria-modal="true" aria-labelledby="unified-ask-title" tabIndex={-1} className="absolute inset-y-0 right-0 flex h-[100dvh] w-full max-w-[760px] flex-col bg-white shadow-2xl outline-none"><div className="flex shrink-0 items-center justify-between border-b px-4 py-2"><h2 id="unified-ask-title" className="text-base font-semibold">{assistantName}</h2><div className="flex gap-1"><Link href="/dashboard/active-planner" title="Open full workspace" aria-label="Open full workspace" className="flex h-11 w-11 items-center justify-center"><Expand className="h-5 w-5"/></Link><button type="button" title={`Close ${assistantName}`} aria-label={`Close ${assistantName}`} onClick={()=>setOpen(false)} className="flex h-11 w-11 items-center justify-center"><X className="h-5 w-5"/></button></div></div><div className="min-h-0 flex-1 overflow-y-auto"><UnifiedDrawerContext.Provider value={true}><AttentionHandoffContext.Provider value={handoff}><AskWorkspace key={taskKey}/></AttentionHandoffContext.Provider></UnifiedDrawerContext.Provider></div></aside></div>,document.body)}</>;
 }
 
 const AttentionHandoffContext=createContext<AttentionHandoff | null>(null);
