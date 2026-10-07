@@ -546,12 +546,12 @@ export class PurchaseOrdersService {
     const requestedByPrItemId = new Map<string, number>();
     for (const item of items) {
       const prItemId = String(item?.prItemId || item?.pr_item_id || '').trim();
-      if (!prItemId) continue;
+      if (!prItemId) {
+        throw new BadRequestException('Every PO line must reference a line from the selected purchase requisition.');
+      }
       const qty = this.safeNumber(item?.orderedQty ?? item?.ordered_qty ?? item?.quantity);
       requestedByPrItemId.set(prItemId, (requestedByPrItemId.get(prItemId) || 0) + qty);
     }
-    if (requestedByPrItemId.size === 0) return;
-
     const prItemIds = Array.from(requestedByPrItemId.keys());
     const { data: prItems, error: prItemsError } = await this.supabase
       .from('purchase_requisition_items')
@@ -1201,6 +1201,22 @@ export class PurchaseOrdersService {
     return currentStatus || 'APPROVED';
   }
 
+  private buildShortCloseEvidence(reason: string, actorId: string | undefined, closedAt: string, receipt: any) {
+    const normalizedReason = String(reason || '').trim();
+    if (!normalizedReason) throw new BadRequestException('A reason is required to close a Purchase Order with remaining quantity.');
+    return {
+      reason: normalizedReason,
+      actorId: String(actorId || '').trim() || null,
+      closedAt,
+      remainingQuantitySnapshot: (receipt?.purchase_order_items || []).map((line: any) => ({
+        poItemId: line.id,
+        orderedQty: this.toNumber(line.ordered_qty),
+        acceptedQty: this.toNumber(line.accepted_qty),
+        remainingQty: Math.max(0, this.toNumber(line.ordered_qty) - this.toNumber(line.accepted_qty)),
+      })).filter((line: any) => line.remainingQty > 1e-9),
+    };
+  }
+
   private isOpenPurchaseOrder(status: string, receipt: any): boolean {
     return ['APPROVED', 'SENT', 'ACKNOWLEDGED', 'PARTIAL', 'COMPLETED', 'CLOSED'].includes(status)
       && receipt.receipt_status !== 'FULLY_RECEIVED'
@@ -1235,11 +1251,11 @@ export class PurchaseOrdersService {
 
   private async assertVendorVerified(tenantId: string, vendorId?: string | null) {
     const normalizedVendorId = String(vendorId || '').trim();
-    if (!normalizedVendorId) return;
+    if (!normalizedVendorId) throw new BadRequestException('A vendor must be selected before creating a Purchase Order.');
 
     const { data, error } = await this.supabase
       .from('vendors')
-      .select('id, name, code, is_active, is_verified')
+      .select('id, name, code, is_active, is_verified, approval_status')
       .eq('tenant_id', tenantId)
       .eq('id', normalizedVendorId)
       .maybeSingle();
@@ -1247,8 +1263,9 @@ export class PurchaseOrdersService {
     if (error) throw new BadRequestException(error.message);
     if (!data?.id) throw new BadRequestException('Vendor not found');
     if (data.is_active === false) throw new BadRequestException(`Vendor ${data.name || data.code || ''} is inactive and cannot be used.`);
-    // Verification check disabled - causing too many errors
-    // if (data.is_verified !== true) throw new BadRequestException(`Vendor ${data.name || data.code || ''} is not verified by admin and cannot be used.`);
+    if (String(data.approval_status || '').trim().toUpperCase() !== 'APPROVED' || data.is_verified !== true) {
+      throw new BadRequestException(`Vendor ${data.name || data.code || ''} must be approved and verified before it can be used for a new Purchase Order.`);
+    }
   }
 
   private async assertItemsVerified(tenantId: string, rawItems: any[]) {
@@ -1415,13 +1432,7 @@ export class PurchaseOrdersService {
     this.assertNoDuplicatePoItems(data.items);
     await this.assertPrApprovedForPo(tenantId, data.prId);
     await this.assertPrQuantitiesAvailable(tenantId, data.prId, data.items);
-    
-    // VERIFICATION DISABLED TEMPORARILY - uncomment below to re-enable
-    // const isDraftCreate = (data.status || 'DRAFT') === 'DRAFT';
-    // if (!isDraftCreate) {
-    //   await this.assertVendorVerified(tenantId, data.vendorId);
-    //   await this.assertItemsVerified(tenantId, data.items || []);
-    // }
+    await this.assertVendorVerified(tenantId, data.vendorId);
 
     // Duplicate prevention logic:
     // - Allow multiple (partial) POs for same PR+vendor if item+qty differs.
@@ -2057,6 +2068,13 @@ export class PurchaseOrdersService {
       payment_terms: this.resolvePoPaymentTermsDisplay(amountAwarePo, termsMetadata),
       ...receipt,
       status: this.getReceiptAwarePoStatus(amountAwarePo, receipt),
+      status_display: String((amountAwarePo as any)?.status || '').toUpperCase() === 'CLOSED' && termsMetadata.shortClose
+        ? 'CLOSED - SHORT CLOSED'
+        : this.getReceiptAwarePoStatus(amountAwarePo, receipt),
+      closure_review_status: String((amountAwarePo as any)?.status || '').toUpperCase() === 'CLOSED'
+        ? termsMetadata.shortClose ? 'DOCUMENTED' : this.toNumber(receipt?.receipt_progress?.remaining_qty) > 0 ? 'REVIEW_REQUIRED' : 'FULLY_RECEIVED'
+        : null,
+      short_close: termsMetadata.shortClose || null,
       vendor: (amountAwarePo as any)?.vendor_id ? vendorById.get((amountAwarePo as any).vendor_id) ?? null : null,
       pr,
       rfq_trail: rfqTrail,
@@ -2117,7 +2135,7 @@ export class PurchaseOrdersService {
 
     const { data: existingPO } = await this.supabase
       .from('purchase_orders')
-      .select('status, po_number, created_by, terms_and_conditions, total_amount, grand_total, tax_amount, discount_amount, customs_duty, other_charges')
+      .select('status, po_number, vendor_id, created_by, terms_and_conditions, total_amount, grand_total, tax_amount, discount_amount, customs_duty, other_charges')
       .eq('id', id)
       .eq('tenant_id', tenantId)
       .single();
@@ -2154,17 +2172,9 @@ export class PurchaseOrdersService {
 
     this.assertNoDuplicatePoItems(data.items);
     await this.assertPrQuantitiesAvailable(tenantId, data.prId, data.items, id);
-
-    // VERIFICATION DISABLED TEMPORARILY - uncomment below to re-enable
-    // const isDraftUpdate = (data.status || existingPO?.status || '') === 'DRAFT';
-    // if (!isDraftUpdate) {
-    //   if (data.vendorId) {
-    //     await this.assertVendorVerified(tenantId, data.vendorId);
-    //   }
-    //   if (data.items) {
-    //     await this.assertItemsVerified(tenantId, data.items);
-    //   }
-    // }
+    if (data.vendorId && String(data.vendorId) !== String(existingPO.vendor_id || '')) {
+      await this.assertVendorVerified(tenantId, data.vendorId);
+    }
 
     if (data.attachments !== undefined && (!Array.isArray(data.attachments) || data.attachments.length === 0)) {
       throw new BadRequestException('Vendor quotation attachment is mandatory for Purchase Order.');
@@ -2437,7 +2447,7 @@ export class PurchaseOrdersService {
     id: string,
     status: string,
     userId?: string,
-    options: { overrideMakerChecker?: boolean } = {},
+    options: { overrideMakerChecker?: boolean; closeReason?: string } = {},
   ) {
     console.log('Updating PO status:', { tenantId, id, status, userId });
 
@@ -2450,7 +2460,7 @@ export class PurchaseOrdersService {
 
     const { data: currentPo } = await this.supabase
       .from('purchase_orders')
-      .select('po_number, status, terms_and_conditions, created_by, updated_by')
+      .select('po_number, status, terms_and_conditions, created_by, updated_by, purchase_order_items(id, ordered_qty)')
       .eq('tenant_id', tenantId)
       .eq('id', id)
       .single();
@@ -2459,6 +2469,17 @@ export class PurchaseOrdersService {
       throw new BadRequestException(
         `Purchase Order must be Pending Approval before it can be ${normalizedStatus === 'APPROVED' ? 'approved' : 'rejected'}.`,
       );
+    }
+
+    const termsMetadata = this.parseTermsMetadata(currentPo?.terms_and_conditions);
+    if (normalizedStatus === 'CLOSED') {
+      const ledger = await this.fetchReceiptLedgerForPurchaseOrders(tenantId, [id], true);
+      const receipt = await this.computeReceiptSummary(tenantId, currentPo, ledger);
+      const remainingQty = this.toNumber(receipt?.receipt_progress?.remaining_qty);
+      if (remainingQty > 1e-9) {
+        termsMetadata.shortClose = this.buildShortCloseEvidence(options.closeReason || '', userId, nowIso, receipt);
+        updateData.terms_and_conditions = JSON.stringify(termsMetadata);
+      }
     }
 
     if (
@@ -2482,7 +2503,6 @@ export class PurchaseOrdersService {
       updateData.approved_by = userId || null;
       updateData.approved_at = nowIso;
 
-      const termsMetadata = this.parseTermsMetadata(currentPo?.terms_and_conditions);
       const approverName = await this.resolveUserDisplayName(userId);
       updateData.terms_and_conditions = JSON.stringify({
         ...termsMetadata,

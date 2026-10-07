@@ -465,6 +465,13 @@ export class VendorsService {
   private sandboxAccessToken: string | null = null;
   private sandboxAccessTokenExpiresAt = 0;
 
+  private documentComplianceStatus(vendor: any, missing: string[]) {
+    if (!missing.length) return 'COMPLIANT';
+    return String(vendor?.approval_status || '').toUpperCase() === 'APPROVED'
+      ? 'LEGACY_DOCUMENTS_PENDING'
+      : 'DOCUMENTS_PENDING';
+  }
+
   constructor() {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
@@ -956,7 +963,13 @@ export class VendorsService {
           ? ['PAN', ...(validateGstin(vendor.tax_id).formatValid || vendor.gst_number ? ['GST'] : [])]
           : [];
         const docs = docsByVendor.get(String(vendor.id)) || new Set<string>();
-        return { ...vendor, market_profile: profile, missing_required_documents: required.filter((type) => !docs.has(type)).map((type) => type === 'GST' ? 'GST Certificate' : type) };
+        const missing = required.filter((type) => !docs.has(type)).map((type) => type === 'GST' ? 'GST Certificate' : type);
+        return {
+          ...vendor,
+          market_profile: profile,
+          missing_required_documents: missing,
+          document_compliance_status: this.documentComplianceStatus(vendor, missing),
+        };
       });
     }
     // Server-side matching happens before ListTable applies its page slice.
@@ -986,6 +999,7 @@ export class VendorsService {
       approval_history: approvalHistory,
       market_profile: marketProfile,
       missing_required_documents: missingRequiredDocuments,
+      document_compliance_status: this.documentComplianceStatus(vendor, missingRequiredDocuments),
     };
   }
 
@@ -1192,11 +1206,11 @@ export class VendorsService {
 
   async assertVendorVerified(tenantId: string, vendorId?: string | null) {
     const normalizedVendorId = String(vendorId || '').trim();
-    if (!normalizedVendorId) return;
+    if (!normalizedVendorId) throw new BadRequestException('A vendor must be selected before this procurement action.');
 
     const { data, error } = await this.supabase
       .from('vendors')
-      .select('id, name, code, is_active, is_verified')
+      .select('id, name, code, is_active, is_verified, approval_status')
       .eq('tenant_id', tenantId)
       .eq('id', normalizedVendorId)
       .maybeSingle();
@@ -1204,8 +1218,9 @@ export class VendorsService {
     if (error) throw new BadRequestException(error.message);
     if (!data?.id) throw new BadRequestException('Vendor not found');
     if (data.is_active === false) throw new BadRequestException(`Vendor ${data.name || data.code || ''} is inactive and cannot be used.`);
-    // Verification check disabled - causing too many errors
-    // if (data.is_verified !== true) throw new BadRequestException(`Vendor ${data.name || data.code || ''} is not verified by admin and cannot be used.`);
+    if (String(data.approval_status || '').trim().toUpperCase() !== 'APPROVED' || data.is_verified !== true) {
+      throw new BadRequestException(`Vendor ${data.name || data.code || ''} must be approved and verified before it can be used.`);
+    }
   }
 
   async verifyBank(tenantId: string, userId: string, id: string, options: { overrideMakerChecker?: boolean } = {}) {

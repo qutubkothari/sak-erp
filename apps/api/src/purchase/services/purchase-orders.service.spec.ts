@@ -5,7 +5,7 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
 process.env.SUPABASE_KEY = process.env.SUPABASE_KEY || 'test-key';
 
 describe('PurchaseOrdersService controls', () => {
-  const makeService = () => new PurchaseOrdersService({} as any, {} as any);
+  const makeService = () => new PurchaseOrdersService({} as any, {} as any, {} as any);
 
   it('rejects an empty PO before creating a header', async () => {
     const service = new PurchaseOrdersService({} as any, {} as any, { ensureSchema: jest.fn() } as any);
@@ -40,6 +40,7 @@ describe('PurchaseOrdersService controls', () => {
     (service as any).supabase = { from };
 
     await expect(service.create('tenant-1', 'user-1', {
+      vendorId: 'vendor-approved',
       items: [{ itemCode: 'TEMP-LONG', itemName: longItemName, orderedQty: 1 }],
     })).rejects.toThrow('header validation reached');
     expect(longItemName.length).toBeGreaterThan(200);
@@ -137,6 +138,40 @@ describe('PurchaseOrdersService controls', () => {
     await expect((service as any).assertPrQuantitiesAvailable('tenant-1', 'pr-1', [
       { prItemId: 'pr-line-1', orderedQty: 25 },
     ])).rejects.toThrow('PO quantity for ITEM-1 exceeds PR balance. Requested 25, available 20.');
+  });
+
+  it('requires each line on a PR-linked PO to reference a PR line', async () => {
+    const service = makeService();
+    await expect((service as any).assertPrQuantitiesAvailable('tenant-1', 'pr-1', [
+      { itemId: 'item-1', orderedQty: 1 },
+    ])).rejects.toThrow('Every PO line must reference a line from the selected purchase requisition.');
+  });
+
+  it('blocks vendors that are not explicitly approved and verified', async () => {
+    const service = makeService();
+    const query: any = {
+      select: jest.fn(() => query), eq: jest.fn(() => query),
+      maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'vendor-1', name: 'Pending Vendor', is_active: true, is_verified: false, approval_status: 'PENDING' }, error: null }),
+    };
+    (service as any).supabase = { from: jest.fn(() => query) };
+    await expect((service as any).assertVendorVerified('tenant-1', 'vendor-1')).rejects.toThrow('must be approved and verified');
+    query.maybeSingle.mockResolvedValue({ data: { id: 'vendor-1', name: 'Approved Vendor', is_active: true, is_verified: true, approval_status: 'APPROVED' }, error: null });
+    await expect((service as any).assertVendorVerified('tenant-1', 'vendor-1')).resolves.toBeUndefined();
+  });
+
+  it('records reason, actor, timestamp and remaining quantities for a short close', () => {
+    const service = makeService();
+    expect(() => (service as any).buildShortCloseEvidence('', 'user-1', '2026-10-07T00:00:00.000Z', {}))
+      .toThrow('A reason is required');
+    expect((service as any).buildShortCloseEvidence('Budget cancelled', 'user-1', '2026-10-07T00:00:00.000Z', {
+      purchase_order_items: [
+        { id: 'line-1', ordered_qty: 10, accepted_qty: 7 },
+        { id: 'line-2', ordered_qty: 2, accepted_qty: 2 },
+      ],
+    })).toEqual({
+      reason: 'Budget cancelled', actorId: 'user-1', closedAt: '2026-10-07T00:00:00.000Z',
+      remainingQuantitySnapshot: [{ poItemId: 'line-1', orderedQty: 10, acceptedQty: 7, remainingQty: 3 }],
+    });
   });
 
   it('allows a PO amendment when every quantity on its GRN was rejected by QC', async () => {

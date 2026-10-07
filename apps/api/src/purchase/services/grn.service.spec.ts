@@ -5,6 +5,18 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || "http://localhost:54321";
 process.env.SUPABASE_KEY = process.env.SUPABASE_KEY || "test-key";
 
 describe("GrnService commercial amount controls", () => {
+  it("does not create another active debit note for a rejected GRN line", () => {
+    const service = new GrnService({} as any);
+    const notes = [{ id: "dn-1", status: "DRAFT" }, { id: "dn-void", status: "VOID" }];
+    const lines = [
+      { debit_note_id: "dn-1", grn_item_id: "grn-line-1" },
+      { debit_note_id: "dn-void", grn_item_id: "grn-line-2" },
+    ];
+    expect((service as any).unrepresentedRejectedLines([
+      { id: "grn-line-1" }, { id: "grn-line-2" }, { id: "grn-line-3" },
+    ], notes, lines)).toEqual([{ id: "grn-line-2" }, { id: "grn-line-3" }]);
+  });
+
   it("exposes discounted GRN values to QC while preserving stored rounding", async () => {
     const service = new GrnService({} as any);
     jest.spyOn(service as any, "getPoItemPricingMap").mockResolvedValue(

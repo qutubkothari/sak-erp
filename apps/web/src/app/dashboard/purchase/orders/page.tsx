@@ -5356,8 +5356,11 @@ function PurchaseOrdersContent() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-gray-700">Status</p>
                   <span className={`inline-block px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedPO.status)}`}>
-                    {selectedPO.status}
+                    {(selectedPO as any).status_display || selectedPO.status}
                   </span>
+                  {(selectedPO as any).closure_review_status === 'REVIEW_REQUIRED' ? (
+                    <span className="ml-2 inline-block rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">Closure review required</span>
+                  ) : null}
                 </div>
                 {selectedPO.edit_count != null && selectedPO.edit_count > 0 && (
                   <div>

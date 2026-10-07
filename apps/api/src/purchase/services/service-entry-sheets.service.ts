@@ -294,7 +294,7 @@ NOTIFY pgrst, 'reload schema';`;
     const ses = await this.findOne(tenantId, id);
     if (String(ses.status).toUpperCase() !== 'PENDING_APPROVAL') throw new BadRequestException('Only a submitted Service Entry Sheet can be accepted.');
     const userId = String(user?.userId || user?.id || '').trim();
-    if (userId && [ses.created_by, ses.submitted_by].some((maker) => String(maker || '') === userId) && !this.superAdminBypass(user)) throw new ForbiddenException('Maker-checker: the service entry requester cannot accept their own entry.');
+    if (userId && [ses.created_by, ses.submitted_by].some((maker) => String(maker || '') === userId)) throw new ForbiddenException('Maker-checker: the service entry requester cannot accept their own entry.');
     const acceptedLines: Array<{ id: string; oldQty: number; acceptedQty: number }> = [];
     for (const item of ses.items || []) {
       const { data: poItem, error: poItemError } = await this.supabase.from('purchase_order_items').select('id, service_accepted_qty').eq('tenant_id', tenantId).eq('id', item.po_item_id).maybeSingle();
@@ -321,7 +321,7 @@ NOTIFY pgrst, 'reload schema';`;
     const ses = await this.findOne(tenantId, id);
     if (String(ses.status).toUpperCase() !== 'PENDING_APPROVAL') throw new BadRequestException('Only a submitted Service Entry Sheet can be rejected.');
     const userId = String(user?.userId || user?.id || '').trim();
-    if (userId && [ses.created_by, ses.submitted_by].some((maker) => String(maker || '') === userId) && !this.superAdminBypass(user)) throw new ForbiddenException('Maker-checker: the service entry requester cannot reject their own entry.');
+    if (userId && [ses.created_by, ses.submitted_by].some((maker) => String(maker || '') === userId)) throw new ForbiddenException('Maker-checker: the service entry requester cannot reject their own entry.');
     const note = String(reason || '').trim();
     if (!note) throw new BadRequestException('A rejection reason is required.');
     const rejectedAt = new Date().toISOString();

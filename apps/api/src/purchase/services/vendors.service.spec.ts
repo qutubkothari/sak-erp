@@ -19,7 +19,7 @@ describe('vendor register search and onboarding requirements', () => {
       { id: '3', name: 'Supplier 2', tax_id: 'GSTIN-H2' },
     ], 'example.com');
     expect(rows.map((row) => row.id)).toEqual(['2']);
-    expect(rows[0].matched_on).toEqual(['Contact email']);
+    expect((rows[0] as any).matched_on).toEqual(['Contact email']);
     expect(rows.slice(0, 1)).toHaveLength(1);
   });
 
@@ -31,6 +31,16 @@ describe('vendor register search and onboarding requirements', () => {
     await expect((service as any).missingRequiredDocuments('tenant-in', vendor)).resolves.toEqual(['GST Certificate']);
     maybeSingle.mockResolvedValue({ data: { market_profile: 'UAE' }, error: null });
     await expect((service as any).missingRequiredDocuments('tenant-uae', vendor)).resolves.toEqual([]);
+  });
+
+  it('labels approved vendors with missing current requirements as legacy pending', () => {
+    const service = new VendorsService();
+    expect((service as any).documentComplianceStatus({ approval_status: 'APPROVED' }, ['PAN', 'GST Certificate']))
+      .toBe('LEGACY_DOCUMENTS_PENDING');
+    expect((service as any).documentComplianceStatus({ approval_status: 'PENDING' }, ['PAN']))
+      .toBe('DOCUMENTS_PENDING');
+    expect((service as any).documentComplianceStatus({ approval_status: 'APPROVED' }, []))
+      .toBe('COMPLIANT');
   });
 
   it('blocks incomplete approval unless a privileged user confirms and explains the audited override', async () => {

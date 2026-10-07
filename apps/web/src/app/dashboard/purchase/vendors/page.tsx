@@ -106,6 +106,7 @@ interface Vendor {
   approval_history?: Array<Record<string, any>>;
   matched_on?: string[];
   missing_required_documents?: string[];
+  document_compliance_status?: string;
   attachments?: Array<{
     id: string;
     document_type: string;
@@ -1308,6 +1309,18 @@ export default function VendorsPage() {
                 />
                 {viewingVendor.gst_verification?.valid ? (
                   <ErpStatusBadge status="APPROVED" label={viewingVendor.gst_verification.portalVerified ? "GSTIN Portal Verified" : "GSTIN Format Checked"} />
+                ) : null}
+                {viewingVendor.missing_required_documents?.length ? (
+                  <ErpStatusBadge
+                    status="PENDING"
+                    label={viewingVendor.document_compliance_status === "LEGACY_DOCUMENTS_PENDING" ? "Legacy documents pending" : "Documents pending"}
+                  />
+                ) : null}
+                {['INDIA', 'IN', 'SAIFSEAS'].includes(String(viewingVendor.market_profile || '').toUpperCase()) ? (
+                  <ErpStatusBadge
+                    status={viewingVendor.missing_required_documents?.includes('GST Certificate') ? 'PENDING' : 'APPROVED'}
+                    label={viewingVendor.missing_required_documents?.includes('GST Certificate') ? 'GST Certificate Missing' : 'GST Certificate Uploaded'}
+                  />
                 ) : null}
               </div>
               {getVendorApprovalStatus(viewingVendor) === "REJECTED" ? (

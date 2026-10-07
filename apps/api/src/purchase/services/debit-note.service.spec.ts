@@ -5,6 +5,16 @@ process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
 process.env.SUPABASE_KEY = process.env.SUPABASE_KEY || 'test-key';
 
 describe('DebitNoteService payment reversal controls', () => {
+  it('marks a returned historical line without disposition notes as unavailable', () => {
+    const service = new DebitNoteService({} as any);
+    const result = (service as any).withDispositionReasonStatus({
+      debit_note_number: 'DN-2026-05-001',
+      debit_note_items: [{ id: 'line-1', return_status: 'RETURNED', disposal_notes: null }],
+    });
+    expect(result.disposition_reason_status).toBe('HISTORICAL_REASON_UNAVAILABLE');
+    expect(result.debit_note_items[0].disposal_notes).toBeNull();
+  });
+
   it('requires a reversal reason before reversing a payment', async () => {
     const service = new DebitNoteService({} as any);
 

@@ -25,6 +25,7 @@ interface DebitNote {
   approval_date?: string;
   rejection_reason?: string;
   rejected_at?: string;
+  disposition_reason_status?: string | null;
   debit_note_items?: DebitNoteItem[];
 }
 
@@ -39,6 +40,7 @@ interface DebitNoteItem {
   return_status: string;
   return_date?: string;
   disposal_notes?: string;
+  disposition_reason_status?: string | null;
   item: { id: string; code: string; name: string; unit?: string; uom?: string };
 }
 
@@ -717,6 +719,11 @@ export default function DebitNotesPage() {
                           <span className="font-medium">Disposal Notes:</span> {item.disposal_notes}
                         </div>
                       )}
+                      {item.disposition_reason_status === 'HISTORICAL_REASON_UNAVAILABLE' ? (
+                        <div className="text-sm font-medium text-amber-900 bg-amber-50 border border-amber-200 p-2 rounded">
+                          Historical disposition reason unavailable; no reason was inferred.
+                        </div>
+                      ) : null}
 
                       {/* Return Status Actions */}
                       {item.return_status === 'PENDING' && selectedDebitNote.status !== 'CLOSED' && canEditDebitNotes && (

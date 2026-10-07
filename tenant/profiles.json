@@ -24,11 +24,11 @@
     "shortName": "Mizantra ERP",
     "loginHostContains": "mizantra.saksolution.com",
     "loginLogo": "/branding/sak-solutions-mark.png",
-    "country": "IN",
-    "marketProfile": "INDIA",
-    "currency": "INR",
-    "locale": "en-IN",
-    "timezone": "Asia/Kolkata",
+    "country": "AE",
+    "marketProfile": "UAE",
+    "currency": "AED",
+    "locale": "en-AE",
+    "timezone": "Asia/Dubai",
     "features": { "activePlanner": true }
   },
   "ARWA": {

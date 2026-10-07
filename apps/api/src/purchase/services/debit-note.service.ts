@@ -18,6 +18,21 @@ function formatShortDate(value?: string): string {
 export class DebitNoteService {
   private supabase: SupabaseClient;
 
+  private withDispositionReasonStatus(note: any) {
+    const items = (note?.debit_note_items || []).map((item: any) => {
+      const returned = String(item.return_status || '').toUpperCase() === 'RETURNED';
+      const unavailable = returned && !String(item.disposal_notes || '').trim();
+      return { ...item, disposition_reason_status: unavailable ? 'HISTORICAL_REASON_UNAVAILABLE' : null };
+    });
+    return {
+      ...note,
+      debit_note_items: items,
+      disposition_reason_status: items.some((item: any) => item.disposition_reason_status === 'HISTORICAL_REASON_UNAVAILABLE')
+        ? 'HISTORICAL_REASON_UNAVAILABLE'
+        : null,
+    };
+  }
+
   constructor(private emailService: EmailService) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
@@ -47,7 +62,7 @@ export class DebitNoteService {
     const { data, error } = await query;
     if (error) throw error;
     const search = String(filters?.search || '').trim().toLocaleLowerCase();
-    let rows = (data || []).filter((note: any) => !search || [
+    let rows = (data || []).map((note: any) => this.withDispositionReasonStatus(note)).filter((note: any) => !search || [
       note.debit_note_number, note.reason, note.grn?.grn_number, note.vendor?.name, note.vendor?.code,
       ...(note.debit_note_items || []).flatMap((item: any) => [item.item_code, item.item_name, item.item?.code, item.item?.name]),
     ].some((value) => String(value || '').toLocaleLowerCase().includes(search)));
@@ -84,7 +99,7 @@ export class DebitNoteService {
     }
     
     console.log('Debit note data:', JSON.stringify(data, null, 2));
-    return data;
+    return this.withDispositionReasonStatus(data);
   }
 
   // Approve debit note

@@ -4092,6 +4092,16 @@ export class GrnService {
   }
 
   // Auto-create debit note for rejected materials
+  private unrepresentedRejectedLines(rejectedItems: any[], existingNotes: any[], existingLines: any[]) {
+    const activeIds = new Set((existingNotes || [])
+      .filter((note: any) => !["CANCELLED", "VOID", "VOIDED"].includes(String(note.status || "").toUpperCase()))
+      .map((note: any) => String(note.id)));
+    const represented = new Set((existingLines || [])
+      .filter((line: any) => activeIds.has(String(line.debit_note_id || '')))
+      .map((line: any) => String(line.grn_item_id || "")).filter(Boolean));
+    return (rejectedItems || []).filter((item: any) => !represented.has(String(item.id)));
+  }
+
   private async createDebitNoteForRejections(
     tenantId: string,
     grnId: string,
@@ -4190,6 +4200,33 @@ export class GrnService {
       console.log("Rejected items after filter:", rejectedItems.length);
       if (rejectedItems.length === 0) {
         console.log("No rejected items found, skipping debit note creation");
+        return;
+      }
+
+      // A rejected GRN line may have only one active debit note. QC retries can
+      // revisit this method, so compare the line identities before creating a
+      // new note and leave already represented rejections alone.
+      const { data: existingNotes, error: existingNotesError } = await this.supabase
+        .from("debit_notes")
+        .select("id, status")
+        .eq("tenant_id", tenantId)
+        .eq("grn_id", grnId);
+      if (existingNotesError) throw existingNotesError;
+      const activeNoteIds = (existingNotes || [])
+        .filter((note: any) => !["CANCELLED", "VOID", "VOIDED"].includes(String(note.status || "").toUpperCase()))
+        .map((note: any) => String(note.id));
+      let existingLines: any[] = [];
+      if (activeNoteIds.length) {
+        const { data, error: existingLinesError } = await this.supabase
+          .from("debit_note_items")
+          .select("debit_note_id, grn_item_id")
+          .in("debit_note_id", activeNoteIds);
+        if (existingLinesError) throw existingLinesError;
+        existingLines = data || [];
+      }
+      rejectedItems.splice(0, rejectedItems.length, ...this.unrepresentedRejectedLines(rejectedItems, existingNotes || [], existingLines));
+      if (rejectedItems.length === 0) {
+        console.log("All rejected GRN lines already have an active debit note; skipping duplicate creation");
         return;
       }
 

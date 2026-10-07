@@ -167,12 +167,12 @@ export class PurchaseOrdersController {
 
   @Post(':id/status')
   @RequireUpdate('purchase_orders')
-  async updateStatus(@Request() req: any, @Param('id') id: string, @Body() body: { status: string }) {
+  async updateStatus(@Request() req: any, @Param('id') id: string, @Body() body: { status: string; reason?: string }) {
     const nextStatus = String(body?.status || '').trim().toUpperCase();
     if (nextStatus === 'APPROVED' || nextStatus === 'REJECTED') {
       throw new ForbiddenException('Use the dedicated approval endpoint for approve or reject actions');
     }
-    return this.poService.updateStatus(req.user.tenantId, id, body.status, req.user.userId);
+    return this.poService.updateStatus(req.user.tenantId, id, body.status, req.user.userId, { closeReason: body.reason });
   }
 
   @Post(':id/approve')
