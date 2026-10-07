@@ -15,8 +15,18 @@ const worker = read('apps/web/public/sw.js');
 
 test('ARWA shell uses the approved Arwa logo and excludes SAK/Saif branding', () => {
   assert.equal(profiles.ARWA.shellLogo, '/branding/arwa-logo.png');
+  assert.equal(profiles.ARWA.locale, 'en-EG');
   assert.doesNotMatch(profiles.ARWA.shellLogo, /sak|saif/i);
   assert.doesNotMatch(profiles.ARWA.companyName, /sak|saif automations/i);
+});
+test('locale defaults follow the selected tenant profile and keep unknown profiles neutral', () => {
+  const branding = read('apps/web/src/lib/profile-branding.ts');
+  const locale = read('apps/web/src/lib/locale.tsx');
+  const market = read('apps/web/src/lib/market-profile.ts');
+  assert.match(branding, /getProfileLocaleSettings/);
+  assert.match(locale, /useState\(profileLocale\.locale\)/);
+  assert.match(locale, /useState\(profileLocale\.currency\)/);
+  assert.match(market, /marketProfile: 'EGYPT'[\s\S]*locale: 'en-EG'/);
 });
 test('ARWA, MIZANTRA, and SAIFSEAS retain profile-specific names and marks', () => {
   assert.deepEqual([profiles.ARWA.shellLogo, profiles.MIZANTRA.shellLogo, profiles.SAIFSEAS.shellLogo], ['/branding/arwa-logo.png', '/branding/sak-solutions-mark.png', '/branding/saif-seas-logo.png']);

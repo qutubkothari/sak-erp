@@ -43,7 +43,7 @@
     "country": "EG",
     "marketProfile": "EGYPT",
     "currency": "EGP",
-    "locale": "ar-EG",
+    "locale": "en-EG",
     "timezone": "Africa/Cairo",
     "features": { "activePlanner": true, "egyptArabicPlanner": true }
   }

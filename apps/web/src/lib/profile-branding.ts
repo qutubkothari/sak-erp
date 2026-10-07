@@ -7,6 +7,16 @@ export function getTenantProfile(
   return profile && profile in profiles ? profile as TenantProfile : null;
 }
 
+export function getProfileLocaleSettings(
+  profile = getTenantProfile(),
+): { currency: string; locale: string } {
+  if (profile) {
+    const config = profiles[profile];
+    return { currency: config.currency, locale: config.locale };
+  }
+  return { currency: 'AED', locale: 'en-GB' };
+}
+
 export type ProfileBranding = {
   brand: string;
   companyName: string;

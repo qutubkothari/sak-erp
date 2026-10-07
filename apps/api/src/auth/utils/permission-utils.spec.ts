@@ -40,4 +40,20 @@ describe("permission utility module mapping", () => {
     };
     expect(getUserPermissions(user)).toContain("crm:update");
   });
+
+  it("keeps procurement, stores, HR, and finance role fixtures separated", () => {
+    const procurement = { role: { name: "Procurement", permissions: [{ module: "Purchase Management", view: true, create: true }] } };
+    const stores = { role: { name: "Stores", permissions: [{ module: "Inventory", view: true }] } };
+    const hr = { role: { name: "HR", permissions: [{ module: "HR Management", view: true }] } };
+    const finance = { role: { name: "Finance", permissions: [{ module: "Accounts", view: true }] } };
+
+    expect(hasAnyPermissionForResource(procurement, "purchase_orders")).toBe(true);
+    expect(hasAnyPermissionForResource(procurement, "accounting")).toBe(false);
+    expect(hasAnyPermissionForResource(stores, "items")).toBe(true);
+    expect(hasAnyPermissionForResource(stores, "hr")).toBe(false);
+    expect(hasAnyPermissionForResource(hr, "hr")).toBe(true);
+    expect(hasAnyPermissionForResource(hr, "payroll")).toBe(false);
+    expect(hasAnyPermissionForResource(finance, "accounting")).toBe(true);
+    expect(hasAnyPermissionForResource(finance, "purchase_orders")).toBe(false);
+  });
 });

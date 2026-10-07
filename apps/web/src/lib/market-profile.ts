@@ -38,7 +38,7 @@ export const EGYPT_PROFILE: RegionalProfile = {
   currency: 'EGP',
   taxRegime: 'EGYPT_VAT',
   defaultTaxRate: 14,
-  locale: 'ar-EG',
+  locale: 'en-EG',
   timezone: 'Africa/Cairo',
   taxLabel: 'VAT',
   taxRegistrationLabel: 'Tax Registration Number',

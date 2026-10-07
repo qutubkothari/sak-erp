@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiClient } from "../../lib/api-client";
+import { getProfileLocaleSettings } from "./profile-branding";
 import generatedCatalogue from "./arabic-catalogue.generated.json";
 
 export type AppLanguage = "en" | "ar";
@@ -389,9 +390,10 @@ const translate = (value: string, language: AppLanguage) => {
 };
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
+  const profileLocale = getProfileLocaleSettings();
   const [language, setLanguageState] = useState<AppLanguage>("en");
-  const [currency, setCurrency] = useState("AED");
-  const [locale, setLocale] = useState("en-AE");
+  const [currency, setCurrency] = useState(profileLocale.currency);
+  const [locale, setLocale] = useState(profileLocale.locale);
 
   const setLanguage = useCallback((next: AppLanguage) => {
     setLanguageState(next);
@@ -409,7 +411,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
       ).toLowerCase();
       if (!stored && tenantLanguage.startsWith("arab")) setLanguageState("ar");
       setCurrency(String(tenant?.default_currency || tenant?.currency || "AED").toUpperCase());
-      setLocale(String(tenant?.locale || (tenantLanguage.startsWith("arab") ? "ar-EG" : "en-AE")));
+      setLocale(String(tenant?.locale || (tenantLanguage.startsWith("arab") ? "ar-EG" : profileLocale.locale)));
     }).catch(() => undefined);
   }, []);
 
