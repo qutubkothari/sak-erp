@@ -686,7 +686,7 @@ export class HrAttendanceControlService {
         );
         const lateMinutes = metricsUnresolved
           ? null
-          : scheduled && approvalValid && checkInMinutes !== null
+          : policyForDate && scheduled && approvalValid && checkInMinutes !== null
             ? Math.max(
                 0,
                 checkInMinutes -
@@ -697,7 +697,7 @@ export class HrAttendanceControlService {
         const overtimeEligible = employee.overtime_eligible !== false;
         const overtimeMinutes = metricsUnresolved
           ? null
-          : scheduled &&
+          : policyForDate && scheduled &&
               approvalValid &&
               policyForDate!.overtime_enabled &&
               overtimeEligible
