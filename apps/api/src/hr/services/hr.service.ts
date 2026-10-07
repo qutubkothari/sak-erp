@@ -3150,11 +3150,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (employeeError) throw new Error(employeeError.message);
     const run = control?.payroll_run_id
       ? (runs || []).find((row: any) => String(row.id) === String(control.payroll_run_id)) || null
-      : control && ["OPEN", "READY_TO_CLOSE", "CLOSED"].includes(control.stage)
-        ? (runs || []).find((row: any) => String(row.status).toUpperCase() === "PENDING") || null
-        : latestControl ? null : employeeIds
-          ? (runs || []).find((row: any) => String(row.status).toUpperCase() === "PENDING") || null
-          : (runs || [])[0] || null;
+      : latestControl || employeeIds
+        ? null
+        : (runs || [])[0] || null;
     const blockers: PayrollBlocker[] = [];
     const eligibleEmployees = (employees || []).filter((employee: any) =>
       ["ACTIVE", "ON_LEAVE"].includes(String(employee.status || "ACTIVE").toUpperCase()) &&
@@ -3203,11 +3201,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     for (const employee of eligibleEmployees) {
       const resolved = resolveSalaryComponentsAtDate(salaryRows.filter((row: any) => String(row.employee_id) === String(employee.id)), monthEnd);
       if (resolved.some((row: any) => ["BASIC", "HRA", "ALLOWANCE", "BONUS"].includes(String(row.component_type).toUpperCase()) && Number(row.amount) > 0)) salaryByEmployee.add(String(employee.id));
-      if (resolved.some((row: any) => !row.effective_from)) blockers.push({
+      const undatedSalaryRows = resolved.filter((row: any) => !row.effective_from &&
+        !(String(row.component_type).toUpperCase() === "CTC" && isValidIsoDate(String(row.ctc_revised_date || "").slice(0, 10))));
+      if (undatedSalaryRows.length) blockers.push({
         key: `salary-legacy-date:${employee.id}`, entity_id: String(employee.id), employee_name: employee.employee_name || employee.employee_code || "Employee", employee_code: employee.employee_code || "",
         reason: "A salary component has an unknown legacy effective start date; the current resolver retains it as fallback evidence.",
         responsible: "HR / Payroll", fix_href: "/dashboard/hr/management?section=management&tab=payroll",
-        evidence: { component_ids: resolved.filter((row: any) => !row.effective_from).map((row: any) => row.id), payroll_effective_date: monthEnd }, severity: "WARNING",
+        evidence: { component_ids: undatedSalaryRows.map((row: any) => row.id), payroll_effective_date: monthEnd }, severity: "WARNING",
       });
     }
     for (const employee of eligibleEmployees) {
@@ -3318,6 +3318,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
 
     const allSlips = run ? await this.getPayslips(tenantId) : [];
     const slips = allSlips.filter((slip: any) => String(slip.payroll_run_id) === String(run?.id));
+    const candidateRuns = runs || [];
+    const runOutputRows = candidateRuns.length
+      ? await this.supabase.from("payslips").select("payroll_run_id,employee_id").eq("tenant_id", tenantId).in("payroll_run_id", candidateRuns.map((row: any) => String(row.id)))
+      : { data: [], error: null } as any;
+    if (runOutputRows.error) throw new ConflictException(`Payroll run outputs could not be verified: ${runOutputRows.error.message}`);
+    const availableRuns = candidateRuns.map((row: any) => {
+      const outputs = (runOutputRows.data || []).filter((slip: any) => String(slip.payroll_run_id) === String(row.id));
+      return {
+        id: String(row.id), payroll_month: String(row.payroll_month), run_date: String(row.run_date),
+        status: String(row.status || "PENDING").toUpperCase(), created_at: row.created_at || null,
+        created_by: row.created_by || null, remarks: row.remarks || "",
+        payslip_count: outputs.length,
+        selected_scope_payslip_count: employeeIds ? outputs.filter((slip: any) => selectedIds?.has(String(slip.employee_id))).length : null,
+      };
+    });
     const payrollRange = monthToRange(month);
     const { data: varianceRules, error: varianceRuleError } = await this.supabase.from("hr_payroll_rule_versions").select("id,rule_value,effective_from,effective_to").eq("tenant_id", tenantId).eq("rule_key", "PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT").lte("effective_from", payrollRange.end).or(`effective_to.is.null,effective_to.gte.${payrollRange.start}`).order("effective_from", { ascending: false }).limit(1);
     if (varianceRuleError && !isMissingRelationError(varianceRuleError, "hr_payroll_rule_versions")) throw new ConflictException(varianceRuleError.message);
@@ -3383,6 +3398,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       approval_state: ["APPROVED", "PAID"].includes(String(control?.stage || run?.status)) ? "APPROVED" : ["APPROVAL_PENDING", "SECOND_APPROVAL_REQUIRED"].includes(String(control?.stage)) ? String(control.stage) : "NOT_APPROVED",
       payment_state: control?.stage === "PAID" || run?.status === "PAID" ? "PAID" : "NOT_PAID",
       legacy_run: run,
+      available_runs: availableRuns,
       flags,
       control,
       corrections: (correctionsData || []).map((row: any) => ({ ...row, control_stage: row.correction_control_id === control?.id ? control.stage : row.status })),
@@ -3583,6 +3599,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       throw new BadRequestException("Select or enter the complete historical attendance policy.");
     }
     const snapshot = Object.fromEntries(fields.map((field) => [field, value[field]])) as Record<string, any>;
+    if (value.weekly_off_paid !== undefined) {
+      if (typeof value.weekly_off_paid !== "boolean") throw new BadRequestException("Paid weekly-off confirmation must be a boolean.");
+      snapshot.weekly_off_paid = value.weekly_off_paid;
+    }
     const validClock = (clock: unknown) => /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(String(clock));
     if (validatePayrollAttendancePolicy({ ...snapshot, overtime_after_hours: 0, overtime_multiplier: 0, overtime_calculation_mode: "HOURLY" }).some((key) => key !== "overtime_after_hours" && key !== "overtime_multiplier" && key !== "overtime_calculation_mode") ||
       !validClock(snapshot.shift_start) || !validClock(snapshot.shift_end) ||
@@ -3610,7 +3630,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       (effectiveTo && effectiveTo < effectiveFrom) || !reason) {
       throw new BadRequestException("Enter valid effective dates and a reason for this historical policy.");
     }
-    const unresolved = review.attendance.affected.filter((row: any) => row.classification === "CONFIRM_POLICY");
+    const unresolved = review.attendance.affected.filter((row: any) => !row.policy_effective_on_date);
     if (!unresolved.some((row: any) => row.date >= effectiveFrom && (!effectiveTo || row.date <= effectiveTo))) {
       throw new BadRequestException("The confirmed policy must cover an affected payroll attendance date.");
     }
@@ -3619,7 +3639,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       throw new BadRequestException("Select an available attendance policy or create one.");
     }
     const snapshot = this.confirmedAttendancePolicySnapshot(body?.policy);
-    const { error } = await this.supabase.rpc("hr_confirm_historical_attendance_policy", {
+    const { error } = await this.supabase.rpc(body?.scope === "EMPLOYEE"
+      ? "hr_confirm_employee_historical_attendance_policy" : "hr_confirm_historical_attendance_policy", {
       p_tenant_id: tenantId, p_employee_id: review.employee.id, p_batch_id: review.batch_id,
       p_month: month, p_actor_id: actorId, p_policy: snapshot, p_source_policy_id: sourceId,
       p_effective_from: effectiveFrom, p_effective_to: effectiveTo, p_reason: reason,
@@ -3627,6 +3648,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (error) throw new ConflictException(error.message);
     return this.getPayrollReviewContext(tenantId, month, review.employee.id, review.batch_id,
       "attendance", review.from, review.to, "PAYROLL_ATTENDANCE_REVIEW");
+  }
+
+  async confirmHistoricalPaidLeave(tenantId: string, month: string, actorId: string, body: any) {
+    await this.requirePayrollStateTransitions(tenantId);
+    const review: any = await this.getPayrollReviewContext(tenantId, month, String(body?.employee || ""),
+      String(body?.batch || ""), "attendance", `${month}-01`, monthToRange(month).end, "PAYROLL_ATTENDANCE_REVIEW");
+    const dates = Array.isArray(body?.dates) ? body.dates : [];
+    const reason = String(body?.reason || "").trim();
+    if (!dates.length || dates.some((date: unknown) => !isValidIsoDate(String(date)) || !String(date).startsWith(`${month}-`)) ||
+      new Set(dates).size !== dates.length || !reason) throw new BadRequestException("Choose distinct leave dates in this month and provide the confirmation reason.");
+    const { data, error } = await this.supabase.rpc("hr_confirm_historical_paid_leave", {
+      p_tenant_id: tenantId, p_employee_id: review.employee.id, p_control_id: review.batch_id,
+      p_month: month, p_actor_id: actorId, p_dates: dates, p_reason: reason,
+    });
+    if (error) throw new ConflictException(error.message);
+    return { leave_requests: data || [], employee_id: review.employee.id, month };
   }
 
   async confirmPayrollEmployeeOvertimeRule(tenantId: string, month: string, actorId: string, body: any) {
@@ -3751,6 +3788,37 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return { ...cockpit, control: data, version: data?.version || 1, stage: data?.stage || cockpit.stage, last_action: "CHECK_AGAIN", last_action_at: data?.last_action_at, read_only: false };
   }
 
+  async associateControlledPayrollRun(tenantId: string, month: string, actorId: string, runId: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequestException("Payroll month must use YYYY-MM format.");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId)) {
+      throw new BadRequestException("Choose an existing payroll run.");
+    }
+    await this.requirePayrollStateTransitions(tenantId);
+    const control = await this.payrollControl(tenantId, month);
+    if (!control || control.stage !== "READY_TO_CLOSE" || Number(control.blocker_count || 0) !== 0) {
+      throw new ConflictException("A payroll run can only be selected for a ready, single-employee control.");
+    }
+    const employeeIds = this.payrollScopeEmployeeIds(control);
+    if (!employeeIds || employeeIds.length !== 1) {
+      throw new ConflictException("Run selection is limited to a single-employee payroll control.");
+    }
+    const currentInputChecksum = await this.payrollInputChecksum(tenantId, month, employeeIds);
+    if (!control.input_checksum || currentInputChecksum !== control.input_checksum) {
+      throw new ConflictException("PAYROLL_STATE_CHANGED: recheck payroll before selecting a run.");
+    }
+    const { data, error } = await this.supabase.rpc("hr_payroll_associate_run", {
+      p_tenant_id: tenantId,
+      p_control_id: control.id,
+      p_run_id: runId,
+      p_employee_id: employeeIds[0],
+      p_actor_id: actorId,
+      p_expected_current_run_id: control.payroll_run_id || null,
+      p_expected_input_checksum: currentInputChecksum,
+    });
+    if (error) throw new ConflictException(error.message);
+    return this.getPayrollMonthCockpit(tenantId, month, employeeIds);
+  }
+
   private async transitionPayrollControl(input: { tenantId: string; month: string; actorId: string; expected: string; next: string; action: string; reason?: string; evidence?: any; checksum?: string; makerChecker?: boolean; secondApproval?: boolean }) {
     await this.requirePayrollStateTransitions(input.tenantId);
     const control = await this.payrollControl(input.tenantId, input.month);
@@ -3770,6 +3838,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     await this.requirePayrollStateTransitions(tenantId);
     const scan = await this.checkPayrollMonthAgain(tenantId, month, actorId);
     if (scan.counts.blocker_count) throw new ConflictException("PAYROLL_STATE_CHANGED: payroll close blockers remain after revalidation.");
+    if (!scan.control?.payroll_run_id) throw new ConflictException("Select and associate an existing pending payroll run before closing this control.");
     return this.transitionPayrollControl({ tenantId, month, actorId, expected: "READY_TO_CLOSE", next: "CLOSED", action: "CLOSE_MONTH", checksum: scan.control?.input_checksum, evidence: { blockers: scan.blockers, input_checksum: scan.control?.input_checksum, resolution_snapshot: scan.control?.resolution_snapshot || {} } });
   }
 
@@ -3777,15 +3846,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     await this.requirePayrollStateTransitions(tenantId);
     const control = await this.payrollControl(tenantId, month);
     if (!control || control.stage !== "CLOSED") throw new ConflictException("Payroll must be closed before calculation.");
+    if (!control.payroll_run_id) throw new ConflictException("Associate an existing payroll run before calculation.");
     const cockpit = await this.getPayrollMonthCockpit(tenantId, month);
     if (cockpit.counts.blocker_count) throw new ConflictException("PAYROLL_STATE_CHANGED: close blockers appeared before calculation.");
     if (await this.payrollInputChecksum(tenantId, month, this.payrollScopeEmployeeIds(control)) !== control.input_checksum) throw new ConflictException("PAYROLL_STATE_CHANGED: payroll inputs changed after Check Again.");
-    let runId = cockpit.legacy_run?.id;
-    if (!runId) {
-      const created = await this.createPayrollRun(tenantId, { payroll_month: month, status: "PENDING" }, actorId);
-      runId = String(Array.isArray(created) ? (created as any)[0]?.id || "" : (created as any)?.id || "");
+    const runId = String(control.payroll_run_id);
+    const { data: selectedRun, error: selectedRunError } = await this.supabase.from("payroll_runs")
+      .select("id,payroll_month,status").eq("tenant_id", tenantId).eq("id", runId).maybeSingle();
+    if (selectedRunError || !selectedRun || String(selectedRun.payroll_month) !== month || String(selectedRun.status).toUpperCase() !== "PENDING") {
+      throw new ConflictException("The explicitly associated payroll run is no longer eligible for calculation.");
     }
-    if (!runId) throw new ConflictException("Could not resolve a payroll run for this month.");
     const generated = await this.generatePayslip(tenantId, { run_id: runId, employee_ids: this.payrollScopeEmployeeIds(control) }, actorId);
     if (generated.status !== "COMPLETED") throw new ConflictException("The selected payroll calculation is incomplete; review the run before approval.");
     if (await this.payrollInputChecksum(tenantId, month, this.payrollScopeEmployeeIds(control)) !== control.input_checksum) throw new ConflictException("PAYROLL_STATE_CHANGED: payroll inputs changed during calculation.");
@@ -3805,8 +3875,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   async calculateControlledPayrollByRun(tenantId: string, runId: string, actorId: string) {
     const { data: run, error } = await this.supabase.from("payroll_runs").select("id,payroll_month").eq("tenant_id", tenantId).eq("id", runId).maybeSingle();
     if (error || !run) throw new NotFoundException("Payroll run was not found for this tenant.");
-    const latest = await this.supabase.from("payroll_runs").select("id").eq("tenant_id", tenantId).eq("payroll_month", run.payroll_month).order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (latest.error || latest.data?.id !== runId) throw new ConflictException("Only the current payroll run can be calculated through the month cockpit.");
+    const control = await this.payrollControl(tenantId, String(run.payroll_month));
+    if (!control || String(control.payroll_run_id || "") !== String(runId)) {
+      throw new ConflictException("Select this run through the audited payroll control before calculation.");
+    }
     return this.calculateControlledPayroll(tenantId, String(run.payroll_month), actorId);
   }
 

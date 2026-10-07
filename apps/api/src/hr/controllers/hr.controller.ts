@@ -72,8 +72,13 @@ function payrollMonthClientView(cockpit: any) {
     payroll_employee_count: cockpit.payroll_employee_count,
     gross: cockpit.gross, deductions: cockpit.deductions, net: cockpit.net,
     approval_state: cockpit.approval_state, payment_state: cockpit.payment_state,
+    available_runs: (cockpit.available_runs || []).map((run: any) => ({
+      id: run.id, payroll_month: run.payroll_month, run_date: run.run_date,
+      status: run.status, created_at: run.created_at, remarks: run.remarks,
+      payslip_count: run.payslip_count, selected_scope_payslip_count: run.selected_scope_payslip_count,
+    })),
     read_only: cockpit.read_only,
-    control: cockpit.control ? { id: cockpit.control.id, stage: cockpit.control.stage, version: cockpit.control.version } : null,
+    control: cockpit.control ? { id: cockpit.control.id, stage: cockpit.control.stage, version: cockpit.control.version, payroll_run_id: cockpit.control.payroll_run_id || null } : null,
     variance: (cockpit.variance || []).map((row: any) => ({
       employee_id: row.employee_id, employee_name: row.employee_name,
       previous_month: row.previous_month, previous_net: row.previous_net,
@@ -677,6 +682,12 @@ export class HrController {
     return this.hrService.confirmHistoricalPayrollAttendancePolicy(req.user.tenantId, month, req.user.userId, body);
   }
 
+  @Post("payroll/control/month/:month/review/paid-leave")
+  @RequirePermissions("PAYROLL_ATTENDANCE_REVIEW")
+  confirmHistoricalPaidLeave(@Request() req: any, @Param("month") month: string, @Body() body: any) {
+    return this.hrService.confirmHistoricalPaidLeave(req.user.tenantId, month, req.user.userId, body);
+  }
+
   @Post("payroll/control/month/:month/review/overtime-rule")
   @RequireUpdate("hr")
   confirmPayrollEmployeeOvertimeRule(@Request() req: any, @Param("month") month: string, @Body() body: any) {
@@ -699,6 +710,12 @@ export class HrController {
   @RequirePermissions("hr:read")
   async checkPayrollMonthAgain(@Request() req: any, @Param("month") month: string, @Body() body?: { employee_ids?: string[] }) {
     return payrollMonthClientView(await this.hrService.checkPayrollMonthAgain(req.user.tenantId, month, req.user.userId, body?.employee_ids));
+  }
+
+  @Post("payroll/control/month/:month/associate-run")
+  @RequirePermissions("PAYROLL_CALCULATE")
+  associateControlledPayrollRun(@Request() req: any, @Param("month") month: string, @Body() body: { run_id?: string }) {
+    return this.hrService.associateControlledPayrollRun(req.user.tenantId, month, req.user.userId, String(body?.run_id || ""));
   }
 
   @Post("payroll/control/month/:month/close")

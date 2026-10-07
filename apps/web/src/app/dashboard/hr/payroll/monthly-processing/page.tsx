@@ -36,7 +36,17 @@ type Cockpit = {
   approval_state?: string;
   payment_state?: string;
   read_only?: boolean;
-  control?: { id: string; stage: string; version: number };
+  control?: { id: string; stage: string; version: number; payroll_run_id?: string | null };
+  available_runs?: Array<{
+    id: string;
+    payroll_month: string;
+    run_date: string;
+    status: string;
+    created_at?: string | null;
+    remarks?: string;
+    payslip_count: number;
+    selected_scope_payslip_count: number | null;
+  }>;
   corrections?: Array<{ id: string; source_version: number; correction_version: number; reason: string; status: string; control_stage?: string; difference_total: number | null }>;
   variance?: Array<{
     employee_id: string;
@@ -102,6 +112,7 @@ export default function PayrollMonthlyProcessingPage() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[] | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [cockpit, setCockpit] = useState<Cockpit | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [varianceFilter, setVarianceFilter] = useState<"Everyone" | "Changed" | "Flagged">("Everyone");
@@ -123,6 +134,7 @@ export default function PayrollMonthlyProcessingPage() {
         return;
       }
       setCockpit(next);
+      if (next?.control?.payroll_run_id) setSelectedRunId(next.control.payroll_run_id);
       if (selectedEmployeeIds === null && Array.isArray(next?.employee_ids)) setSelectedEmployeeIds(next.employee_ids);
     } catch (e: any) {
       if (requestId === requestSequence.current) setError(friendlyPayrollError(e, "Payroll status could not be loaded. Please try again."));
@@ -138,6 +150,16 @@ export default function PayrollMonthlyProcessingPage() {
         action === "check-again" && selectedEmployeeIds !== null ? { employee_ids: selectedEmployeeIds } : {});
       await refresh();
     } catch (e: any) { setError(friendlyPayrollError(e, "This payroll step could not be completed. Please try again or contact support.")); }
+    finally { setBusy(false); }
+  };
+
+  const associateRun = async () => {
+    if (!selectedRunId) { setError("Select an existing pending payroll run first."); return; }
+    setBusy(true); setError("");
+    try {
+      await apiClient.post(`/hr/payroll/control/month/${encodeURIComponent(month)}/associate-run`, { run_id: selectedRunId });
+      await refresh();
+    } catch (e: any) { setError(friendlyPayrollError(e, "The run could not be associated. Recheck the run and payroll control.")); }
     finally { setBusy(false); }
   };
 
@@ -199,7 +221,7 @@ export default function PayrollMonthlyProcessingPage() {
         <div className="flex items-center gap-2">
           <Link href="/dashboard/hr/team-desk" className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-800 hover:bg-stone-50">Team Desk</Link>
           <label className="text-sm font-semibold text-stone-700" htmlFor="payroll-month">Month</label>
-          <input id="payroll-month" type="month" value={month} onChange={(event) => { setCockpit(null); setReturnContext(null); setSelectedEmployeeIds(null); setMonth(event.target.value); }} className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm" />
+          <input id="payroll-month" type="month" value={month} onChange={(event) => { setCockpit(null); setReturnContext(null); setSelectedEmployeeIds(null); setSelectedRunId(""); setMonth(event.target.value); }} className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm" />
           <button onClick={() => void act("check-again")} disabled={busy || selectedEmployeeIds?.length === 0 || cockpit?.scope_conflict} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-800 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} /> Recheck payroll
           </button>
@@ -248,6 +270,28 @@ export default function PayrollMonthlyProcessingPage() {
             <h2 className="text-lg font-bold">PAYROLL READY</h2>
             <p className="mt-1 text-sm">The selected employees have no remaining payroll review issues. Continue with the normal approval steps when HR is ready.</p>
           </div>}
+        {cockpit.stage === "READY_TO_CLOSE" && !cockpit.scope_conflict &&
+          (cockpit.counts?.blocker_count || 0) === 0 && cockpit.employee_ids?.length === 1 &&
+          <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm sm:p-5">
+            <h2 className="font-bold text-sky-950">Choose the existing payroll run</h2>
+            <p className="mt-1 text-sm text-sky-900">This control covers one employee. Select the September run to use; the choice is recorded in the payroll audit trail. No run or payslip will be created by this selection.</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <select aria-label="Existing payroll run" value={selectedRunId || cockpit.control?.payroll_run_id || ""} onChange={(event) => setSelectedRunId(event.target.value)} disabled={busy} className="min-h-10 flex-1 rounded-lg border border-sky-300 bg-white px-3 text-sm text-stone-900">
+                <option value="">Select an existing run</option>
+                {(cockpit.available_runs || []).map((run) => {
+                  const created = run.created_at ? new Date(run.created_at).toLocaleString() : "creation time unavailable";
+                  const output = `${run.payslip_count} payslip${run.payslip_count === 1 ? "" : "s"}`;
+                  return <option key={run.id} value={run.id} disabled={run.status !== "PENDING" || run.payslip_count > 0}>
+                    {`Run dated ${run.run_date} · created ${created} · ${run.status} · ${output}`}
+                  </option>;
+                })}
+              </select>
+              <button disabled={busy || !selectedRunId || (cockpit.available_runs || []).find((run) => run.id === selectedRunId)?.status !== "PENDING" || (cockpit.available_runs || []).find((run) => run.id === selectedRunId)?.payslip_count !== 0} onClick={() => void associateRun()} className="rounded-lg bg-sky-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+                {cockpit.control?.payroll_run_id ? "Save run selection" : "Associate run"}
+              </button>
+            </div>
+            {cockpit.control?.payroll_run_id && <p className="mt-2 text-xs text-sky-900">An existing run is associated. You can change the selection before closing, while it remains pending and has no payslip outputs.</p>}
+          </section>}
         <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>

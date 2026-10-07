@@ -140,12 +140,12 @@ export const requiresAttendanceDerivedMetricsReview = (
   summary?.derived_metrics_status === "HISTORICAL_POLICY_UNAVAILABLE" &&
   hasAttendanceDerivedMetricsPayrollEffect(policy, employee);
 
-export function resolveAttendancePolicyForDate(current: Policy | null, versions: any[], date: string): Policy | null {
+export function resolveAttendancePolicyForDate(current: Policy | null, versions: any[], date: string, employeeOverrides: any[] = []): Policy | null {
   const candidates = [
     ...(current ? [{ id: String(current.id || "current"), rule_key: "attendance_policy", rule_value: current, effective_from: current.effective_from, effective_to: current.effective_to }] : []),
     ...versions.map((row) => ({ ...row, rule_key: "attendance_policy" })),
   ];
-  const resolved = resolvePayrollRule({ ruleKey: "attendance_policy", effectiveDate: date, tenantRules: candidates });
+  const resolved = resolvePayrollRule({ ruleKey: "attendance_policy", effectiveDate: date, tenantRules: candidates, employeeOverrides });
   return resolved.version ? ({
     ...(resolved.value as Record<string, unknown>),
     effective_from: resolved.version.effective_from,
@@ -563,6 +563,14 @@ export class HrAttendanceControlService {
         "Attendance report range cannot exceed 366 days",
       );
     const [policy, historicalPolicies] = await Promise.all([this.getPolicy(tenantId), this.getHistoricalPolicyVersions(tenantId)]);
+    const { data: employeePolicies, error: employeePolicyError } = await this.reportRows(() => {
+      let query = this.supabase.from("hr_employee_payroll_rule_overrides").select("*").eq("tenant_id", tenantId)
+        .eq("rule_key", "attendance_policy").lte("effective_from", end)
+        .or(`effective_to.is.null,effective_to.gte.${start}`).order("id");
+      if (employeeId) query = query.eq("employee_id", employeeId);
+      return query;
+    });
+    if (employeePolicyError) throw new Error(employeePolicyError.message);
     const employeeQuery = () => {
       let query = this.supabase
       .from("employees")
@@ -644,7 +652,8 @@ export class HrAttendanceControlService {
             String(row.start_date).slice(0, 10) <= date &&
             String(row.end_date || row.start_date).slice(0, 10) >= date,
         );
-        const policyForDate = resolveAttendancePolicyForDate(policy, historicalPolicies, date);
+        const policyForDate = resolveAttendancePolicyForDate(policy, historicalPolicies, date,
+          (employeePolicies || []).filter((row: any) => row.employee_id === employee.id));
         const scheduled = policyForDate
           ? policyForDate.working_weekdays.includes(weekday) && !holiday
           : null;
@@ -710,7 +719,7 @@ export class HrAttendanceControlService {
         const leaveType = String(leave?.leave_type || "").toUpperCase();
         const paidLeave =
           Boolean(leave) &&
-          (policyForDate || policy).paid_leave_types.includes(leaveType);
+          (leave?.is_paid === true || (leave?.is_paid !== false && (policyForDate || policy).paid_leave_types.includes(leaveType)));
         let dayStatus =
           holiday
             ? "HOLIDAY"
@@ -724,7 +733,10 @@ export class HrAttendanceControlService {
                   : "ABSENT"
               : "WEEK_OFF";
         let payableDays = 0;
-        if (!policyForDate && leave && !attendance) {
+        if (leave && !attendance && leave.is_paid === true) {
+          dayStatus = "PAID_LEAVE";
+          payableDays = 1;
+        } else if (!policyForDate && leave && !attendance) {
           dayStatus = "LEAVE";
         } else if (scheduled && leave && !(attendance && approvalValid && paidLeave)) {
           dayStatus = paidLeave ? "PAID_LEAVE" : "UNPAID_LEAVE";
@@ -829,6 +841,8 @@ export class HrAttendanceControlService {
         half_days: count("HALF_DAY"),
         paid_leave_days: count("PAID_LEAVE"),
         unpaid_leave_days: count("UNPAID_LEAVE"),
+        paid_weekly_off_days: count("WEEK_OFF"),
+        base_payable_calendar_days: round2(rows.reduce((sum, row) => sum + row.payable_days, 0) + count("WEEK_OFF")),
         absent_days: count("ABSENT"),
         late_days: rows.some((row) => row.derived_metrics_status)
           ? null
