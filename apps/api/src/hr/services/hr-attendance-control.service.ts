@@ -565,7 +565,7 @@ export class HrAttendanceControlService {
     const [policy, historicalPolicies] = await Promise.all([this.getPolicy(tenantId), this.getHistoricalPolicyVersions(tenantId)]);
     const { data: employeePolicies, error: employeePolicyError } = await this.reportRows(() => {
       let query = this.supabase.from("hr_employee_payroll_rule_overrides").select("*").eq("tenant_id", tenantId)
-        .eq("rule_key", "attendance_policy").lte("effective_from", end)
+        .in("rule_key", ["attendance_policy", "weekly_working_days", "late_policy"]).lte("effective_from", end)
         .or(`effective_to.is.null,effective_to.gte.${start}`).order("id");
       if (employeeId) query = query.eq("employee_id", employeeId);
       return query;
@@ -654,8 +654,11 @@ export class HrAttendanceControlService {
         );
         const policyForDate = resolveAttendancePolicyForDate(policy, historicalPolicies, date,
           (employeePolicies || []).filter((row: any) => row.employee_id === employee.id));
-        const scheduled = policyForDate
-          ? policyForDate.working_weekdays.includes(weekday) && !holiday
+        const employeeDatedRules = (employeePolicies || []).filter((row: any) => row.employee_id === employee.id);
+        const weeklyRule = resolvePayrollRule({ ruleKey: "weekly_working_days", effectiveDate: date, employeeOverrides: employeeDatedRules });
+        const workingWeekdays = Array.isArray(weeklyRule.value) ? weeklyRule.value.map(Number) : policyForDate?.working_weekdays;
+        const scheduled = workingWeekdays
+          ? workingWeekdays.includes(weekday) && !holiday
           : null;
         const attendance = attendanceByKey.get(
           `${employee.id}::${date}`,
@@ -794,7 +797,9 @@ export class HrAttendanceControlService {
           weekday,
           scheduled,
           holiday: holiday?.holiday_name || "",
-          weekly_off: policyForDate ? !policyForDate.working_weekdays.includes(weekday) : null,
+          weekly_off: workingWeekdays ? !workingWeekdays.includes(weekday) : null,
+          schedule_rule_version_id: weeklyRule.version?.id || null,
+          working_weekdays: workingWeekdays || null,
           leave_approved: Boolean(leave),
           status: dayStatus,
           check_in_time: attendance?.check_in_time || null,
