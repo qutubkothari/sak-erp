@@ -111,9 +111,64 @@ export const HR_PAYROLL_RULE_KEYS = [
   "payroll_close_day",
   "approval_threshold",
   "PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT",
+  "salary_calculation_policy",
   "employee_overtime_rule",
 ] as const;
 export type HrPayrollRuleKey = (typeof HR_PAYROLL_RULE_KEYS)[number] | "employee_overtime_rule";
+
+export type SalaryCalculationPolicy = {
+  annual_salary_basis: "ANNUAL_CTC" | "ANNUAL_CONFIGURED_EARNINGS";
+  base_days_per_year: number;
+  bonus_days_per_year: number;
+  include_bonus_days_in_divisor: boolean;
+  bonus_payment_mode: "HOLD" | "PAY_MONTHLY";
+  paid_weekly_off_weekdays: number[];
+  annual_paid_leave_days: number | null;
+  paid_leave_counts_as_paid: boolean;
+};
+
+export const DEFAULT_SALARY_CALCULATION_POLICY: SalaryCalculationPolicy = {
+  annual_salary_basis: "ANNUAL_CTC",
+  base_days_per_year: 365,
+  bonus_days_per_year: 30,
+  include_bonus_days_in_divisor: true,
+  bonus_payment_mode: "HOLD",
+  paid_weekly_off_weekdays: [0],
+  annual_paid_leave_days: null,
+  paid_leave_counts_as_paid: true,
+};
+
+export function calculateAnnualSalaryPolicy(input: {
+  annualSalary: number;
+  payableDays: number;
+  extraCreditDays: number;
+  policy: SalaryCalculationPolicy;
+}) {
+  const annualSalary = Number(input.annualSalary);
+  const payableDays = Number(input.payableDays);
+  const extraCreditDays = Number(input.extraCreditDays);
+  const divisorDays = input.policy.base_days_per_year + (input.policy.include_bonus_days_in_divisor ? input.policy.bonus_days_per_year : 0);
+  if (!Number.isFinite(annualSalary) || annualSalary <= 0 || !Number.isFinite(payableDays) || payableDays < 0 || !Number.isFinite(extraCreditDays) || extraCreditDays < 0 || divisorDays <= 0) {
+    throw new Error("Annual salary policy inputs must be positive and finite.");
+  }
+  const dailyRate = annualSalary / divisorDays;
+  const paidDays = payableDays + extraCreditDays;
+  const basePay = Math.round(dailyRate * payableDays * 100) / 100;
+  const extraCreditPay = Math.round(dailyRate * extraCreditDays * 100) / 100;
+  const bonusAccrual = Math.round(dailyRate * input.policy.bonus_days_per_year / input.policy.base_days_per_year * paidDays * 100) / 100;
+  return {
+    divisor_days: divisorDays,
+    annual_salary_basis_amount: annualSalary,
+    daily_rate: Math.round(dailyRate * 100) / 100,
+    payable_days: payableDays,
+    extra_credit_days: extraCreditDays,
+    paid_days: paidDays,
+    base_pay: basePay,
+    extra_credit_pay: extraCreditPay,
+    bonus_accrual: bonusAccrual,
+    bonus_held: input.policy.bonus_payment_mode === "HOLD" ? bonusAccrual : 0,
+  };
+}
 
 export function isSupportedHrPayrollRuleKey(value: unknown): value is HrPayrollRuleKey {
   return typeof value === "string" && (value === "employee_overtime_rule" || (HR_PAYROLL_RULE_KEYS as readonly string[]).includes(value));
@@ -145,6 +200,23 @@ export function validateHrPayrollRuleValue(ruleKey: HrPayrollRuleKey, value: unk
     case "PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT":
       if (typeof value === "number" && Number.isFinite(value) && value >= 0 && (ruleKey !== "overtime_rate" || value <= 10)) return value;
       break;
+    case "salary_calculation_policy": {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const policy = value as Record<string, unknown>;
+        const allowed = ["annual_salary_basis", "base_days_per_year", "bonus_days_per_year", "include_bonus_days_in_divisor", "bonus_payment_mode", "paid_weekly_off_weekdays", "annual_paid_leave_days", "paid_leave_counts_as_paid"];
+        const wholeNumber = (item: unknown, min: number, max: number) => Number.isInteger(item) && Number(item) >= min && Number(item) <= max;
+        const weekdaysValid = Array.isArray(policy.paid_weekly_off_weekdays) && policy.paid_weekly_off_weekdays.length >= 1 && policy.paid_weekly_off_weekdays.length <= 7 && policy.paid_weekly_off_weekdays.every((day) => wholeNumber(day, 0, 6)) && new Set(policy.paid_weekly_off_weekdays).size === policy.paid_weekly_off_weekdays.length;
+        const leaveValid = policy.annual_paid_leave_days === null || wholeNumber(policy.annual_paid_leave_days, 0, 366);
+        const valid = Object.keys(policy).length === allowed.length && Object.keys(policy).every((key) => allowed.includes(key)) &&
+          ["ANNUAL_CTC", "ANNUAL_CONFIGURED_EARNINGS"].includes(String(policy.annual_salary_basis)) &&
+          wholeNumber(policy.base_days_per_year, 1, 366) && wholeNumber(policy.bonus_days_per_year, 0, 366) &&
+          typeof policy.include_bonus_days_in_divisor === "boolean" &&
+          ["HOLD", "PAY_MONTHLY"].includes(String(policy.bonus_payment_mode)) &&
+          weekdaysValid && leaveValid && typeof policy.paid_leave_counts_as_paid === "boolean";
+        if (valid) return { ...policy, paid_weekly_off_weekdays: Array.from(policy.paid_weekly_off_weekdays as number[]) };
+      }
+      break;
+    }
     case "employee_overtime_rule": {
       if (value && typeof value === "object" && !Array.isArray(value)) {
         const rule = value as Record<string, unknown>;

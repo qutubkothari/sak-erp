@@ -53,6 +53,7 @@ export function calculateDatedAttendanceAdjustments(input: {
   dailyGrossRate: number;
   basicSalary: number;
   workingDays: number;
+  salaryProrationDays?: number;
   overtimeRuleForDate: (date: string) => EmployeeOvertimeRule | undefined;
   dayTypeForDate?: (date: string) => AttendanceDay["day_type"];
 }) {
@@ -91,8 +92,9 @@ export function calculateDatedAttendanceAdjustments(input: {
     if (rawOvertimeMinutes < minimumMinutes) continue;
     const payableMinutes = Math.min(rawOvertimeMinutes, rule.cap_hours === undefined ? rawOvertimeMinutes : wholeMinutes(rule.cap_hours));
     const payableHours = payableMinutes / 60;
-    const hourlyRate = input.workingDays > 0
-      ? input.basicSalary / (input.workingDays * Math.max(1, Number(policy?.standard_daily_hours || 8))) : 0;
+    const hourlyDivisor = Number(input.salaryProrationDays || input.workingDays);
+    const hourlyRate = hourlyDivisor > 0
+      ? input.basicSalary / (hourlyDivisor * Math.max(1, Number(policy?.standard_daily_hours || 8))) : 0;
     overtimeHours += payableHours;
     overtimeAmount += hourlyRate * payableHours * Number(rule.rate_multiplier);
   }
