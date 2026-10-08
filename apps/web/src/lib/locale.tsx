@@ -350,6 +350,7 @@ const LocaleContext = createContext({
   language: "en" as AppLanguage,
   locale: "en-AE",
   currency: "AED",
+  taxLabel: "VAT",
   setLanguage: (_language: AppLanguage) => {},
   t: (value: string) => value,
 });
@@ -394,6 +395,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<AppLanguage>("en");
   const [currency, setCurrency] = useState(profileLocale.currency);
   const [locale, setLocale] = useState(profileLocale.locale);
+  const [taxLabel, setTaxLabel] = useState(profileLocale.currency === "INR" ? "GST" : "VAT");
 
   const setLanguage = useCallback((next: AppLanguage) => {
     setLanguageState(next);
@@ -412,6 +414,8 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
       if (!stored && tenantLanguage.startsWith("arab")) setLanguageState("ar");
       setCurrency(String(tenant?.default_currency || tenant?.currency || profileLocale.currency).toUpperCase());
       setLocale(String(tenant?.locale || (tenantLanguage.startsWith("arab") ? "ar-EG" : profileLocale.locale)));
+      const tenantTaxRegime = String(tenant?.tax_regime || "").toUpperCase();
+      setTaxLabel(tenantTaxRegime.includes("VAT") ? "VAT" : tenantTaxRegime === "GST" ? "GST" : profileLocale.currency === "INR" ? "GST" : "VAT");
     }).catch(() => undefined);
   }, []);
 
@@ -496,9 +500,10 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     language,
     locale: language === "ar" ? "ar-EG" : locale,
     currency,
+    taxLabel,
     setLanguage,
     t: (text: string) => translate(text, language),
-  }), [currency, language, locale, setLanguage]);
+  }), [currency, language, locale, setLanguage, taxLabel]);
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }
