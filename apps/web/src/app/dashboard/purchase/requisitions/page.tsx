@@ -6,6 +6,7 @@ import { Suspense, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../../lib/api-client';
+import { useLocale } from '@/lib/locale';
 import {
   buildDocumentBranding,
   renderStandardLetterheadHtml,
@@ -440,6 +441,14 @@ function calculateRfqLineTotal(
 function PRContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { currency, locale, taxLabel } = useLocale();
+  const formatMoney = (amount: number | null | undefined) =>
+    new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(amount || 0));
   const { user: currentUser, hydrate: hydrateAuth } = useAuthStore();
   const [todayDate, setTodayDate] = useState('');
   const [isMounted, setIsMounted] = useState(false);
@@ -1397,7 +1406,7 @@ function PRContent() {
     try {
       const company = await apiClient.get('/organization').catch(() => null);
       const branding = buildDocumentBranding(company);
-      const generatedOn = new Date().toLocaleString('en-IN');
+      const generatedOn = new Date().toLocaleString(locale);
       const itemRows = (pr.purchase_requisition_items || [])
         .map((item, index) => `
           <tr>
@@ -1405,8 +1414,8 @@ function PRContent() {
             <td><strong>${escapePrPrintHtml(item.item_code || '-')}</strong><div>${escapePrPrintHtml(item.item_name || '-')}</div>${item.remarks ? `<small>${escapePrPrintHtml(item.remarks)}</small>` : ''}</td>
             <td class="center">${escapePrPrintHtml(item.requested_qty)}</td>
             <td class="center">${escapePrPrintHtml(item.uom || '-')}</td>
-            <td class="right">${Number(item.estimated_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            <td class="right">${Number(item.total_amount || Number(item.requested_qty || 0) * Number(item.estimated_rate || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td class="right">${formatMoney(item.estimated_rate)}</td>
+            <td class="right">${formatMoney(item.total_amount || Number(item.requested_qty || 0) * Number(item.estimated_rate || 0))}</td>
             <td>${escapePrPrintHtml(formatPrDate(item.required_date || pr.required_date))}</td>
           </tr>`)
         .join('');
@@ -1442,7 +1451,7 @@ function PRContent() {
           <div style="grid-column:span 2"><div class="label">Delivery Address</div><div class="value">${escapePrPrintHtml(pr.delivery_address || '-')}</div></div>
         </div>
         <div class="section">Requested Items</div>
-        <table><thead><tr><th style="width:5%">#</th><th>Item</th><th style="width:9%">Qty</th><th style="width:8%">UOM</th><th style="width:12%">Est. Rate</th><th style="width:13%">Est. Amount</th><th style="width:12%">Required</th></tr></thead><tbody>${itemRows || '<tr><td colspan="7" class="center muted">No item lines</td></tr>'}<tr><td colspan="5" class="right total">Estimated Total</td><td class="right total">${total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td></td></tr></tbody></table>
+        <table><thead><tr><th style="width:5%">#</th><th>Item</th><th style="width:9%">Qty</th><th style="width:8%">UOM</th><th style="width:12%">Est. Rate</th><th style="width:13%">Est. Amount</th><th style="width:12%">Required</th></tr></thead><tbody>${itemRows || '<tr><td colspan="7" class="center muted">No item lines</td></tr>'}<tr><td colspan="5" class="right total">Estimated Total</td><td class="right total">${formatMoney(total)}</td><td></td></tr></tbody></table>
         <div class="section">Approval Trail</div>
         <table><thead><tr><th>Action</th><th>Actor</th><th>Date & Time</th><th>Remarks</th></tr></thead><tbody>${approvals}</tbody></table>
         <div class="signatures"><div class="signature">Requested By</div><div class="signature">Department Head</div><div class="signature">Approved By</div></div>
@@ -2324,8 +2333,8 @@ function PRContent() {
     { id: 'total_ordered_qty', label: 'Ordered', accessor: (item) => item.total_ordered_qty || 0, cell: (item) => item.total_ordered_qty || 0, defaultVisible: false, align: 'right', minWidth: 100 },
     { id: 'remaining_qty', label: 'Remaining', accessor: (item) => item.remaining_qty ?? item.requested_qty, cell: (item) => item.remaining_qty ?? item.requested_qty, defaultVisible: false, align: 'right', minWidth: 110 },
     { id: 'status', label: 'Status', accessor: (item) => item.po_conversion_status || 'PENDING', cell: (item) => <span className="inline-block rounded-full bg-[#F5EFE3] px-2 py-1 text-xs font-semibold text-[#7A6555]">{item.po_conversion_status === 'COMPLETED' ? 'DONE' : item.po_conversion_status === 'PARTIAL' ? 'PARTIAL' : 'PENDING'}</span>, align: 'center', minWidth: 110 },
-    { id: 'estimated_rate', label: 'Estimated Rate', accessor: (item) => item.estimated_rate || 0, cell: (item) => `₹${(item.estimated_rate || 0).toFixed(2)}`, defaultVisible: false, align: 'right', minWidth: 130 },
-    { id: 'total_amount', label: 'Total', accessor: (item) => (item.requested_qty || 0) * (item.estimated_rate || 0), cell: (item) => `₹${((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}`, defaultVisible: false, align: 'right', minWidth: 130 },
+    { id: 'estimated_rate', label: 'Estimated Rate', accessor: (item) => item.estimated_rate || 0, cell: (item) => formatMoney(item.estimated_rate), defaultVisible: false, align: 'right', minWidth: 130 },
+    { id: 'total_amount', label: 'Total', accessor: (item) => (item.requested_qty || 0) * (item.estimated_rate || 0), cell: (item) => formatMoney((item.requested_qty || 0) * (item.estimated_rate || 0)), defaultVisible: false, align: 'right', minWidth: 130 },
     { id: 'required_date', label: 'Delivery Date', accessor: (item) => item.required_date, cell: (item) => item.required_date ? formatDateInputDisplay(String(item.required_date).slice(0, 10)) : '-', minWidth: 140 },
     { id: 'remarks', label: 'Remarks', accessor: (item) => item.remarks, cell: (item) => item.remarks || '-', defaultVisible: false, minWidth: 220 },
   ];
@@ -2367,7 +2376,7 @@ function PRContent() {
           open={showCreateForm}
           onClose={closeRequisitionForm}
           title={editingPRId ? 'Edit Purchase Requisition' : 'New Purchase Requisition'}
-          subtitle={`${items.length} line item${items.length === 1 ? '' : 's'} | Estimated value ${estimatedTotal.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}`}
+          subtitle={`${items.length} line item${items.length === 1 ? '' : 's'} | Estimated value ${formatMoney(estimatedTotal)}`}
           width="full"
           footer={
             <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2620,7 +2629,7 @@ function PRContent() {
                         />
                         {lastPurchasePrice && (
                           <div className="mt-1 text-[11px] text-[#7A6555]">
-                            Last: <span className="font-medium text-[#5E4635]">₹{Number(lastPurchasePrice.unit_price || 0).toFixed(2)}</span>
+                            Last: <span className="font-medium text-[#5E4635]">{formatMoney(lastPurchasePrice.unit_price)}</span>
                           </div>
                         )}
                       </div>
@@ -2747,7 +2756,7 @@ function PRContent() {
                                 })()}
                               </td>
                               <td className="px-4 py-2">
-                                {item.estimatedPrice ? `₹${item.estimatedPrice.toFixed(2)}` : '-'}
+                                {item.estimatedPrice ? formatMoney(item.estimatedPrice) : '-'}
                               </td>
                               <td className="px-4 py-2 text-sm font-medium text-[#5E4635]">
                                 {item.requiredDate ? formatDateInputDisplay(item.requiredDate) : '-'}
@@ -2819,7 +2828,7 @@ function PRContent() {
                   <div><dt className="text-xs font-medium text-[#7A6555]">Priority</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formData.priority}</dd></div>
                   <div><dt className="text-xs font-medium text-[#7A6555]">Required date</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formData.requiredDate ? formatDateInputDisplay(formData.requiredDate) : 'Required'}</dd></div>
                   <div><dt className="text-xs font-medium text-[#7A6555]">Line items</dt><dd className="mt-1 font-semibold text-[#4A3426]">{items.length}</dd></div>
-                  <div><dt className="text-xs font-medium text-[#7A6555]">Estimated value</dt><dd className="mt-1 font-semibold text-[#4A3426]">{estimatedTotal.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</dd></div>
+                  <div><dt className="text-xs font-medium text-[#7A6555]">Estimated value</dt><dd className="mt-1 font-semibold text-[#4A3426]">{formatMoney(estimatedTotal)}</dd></div>
                 </dl>
                 <div>
                   <h4 className="mb-2 text-sm font-semibold text-[#4A3426]">Items</h4>
@@ -2831,7 +2840,7 @@ function PRContent() {
                         <thead className="bg-[#FAF9F6] text-left text-xs uppercase text-[#7A6555]"><tr><th className="px-3 py-2">Item</th><th className="w-32 px-3 py-2 text-right">Quantity</th><th className="w-40 px-3 py-2 text-right">Amount</th></tr></thead>
                         <tbody className="divide-y divide-[#E8DCC4]">
                           {items.map((item) => (
-                            <tr key={item.id}><td className="px-3 py-2 text-sm font-medium text-[#4A3426]">{item.itemName}</td><td className="px-3 py-2 text-right text-sm">{item.quantity} {item.uom}</td><td className="px-3 py-2 text-right text-sm font-semibold">{((item.quantity || 0) * (item.estimatedPrice || 0)).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</td></tr>
+                            <tr key={item.id}><td className="px-3 py-2 text-sm font-medium text-[#4A3426]">{item.itemName}</td><td className="px-3 py-2 text-right text-sm">{item.quantity} {item.uom}</td><td className="px-3 py-2 text-right text-sm font-semibold">{formatMoney((item.quantity || 0) * (item.estimatedPrice || 0))}</td></tr>
                           ))}
                         </tbody>
                       </table>
@@ -3284,23 +3293,23 @@ function PRContent() {
                               const quoteLines = Array.isArray(rfq.rfq_items)
                                 ? rfq.rfq_items
                                     .map((item) => {
-                                      const price = item.vendor_quoted_price == null ? '' : `Rs. ${Number(item.vendor_quoted_price).toLocaleString('en-IN')}`;
+                                      const price = item.vendor_quoted_price == null ? '' : formatMoney(item.vendor_quoted_price);
                                       const discount = Number(item.vendor_discount_percent || 0);
                                       const gst = Number(item.vendor_gst_percent || 0);
                                       const total = item.vendor_quoted_price == null
                                         ? ''
-                                        : `Total Rs. ${calculateRfqLineTotal(
+                                        : `Total ${formatMoney(calculateRfqLineTotal(
                                             item.requested_qty,
                                             item.vendor_quoted_price,
                                             discount,
                                             gst,
-                                          ).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                          ))}`;
                                       const leadTime = item.vendor_quoted_lead_time == null ? '' : `${item.vendor_quoted_lead_time} days`;
                                       return [
                                         item.item_code || item.item_name || 'Item',
                                         price,
                                         `Discount ${discount}%`,
-                                        `GST ${gst}%`,
+                                        `${taxLabel} ${gst}%`,
                                         total,
                                         leadTime,
                                       ].filter(Boolean).join(' - ');
@@ -3405,7 +3414,7 @@ function PRContent() {
                       ariaLabel="Purchase requisition items"
                       toolbarRight={(
                         <span className="text-sm font-semibold text-[#5E4635]">
-                          Total: ₹{(selectedPR.purchase_requisition_items || []).reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0).toFixed(2)}
+                          Total: {formatMoney((selectedPR.purchase_requisition_items || []).reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0))}
                         </span>
                       )}
                       emptyState={<span>No items found in this requisition</span>}
@@ -3502,8 +3511,8 @@ function PRContent() {
                                     <span className="inline-block px-2 py-1 text-xs font-semibold rounded-full bg-[#F5EFE3] text-[#7A6555]">PENDING</span>
                                   )}
                                 </td>
-                                <td className="px-4 py-2 text-sm text-right">₹{(item.estimated_rate || 0).toFixed(2)}</td>
-                                <td className="px-4 py-2 text-sm text-right font-semibold">₹{((item.requested_qty || 0) * (item.estimated_rate || 0)).toFixed(2)}</td>
+                                <td className="px-4 py-2 text-sm text-right">{formatMoney(item.estimated_rate)}</td>
+                                <td className="px-4 py-2 text-sm text-right font-semibold">{formatMoney((item.requested_qty || 0) * (item.estimated_rate || 0))}</td>
                                 <td className="px-4 py-2 text-sm font-medium text-[#5E4635]">
                                   {item.required_date ? formatDateInputDisplay(String(item.required_date).slice(0, 10)) : '-'}
                                 </td>
@@ -3524,7 +3533,7 @@ function PRContent() {
                             <tr>
                               <td colSpan={rfqPanelOpen ? 12 : 11} className="px-4 py-3 text-right font-bold">Total Amount:</td>
                               <td className="px-4 py-3 text-right font-bold text-lg">
-                                ₹{selectedPR.purchase_requisition_items.reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0).toFixed(2)}
+                                {formatMoney(selectedPR.purchase_requisition_items.reduce((sum, item) => sum + ((item.requested_qty || 0) * (item.estimated_rate || 0)), 0))}
                               </td>
                               <td></td>
                             </tr>
@@ -3819,7 +3828,7 @@ function PRContent() {
                         <th className="px-3 py-2 text-center">UOM</th>
                         <th className="px-3 py-2 text-right">Quoted Price</th>
                         <th className="px-3 py-2 text-right">Discount %</th>
-                        <th className="px-3 py-2 text-right">GST %</th>
+                        <th className="px-3 py-2 text-right">{taxLabel} %</th>
                         <th className="px-3 py-2 text-right">Total</th>
                         <th className="px-3 py-2 text-right">Lead Time (days)</th>
                         <th className="px-3 py-2 text-left">Notes</th>
@@ -3891,12 +3900,12 @@ function PRContent() {
                             />
                           </td>
                           <td className="px-3 py-2 text-right font-semibold text-[#2F241B] whitespace-nowrap">
-                            INR {calculateRfqLineTotal(
+                            {formatMoney(calculateRfqLineTotal(
                               item.requestedQty,
                               item.quotedPrice,
                               item.discountPercent,
                               item.gstPercent,
-                            ).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ))}
                           </td>
                           <td className="px-3 py-2">
                             <input

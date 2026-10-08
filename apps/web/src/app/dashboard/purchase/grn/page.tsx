@@ -17,6 +17,7 @@ import {
   readStoredUser,
 } from "@/lib/rbac";
 import { getTodayDateInputValue } from "@/lib/date";
+import { useLocale } from "@/lib/locale";
 import { smartSearchMatches } from "@/lib/smart-search";
 import DateInput from "../../../../components/ui/DateInput";
 import { confirmDialog } from "../../../../components/ui/ConfirmDialog";
@@ -614,6 +615,14 @@ function GRNContent() {
   const attentionReview = searchParams.get("attention_review");
   const returnTo = searchParams.get("returnTo");
   const todayDate = getTodayDateInputValue();
+  const { currency, locale, taxLabel } = useLocale();
+  const formatMoney = (amount: number | null | undefined) =>
+    new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(amount || 0));
   const currentUser = readStoredUser();
   const canApproveGRN = hasModulePermission(
     currentUser,
@@ -921,8 +930,8 @@ function GRNContent() {
           <td style="text-align:center">${it.received_qty ?? "-"}</td>
           <td style="text-align:center">${it.accepted_qty ?? "-"}</td>
           <td style="text-align:center">${it.rejected_qty ?? 0}</td>
-          <td style="text-align:right">₹${it.rate ? Number(it.rate).toFixed(2) : "-"}</td>
-          <td style="text-align:right">₹${it.amount ? Number(it.amount).toFixed(2) : "-"}</td>
+          <td style="text-align:right">${it.rate ? formatMoney(Number(it.rate)) : "-"}</td>
+          <td style="text-align:right">${it.amount ? formatMoney(Number(it.amount)) : "-"}</td>
         </tr>`,
         )
         .join("");
@@ -2018,7 +2027,7 @@ function GRNContent() {
           unitPrice: item.rate,
           purchaseCurrency:
             itemMasterById[String(item.item_id || "")]?.purchase_currency ||
-            "INR",
+            currency,
           foreignUnitPrice:
             itemMasterById[String(item.item_id || "")]?.foreign_unit_price,
           exchangeRate: "",
@@ -2797,7 +2806,7 @@ function GRNContent() {
       return Number.isFinite(n) ? n : 0;
     };
 
-    // Auto-calculate INR rate from foreign price × exchange rate
+    // Convert a foreign item price to the signed-in tenant's base currency.
     if (field === "exchangeRate") {
       const rate = parseFloat(String(value)) || 0;
       const foreignPrice = Number(updatedItems[index].foreignUnitPrice) || 0;
@@ -3850,10 +3859,10 @@ function GRNContent() {
                                 />
                               </div>
                               {item.purchaseCurrency &&
-                              item.purchaseCurrency !== "INR" ? (
+                              item.purchaseCurrency !== currency ? (
                                 <div>
                                   <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">
-                                    Exch. Rate ({item.purchaseCurrency}→INR)
+                                    Exch. Rate ({item.purchaseCurrency}→{currency})
                                   </label>
                                   <input
                                     type="number"
@@ -3873,15 +3882,14 @@ function GRNContent() {
                                     <div className="text-xs text-blue-600 mt-1">
                                       {item.purchaseCurrency}{" "}
                                       {Number(item.foreignUnitPrice).toFixed(4)}{" "}
-                                      × rate = ₹
-                                      {Number(item.unitPrice || 0).toFixed(2)}
+                                      × rate = {formatMoney(item.unitPrice)}
                                     </div>
                                   )}
                                 </div>
                               ) : (
                                 <div>
                                   <label className="text-xs text-gray-600 font-semibold whitespace-nowrap">
-                                    Rate (₹)
+                                    Rate ({currency})
                                   </label>
                                   <input
                                     type="number"
@@ -4040,10 +4048,10 @@ function GRNContent() {
                               )}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          ₹{Number(item.poRate || 0).toLocaleString("en-IN")}
+                          {formatMoney(item.poRate)}
                         </td>
                         <td className="px-3 py-2 text-right font-semibold text-amber-800">
-                          ₹{Number(item.grnRate || 0).toLocaleString("en-IN")}
+                          {formatMoney(item.grnRate)}
                         </td>
                       </tr>
                     ))}
@@ -4672,23 +4680,15 @@ function GRNContent() {
                               Subtotal (Items)
                             </div>
                             <div className="text-xl font-bold text-gray-900">
-                              ₹
-                              {(selectedGRN.gross_amount || 0).toLocaleString(
-                                "en-IN",
-                                { minimumFractionDigits: 2 },
-                              )}
+                              {formatMoney(selectedGRN.gross_amount)}
                             </div>
                           </div>
                           <div className="bg-white rounded-lg p-3 border border-purple-200">
                             <div className="text-xs text-gray-600 mb-1">
-                              Tax ({selectedGRN.gst_percentage ?? 0}% GST)
+                              Tax ({selectedGRN.gst_percentage ?? 0}% {taxLabel})
                             </div>
                             <div className="text-xl font-bold text-purple-600">
-                              ₹
-                              {(selectedGRN.tax_amount || 0).toLocaleString(
-                                "en-IN",
-                                { minimumFractionDigits: 2 },
-                              )}
+                              {formatMoney(selectedGRN.tax_amount)}
                             </div>
                           </div>
                           {freightTotal > 0 && (
@@ -4697,23 +4697,12 @@ function GRNContent() {
                                 Freight &amp; Charges
                               </div>
                               <div className="text-xl font-bold text-blue-600">
-                                ₹
-                                {freightTotal.toLocaleString("en-IN", {
-                                  minimumFractionDigits: 2,
-                                })}
+                                {formatMoney(freightTotal)}
                               </div>
                               {(selectedGRN.freight_amount || 0) > 0 &&
                                 (selectedGRN.freight_gst_amount || 0) > 0 && (
                                   <div className="text-[10px] text-gray-400">
-                                    ₹
-                                    {(
-                                      selectedGRN.freight_amount || 0
-                                    ).toLocaleString("en-IN")}{" "}
-                                    + ₹
-                                    {(
-                                      selectedGRN.freight_gst_amount || 0
-                                    ).toLocaleString("en-IN")}{" "}
-                                    GST
+                                    {formatMoney(selectedGRN.freight_amount)} + {formatMoney(selectedGRN.freight_gst_amount)} {taxLabel}
                                   </div>
                                 )}
                             </div>
@@ -4723,12 +4712,7 @@ function GRNContent() {
                               Less: Debit Notes
                             </div>
                             <div className="text-xl font-bold text-red-600">
-                              -₹
-                              {(
-                                selectedGRN.debit_note_amount || 0
-                              ).toLocaleString("en-IN", {
-                                minimumFractionDigits: 2,
-                              })}
+                              -{formatMoney(selectedGRN.debit_note_amount)}
                             </div>
                           </div>
                           <div className="bg-white rounded-lg p-3 border border-green-200">
@@ -4736,10 +4720,7 @@ function GRNContent() {
                               Net Payable (Rounded)
                             </div>
                             <div className="text-xl font-bold text-green-600">
-                              ₹
-                              {netPayableRounded.toLocaleString("en-IN", {
-                                minimumFractionDigits: 2,
-                              })}
+                              {formatMoney(netPayableRounded)}
                             </div>
                           </div>
                         </div>
@@ -5051,13 +5032,10 @@ function GRNContent() {
                                       <span className="ml-3">
                                         Amount:{" "}
                                         <span className="font-bold text-red-600">
-                                          ₹
-                                          {(
+                                          {formatMoney(
                                             item.rejection_amount ||
-                                            item.rejected_qty * item.unit_price
-                                          ).toLocaleString("en-IN", {
-                                            minimumFractionDigits: 2,
-                                          })}
+                                            item.rejected_qty * item.unit_price,
+                                          )}
                                         </span>
                                       </span>
                                     )}
@@ -5425,8 +5403,7 @@ function GRNContent() {
                   <h3 className="font-semibold text-purple-900 mb-2">📋 PO</h3>
                   <div className="text-sm">
                     {purchaseTrail.purchase_order.po_number} |{" "}
-                    {formatDate(purchaseTrail.purchase_order.order_date)} | ₹
-                    {purchaseTrail.purchase_order.total_amount.toLocaleString()}
+                    {formatDate(purchaseTrail.purchase_order.order_date)} | {formatMoney(purchaseTrail.purchase_order.total_amount)}
                   </div>
                 </div>
               )}
@@ -5884,17 +5861,12 @@ function GRNContent() {
                   const commercial = selectedGRN
                     ? getQcCommercialSummary(selectedGRN, qcFormData)
                     : null;
-                  const formatAmount = (amount: number) =>
-                    amount.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    });
                   return (
                     <div className="space-y-3">
                       <div className="grid grid-cols-1 gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3 sm:grid-cols-3">
-                        <div><div className="text-xs text-gray-600">Received taxable item value</div><div className="font-bold text-gray-900">₹{formatAmount(receivedValue)}</div></div>
-                        <div><div className="text-xs text-gray-600">Accepted taxable item value</div><div className="font-bold text-green-700">₹{formatAmount(acceptedValue)}</div></div>
-                        <div><div className="text-xs text-gray-600">Rejected cost implication</div><div className="font-bold text-red-700">₹{formatAmount(rejectedValue)}</div></div>
+                        <div><div className="text-xs text-gray-600">Received taxable item value</div><div className="font-bold text-gray-900">{formatMoney(receivedValue)}</div></div>
+                        <div><div className="text-xs text-gray-600">Accepted taxable item value</div><div className="font-bold text-green-700">{formatMoney(acceptedValue)}</div></div>
+                        <div><div className="text-xs text-gray-600">Rejected cost implication</div><div className="font-bold text-red-700">{formatMoney(rejectedValue)}</div></div>
                       </div>
 
                       {commercial && (
@@ -5902,7 +5874,7 @@ function GRNContent() {
                           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-3">
                             <div>
                               <h3 className="font-bold text-emerald-950">Invoice / GRN commercial reconciliation</h3>
-                              <p className="text-xs text-emerald-800">Full document value including discounts, GST, transport charges, adjustments and rounding.</p>
+                              <p className="text-xs text-emerald-800">Full document value including discounts, {taxLabel}, transport charges, adjustments and rounding.</p>
                             </div>
                             <span className={`rounded-full px-3 py-1 text-xs font-bold ${commercial.agreesWithCalculation ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
                               {commercial.agreesWithCalculation ? "CALCULATION MATCHED" : "PAYABLE VARIANCE"}
@@ -5910,15 +5882,15 @@ function GRNContent() {
                           </div>
 
                           <div className="grid gap-x-8 gap-y-2 px-4 py-3 text-sm md:grid-cols-2">
-                            <div className="flex justify-between gap-4"><span className="text-gray-600">Item value before discount</span><span className="font-semibold">₹{formatAmount(commercial.itemValueBeforeDiscount)}</span></div>
-                            <div className="flex justify-between gap-4"><span className="text-gray-600">Less: PO line discount</span><span className="font-semibold text-red-700">-₹{formatAmount(commercial.discountAmount)}</span></div>
-                            <div className="flex justify-between gap-4"><span className="text-gray-600">Taxable item value</span><span className="font-semibold">₹{formatAmount(commercial.taxableItemValue)}</span></div>
-                            <div className="flex justify-between gap-4"><span className="text-gray-600">GST ({toCommercialAmount(selectedGRN?.gst_percentage)}%)</span><span className="font-semibold">₹{formatAmount(commercial.itemTax)}</span></div>
-                            <div className="flex justify-between gap-4"><span className="text-gray-600">Freight / transport</span><span className="font-semibold">₹{formatAmount(commercial.freight)}</span></div>
-                            <div className="flex justify-between gap-4"><span className="text-gray-600">Freight GST</span><span className="font-semibold">₹{formatAmount(commercial.freightTax)}</span></div>
-                            <div className="flex justify-between gap-4"><span className="text-gray-600">Less: debit / rejection adjustments</span><span className="font-semibold text-red-700">-₹{formatAmount(commercial.debitAdjustment)}</span></div>
-                            <div className="flex justify-between gap-4"><span className="text-gray-600">Total before rounding</span><span className="font-semibold">₹{formatAmount(commercial.totalBeforeRounding)}</span></div>
-                            <div className="flex justify-between gap-4"><span className="text-gray-600">Round-off</span><span className="font-semibold">{commercial.roundingAdjustment >= 0 ? "+" : "-"}₹{formatAmount(Math.abs(commercial.roundingAdjustment))}</span></div>
+                            <div className="flex justify-between gap-4"><span className="text-gray-600">Item value before discount</span><span className="font-semibold">{formatMoney(commercial.itemValueBeforeDiscount)}</span></div>
+                            <div className="flex justify-between gap-4"><span className="text-gray-600">Less: PO line discount</span><span className="font-semibold text-red-700">-{formatMoney(commercial.discountAmount)}</span></div>
+                            <div className="flex justify-between gap-4"><span className="text-gray-600">Taxable item value</span><span className="font-semibold">{formatMoney(commercial.taxableItemValue)}</span></div>
+                            <div className="flex justify-between gap-4"><span className="text-gray-600">{taxLabel} ({toCommercialAmount(selectedGRN?.gst_percentage)}%)</span><span className="font-semibold">{formatMoney(commercial.itemTax)}</span></div>
+                            <div className="flex justify-between gap-4"><span className="text-gray-600">Freight / transport</span><span className="font-semibold">{formatMoney(commercial.freight)}</span></div>
+                            <div className="flex justify-between gap-4"><span className="text-gray-600">Freight {taxLabel}</span><span className="font-semibold">{formatMoney(commercial.freightTax)}</span></div>
+                            <div className="flex justify-between gap-4"><span className="text-gray-600">Less: debit / rejection adjustments</span><span className="font-semibold text-red-700">-{formatMoney(commercial.debitAdjustment)}</span></div>
+                            <div className="flex justify-between gap-4"><span className="text-gray-600">Total before rounding</span><span className="font-semibold">{formatMoney(commercial.totalBeforeRounding)}</span></div>
+                            <div className="flex justify-between gap-4"><span className="text-gray-600">Round-off</span><span className="font-semibold">{commercial.roundingAdjustment >= 0 ? "+" : "-"}{formatMoney(Math.abs(commercial.roundingAdjustment))}</span></div>
                           </div>
 
                           <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-emerald-300 bg-emerald-50 px-4 py-4">
@@ -5926,7 +5898,7 @@ function GRNContent() {
                               <div className="text-sm font-bold uppercase tracking-wide text-emerald-900">Invoice / GRN gross total</div>
                               <div className="text-xs text-emerald-800">Amount expected to match the supplier invoice total</div>
                             </div>
-                            <div className="text-2xl font-extrabold text-emerald-800">₹{formatAmount(commercial.documentTotal)}</div>
+                            <div className="text-2xl font-extrabold text-emerald-800">{formatMoney(commercial.documentTotal)}</div>
                           </div>
                         </div>
                       )}
@@ -5954,12 +5926,12 @@ function GRNContent() {
                       </div>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-right text-sm">
                         <div className="text-gray-600">Received</div><div className="font-semibold">{item.receivedQty}</div>
-                        <div className="text-gray-600">PO unit price</div><div className="font-semibold">₹{item.grossUnitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                        <div className="text-gray-600">PO unit price</div><div className="font-semibold">{formatMoney(item.grossUnitPrice)}</div>
                         <div className="text-gray-600">Discount</div><div className="font-semibold">{item.discountPercent.toLocaleString('en-IN', { maximumFractionDigits: 2 })}%</div>
-                        <div className="text-gray-600">Net unit price</div><div className="font-semibold">₹{item.unitPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                        <div className="text-gray-600">Received value</div><div className="font-bold">₹{item.lineAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                        <div className="text-green-700">Accepted value</div><div className="font-semibold text-green-700">₹{grnQcValueForQuantity(item.lineAmount, item.receivedQty, item.acceptedQty, item.unitPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                        <div className="text-red-700">Rejected value</div><div className="font-semibold text-red-700">₹{grnQcValueForQuantity(item.lineAmount, item.receivedQty, item.rejectedQty, item.unitPrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                        <div className="text-gray-600">Net unit price</div><div className="font-semibold">{formatMoney(item.unitPrice)}</div>
+                        <div className="text-gray-600">Received value</div><div className="font-bold">{formatMoney(item.lineAmount)}</div>
+                        <div className="text-green-700">Accepted value</div><div className="font-semibold text-green-700">{formatMoney(grnQcValueForQuantity(item.lineAmount, item.receivedQty, item.acceptedQty, item.unitPrice))}</div>
+                        <div className="text-red-700">Rejected value</div><div className="font-semibold text-red-700">{formatMoney(grnQcValueForQuantity(item.lineAmount, item.receivedQty, item.rejectedQty, item.unitPrice))}</div>
                       </div>
                     </div>
 
