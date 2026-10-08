@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import CompanySettings from '../components/CompanySettings';
 
 export default function OrganizationSettingsPage() {
-  redirect('/dashboard/settings?tab=company');
+  return <CompanySettings />;
 }

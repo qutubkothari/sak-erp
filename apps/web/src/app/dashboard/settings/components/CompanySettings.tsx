@@ -15,6 +15,10 @@ interface Company {
   tax_id?: string;
   logo_url?: string;
   settings?: Record<string, unknown>;
+  market_profile?: string;
+  default_currency?: string;
+  locale?: string;
+  tax_regime?: string;
 }
 
 export default function CompanySettings() {
@@ -51,7 +55,15 @@ export default function CompanySettings() {
     setMessage('');
 
     try {
-      await apiClient.put('/tenant/current', company);
+      await apiClient.put('/tenant/current', {
+        name: company.name,
+        domain: company.domain,
+        address: company.address,
+        phone: company.phone,
+        email: company.email,
+        tax_id: company.tax_id,
+        logo_url: company.logo_url,
+      });
       setMessage('Company settings saved successfully!');
       setTimeout(() => setMessage(''), 3000);
     } catch (error: any) {
@@ -149,7 +161,7 @@ export default function CompanySettings() {
                 onChange={(e) => setCompany({ ...company, phone: e.target.value })}
                 className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
                 style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-                placeholder="+1 234 567 8900"
+                placeholder="Company contact number"
               />
             </div>
             <div>
@@ -170,7 +182,7 @@ export default function CompanySettings() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2" style={{ color: '#6F4E37' }}>
-                GSTIN / Tax Registration
+                {company.tax_regime === 'GST' || company.default_currency === 'INR' ? 'GSTIN / Tax Registration' : 'VAT / Tax Registration'}
               </label>
               <input
                 type="text"
@@ -178,7 +190,7 @@ export default function CompanySettings() {
                 onChange={(e) => setCompany({ ...company, tax_id: e.target.value.toUpperCase() })}
                 className="w-full px-4 py-2 rounded-lg border-2 focus:outline-none focus:border-opacity-80"
                 style={{ borderColor: '#E8DCC4', color: '#6F4E37' }}
-                placeholder="27ABCDE1234F1Z5"
+                placeholder="Approved tax registration number"
               />
             </div>
             <div>
@@ -207,6 +219,11 @@ export default function CompanySettings() {
                 <p className="mt-1 text-xs leading-5" style={{ color: '#8B6F47' }}>{copy}</p>
               </div>
             ))}
+          </div>
+
+          <div className="rounded-lg border p-4 text-sm" style={{ borderColor: '#E8DCC4', backgroundColor: '#FEF9F0' }}>
+            <p className="font-semibold" style={{ color: '#6F4E37' }}>Current regional settings</p>
+            <p>Market: {company.market_profile || '-'} · Currency: {company.default_currency || '-'} · Locale: {company.locale || '-'} · Tax regime: {company.tax_regime || '-'}</p>
           </div>
 
           {message && (
