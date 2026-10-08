@@ -13,7 +13,7 @@ type Group = { title: string; description: string; icon: typeof Building2; items
 
 const groups: Group[] = [
   { title: 'Organization', description: 'Tenant profile and document identity.', icon: Building2, items: [
-    { title: 'Company profile', description: 'Company details, country profile, locale and currency.', href: '/dashboard/settings?tab=company', permissionRoute: '/dashboard/settings', keywords: ['company', 'tenant', 'timezone', 'locale', 'currency', 'country', 'organization'] },
+    { title: 'Company profile', description: 'Legal details and current regional settings.', href: '/dashboard/settings/organization', permissionRoute: '/dashboard/settings', keywords: ['company', 'tenant', 'timezone', 'locale', 'currency', 'country', 'organization'] },
     { title: 'Branches', description: 'Manage existing branch records and their regional settings.', href: '/dashboard/automation?tab=branches', permissionRoute: '/dashboard/settings', keywords: ['branch', 'location', 'currency', 'timezone', 'tax regime'] },
     { title: 'Departments & Designations', description: 'Manage tenant HR masters linked to employee records.', href: '/dashboard/settings/organization-masters', permissionRoute: '/dashboard/hr', keywords: ['department', 'designation', 'HR master', 'employee'] },
     { title: 'Letterhead and documents', description: 'Document header and letterhead settings.', href: '/dashboard/settings?tab=letterhead', permissionRoute: '/dashboard/settings', keywords: ['letterhead', 'branding', 'document'] },
