@@ -3975,11 +3975,29 @@ function HrPageContent() {
 
   const handlePrintPayslip = async (record: any) => {
     try {
+      const parsePayrollMonth = (value: string) => {
+        const raw = String(value || "").trim();
+        const yearMonth = /^(\d{4})-(\d{1,2})(?:$|[-T\s])/.exec(raw);
+        const dayMonthYear = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\b|$)/.exec(
+          raw,
+        );
+        const year = yearMonth
+          ? Number(yearMonth[1])
+          : dayMonthYear
+            ? Number(dayMonthYear[3])
+            : 0;
+        const month = yearMonth
+          ? Number(yearMonth[2])
+          : dayMonthYear
+            ? Number(dayMonthYear[2])
+            : 0;
+        return year && month >= 1 && month <= 12 ? { year, month } : null;
+      };
       const formatPayrollMonthLabel = (yyyyMm: string) => {
-        const match = /^(\d{4})-(\d{2})$/.exec(String(yyyyMm || "").trim());
-        if (!match) return String(yyyyMm || "").trim();
-        const year = Number(match[1]);
-        const month = Number(match[2]);
+        const raw = String(yyyyMm || "").trim();
+        const parsed = parsePayrollMonth(raw);
+        if (!parsed) return raw;
+        const { year, month } = parsed;
         const date = new Date(year, month - 1, 1);
         const monthName = date.toLocaleString("en-IN", { month: "long" });
         return `${monthName} ${year}`;
@@ -3990,6 +4008,7 @@ function HrPageContent() {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         });
+      const fmtINRAmount = (n: number) => `Rs. ${fmtINR(n)}`;
 
       let branding = buildDocumentBranding(null);
       const generatedOn = new Date().toLocaleDateString("en-IN", {
@@ -4012,6 +4031,7 @@ function HrPageContent() {
         lessRows: Array<{ label: string; amount: number }>;
         monthlyHold?: number;
         netSalary?: number;
+        payrollCheck?: string;
         sideRows: Array<{ label: string; value: string | number }>;
         employeeAddressLines?: string[];
       }) => {
@@ -4050,13 +4070,13 @@ function HrPageContent() {
           .join("");
 
         const grossRowSl = opts.salaryRows.length + 1;
-        const amountPaidSl =
+        const netSalarySl =
           opts.salaryRows.length +
           2 +
           opts.lessRows.filter((r) => Number(r.amount || 0) !== 0).length;
-        const monthlyHoldSl = amountPaidSl + 1;
-        const netSalarySl =
-          amountPaidSl + (Number(opts.monthlyHold || 0) > 0 ? 2 : 1);
+        const monthlyHoldSl = netSalarySl + 1;
+        const amountPaidSl =
+          netSalarySl + (Number(opts.monthlyHold || 0) > 0 ? 2 : 1);
 
         const sideRowsHtml = opts.sideRows
           .map(
@@ -4116,6 +4136,8 @@ function HrPageContent() {
     .footer { margin-top: 40px; font-size: 10pt; line-height: 1.8; }
     .footer-address { margin-top: 30px; font-size: 8pt; color: #666; line-height: 1.5; }
     .footer-works { font-weight: bold; margin-bottom: 5px; }
+    .payroll-check { margin-top: 8px; color: #9b1c1c; font-size: 8pt; line-height: 1.35; }
+    .calculation-note { margin-top: 6px; color: #555; font-size: 8pt; }
     .bottom-stripes {
       margin-top: 12px;
       height: 14px;
@@ -4156,17 +4178,23 @@ function HrPageContent() {
           ${salaryRowsHtml}
           <tr class="highlight-yellow">
             <td class="center">${grossRowSl}</td>
-            <td><strong>Gross Monthly Salary</strong></td>
+            <td><strong>Base Gross Salary (saved)</strong></td>
             <td class="right"><strong>${fmtINR(Number(opts.grossSalary || 0))}</strong></td>
             <td></td>
           </tr>
           ${lessRowsHtml}
-          <tr class="highlight-green">
-            <td class="center">${amountPaidSl}</td>
-            <td><strong>Amount Paid</strong></td>
-            <td class="right"><strong>${fmtINR(opts.amountPaid)}</strong></td>
+          ${
+            typeof opts.netSalary === "number"
+              ? `
+          <tr>
+            <td class="center">${netSalarySl}</td>
+            <td><strong>Net Salary (saved)</strong></td>
+            <td class="right"><strong>${fmtINR(Number(opts.netSalary || 0))}</strong></td>
             <td></td>
           </tr>
+          `
+              : ""
+          }
           ${
             Number(opts.monthlyHold || 0) > 0
               ? `
@@ -4179,18 +4207,12 @@ function HrPageContent() {
           `
               : ""
           }
-          ${
-            typeof opts.netSalary === "number"
-              ? `
-          <tr>
-            <td class="center">${netSalarySl}</td>
-            <td><strong>Net Salary</strong></td>
-            <td class="right"><strong>${fmtINR(Number(opts.netSalary || 0))}</strong></td>
+          <tr class="highlight-green">
+            <td class="center">${amountPaidSl}</td>
+            <td><strong>Amount Paid</strong></td>
+            <td class="right"><strong>${fmtINR(opts.amountPaid)}</strong></td>
             <td></td>
           </tr>
-          `
-              : ""
-          }
         </tbody>
       </table>
     </div>
@@ -4203,6 +4225,9 @@ function HrPageContent() {
       </table>
     </div>
   </div>
+
+  <div class="calculation-note">Salary component lines use the employee's current salary setup. Saved gross, net, and payable values are shown separately; overtime and travel per diem are listed separately.</div>
+  ${opts.payrollCheck ? `<div class="payroll-check"><strong>Payroll breakdown does not reconcile:</strong> ${escapeHtml(opts.payrollCheck)}</div>` : ""}
 
   <div class="footer">
     <div>Thanking You,</div>
@@ -4253,12 +4278,66 @@ function HrPageContent() {
       if (isMonthlyPayroll) {
         // Print Monthly Payroll (new format matching salary slip)
 
+        const daysInMonth = Math.max(1, Number(record.days_in_month || 30));
+        const paidDays = Number(record.paid_for_total_days || 0);
+        const proration = paidDays > 0 ? paidDays / daysInMonth : 1;
+        const prorateMonthlyAmount = (amount: unknown) =>
+          Number(amount || 0) * proration;
+        const monthlyHold = Number(
+          record.monthly_hold ??
+            Number(record.bonus_hold || 0) +
+              Number(record.production_incentive_hold || 0),
+        );
+        const proratedProfessionalTax = prorateMonthlyAmount(
+          record.professional_tax,
+        );
+
         // Fixed components
         const fixedComponents = components.filter(
           (c: any) =>
             ["BASIC", "HRA"].includes(c.component_type) ||
             ["Medical", "Travelling"].includes(c.component_name),
         );
+        const monthlyEarningRows =
+          fixedComponents.length +
+          (Number(record.bonus_monthly || 0) > 0 ? 1 : 0) +
+          (Number(record.production_incentive || 0) > 0 ? 1 : 0) +
+          (Number(record.special_allowance || 0) > 0 ? 1 : 0) +
+          (Number(record.total_per_diem || 0) > 0 ? 1 : 0);
+        const monthlyGrossRow = monthlyEarningRows + 1;
+        const monthlyNetRow =
+          monthlyGrossRow + (proratedProfessionalTax > 0 ? 2 : 1);
+        const monthlyPaidRow = monthlyNetRow + (monthlyHold > 0 ? 2 : 1);
+        const fixedMonthlyGross =
+          fixedComponents.reduce(
+            (sum: number, component: any) =>
+              sum + Number(component.amount || 0),
+            0,
+          ) +
+          Number(record.bonus_monthly || 0) +
+          Number(record.production_incentive || 0) +
+          Number(record.special_allowance || 0);
+        const monthlyGrossVariance =
+          fixedMonthlyGross * proration - Number(record.gross_salary || 0);
+        const monthlyNetVariance =
+          Number(record.gross_salary || 0) -
+          proratedProfessionalTax -
+          Number(record.net_salary || 0);
+        const monthlyPaidVariance =
+          Number(record.net_salary || 0) -
+          monthlyHold -
+          Number(record.amount_paid || 0);
+        const monthlyPayrollCheckItems = [
+          Math.abs(monthlyGrossVariance) >= 0.01
+            ? `Current salary components prorate to ${fmtINRAmount(fixedMonthlyGross * proration)}; saved gross is ${fmtINRAmount(Number(record.gross_salary || 0))} (difference ${fmtINRAmount(monthlyGrossVariance)}).`
+            : "",
+          Math.abs(monthlyNetVariance) >= 0.01
+            ? `Saved gross less prorated professional tax calculates ${fmtINRAmount(Number(record.gross_salary || 0) - proratedProfessionalTax)} net; saved net is ${fmtINRAmount(Number(record.net_salary || 0))} (difference ${fmtINRAmount(monthlyNetVariance)}).`
+            : "",
+          Math.abs(monthlyPaidVariance) >= 0.01
+            ? `Saved net less monthly hold calculates ${fmtINRAmount(Number(record.net_salary || 0) - monthlyHold)} payable; saved amount paid is ${fmtINRAmount(Number(record.amount_paid || 0))} (difference ${fmtINRAmount(monthlyPaidVariance)}).`
+            : "",
+        ].filter(Boolean);
 
         const monthLabel = formatPayrollMonthLabel(
           String(record.payroll_month || record.salary_month || ""),
@@ -4279,7 +4358,7 @@ function HrPageContent() {
           <!DOCTYPE html>
           <html>
           <head>
-            <title>Salary Sheet - ${record.employee_name}</title>
+            <title>Salary Sheet - ${escapeHtml(record.employee_name || "Employee")}</title>
             <style>
               @page { margin: 0.5cm; }
               body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #000; font-size: 11pt; }
@@ -4359,11 +4438,18 @@ function HrPageContent() {
               /* Side Table */
               .side-table th { background: #f8f9fa; text-align: left; width: 60%; }
               .side-table td { text-align: right; width: 40%; }
+              @media print {
+                body { padding: 10px; }
+                .content-grid, table { break-inside: avoid; }
+                thead { display: table-header-group; }
+                * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              }
               
               /* Footer */
               .footer { margin-top: 40px; font-size: 10pt; line-height: 1.8; }
               .footer-address { margin-top: 30px; font-size: 8pt; color: #666; line-height: 1.5; }
               .footer-works { font-weight: bold; margin-bottom: 5px; }
+              .payroll-check { margin-top: 8px; color: #9b1c1c; font-size: 8pt; line-height: 1.35; }
               
               @media print {
                 body { padding: 10px; }
@@ -4380,7 +4466,7 @@ function HrPageContent() {
             <!-- Recipient -->
             <div class="recipient">
               <div><strong>To,</strong></div>
-              <div>${record.employee_name || "Employee Name"}</div>
+              <div>${escapeHtml(record.employee_name || "Employee Name")}</div>
               ${employeeAddressLines.map((line) => `<div>${escapeHtml(line)}</div>`).join("")}
             </div>
 
@@ -4411,8 +4497,8 @@ function HrPageContent() {
                         (c: any, i: number) => `
                       <tr>
                         <td class="center">${i + 1}</td>
-                        <td>${c.component_name}</td>
-                        <td class="right">${fmtINR(c.amount)}</td>
+                        <td>${escapeHtml(c.component_name || "Salary Component")}</td>
+                        <td class="right">${fmtINR(prorateMonthlyAmount(c.amount))}</td>
                         <td class="center">${i === 0 ? record.days_in_month : ""}</td>
                       </tr>
                     `,
@@ -4424,7 +4510,7 @@ function HrPageContent() {
                       <tr>
                         <td class="center">${fixedComponents.length + 1}</td>
                         <td>Bonus Monthly</td>
-                        <td class="right">${fmtINR(record.bonus_monthly)}</td>
+                      <td class="right">${fmtINR(prorateMonthlyAmount(record.bonus_monthly))}</td>
                         <td></td>
                       </tr>
                     `
@@ -4436,7 +4522,7 @@ function HrPageContent() {
                       <tr>
                         <td class="center">${fixedComponents.length + (record.bonus_monthly > 0 ? 2 : 1)}</td>
                         <td>Production Incentive Monthly</td>
-                        <td class="right">${fmtINR(record.production_incentive)}</td>
+                      <td class="right">${fmtINR(prorateMonthlyAmount(record.production_incentive))}</td>
                         <td></td>
                       </tr>
                     `
@@ -4448,7 +4534,7 @@ function HrPageContent() {
                       <tr>
                         <td class="center">${fixedComponents.length + (record.bonus_monthly > 0 ? 1 : 0) + (record.production_incentive > 0 ? 1 : 0) + 1}</td>
                         <td>Monthly Special Allowance</td>
-                        <td class="right">${fmtINR(record.special_allowance)}</td>
+                      <td class="right">${fmtINR(prorateMonthlyAmount(record.special_allowance))}</td>
                         <td></td>
                       </tr>
                     `
@@ -4467,8 +4553,8 @@ function HrPageContent() {
                         : ""
                     }
                     <tr class="highlight-yellow">
-                      <td class="center">${fixedComponents.length + (record.bonus_monthly > 0 ? 1 : 0) + (record.production_incentive > 0 ? 1 : 0) + (record.special_allowance > 0 ? 1 : 0) + 1}</td>
-                      <td><strong>Gross Monthly Salary</strong></td>
+                      <td class="center">${monthlyGrossRow}</td>
+                      <td><strong>Base Gross Salary (saved)</strong></td>
                       <td class="right"><strong>${fmtINR(record.gross_salary)}</strong></td>
                       <td></td>
                     </tr>
@@ -4476,60 +4562,36 @@ function HrPageContent() {
                       record.professional_tax > 0
                         ? `
                       <tr>
-                        <td class="center">${fixedComponents.length + (record.bonus_monthly > 0 ? 1 : 0) + (record.production_incentive > 0 ? 1 : 0) + (record.special_allowance > 0 ? 1 : 0) + 2}</td>
+                        <td class="center">${monthlyGrossRow + 1}</td>
                         <td>Less : Professional Tax</td>
-                        <td class="right highlight-red">(${fmtINR(record.professional_tax)})</td>
-                        <td></td>
-                      </tr>
-                    `
-                        : ""
-                    }
-                    ${
-                      record.bonus_hold > 0
-                        ? `
-                      <tr>
-                        <td class="center">${fixedComponents.length + (record.bonus_monthly > 0 ? 1 : 0) + (record.production_incentive > 0 ? 1 : 0) + (record.special_allowance > 0 ? 1 : 0) + (record.professional_tax > 0 ? 2 : 1) + 1}</td>
-                        <td>Less : Bonus Monthly (On Hold )</td>
-                        <td class="right highlight-red">(${fmtINR(record.bonus_hold)})</td>
-                        <td></td>
-                      </tr>
-                    `
-                        : ""
-                    }
-                    ${
-                      record.production_incentive_hold > 0
-                        ? `
-                      <tr>
-                        <td class="center">${fixedComponents.length + (record.bonus_monthly > 0 ? 1 : 0) + (record.production_incentive > 0 ? 1 : 0) + (record.special_allowance > 0 ? 1 : 0) + (record.professional_tax > 0 ? 2 : 1) + (record.bonus_hold > 0 ? 1 : 0) + 1}</td>
-                        <td>Less : Production Incentive Monthly (On Hold )</td>
-                        <td class="right highlight-red">(${fmtINR(record.production_incentive_hold)})</td>
-                        <td></td>
-                      </tr>
-                    `
-                        : ""
-                    }
-                    <tr class="highlight-green">
-                      <td class="center">${fixedComponents.length + (record.bonus_monthly > 0 ? 1 : 0) + (record.production_incentive > 0 ? 1 : 0) + (record.special_allowance > 0 ? 1 : 0) + (record.professional_tax > 0 ? 2 : 1) + (record.bonus_hold > 0 ? 1 : 0) + (record.production_incentive_hold > 0 ? 1 : 0) + 1}</td>
-                      <td><strong>Amount Paid</strong></td>
-                      <td class="right"><strong>${fmtINR(record.amount_paid)}</strong></td>
-                      <td></td>
-                    </tr>
-                    ${
-                      record.monthly_hold > 0
-                        ? `
-                      <tr>
-                        <td class="center">${fixedComponents.length + (record.bonus_monthly > 0 ? 1 : 0) + (record.production_incentive > 0 ? 1 : 0) + (record.special_allowance > 0 ? 1 : 0) + (record.professional_tax > 0 ? 2 : 1) + (record.bonus_hold > 0 ? 1 : 0) + (record.production_incentive_hold > 0 ? 1 : 0) + 2}</td>
-                        <td><strong>Monthly Hold</strong></td>
-                        <td class="right highlight-red"><strong>(${fmtINR(record.monthly_hold)})</strong></td>
+                      <td class="right highlight-red">(${fmtINR(proratedProfessionalTax)})</td>
                         <td></td>
                       </tr>
                     `
                         : ""
                     }
                     <tr>
-                      <td class="center">${fixedComponents.length + (record.bonus_monthly > 0 ? 1 : 0) + (record.production_incentive > 0 ? 1 : 0) + (record.special_allowance > 0 ? 1 : 0) + (record.professional_tax > 0 ? 2 : 1) + (record.bonus_hold > 0 ? 1 : 0) + (record.production_incentive_hold > 0 ? 1 : 0) + (record.monthly_hold > 0 ? 2 : 1) + 1}</td>
+                      <td class="center">${monthlyNetRow}</td>
                       <td><strong>Net Salary</strong></td>
                       <td class="right"><strong>${fmtINR(record.net_salary)}</strong></td>
+                      <td></td>
+                    </tr>
+                    ${
+                      monthlyHold > 0
+                        ? `
+                      <tr>
+                        <td class="center">${monthlyNetRow + 1}</td>
+                        <td><strong>Monthly Hold</strong></td>
+                        <td class="right highlight-red"><strong>(${fmtINR(monthlyHold)})</strong></td>
+                        <td></td>
+                      </tr>
+                    `
+                        : ""
+                    }
+                    <tr class="highlight-green">
+                      <td class="center">${monthlyPaidRow}</td>
+                      <td><strong>Amount Paid</strong></td>
+                      <td class="right"><strong>${fmtINR(record.amount_paid)}</strong></td>
                       <td></td>
                     </tr>
                   </tbody>
@@ -4570,6 +4632,9 @@ function HrPageContent() {
                 )}
               </div>
             </div>
+
+            <div style="margin-top: 6px; color: #555; font-size: 8pt;">Salary component lines use the current salary setup and are prorated by paid days. Saved gross, net, hold, and payable values are shown in the totals.</div>
+            ${monthlyPayrollCheckItems.length ? `<div class="payroll-check"><strong>Payroll breakdown does not reconcile:</strong> ${escapeHtml(monthlyPayrollCheckItems.join(" "))}</div>` : ""}
 
             <!-- Footer -->
             <div class="footer">
@@ -4625,11 +4690,8 @@ function HrPageContent() {
           record.salary_month || record.payroll_month || "",
         ).trim();
         const daysInMonth = (() => {
-          const match = /^(\d{4})-(\d{2})$/.exec(salaryMonth);
-          if (!match) return 30;
-          const y = Number(match[1]);
-          const m = Number(match[2]);
-          return new Date(y, m, 0).getDate();
+          const parsed = parsePayrollMonth(salaryMonth);
+          return parsed ? new Date(parsed.year, parsed.month, 0).getDate() : 30;
         })();
 
         const workingDays = Number(record.working_days || daysInMonth);
@@ -4661,9 +4723,11 @@ function HrPageContent() {
         const allowances: Record<string, number> = {};
         earnings
           .filter((sc: any) => String(sc.component_type) === "ALLOWANCE")
-          .filter((sc: any) => !isHoldName(sc.component_name))
           .forEach((sc: any) => {
-            const key = String(sc.component_name || "Allowance");
+            const componentName = String(sc.component_name || "Allowance");
+            const key = isHoldName(componentName)
+              ? `${componentName} (On Hold)`
+              : componentName;
             allowances[key] =
               (allowances[key] || 0) + (parseFloat(sc.amount) || 0);
           });
@@ -4737,9 +4801,26 @@ function HrPageContent() {
 
         const overtimeAmount = Number(record.overtime_amount || 0);
         const overtimeHours = Number(record.overtime_hours || 0);
+        const overtimeCreditDays = Number(
+          record.payroll_breakdown?.overtime_credit_days || 0,
+        );
+        const overtimeMode = String(
+          record.payroll_breakdown?.policy?.overtime_calculation_mode || "",
+        ).toUpperCase();
+        const formatHoursAndMinutes = (hours: number) => {
+          const totalMinutes = Math.max(0, Math.round(hours * 60));
+          const wholeHours = Math.floor(totalMinutes / 60);
+          const minutes = totalMinutes % 60;
+          return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+        };
         if (overtimeAmount > 0) {
           salaryRows.push({
-            label: `Overtime (${formatAttendanceHours(overtimeHours)})`,
+            label:
+              overtimeMode === "DAY_CREDIT"
+                ? `Overtime (${overtimeCreditDays.toFixed(2)} credited day${overtimeCreditDays === 1 ? "" : "s"}; ${formatHoursAndMinutes(overtimeHours)} hours recorded)`
+                : overtimeHours <= 0
+                  ? "Overtime (saved credit basis unavailable)"
+                  : `Overtime (${formatHoursAndMinutes(overtimeHours)} hours)`,
             amount: overtimeAmount,
           });
         }
@@ -4790,11 +4871,31 @@ function HrPageContent() {
           });
         }
 
-        if (holdTotal > 0)
-          lessRows.push({
-            label: "Less : Monthly Hold (On Hold)",
-            amount: holdTotal,
-          });
+        const itemizedEarnings = sumAmount(salaryRows);
+        const itemizedBaseGross = sumAmount(earnings);
+        const itemizedDeductions = sumAmount(lessRows);
+        const nonHoldDeductions = sumAmount(
+          lessRows.filter((row) => !/monthly hold/i.test(row.label)),
+        );
+        const itemizedNetSalary = itemizedEarnings - nonHoldDeductions;
+        const itemizedAmountPaid =
+          itemizedEarnings - itemizedDeductions - holdTotal;
+        const netVariance = itemizedNetSalary - netSalary;
+        const paidVariance = itemizedAmountPaid - amountPaid;
+        const grossVariance = itemizedBaseGross - grossSalary;
+        const payrollCheckItems = [
+          Math.abs(grossVariance) >= 0.01
+            ? `Itemized base earnings ${fmtINRAmount(itemizedBaseGross)} differ from saved gross salary ${fmtINRAmount(grossSalary)} by ${fmtINRAmount(grossVariance)}.`
+            : "",
+          Math.abs(netVariance) >= 0.01
+            ? `Itemized earnings less deductions calculate ${fmtINRAmount(itemizedNetSalary)} net; saved net salary is ${fmtINRAmount(netSalary)} (difference ${fmtINRAmount(netVariance)}).`
+            : "",
+          Math.abs(paidVariance) >= 0.01
+            ? `Itemized earnings less deductions and holds calculate ${fmtINRAmount(itemizedAmountPaid)} payable; saved amount paid is ${fmtINRAmount(amountPaid)} (difference ${fmtINRAmount(paidVariance)}).`
+            : "",
+        ].filter(Boolean);
+        const hasPayrollVariance =
+          payrollCheckItems.length > 0;
 
         const sideRows = [
           { label: "Calendar Days", value: daysInMonth },
@@ -4812,10 +4913,16 @@ function HrPageContent() {
             value: Number(record.unpaid_leave_days || 0),
           },
           {
-            label: "Late Days / Minutes",
-            value: `${Number(record.late_days || 0)} / ${Number(record.late_minutes || 0)}`,
+            label: "Late Arrivals (days / minutes)",
+            value: `${Number(record.late_days || 0)} days / ${Number(record.late_minutes || 0)} min`,
           },
-          { label: "Overtime", value: formatAttendanceHours(overtimeHours) },
+          {
+            label: "Overtime Hours (HH:MM)",
+            value: formatHoursAndMinutes(overtimeHours),
+          },
+          ...(overtimeMode === "DAY_CREDIT"
+            ? [{ label: "Overtime Credit", value: `${overtimeCreditDays} days` }]
+            : []),
           { label: "Paid for Total Days", value: paidDays },
         ];
 
@@ -4828,6 +4935,9 @@ function HrPageContent() {
           lessRows,
           monthlyHold: holdTotal,
           netSalary,
+          payrollCheck: hasPayrollVariance
+            ? payrollCheckItems.join(" ")
+            : undefined,
           sideRows,
           employeeAddressLines,
         });
