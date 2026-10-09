@@ -52,7 +52,7 @@ const MANUAL_ARABIC: Record<string, string> = {
   "Strategic Sourcing": "التوريد الاستراتيجي",
   "Contract Control": "إدارة العقود",
   "Import Files": "ملفات الاستيراد",
-  "Service Entry Sheets": "شهادات إنجاز الخدمات",
+  "Service GRN": "إشعار استلام الخدمات",
   "Debit Notes": "إشعارات الخصم",
   Vendors: "الموردون",
   "Goods Receipt (GRN)": "استلام البضاعة",

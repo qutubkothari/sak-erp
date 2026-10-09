@@ -190,7 +190,7 @@ export default function PurchasePage() {
     { label: 'Spend intelligence', detail: 'Spend analysis and supplier insight', path: '/dashboard/purchase/spend-intelligence' },
     { label: 'Contract control', detail: 'Supplier agreements and price ceilings', path: '/dashboard/purchase/contracts' },
     { label: 'Import files', detail: 'Import purchase documentation', path: '/dashboard/purchase/import-files' },
-    { label: 'Service entries', detail: 'Accept service-only purchase orders', path: '/dashboard/purchase/service-entries' },
+    { label: 'Service GRN', detail: 'Accept service-only purchase orders', path: '/dashboard/purchase/service-entries' },
     { label: 'Debit notes', detail: 'Supplier deductions and recovery', path: '/dashboard/purchase/debit-notes' },
   ];
 

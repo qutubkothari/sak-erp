@@ -94,7 +94,7 @@ export const SCREEN_DEFINITIONS: ScreenDefinition[] = [
   },
   {
     key: "purchase-service-entries",
-    label: "Service Entry Sheets",
+    label: "Service GRN",
     module: "Purchase Management",
     route: "/dashboard/purchase/service-entries",
     match: "exact",

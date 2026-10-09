@@ -223,7 +223,7 @@ const navigation: NavigationItem[] = [
       { name: "Contract Control", href: "/dashboard/purchase/contracts" },
       { name: "Import Files", href: "/dashboard/purchase/import-files" },
       {
-        name: "Service Entry Sheets",
+        name: "Service GRN",
         href: "/dashboard/purchase/service-entries",
       },
       { name: "Debit Notes", href: "/dashboard/purchase/debit-notes" },
