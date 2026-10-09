@@ -873,6 +873,15 @@ function getAttendanceLocationErrorMessage(
   return rawMessage || `Failed to ${action}. Please try again.`;
 }
 
+function isOutsideSelfieRequiredError(error: unknown, action: "in" | "out") {
+  const message = String((error as { message?: unknown })?.message || "")
+    .toLowerCase();
+  return (
+    message.includes("selfie/photo is required") &&
+    message.includes(`checking ${action} outside the office geofence`)
+  );
+}
+
 function toTimeInputValue(value?: string | null): string {
   if (!value) return "";
   const date = new Date(value);
@@ -1029,6 +1038,7 @@ function HrPageContent() {
   } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const attendanceCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const attendanceSelfiePromptRef = useRef<HTMLDivElement | null>(null);
   const [pendingOutsideCheckIn, setPendingOutsideCheckIn] = useState<{
     position: { lat: number; lng: number; accuracy?: number | null };
     address: string;
@@ -1057,6 +1067,17 @@ function HrPageContent() {
       setPendingOutsideCheckOut(null);
     }
   }, [todayAttendance?.check_in_time, todayAttendance?.check_out_time]);
+
+  useEffect(() => {
+    if (!pendingOutsideCheckIn && !pendingOutsideCheckOut) return;
+    const frame = requestAnimationFrame(() =>
+      attendanceSelfiePromptRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [pendingOutsideCheckIn, pendingOutsideCheckOut]);
 
   const isEmployeePortal = activeSection === "employees";
   const canManage = userCanAccessManagement(currentUser);
@@ -1277,6 +1298,12 @@ function HrPageContent() {
   };
 
   const handleCheckIn = async () => {
+    let positionForSelfie: {
+      lat: number;
+      lng: number;
+      accuracy?: number | null;
+    } | null = null;
+    let addressForSelfie = "";
     try {
       setCheckingIn(true);
       setLocationError(null);
@@ -1288,6 +1315,8 @@ function HrPageContent() {
 
       // Try to get address/name from coordinates (reverse geocoding)
       address = await reverseGeocodeLocation(position);
+      positionForSelfie = position;
+      addressForSelfie = address;
 
       setCurrentLocation({
         lat: position.lat,
@@ -1333,6 +1362,19 @@ function HrPageContent() {
         // unavailable.
       }
 
+      if (isOutsideSelfieRequiredError(err, "in") && positionForSelfie) {
+        setPendingOutsideCheckIn({
+          position: positionForSelfie,
+          address: addressForSelfie,
+          distanceMeters: getOfficeDistanceMeters(positionForSelfie),
+        });
+        setIsOutsideZone(true);
+        setLocationError(
+          "The office check requires a selfie. Tap Take Selfie below to complete Check In.",
+        );
+        return;
+      }
+
       const message = getAttendanceLocationErrorMessage(err, "check in");
       setLocationError(message);
       if (!isGeolocationPermissionDenied(err)) {
@@ -1351,6 +1393,13 @@ function HrPageContent() {
       return;
     }
 
+    let positionForSelfie: {
+      lat: number;
+      lng: number;
+      accuracy?: number | null;
+    } | null = null;
+    let addressForSelfie = "";
+
     try {
       setCheckingOut(true);
       setLocationError(null);
@@ -1362,6 +1411,8 @@ function HrPageContent() {
 
       // Try to get address/name from coordinates
       address = await reverseGeocodeLocation(position);
+      positionForSelfie = position;
+      addressForSelfie = address;
       setCurrentLocation({
         lat: position.lat,
         lng: position.lng,
@@ -1423,6 +1474,19 @@ function HrPageContent() {
           : "Out movement recorded. Press Return to Office when you come back.",
       );
     } catch (err: any) {
+      if (isOutsideSelfieRequiredError(err, "out") && positionForSelfie) {
+        setPendingOutsideCheckOut({
+          position: positionForSelfie,
+          address: addressForSelfie,
+          distanceMeters: getOfficeDistanceMeters(positionForSelfie),
+          endDay,
+        });
+        setIsOutsideZone(true);
+        setLocationError(
+          `The office check requires a selfie. Tap Take Selfie below to ${endDay ? "complete End Day" : "record Go Out"}.`,
+        );
+        return;
+      }
       const message = getAttendanceLocationErrorMessage(err, "check out");
       setLocationError(message);
       if (!isGeolocationPermissionDenied(err)) {
@@ -1453,6 +1517,9 @@ function HrPageContent() {
     formData.append("folder", "attendance");
     formData.append("bucket", "documents");
     const uploadRes = await apiClient.postForm("/upload", formData);
+    if (!uploadRes.url) {
+      throw new Error("Selfie upload did not finish. Please take the photo again.");
+    }
     await apiClient.post("/hr/attendance/check-out", {
       ...pendingOutsideCheckOut.position,
       location: pendingOutsideCheckOut.address,
@@ -1463,7 +1530,10 @@ function HrPageContent() {
       isOutsideZone: true,
       endDay: pendingOutsideCheckOut.endDay,
     });
-    await fetchTodayAttendance();
+    const persisted = await fetchTodayAttendance();
+    if (!persisted?.check_out_time) {
+      throw new Error("Check-out was not confirmed by the server.");
+    }
     setPendingOutsideCheckOut(null);
     setIsOutsideZone(false);
     setOfficeDistanceMeters(null);
@@ -8393,7 +8463,7 @@ function HrPageContent() {
 
               {((pendingOutsideCheckIn && !todayAttendance?.check_in_time) ||
                 pendingOutsideCheckOut) && (
-                <div className="rounded-2xl border-2 border-[#F79009] bg-[#FFFAEB] p-4 shadow-sm">
+                <div ref={attendanceSelfiePromptRef} className="rounded-2xl border-2 border-[#F79009] bg-[#FFFAEB] p-4 shadow-sm">
                   <div className="flex items-start gap-3">
                     <div className="rounded-full bg-[#FEF0C7] p-2 text-[#B54708]">
                       <Camera className="h-6 w-6" />
