@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -6,6 +6,18 @@ import { apiClient } from "../../../../../../lib/api-client";
 
 type Rule = { rule_key: string; value: unknown; source: string; company_value?: unknown; company_source?: string; history: any[]; employee_overrides: any[] };
 type Employee = { id: string; employee_name?: string; employee_code?: string };
+type OvertimeDraft = {
+  eligible: boolean;
+  method?: "DAY_CREDIT" | "HOURLY";
+  half_day_after_hours?: number;
+  full_day_after_hours?: number;
+  holiday_work_credit_days?: number;
+  holiday_min_hours?: number;
+  starts_after_hours?: number;
+  rate_multiplier?: number;
+  minimum_hours?: number;
+  cap_hours?: number;
+};
 type SalaryCalculationPolicy = {
   annual_salary_basis: "ANNUAL_CTC" | "ANNUAL_CONFIGURED_EARNINGS";
   base_days_per_year: number;
@@ -27,6 +39,66 @@ const RULES = [
 ] as const;
 const today = () => new Date().toISOString().slice(0, 10);
 const unwrap = (value: any) => value?.data ?? value;
+const parseOvertimeDraft = (value: string): OvertimeDraft => {
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return { eligible: parsed.eligible !== false, method: parsed.method === "HOURLY" ? "HOURLY" : "DAY_CREDIT", ...parsed };
+    }
+  } catch { /* An empty draft is expected before HR enters a rule. */ }
+  return { eligible: true, method: "DAY_CREDIT" };
+};
+
+function OvertimeRuleEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const rule = parseOvertimeDraft(value);
+  const update = (next: OvertimeDraft) => onChange(JSON.stringify(next));
+  const numberField = (label: string, key: keyof OvertimeDraft) => (
+    <label className="text-sm">{label}
+      <input type="number" min="0" max="24" step="0.01" value={typeof rule[key] === "number" ? String(rule[key]) : ""}
+        onChange={(event) => {
+          const next = { ...rule } as Record<string, unknown>;
+          if (event.target.value === "") delete next[key];
+          else next[key] = Number(event.target.value);
+          update(next as OvertimeDraft);
+        }}
+        className="mt-1 block w-full rounded border p-2" />
+    </label>
+  );
+  const holidayMode = rule.holiday_work_credit_days === 1 ? "FIXED" : rule.holiday_min_hours !== undefined ? "HOURS" : "UNSET";
+  return <fieldset className="grid gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 md:col-span-2 md:grid-cols-2">
+    <legend className="px-1 text-sm font-semibold">Overtime for {"this selection"}</legend>
+    <p className="text-xs text-stone-700 md:col-span-2">Enter the approved employee or company rule. No thresholds are filled in automatically. Changes start on the effective date above.</p>
+    <label className="flex items-center gap-2 text-sm md:col-span-2"><input type="checkbox" checked={rule.eligible} onChange={(event) => update(event.target.checked ? { eligible: true, method: "DAY_CREDIT" } : { eligible: false })} />Eligible for overtime</label>
+    {rule.eligible && <>
+      <label className="text-sm">Calculation method
+        <select value={rule.method} onChange={(event) => update(event.target.value === "HOURLY" ? { eligible: true, method: "HOURLY" } : { eligible: true, method: "DAY_CREDIT" })} className="mt-1 block w-full rounded border p-2">
+          <option value="DAY_CREDIT">Extra paid day credit</option><option value="HOURLY">Hourly multiplier</option>
+        </select>
+      </label>
+      {numberField("Minimum work hours for overtime", "minimum_hours")}
+      {rule.method === "DAY_CREDIT" ? <>
+        {numberField("Extra half day after work hours", "half_day_after_hours")}
+        {numberField("Extra full day after work hours", "full_day_after_hours")}
+        <label className="text-sm">Paid holiday / weekly off / paid leave work
+          <select value={holidayMode} onChange={(event) => {
+            const next = { ...rule }; delete next.holiday_min_hours; delete next.holiday_work_credit_days;
+            if (event.target.value === "FIXED") next.holiday_work_credit_days = 1;
+            if (event.target.value === "HOURS") next.holiday_min_hours = 0;
+            update(next);
+          }} className="mt-1 block w-full rounded border p-2">
+            <option value="UNSET">Choose approved rule</option><option value="FIXED">One extra day, without stacking</option><option value="HOURS">Half or full day by minimum hours</option>
+          </select>
+        </label>
+        {holidayMode === "HOURS" && numberField("Full holiday credit after work hours", "holiday_min_hours")}
+        <p className="text-xs text-stone-700 md:col-span-2">The current engine applies the extra half day only above its threshold. Confirm the exact boundary and any minute grace before entering those values.</p>
+      </> : <>
+        {numberField("Overtime starts after work hours", "starts_after_hours")}
+        {numberField("Hourly rate multiplier", "rate_multiplier")}
+        {numberField("Maximum overtime hours, if any", "cap_hours")}
+      </>}
+    </>}
+  </fieldset>;
+}
 
 export default function PayrollRulesPage() {
   const [date, setDate] = useState(today());
@@ -43,6 +115,11 @@ export default function PayrollRulesPage() {
   const [to, setTo] = useState("");
   const [overrideRows, setOverrideRows] = useState<any[]>([]);
   const [salaryPolicyDraft, setSalaryPolicyDraft] = useState<SalaryCalculationPolicy>(DEFAULT_SALARY_POLICY);
+
+  useEffect(() => {
+    const requestedEmployee = new URLSearchParams(window.location.search).get("employeeId");
+    if (requestedEmployee) setEmployeeId(requestedEmployee);
+  }, []);
 
   const load = useCallback(async () => {
     setError("");
@@ -71,7 +148,7 @@ export default function PayrollRulesPage() {
   }, [salaryPolicyRule, employeeId]);
   const changeRuleKey = (nextKey: string) => {
     setKey(nextKey);
-    if (nextKey === "employee_overtime_rule" && !value.trim()) setValue(JSON.stringify({ eligible: true, method: "DAY_CREDIT", half_day_after_hours: 10, full_day_after_hours: 12, holiday_work_credit_days: 1 }, null, 2));
+    if (nextKey === "employee_overtime_rule") setValue("");
     if (nextKey === "salary_calculation_policy") setValue(JSON.stringify(DEFAULT_SALARY_POLICY, null, 2));
   };
 
@@ -129,6 +206,6 @@ export default function PayrollRulesPage() {
   <label className="text-sm">Annual paid-leave entitlement (days)<input type="number" min="0" max="366" value={salaryPolicyDraft.annual_paid_leave_days ?? ""} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, annual_paid_leave_days: e.target.value === "" ? null : Number(e.target.value) }))} placeholder="Unset" className="mt-1 block w-full rounded border p-2" /></label>
   <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={salaryPolicyDraft.paid_leave_counts_as_paid} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, paid_leave_counts_as_paid: e.target.checked }))} />Approved paid leave counts as paid time</label>
   <p className="md:col-span-2 text-xs text-stone-600">For a 60-day bonus using base days only, set bonus days to 60 and clear “Include bonus days in daily-rate divisor.” Employee overrides are versioned and audited.</p>
-</div> : <label className="text-sm md:col-span-2">Rule value (JSON)<textarea value={value} onChange={(e) => setValue(e.target.value)} placeholder="Choose a rule" className="mt-1 block min-h-28 w-full rounded border p-2 font-mono text-xs" /></label>}<label className="text-sm md:col-span-2">Reason<input value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label></div><button disabled={!enabled || busy || !reason.trim() || (key !== "salary_calculation_policy" && !value.trim()) || !from} onClick={() => void save()} className="mt-4 rounded bg-amber-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving..." : "Save rule version"}</button><div className="mt-2 text-xs text-stone-500">Company value for this rule: {selectedRule?.company_value === undefined ? selectedRule?.value === undefined ? "Not configured" : JSON.stringify(selectedRule.value) : JSON.stringify(selectedRule.company_value)}</div></section>
+</div> : key === "employee_overtime_rule" ? <OvertimeRuleEditor value={value} onChange={setValue} /> : <label className="text-sm md:col-span-2">Rule value (JSON)<textarea value={value} onChange={(e) => setValue(e.target.value)} placeholder="Choose a rule" className="mt-1 block min-h-28 w-full rounded border p-2 font-mono text-xs" /></label>}<label className="text-sm md:col-span-2">Reason<input value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label></div><button disabled={!enabled || busy || !reason.trim() || (key !== "salary_calculation_policy" && !value.trim()) || !from} onClick={() => void save()} className="mt-4 rounded bg-amber-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving..." : "Save rule version"}</button><div className="mt-2 text-xs text-stone-500">Company value for this rule: {selectedRule?.company_value === undefined ? selectedRule?.value === undefined ? "Not configured" : JSON.stringify(selectedRule.value) : JSON.stringify(selectedRule.company_value)}</div></section>
   </main>;
 }

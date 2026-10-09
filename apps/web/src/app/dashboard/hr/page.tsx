@@ -2197,21 +2197,16 @@ function HrPageContent() {
   const [comprehensiveSalaryForm, setComprehensiveSalaryForm] =
     useState<ComprehensiveSalaryForm>(createEmptyComprehensiveSalaryForm());
 
-  // Auto-calculate deductions when basic salary changes
+  // Keep the employee's agreed HRA when Basic changes. HRA is an editable
+  // salary component and must never be silently replaced by a fixed ratio.
   const handleBasicSalaryChange = (basicSalary: number) => {
-    const hra = Math.round(basicSalary * 0.2); // 20% HRA
-    const grossEstimate =
-      basicSalary +
-      hra +
-      comprehensiveSalaryForm.medical_allowance +
-      comprehensiveSalaryForm.travelling_allowance;
-
-    const deductions = calculateStatutoryDeductions(basicSalary, grossEstimate);
-
-    setComprehensiveSalaryForm((prev) => ({
+    setComprehensiveSalaryForm((prev) => {
+      const grossEstimate =
+        basicSalary + prev.hra + prev.medical_allowance + prev.travelling_allowance;
+      const deductions = calculateStatutoryDeductions(basicSalary, grossEstimate);
+      return {
       ...prev,
       basic_salary: basicSalary,
-      hra: hra,
       pf_deduction: prev.pf_enabled ? deductions.pf : 0,
       pf_employer_contribution: prev.pf_enabled
         ? Math.round(basicSalary * 0.12 * 100) / 100
@@ -2221,7 +2216,8 @@ function HrPageContent() {
         ? Math.round((grossEstimate <= 21000 ? grossEstimate * 0.0325 : 0) * 100) /
           100
         : 0,
-    }));
+      };
+    });
   };
 
   const [payrollRunForm, setPayrollRunForm] = useState({
@@ -3272,9 +3268,21 @@ function HrPageContent() {
     setLoading(true);
     try {
       const response = await apiClient.get<any>(`/hr/salary/${employeeId}`);
-      const components: SalaryComponent[] = Array.isArray(response)
+      const history: SalaryComponent[] = Array.isArray(response)
         ? response
         : response?.data || [];
+      const today = getTodayDateInputValue();
+      const components = effectiveSalaryEnabled
+        ? history.filter((component) =>
+            component.effective_from &&
+            String(component.effective_from).slice(0, 10) <= today &&
+            (!component.effective_to || String(component.effective_to).slice(0, 10) >= today),
+          )
+        : history;
+      if (effectiveSalaryEnabled && history.some((component) => !component.effective_from)) {
+        alert("Some salary components have no confirmed effective date. Review their salary history before creating a new revision.");
+        return;
+      }
       const findByType = (type: string) =>
         components.find((component) => component.component_type === type);
       const findByName = (name: string) =>
@@ -3306,7 +3314,7 @@ function HrPageContent() {
           .filter(
             (component) =>
               component.component_type === "ALLOWANCE" &&
-              !["Medical", "Travelling", "Special Allowance"].includes(
+              !["Medical", "Travelling"].includes(
                 component.component_name,
               ),
           )
@@ -3760,23 +3768,35 @@ function HrPageContent() {
           ? await apiClient.get<any>(`/hr/salary/${employeeId}`)
           : [];
         const existingRows: SalaryComponent[] = Array.isArray(existingResponse) ? existingResponse : existingResponse?.data || [];
+        if (existingRows.some((row) => !row.effective_from)) {
+          alert("Salary history contains an undated component. Confirm its effective date before changing this employee's salary.");
+          setLoading(false);
+          return;
+        }
         const usedIds = new Set<string>();
         const targetDate = salaryRevisionEffectiveFrom;
         const eligibleExisting = existingRows.filter((row) => {
-          const start = row.effective_from || row.ctc_revised_date || null;
+          const start = row.effective_from || null;
           return Boolean(start) && start! < targetDate && (!row.effective_to || row.effective_to >= targetDate);
         });
-        const revisions = components.map((component: any) => {
+        const revisions = components.flatMap((component: any) => {
           const prior = eligibleExisting.find((row) =>
             !usedIds.has(row.id) &&
             row.component_type === component.component_type &&
             row.component_name === component.component_name,
           );
           if (prior) usedIds.add(prior.id);
-          return { ...component, supersedes_id: prior?.id || null };
+          if (prior && Number(prior.amount) === Number(component.amount) && prior.is_taxable === component.is_taxable) return [];
+          return [{ ...component, supersedes_id: prior?.id || null }];
         });
+        const editableTypes = new Set(["CTC", "BASIC", "HRA", "ALLOWANCE", "PF", "PF_EMPLOYER", "ESI", "ESI_EMPLOYER", "TAX", "DEDUCTION"]);
         for (const prior of eligibleExisting) {
-          if (!usedIds.has(prior.id)) revisions.push({ action: "END", component_id: prior.id });
+          if (!usedIds.has(prior.id) && editableTypes.has(prior.component_type)) revisions.push({ action: "END", component_id: prior.id });
+        }
+        if (revisions.length === 0) {
+          alert("No salary amounts changed. The existing salary history was kept.");
+          setLoading(false);
+          return;
         }
         await apiClient.post(`/hr/salary/${employeeId}/revisions`, {
           effective_from: salaryRevisionEffectiveFrom,
@@ -10392,6 +10412,10 @@ function HrPageContent() {
                             </button>
                             {isExpanded && (
                               <div className="border-t border-[#EFE3CF] bg-[#FFFEFC] px-3 py-3 sm:px-5">
+                                <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+                                  {canEditHR && <button type="button" onClick={() => void openComprehensiveSalaryEdit(group.employeeId)} className="rounded-lg border border-[#D8C4A8] px-3 py-2 font-semibold text-[#4A3426]">Edit salary setup</button>}
+                                  <Link href={`/dashboard/hr/payroll/rules?employeeId=${encodeURIComponent(group.employeeId)}`} className="rounded-lg border border-[#D8C4A8] px-3 py-2 font-semibold text-[#6F4E37]">View employee payroll rules</Link>
+                                </div>
                                 <div className="hidden overflow-x-auto md:block">
                                   <table className="min-w-full text-left text-sm">
                                     <thead className="bg-[#F7F3EA] text-[11px] font-bold uppercase tracking-wide text-[#6F5A49]">
@@ -14008,7 +14032,7 @@ function HrPageContent() {
                       required
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Auto-calculates HRA, PF, ESI, PT
+                      Keeps this employee's HRA amount. Review applicable deductions before saving.
                     </p>
                   </div>
                   <div>
