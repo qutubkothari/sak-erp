@@ -476,6 +476,32 @@ function PurchaseOrdersContent() {
   const [trailData, setTrailData] = useState<any>(null);
   const [trailLoading, setTrailLoading] = useState(false);
   const [trailPO, setTrailPO] = useState<PurchaseOrder | null>(null);
+  const [showOutstandingReceiptDetails, setShowOutstandingReceiptDetails] = useState(false);
+
+  const outstandingReceiptRows = (trailPO?.purchase_order_items || []).map((line, index) => {
+    const ordered = Math.max(0, Number(line.ordered_qty ?? line.quantity ?? 0) || 0);
+    const received = Math.max(0, Number(line.received_qty ?? 0) || 0);
+    const accepted = Math.max(0, Number((line as any).accepted_qty ?? 0) || 0);
+    const rejected = Math.max(0, Number((line as any).rejected_qty ?? 0) || 0);
+    return {
+      id: String(line.id || `${line.item_code || line.item_name || 'line'}-${index}`),
+      code: line.item_code || line.item?.code || '',
+      name: line.item_name || line.item?.name || line.item_code || `PO line ${index + 1}`,
+      uom: line.uom || line.item?.uom || 'units',
+      ordered,
+      received,
+      accepted,
+      rejected,
+      pendingReceipt: Math.max(0, ordered - received),
+      awaitingQc: Math.max(0, received - accepted - rejected),
+    };
+  });
+  const outstandingReceiptSummary = {
+    lines: outstandingReceiptRows.length,
+    receivedLines: outstandingReceiptRows.filter((line) => line.received > 0).length,
+    pendingLines: outstandingReceiptRows.filter((line) => line.pendingReceipt > 0).length,
+    completeLines: outstandingReceiptRows.filter((line) => line.ordered > 0 && line.pendingReceipt === 0).length,
+  };
 
   const orderSelection = useSelection(orders);
 
@@ -2494,6 +2520,7 @@ function PurchaseOrdersContent() {
   const fetchTrailData = async (po: PurchaseOrder) => {
     try {
       setTrailLoading(true);
+      setShowOutstandingReceiptDetails(false);
       const detailedPO = await apiClient.get<PurchaseOrder>(`/purchase/orders/${po.id}`).catch(() => po);
       const activePO = detailedPO || po;
       setTrailPO(activePO);
@@ -6392,13 +6419,95 @@ function PurchaseOrdersContent() {
                         ['TDS / Short Pay', Number(trailData.financialSummary?.tds || 0) + Number(trailData.financialSummary?.shortPayment || 0)],
                         ['Outstanding', trailData.financialSummary?.outstanding],
                       ].map(([label, value]) => (
-                        <div key={String(label)} className="bg-white p-3">
-                          <div className="text-xs font-medium text-[#7A6555]">{label}</div>
-                          <div className="mt-1 text-base font-bold tabular-nums text-[#4A3426]">{REGIONAL_PROFILE.currency} {fmtRoundedMoney(Number(value || 0))}</div>
-                        </div>
+                        String(label) === 'Outstanding' ? (
+                          <button
+                            key={String(label)}
+                            type="button"
+                            aria-expanded={showOutstandingReceiptDetails}
+                            aria-controls="po-outstanding-receipt-details"
+                            onClick={() => setShowOutstandingReceiptDetails((current) => !current)}
+                            className="bg-white p-3 text-left transition hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8B6F47]"
+                          >
+                            <span className="text-xs font-medium text-[#7A6555]">Outstanding payable</span>
+                            <span className="mt-1 block text-base font-bold tabular-nums text-[#4A3426]">{REGIONAL_PROFILE.currency} {fmtRoundedMoney(Number(value || 0))}</span>
+                            <span className="mt-1 block text-[11px] font-medium text-[#8B6F47]">{showOutstandingReceiptDetails ? 'Hide' : 'View'} ordered / received / pending items</span>
+                          </button>
+                        ) : (
+                          <div key={String(label)} className="bg-white p-3">
+                            <div className="text-xs font-medium text-[#7A6555]">{label}</div>
+                            <div className="mt-1 text-base font-bold tabular-nums text-[#4A3426]">{REGIONAL_PROFILE.currency} {fmtRoundedMoney(Number(value || 0))}</div>
+                          </div>
+                        )
                       ))}
                     </div>
                   </div>
+
+                  {showOutstandingReceiptDetails && (
+                    <section id="po-outstanding-receipt-details" aria-label="Purchase order receipt progress" className="rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-bold uppercase tracking-wide text-[#5E4635]">Ordered and received by product</h3>
+                          <p className="mt-1 text-xs text-[#6F5A45]">Payable outstanding is an invoice balance. The quantities below show PO fulfillment from GRN receipt and QC records.</p>
+                        </div>
+                        <div className="rounded-md border border-amber-200 bg-white px-3 py-2 text-right">
+                          <div className="text-[11px] font-medium text-[#7A6555]">Outstanding payable</div>
+                          <div className="text-sm font-bold tabular-nums text-[#4A3426]">{REGIONAL_PROFILE.currency} {fmtRoundedMoney(Number(trailData.financialSummary?.outstanding || 0))}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+                        {[
+                          ['Product lines', outstandingReceiptSummary.lines],
+                          ['Lines with receipts', outstandingReceiptSummary.receivedLines],
+                          ['Lines pending receipt', outstandingReceiptSummary.pendingLines],
+                          ['Fully received lines', outstandingReceiptSummary.completeLines],
+                        ].map(([label, value]) => (
+                          <div key={String(label)} className="rounded-md border border-[#E8DCC4] bg-white px-3 py-2">
+                            <div className="text-[11px] font-medium text-[#7A6555]">{label}</div>
+                            <div className="mt-0.5 text-lg font-bold tabular-nums text-[#4A3426]">{value}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {outstandingReceiptRows.length > 0 ? (
+                        <div className="mt-4 overflow-x-auto rounded-md border border-[#E8DCC4] bg-white">
+                          <table className="min-w-[920px] w-full text-sm">
+                            <thead className="bg-[#FAF7F1] text-left text-xs uppercase tracking-wide text-[#6F5A45]">
+                              <tr>
+                                <th className="px-3 py-2">Product</th>
+                                <th className="px-3 py-2 text-right">Ordered</th>
+                                <th className="px-3 py-2 text-right">Received</th>
+                                <th className="px-3 py-2 text-right">Pending receipt</th>
+                                <th className="px-3 py-2 text-right">Accepted</th>
+                                <th className="px-3 py-2 text-right">Awaiting QC</th>
+                                <th className="px-3 py-2 text-right">Rejected</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {outstandingReceiptRows.map((line) => (
+                                <tr key={line.id} className="border-t border-[#EFE6D7]">
+                                  <td className="px-3 py-2">
+                                    <div className="font-semibold text-[#4A3426]">{line.name}</div>
+                                    {line.code && line.code !== line.name && <div className="text-xs text-[#7A6555]">{line.code}</div>}
+                                  </td>
+                                  <td className="px-3 py-2 text-right tabular-nums">{line.ordered.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {line.uom}</td>
+                                  <td className="px-3 py-2 text-right tabular-nums">{line.received.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {line.uom}</td>
+                                  <td className={`px-3 py-2 text-right font-semibold tabular-nums ${line.pendingReceipt > 0 ? 'text-amber-800' : 'text-emerald-700'}`}>{line.pendingReceipt.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {line.uom}</td>
+                                  <td className="px-3 py-2 text-right tabular-nums">{line.accepted.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {line.uom}</td>
+                                  <td className={`px-3 py-2 text-right tabular-nums ${line.awaitingQc > 0 ? 'text-sky-800' : ''}`}>{line.awaitingQc.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {line.uom}</td>
+                                  <td className={`px-3 py-2 text-right tabular-nums ${line.rejected > 0 ? 'text-red-700' : ''}`}>{line.rejected.toLocaleString('en-IN', { maximumFractionDigits: 3 })} {line.uom}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-md border border-[#E8DCC4] bg-white p-4 text-sm text-[#7A6555]">No product lines are available for this PO.</div>
+                      )}
+
+                      <p className="mt-3 text-xs text-[#6F5A45]">Pending receipt is ordered quantity minus GRN-received quantity. Awaiting QC is received quantity not yet accepted or rejected. Quantities stay in each product's own unit and are not combined across unlike units.</p>
+                    </section>
+                  )}
 
                   {/* GRNs Section */}
                   <div className="border-l-4 border-green-500 pl-4">
