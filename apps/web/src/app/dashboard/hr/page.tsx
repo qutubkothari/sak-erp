@@ -2663,14 +2663,7 @@ function HrPageContent() {
             return null;
           }
 
-          const empData = await apiClient.get<any>("/hr/employees");
-          const allEmployees: Employee[] = Array.isArray(empData)
-            ? empData
-            : empData.data || [];
-          const match =
-            allEmployees.find((emp) => normalizeText(emp.user_id) === userId) ||
-            allEmployees.find((emp) => normalizeText(emp.email) === email) ||
-            null;
+          const match = await apiClient.get<Employee | null>("/hr/employees/me");
 
           if (!match) {
             setMyEmployee(null);
@@ -2741,7 +2734,7 @@ function HrPageContent() {
 
         if (activeTab === "payroll") {
           if (payrollSubTab === "payslips") {
-            const slipsData = await apiClient.get<any>("/hr/payroll/payslips");
+            const slipsData = await apiClient.get<any>("/hr/payroll/my-payslips");
             const slips = Array.isArray(slipsData)
               ? slipsData
               : slipsData.data || [];
@@ -2756,7 +2749,7 @@ function HrPageContent() {
           }
 
           if (payrollSubTab === "monthly") {
-            const monthlyData = await apiClient.get<any>("/hr/payroll/monthly");
+            const monthlyData = await apiClient.get<any>("/hr/payroll/my-monthly");
             const records = Array.isArray(monthlyData)
               ? monthlyData
               : monthlyData.data || [];

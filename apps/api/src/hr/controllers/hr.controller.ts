@@ -164,10 +164,16 @@ export class HrController {
     return this.hrService.createEmployee(req.user.tenantId, body);
   }
   @Get("employees")
+  @RequireRead("hr")
   getEmployees(@Request() req: any) {
     return this.hrService.getEmployees(req.user.tenantId);
   }
+  @Get("employees/me")
+  getMyEmployee(@Request() req: any) {
+    return this.hrService.getEmployeeForLogin(req.user.tenantId, req.user.userId, req.user.email);
+  }
   @Get("employees/:id")
+  @RequireRead("hr")
   getEmployee(@Request() req: any, @Param("id") id: string) {
     return this.hrService.getEmployee(req.user.tenantId, id);
   }
@@ -540,6 +546,7 @@ export class HrController {
     return this.hrService.getSalaryComponents(req.user.tenantId);
   }
   @Get("salary/:employeeId")
+  @RequireRead("hr")
   getSalaryComponents(
     @Request() req: any,
     @Param("employeeId") employeeId: string,
@@ -824,8 +831,14 @@ export class HrController {
     }
   }
   @Get("payroll/payslips")
+  @RequireRead("hr")
   getPayslips(@Request() req: any, @Query("employeeId") employeeId?: string) {
     return this.hrService.getPayslips(req.user.tenantId, employeeId);
+  }
+  @Get("payroll/my-payslips")
+  async getMyPayslips(@Request() req: any) {
+    const employee = await this.hrService.getEmployeeForLogin(req.user.tenantId, req.user.userId, req.user.email);
+    return employee ? this.hrService.getPayslips(req.user.tenantId, employee.id) : [];
   }
 
   // Monthly Payroll Processing
@@ -850,8 +863,16 @@ export class HrController {
   }
 
   @Get("payroll/monthly")
+  @RequireRead("hr")
   getMonthlyPayrolls(@Request() req: any, @Query("month") month?: string) {
     return this.hrService.getMonthlyPayrolls(req.user.tenantId, month);
+  }
+  @Get("payroll/my-monthly")
+  async getMyMonthlyPayrolls(@Request() req: any, @Query("month") month?: string) {
+    const employee = await this.hrService.getEmployeeForLogin(req.user.tenantId, req.user.userId, req.user.email);
+    if (!employee) return [];
+    const records = await this.hrService.getMonthlyPayrolls(req.user.tenantId, month);
+    return records.filter((record: any) => record.employee_id === employee.id);
   }
 
   @Put("payroll/monthly/:id")
