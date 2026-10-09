@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Put,
   Delete,
   Body,
@@ -181,6 +182,11 @@ export class HrController {
     @Body() body: any,
   ) {
     return this.hrService.updateEmployee(req.user.tenantId, id, body);
+  }
+  @Patch("employees/:id/per-diem")
+  @RequireUpdate("hr")
+  updateEmployeePerDiem(@Request() req: any, @Param("id") id: string, @Body() body: { amount?: number; reason?: string }) {
+    return this.hrService.updateEmployeePerDiem(req.user.tenantId, id, body, req);
   }
   @Delete("employees/:id")
   @RequireDelete("hr")
