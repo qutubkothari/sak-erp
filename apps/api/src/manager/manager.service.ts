@@ -5,7 +5,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 export interface PendingApproval {
   id: string;
   number: string;
-  type: 'PR' | 'PO' | 'GRN' | 'JO' | 'QC' | 'SES';
+  type: 'PR' | 'PO' | 'GRN' | 'JO' | 'QC' | 'SES' | 'LEAVE' | 'BOM' | 'ITEM';
   requestedBy: string;
   requestedDate: string;
   amount?: number;
@@ -336,6 +336,112 @@ export class ManagerService {
             requestedDate: entry.created_at,
             amount: ((entry as any).items || []).reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0),
             status: 'Awaiting service acceptance',
+          });
+        }
+      }
+
+      // HR leave requests use the native leave approval flow. Keep the queue
+      // tenant scoped and exclude terminal decisions.
+      let { data: leaveRequests, error: leaveRequestsError } = await this.supabase
+        .from('leave_requests')
+        .select('id, employee_id, leave_type, start_date, end_date, total_days, status')
+        .eq('tenant_id', tenantId)
+        .in('status', ['PENDING', 'PENDING_APPROVAL'])
+        .order('start_date', { ascending: true });
+
+      // Some older tenant databases do not have leave_requests.tenant_id.
+      // Use tenant-owned employee IDs for the established legacy fallback.
+      if (leaveRequestsError && /tenant_id/i.test(leaveRequestsError.message || '')) {
+        const { data: employees, error: employeesError } = await this.supabase
+          .from('employees')
+          .select('id')
+          .eq('tenant_id', tenantId);
+        if (!employeesError && (employees || []).length > 0) {
+          const employeeIds = (employees || []).map((employee: any) => employee.id).filter(Boolean);
+          const fallback = await this.supabase
+            .from('leave_requests')
+            .select('id, employee_id, leave_type, start_date, end_date, total_days, status')
+            .in('employee_id', employeeIds)
+            .in('status', ['PENDING', 'PENDING_APPROVAL'])
+            .order('start_date', { ascending: true });
+          leaveRequests = fallback.data;
+          leaveRequestsError = fallback.error;
+        }
+      }
+
+      if (leaveRequestsError) {
+        console.warn('[ManagerService] Leave approval queue unavailable:', leaveRequestsError.message);
+      } else {
+        const leaveEmployeeIds = Array.from(new Set((leaveRequests || []).map((leave: any) => String(leave.employee_id || '')).filter(Boolean)));
+        const { data: leaveEmployees } = leaveEmployeeIds.length
+          ? await this.supabase.from('employees').select('id, employee_name, employee_code').eq('tenant_id', tenantId).in('id', leaveEmployeeIds)
+          : { data: [] };
+        const leaveEmployeeById = new Map((leaveEmployees || []).map((employee: any) => [String(employee.id), employee]));
+        for (const leave of leaveRequests || []) {
+          const employee = leaveEmployeeById.get(String(leave.employee_id || ''));
+          approvals.push({
+            id: leave.id,
+            number: `${leave.leave_type || 'Leave'} · ${leave.start_date || ''}${leave.end_date && leave.end_date !== leave.start_date ? ` – ${leave.end_date}` : ''}`.trim(),
+            type: 'LEAVE',
+            requestedBy: employee?.employee_name || employee?.employee_code || String(leave.employee_id || 'Employee'),
+            requestedDate: leave.start_date || '',
+            status: `${leave.total_days || 0} day(s) · ${leave.status}`,
+          });
+        }
+      }
+
+      // A submitted BOM is awaiting independent release through the existing
+      // BOM approval flow.
+      const { data: submittedBoms, error: bomQueueError } = await this.supabase
+        .from('bom_headers')
+        .select('id, item_id, version, lifecycle_status, created_at, created_by')
+        .eq('tenant_id', tenantId)
+        .eq('lifecycle_status', 'SUBMITTED')
+        .order('created_at', { ascending: false });
+
+      if (bomQueueError) {
+        console.warn('[ManagerService] BOM approval queue unavailable:', bomQueueError.message);
+      } else {
+        const userNames = await resolveUserNames((submittedBoms || []).map((bom: any) => bom.created_by));
+        const itemIds = Array.from(new Set((submittedBoms || []).map((bom: any) => String(bom.item_id || '')).filter(Boolean)));
+        const { data: bomItems } = itemIds.length
+          ? await this.supabase.from('items').select('*').in('id', itemIds)
+          : { data: [] };
+        const bomItemsById = new Map((bomItems || []).map((item: any) => [String(item.id), item]));
+        for (const bom of submittedBoms || []) {
+          const item = bomItemsById.get(String(bom.item_id || ''));
+          approvals.push({
+            id: bom.id,
+            number: `${item?.item_code || item?.code || item?.item_name || item?.name || bom.item_id} · BOM v${bom.version || 1}`,
+            type: 'BOM',
+            requestedBy: userNames.get(String(bom.created_by || '')) || 'Unknown',
+            requestedDate: bom.created_at,
+            status: 'Awaiting BOM approval',
+          });
+        }
+      }
+
+      // Item-master verification is the native maker-checker gate for new and
+      // changed item records. Do not include drafts without a pending approval.
+      const { data: pendingItems, error: itemQueueError } = await this.supabase
+        .from('items')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('approval_status', 'PENDING')
+        .order('created_at', { ascending: false });
+
+      if (itemQueueError) {
+        console.warn('[ManagerService] Item approval queue unavailable:', itemQueueError.message);
+      } else {
+        const userNames = await resolveUserNames((pendingItems || []).map((item: any) => item.created_by));
+        for (const item of pendingItems || []) {
+          approvals.push({
+            id: item.id,
+            number: `${item.item_code || item.code || ''} ${item.item_name || item.name || ''}`.trim() || item.id,
+            type: 'ITEM',
+            requestedBy: userNames.get(String(item.created_by || '')) || 'Unknown',
+            requestedDate: item.created_at,
+            status: 'Awaiting item verification',
           });
         }
       }

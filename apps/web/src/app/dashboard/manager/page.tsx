@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 interface PendingApproval {
   id: string;
   number: string;
-  type: 'PR' | 'PO' | 'GRN' | 'JO' | 'QC' | 'SES';
+  type: 'PR' | 'PO' | 'GRN' | 'JO' | 'QC' | 'SES' | 'LEAVE' | 'BOM' | 'ITEM';
   requestedBy: string;
   requestedDate: string;
   amount?: number;
@@ -28,6 +28,9 @@ interface ApprovalStats {
   joCount: number;
   qcCount: number;
   sesCount: number;
+  leaveCount: number;
+  bomCount: number;
+  itemCount: number;
 }
 
 type PendingPO = {
@@ -60,6 +63,9 @@ export default function ManagerDashboardPage() {
     joCount: 0,
     qcCount: 0,
     sesCount: 0,
+    leaveCount: 0,
+    bomCount: 0,
+    itemCount: 0,
   });
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,6 +125,9 @@ export default function ManagerDashboardPage() {
           joCount: next.filter((item) => item.type === 'JO').length,
           qcCount: qcApprovals.length,
           sesCount: next.filter((item) => item.type === 'SES').length,
+          leaveCount: next.filter((item) => item.type === 'LEAVE').length,
+          bomCount: next.filter((item) => item.type === 'BOM').length,
+          itemCount: next.filter((item) => item.type === 'ITEM').length,
         });
         return next;
       });
@@ -181,6 +190,9 @@ export default function ManagerDashboardPage() {
       const joCount = data.filter((a: PendingApproval) => a.type === 'JO').length;
       const qcCount = data.filter((a: PendingApproval) => a.type === 'QC').length;
       const sesCount = data.filter((a: PendingApproval) => a.type === 'SES').length;
+      const leaveCount = data.filter((a: PendingApproval) => a.type === 'LEAVE').length;
+      const bomCount = data.filter((a: PendingApproval) => a.type === 'BOM').length;
+      const itemCount = data.filter((a: PendingApproval) => a.type === 'ITEM').length;
 
       setStats({
         totalPending: data.length,
@@ -190,6 +202,9 @@ export default function ManagerDashboardPage() {
         joCount,
         qcCount,
         sesCount,
+        leaveCount,
+        bomCount,
+        itemCount,
       });
       setApprovals(data);
     } catch (error) {
@@ -210,6 +225,9 @@ export default function ManagerDashboardPage() {
       case 'JO': return <Wrench className="w-5 h-5" />;
       case 'QC': return <CheckCircle2 className="w-5 h-5" />;
       case 'SES': return <FileCheck2 className="w-5 h-5" />;
+      case 'LEAVE': return <Clock className="w-5 h-5" />;
+      case 'BOM': return <FileCheck2 className="w-5 h-5" />;
+      case 'ITEM': return <Package className="w-5 h-5" />;
       default: return <FileText className="w-5 h-5" />;
     }
   };
@@ -222,6 +240,9 @@ export default function ManagerDashboardPage() {
       case 'JO': return '#4682B4';
       case 'QC': return '#DC2626';
       case 'SES': return '#087A55';
+      case 'LEAVE': return '#7C3AED';
+      case 'BOM': return '#0F766E';
+      case 'ITEM': return '#2563EB';
       default: return '#8B6F47';
     }
   };
@@ -245,6 +266,15 @@ export default function ManagerDashboardPage() {
         break;
       case 'SES':
         router.push('/dashboard/purchase/service-entries');
+        break;
+      case 'LEAVE':
+        router.push('/dashboard/hr/management?section=management&tab=leaves');
+        break;
+      case 'BOM':
+        router.push('/dashboard/bom');
+        break;
+      case 'ITEM':
+        router.push('/dashboard/inventory/items');
         break;
     }
   };
@@ -272,7 +302,7 @@ export default function ManagerDashboardPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {[
           { title: 'Purchase Requisitions', value: stats.prCount, type: 'PR', icon: FileText, color: '#8B6F47' },
           { title: 'Purchase Orders', value: stats.poCount, type: 'PO', icon: Package, color: '#6F4E37' },
@@ -280,6 +310,9 @@ export default function ManagerDashboardPage() {
           { title: 'Job Orders', value: stats.joCount, type: 'JO', icon: Wrench, color: '#4682B4' },
           { title: 'Quality Control', value: stats.qcCount, type: 'QC', icon: CheckCircle2, color: '#DC2626' },
           { title: 'Service Acceptance', value: stats.sesCount, type: 'SES', icon: FileCheck2, color: '#087A55' },
+          { title: 'Leave Requests', value: stats.leaveCount, type: 'LEAVE', icon: Clock, color: '#7C3AED' },
+          { title: 'BOM Approvals', value: stats.bomCount, type: 'BOM', icon: FileCheck2, color: '#0F766E' },
+          { title: 'Item Master', value: stats.itemCount, type: 'ITEM', icon: Package, color: '#2563EB' },
         ].map((card, index) => (
           <div
             key={index}
@@ -324,7 +357,7 @@ export default function ManagerDashboardPage() {
           aria-label="Approval type"
         >
           <option value="ALL">All ({stats.totalPending})</option>
-          {['PR', 'PO', 'GRN', 'JO', 'QC', 'SES'].map((type) => {
+          {['PR', 'PO', 'GRN', 'JO', 'QC', 'SES', 'LEAVE', 'BOM', 'ITEM'].map((type) => {
             const count = stats[`${type.toLowerCase()}Count` as keyof ApprovalStats] as number;
             return <option key={type} value={type}>{type} ({count})</option>;
           })}
