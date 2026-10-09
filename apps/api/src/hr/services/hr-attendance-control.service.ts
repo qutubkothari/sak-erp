@@ -850,6 +850,9 @@ export class HrAttendanceControlService {
         present_days: count("PRESENT") + count("LATE"),
         half_days: count("HALF_DAY"),
         paid_leave_days: count("PAID_LEAVE"),
+        comp_off_leave_days: rows.filter(
+          (row) => row.status === "PAID_LEAVE" && row.leave_type === "COMP_OFF",
+        ).length,
         unpaid_leave_days: count("UNPAID_LEAVE"),
         paid_weekly_off_days: count("WEEK_OFF"),
         base_payable_calendar_days: round2(rows.reduce((sum, row) => sum + row.payable_days, 0) + count("WEEK_OFF")),
