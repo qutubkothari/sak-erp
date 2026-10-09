@@ -387,6 +387,13 @@ export const SCREEN_DEFINITIONS: ScreenDefinition[] = [
     match: "prefix",
   },
   {
+    key: "hr-payroll-setup",
+    label: "HR & Payroll Setup",
+    module: "HR Management",
+    route: "/dashboard/hr/payroll/rules",
+    match: "prefix",
+  },
+  {
     key: "hr-management",
     label: "HR - Management / Payroll",
     module: "HR Management",

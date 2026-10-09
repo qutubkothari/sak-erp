@@ -313,6 +313,14 @@ const staticItems: CmdItem[] = [
     group: "HR",
   },
   {
+    id: "hr-payroll-setup",
+    label: "HR & Payroll Setup",
+    subtitle: "Salary, per diem, leave, overtime, and bonus rules",
+    icon: <Users className="h-4 w-4" />,
+    href: "/dashboard/hr/payroll/rules",
+    group: "HR",
+  },
+  {
     id: "documents",
     label: "Documents",
     icon: <FileText className="h-4 w-4" />,

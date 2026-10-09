@@ -456,6 +456,7 @@ const navigation: NavigationItem[] = [
         href: "/dashboard/hr/management?tab=attendance",
       },
       { name: "Payroll", href: "/dashboard/hr/management?tab=payroll" },
+      { name: "HR & Payroll Setup", href: "/dashboard/hr/payroll/rules" },
       {
         name: "Skills & Capacity Risk",
         href: "/dashboard/hr/workforce-skills",
