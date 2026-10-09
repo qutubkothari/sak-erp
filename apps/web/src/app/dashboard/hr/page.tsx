@@ -299,6 +299,8 @@ interface ComprehensiveSalaryForm {
   hra: number;
   medical_allowance: number;
   travelling_allowance: number;
+  dearness_allowance: number;
+  special_allowance: number;
   pf_deduction: number;
   pf_enabled: boolean;
   pf_employer_contribution: number;
@@ -319,6 +321,8 @@ function createEmptyComprehensiveSalaryForm(): ComprehensiveSalaryForm {
     hra: 0,
     medical_allowance: 0,
     travelling_allowance: 0,
+    dearness_allowance: 0,
+    special_allowance: 0,
     pf_deduction: 0,
     pf_enabled: true,
     pf_employer_contribution: 0,
@@ -400,6 +404,7 @@ interface MonthlyPayroll {
   paid_for_total_days: number;
   bonus_monthly: number;
   production_incentive: number;
+  attendance_summary?: any;
   bonus_hold: number; // Bonus Monthly (On Hold)
   production_incentive_hold: number; // Production Incentive (On Hold)
   special_allowance: number;
@@ -812,7 +817,7 @@ function getNextLeaveDateInputValue(): string {
   return formatDateInputLocal(date);
 }
 
-function countLeaveDaysExcludingSundays(
+function countLeaveDates(
   startDate?: string,
   endDate?: string,
 ): number {
@@ -822,7 +827,7 @@ function countLeaveDaysExcludingSundays(
   const cursor = new Date(start);
   let count = 0;
   while (cursor.getTime() <= end.getTime()) {
-    if (cursor.getDay() !== 0) count += 1;
+    count += 1;
     cursor.setDate(cursor.getDate() + 1);
   }
   return count;
@@ -838,7 +843,7 @@ function normalizeLeaveDateForm<
     if (start && end && end.getTime() < start.getTime()) {
       next.end_date = next.start_date;
     }
-    next.total_days = countLeaveDaysExcludingSundays(
+    next.total_days = countLeaveDates(
       next.start_date,
       next.end_date,
     );
@@ -2096,6 +2101,21 @@ function HrPageContent() {
     total_days: 1,
     reason: "",
   });
+  const [leavePreviewError, setLeavePreviewError] = useState("");
+  useEffect(() => {
+    const employeeId = isEmployeePortal ? myEmployee?.id || leaveForm.employee_id : leaveForm.employee_id;
+    if ((!showLeaveForm && !showEditLeave) || !employeeId || !leaveForm.start_date || !leaveForm.end_date) return;
+    let cancelled = false;
+    apiClient.get<any>(`/hr/leaves/preview?employeeId=${encodeURIComponent(employeeId)}&startDate=${encodeURIComponent(leaveForm.start_date)}&endDate=${encodeURIComponent(leaveForm.end_date)}`)
+      .then((result) => {
+        if (cancelled) return;
+        const preview = result?.data || result;
+        setLeaveForm((current) => ({ ...current, total_days: Number(preview.total_days) }));
+        setLeavePreviewError("");
+      })
+      .catch((error: any) => { if (!cancelled) setLeavePreviewError(error?.message || "Leave-day preview unavailable."); });
+    return () => { cancelled = true; };
+  }, [showLeaveForm, showEditLeave, isEmployeePortal, myEmployee?.id, leaveForm.employee_id, leaveForm.start_date, leaveForm.end_date]);
 
   const [holidayForm, setHolidayForm] = useState({
     holiday_name: "",
@@ -2240,11 +2260,33 @@ function HrPageContent() {
     paid_for_total_days: 0,
     bonus_monthly: 0,
     production_incentive: 0,
+    production_quantity: null as number | null,
     bonus_hold: 0,
     production_incentive_hold: 0,
     special_allowance: 0,
     professional_tax: 200,
   });
+  const [monthlyProductionRule, setMonthlyProductionRule] = useState<{ rate_per_piece: number } | null>(null);
+  const [monthlyAnnualBonusRule, setMonthlyAnnualBonusRule] = useState<{ basis: string; salary_multiple: number; payout_month: number; payout_day: number } | null>(null);
+  useEffect(() => {
+    if (!showMonthlyPayrollForm || !monthlyPayrollForm.employee_id || !/^\d{4}-\d{2}$/.test(monthlyPayrollForm.payroll_month)) {
+      setMonthlyProductionRule(null);
+      setMonthlyAnnualBonusRule(null);
+      return;
+    }
+    let cancelled = false;
+    const [year, month] = monthlyPayrollForm.payroll_month.split("-").map(Number);
+    const effectiveDate = `${monthlyPayrollForm.payroll_month}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`;
+    apiClient.get<any>(`/hr/payroll/control/rules?effectiveDate=${effectiveDate}&employeeId=${encodeURIComponent(monthlyPayrollForm.employee_id)}`)
+      .then((result) => {
+        if (cancelled) return;
+        const rules = result?.rules || result?.data?.rules || [];
+        setMonthlyProductionRule(rules.find((row: any) => row.rule_key === "production_bonus_rule")?.value || null);
+        setMonthlyAnnualBonusRule(rules.find((row: any) => row.rule_key === "annual_bonus_rule")?.value || null);
+      })
+      .catch(() => { if (!cancelled) { setMonthlyProductionRule(null); setMonthlyAnnualBonusRule(null); } });
+    return () => { cancelled = true; };
+  }, [showMonthlyPayrollForm, monthlyPayrollForm.employee_id, monthlyPayrollForm.payroll_month]);
   const [monthlyPayrollAttendancePreview, setMonthlyPayrollAttendancePreview] =
     useState<MonthlyPayrollAttendancePreview | null>(null);
   const [monthlyPayrollAttendanceLoading, setMonthlyPayrollAttendanceLoading] =
@@ -3038,19 +3080,18 @@ function HrPageContent() {
         alert("End date cannot be before start date.");
         return;
       }
-      const totalDays = countLeaveDaysExcludingSundays(
+      const totalDays = countLeaveDates(
         leaveForm.start_date,
         leaveForm.end_date,
       );
       if (totalDays <= 0) {
         alert(
-          "Selected date range contains only Sunday(s). Sunday is a paid weekly off and does not require leave.",
+          "Select at least one valid leave date.",
         );
         return;
       }
       const payload = {
         ...leaveForm,
-        leave_type: "CASUAL",
         total_days: totalDays,
         employee_id: isEmployeePortal
           ? myEmployee?.id || leaveForm.employee_id
@@ -3296,6 +3337,8 @@ function HrPageContent() {
         hra: Number(findByType("HRA")?.amount || 0),
         medical_allowance: Number(findByName("Medical")?.amount || 0),
         travelling_allowance: Number(findByName("Travelling")?.amount || 0),
+        dearness_allowance: Number(findByName("Dearness Allowance")?.amount || 0),
+        special_allowance: Number(findByName("Special Allowance")?.amount || 0),
         pf_deduction: Number(pf?.amount || 0),
         pf_enabled: Boolean(pf || pfEmployer),
         pf_employer_contribution: Number(pfEmployer?.amount || 0),
@@ -3307,7 +3350,7 @@ function HrPageContent() {
           .filter(
             (component) =>
               component.component_type === "ALLOWANCE" &&
-              !["Medical", "Travelling"].includes(
+              !["Medical", "Travelling", "Dearness Allowance", "Special Allowance"].includes(
                 component.component_name,
               ),
           )
@@ -3445,60 +3488,8 @@ function HrPageContent() {
       return;
     }
     try {
-      // Calculate gross, net, and amount paid per salary slip format
-      const empRes = await apiClient.get<any>(
-        `/hr/salary/${monthlyPayrollForm.employee_id}`,
-      );
-      const components = Array.isArray(empRes) ? empRes : empRes.data || [];
-
-      // Fixed components (BASIC, HRA, MEDICAL, TRAVELLING)
-      const fixedComponents = components.filter(
-        (c: any) =>
-          ["BASIC", "HRA"].includes(c.component_type) ||
-          ["Medical", "Travelling"].includes(c.component_name),
-      );
-      const fixedTotal = fixedComponents.reduce(
-        (sum: number, c: any) => sum + Number(c.amount || 0),
-        0,
-      );
-
-      // Calculate full month gross salary
-      const fullMonthGross =
-        fixedTotal +
-        Number(monthlyPayrollForm.bonus_monthly) +
-        Number(monthlyPayrollForm.production_incentive) +
-        Number(monthlyPayrollForm.special_allowance);
-
-      // Prorate based on paid_for_total_days
-      const daysInMonth = Number(monthlyPayrollForm.days_in_month);
-      const paidDays = Number(monthlyPayrollForm.paid_for_total_days);
-      const grossSalary =
-        daysInMonth > 0 ? (fullMonthGross / daysInMonth) * paidDays : 0;
-
-      // Professional Tax should also be prorated
-      const fullMonthPT = Number(monthlyPayrollForm.professional_tax);
-      const professionalTax =
-        daysInMonth > 0 ? (fullMonthPT / daysInMonth) * paidDays : 0;
-
-      // Net Salary = Gross - Professional Tax (holds are NOT deducted here)
-      const netSalary = grossSalary - professionalTax;
-
-      // Monthly Hold = Bonus Hold + Production Incentive Hold
-      const monthlyHold =
-        Number(monthlyPayrollForm.bonus_hold) +
-        Number(monthlyPayrollForm.production_incentive_hold);
-
-      // Amount Paid = Net Salary - Monthly Hold
-      const amountPaid = netSalary - monthlyHold;
-
-      const payload = {
-        ...monthlyPayrollForm,
-        gross_salary: grossSalary,
-        net_salary: netSalary,
-        monthly_hold: monthlyHold,
-        amount_paid: amountPaid,
-        status: "DRAFT",
-      };
+      // The API calculates the payable amount from effective salary rules and the reviewed attendance snapshot.
+      const payload = { ...monthlyPayrollForm, status: "DRAFT" };
 
       if (selectedMonthlyPayroll?.id) {
         await apiClient.put(
@@ -3528,6 +3519,7 @@ function HrPageContent() {
         paid_for_total_days: 0,
         bonus_monthly: 0,
         production_incentive: 0,
+    production_quantity: null as number | null,
         bonus_hold: 0,
         production_incentive_hold: 0,
         special_allowance: 0,
@@ -3662,6 +3654,10 @@ function HrPageContent() {
           amount: comprehensiveSalaryForm.travelling_allowance,
           is_taxable: false,
         });
+      }
+
+      for (const [name, amount] of [["Dearness Allowance", comprehensiveSalaryForm.dearness_allowance], ["Special Allowance", comprehensiveSalaryForm.special_allowance]] as const) {
+        if (amount > 0) components.push({ employee_id: comprehensiveSalaryForm.employee_id, component_type: "ALLOWANCE", component_name: name, amount, is_taxable: true });
       }
 
       // Add deductions
@@ -3967,6 +3963,7 @@ function HrPageContent() {
         paid_for_total_days: 0,
         bonus_monthly: 0,
         production_incentive: 0,
+    production_quantity: null as number | null,
         bonus_hold: 0,
         production_incentive_hold: 0,
         special_allowance: 0,
@@ -4007,6 +4004,7 @@ function HrPageContent() {
         paid_for_total_days: 0,
         bonus_monthly: 0,
         production_incentive: 0,
+    production_quantity: null as number | null,
         bonus_hold: 0,
         production_incentive_hold: 0,
         special_allowance: specialAllowance,
@@ -4027,6 +4025,7 @@ function HrPageContent() {
         paid_for_total_days: 0,
         bonus_monthly: 0,
         production_incentive: 0,
+    production_quantity: null as number | null,
         bonus_hold: 0,
         production_incentive_hold: 0,
         special_allowance: 0,
@@ -4048,6 +4047,7 @@ function HrPageContent() {
       paid_for_total_days: record.paid_for_total_days,
       bonus_monthly: record.bonus_monthly,
       production_incentive: record.production_incentive,
+      production_quantity: record.attendance_summary?.salary_proration?.production_quantity ?? null,
       bonus_hold: record.bonus_hold,
       production_incentive_hold: record.production_incentive_hold,
       special_allowance: record.special_allowance,
@@ -11626,6 +11626,12 @@ function HrPageContent() {
               </div>
 
               <div className="mt-4">
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">Leave Type *</label>
+                <select value={leaveForm.leave_type} onChange={(e) => setLeaveForm((current) => ({ ...current, leave_type: e.target.value }))} className="min-h-11 w-full rounded-lg border border-[#D8C4A8] bg-white px-3 text-sm">
+                  {(["CASUAL", "SICK", "EARNED", "UNPAID", "MATERNITY", "PATERNITY", "COMP_OFF"] as const).map((type) => <option key={type} value={type}>{type.replace(/_/g, " ")}</option>)}
+                </select>
+              </div>
+              <div className="mt-4">
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
                   Total Days *
                 </label>
@@ -11638,9 +11644,9 @@ function HrPageContent() {
                   required
                 />
                 <p className="mt-1 text-xs text-[#7A6555]">
-                  Auto-calculated from start/end dates. Sundays are paid weekly
-                  off and are not counted.
+                  Calculated from this employee's effective working-day and leave rules.
                 </p>
+                {leavePreviewError && <p className="mt-1 text-xs text-red-700">{leavePreviewError}</p>}
               </div>
 
               <div className="mt-4">
@@ -13208,13 +13214,13 @@ function HrPageContent() {
                   alert("End date cannot be before start date.");
                   return;
                 }
-                const totalDays = countLeaveDaysExcludingSundays(
+                const totalDays = countLeaveDates(
                   leaveForm.start_date,
                   leaveForm.end_date,
                 );
                 if (totalDays <= 0) {
                   alert(
-                    "Selected date range contains only Sunday(s). Sunday is a paid weekly off and does not require leave.",
+                    "Select at least one valid leave date.",
                   );
                   return;
                 }
@@ -13222,7 +13228,6 @@ function HrPageContent() {
                 try {
                   await apiClient.put(`/hr/leaves/${selectedLeave.id}`, {
                     ...leaveForm,
-                    leave_type: "CASUAL",
                     total_days: totalDays,
                   });
                   setShowEditLeave(false);
@@ -13273,6 +13278,12 @@ function HrPageContent() {
                 </div>
               </div>
               <div>
+                <label className="block text-sm font-medium mb-1">Leave Type</label>
+                <select value={leaveForm.leave_type} onChange={(e) => setLeaveForm((current) => ({ ...current, leave_type: e.target.value }))} className="w-full border rounded px-3 py-2">
+                  {(["CASUAL", "SICK", "EARNED", "UNPAID", "MATERNITY", "PATERNITY", "COMP_OFF"] as const).map((type) => <option key={type} value={type}>{type.replace(/_/g, " ")}</option>)}
+                </select>
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-1">
                   Total Days
                 </label>
@@ -13285,8 +13296,9 @@ function HrPageContent() {
                   required
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Sundays are paid weekly off and are not counted.
+                  Calculated from this employee's effective working-day and leave rules.
                 </p>
+                {leavePreviewError && <p className="mt-1 text-xs text-red-700">{leavePreviewError}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Reason</label>
@@ -13619,6 +13631,10 @@ function HrPageContent() {
                   Variable Salary Components
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2 text-sm text-[#6F5A49]">
+                    Annual bonus: {monthlyAnnualBonusRule ? `${monthlyAnnualBonusRule.salary_multiple} × ${monthlyAnnualBonusRule.basis === "BASIC_MONTHLY" ? "monthly Basic" : "configured monthly gross"}; payout month ${monthlyAnnualBonusRule.payout_month}, day ${monthlyAnnualBonusRule.payout_day}. The server calculates it on the matching payroll month.` : "No annual bonus rule configured for this employee and month."}
+                    <Link className="ml-2 font-semibold text-amber-800 underline" href={`/dashboard/hr/payroll/rules?employeeId=${encodeURIComponent(monthlyPayrollForm.employee_id)}`}>Edit employee rules</Link>
+                  </div>
                   <div className="border-l-4 border-green-400 pl-3">
                     <label className="block text-sm font-medium mb-1">
                       Bonus Monthly
@@ -13635,11 +13651,20 @@ function HrPageContent() {
                       className="w-full border rounded px-3 py-2"
                       min="0"
                       step="0.01"
+                      disabled={Boolean(monthlyAnnualBonusRule)}
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Monthly bonus (included in gross)
+                      {monthlyAnnualBonusRule ? "Calculated from the annual bonus rule; shown after saving." : "Discretionary monthly bonus (included in gross)"}
                     </p>
                   </div>
+                  {monthlyProductionRule && <div className="border-l-4 border-green-400 pl-3">
+                    <label className="block text-sm font-medium mb-1">Approved production pieces</label>
+                    <input type="number" min="0" step="1" value={monthlyPayrollForm.production_quantity ?? ""} onChange={(e) => {
+                      const quantity = e.target.value === "" ? null : Number(e.target.value);
+                      setMonthlyPayrollForm((current) => ({ ...current, production_quantity: quantity, production_incentive: quantity === null ? 0 : Math.round(quantity * monthlyProductionRule.rate_per_piece * 100) / 100 }));
+                    }} className="w-full border rounded px-3 py-2" />
+                    <p className="text-xs text-gray-500 mt-1">Rate per piece: {monthlyProductionRule.rate_per_piece}. Enter zero when no pieces were approved.</p>
+                  </div>}
                   <div className="border-l-4 border-green-400 pl-3">
                     <label className="block text-sm font-medium mb-1">
                       Production Incentive Monthly
@@ -13656,9 +13681,10 @@ function HrPageContent() {
                       className="w-full border rounded px-3 py-2"
                       min="0"
                       step="0.01"
+                      readOnly={Boolean(monthlyProductionRule)}
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Production bonus (included in gross)
+                      {monthlyProductionRule ? "Calculated from approved pieces × effective rate" : "Production bonus (included in gross)"}
                     </p>
                   </div>
                   <div className="border-l-4 border-amber-400 pl-3">
@@ -14081,6 +14107,14 @@ function HrPageContent() {
                       min="0"
                       step="0.01"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Dearness Allowance (monthly)</label>
+                    <input type="number" value={comprehensiveSalaryForm.dearness_allowance} onChange={(e) => setComprehensiveSalaryForm({ ...comprehensiveSalaryForm, dearness_allowance: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Special Allowance (monthly)</label>
+                    <input type="number" value={comprehensiveSalaryForm.special_allowance} onChange={(e) => setComprehensiveSalaryForm({ ...comprehensiveSalaryForm, special_allowance: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
                   </div>
                 </div>
               </div>

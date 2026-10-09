@@ -598,6 +598,8 @@ export class HrAttendanceControlService {
       legacyAttendanceResult,
       leaveResult,
       holidayResult,
+      companyDayRulesResult,
+      employeeDayRulesResult,
     ] = await Promise.all([
       this.reportRows(employeeQuery),
       this.reportRows(() => attendanceQuery("attendance")),
@@ -608,6 +610,14 @@ export class HrAttendanceControlService {
         .select("start_date,end_date,holiday_name")
         .eq("tenant_id", tenantId)
         .order("id")),
+      this.reportRows(() => this.supabase.from("hr_payroll_rule_versions")
+        .select("id,rule_key,rule_value,effective_from,effective_to,reason,created_at")
+        .eq("tenant_id", tenantId).in("rule_key", ["attendance_day_rule", "paid_leave_types_rule", "weekly_working_days", "late_policy", "sandwich_leave_behavior"])
+        .lte("effective_from", end).order("effective_from", { ascending: false })),
+      this.reportRows(() => this.supabase.from("hr_employee_payroll_rule_overrides")
+        .select("id,employee_id,rule_key,rule_value,effective_from,effective_to,reason,created_at")
+        .eq("tenant_id", tenantId).in("rule_key", ["attendance_day_rule", "paid_leave_types_rule", "weekly_working_days", "late_policy", "sandwich_leave_behavior"])
+        .lte("effective_from", end).order("effective_from", { ascending: false })),
     ]);
     if (employeeError) throw new Error(employeeError.message);
     if (attendanceResult.error) throw new Error(attendanceResult.error.message);
@@ -615,6 +625,8 @@ export class HrAttendanceControlService {
       throw new Error(legacyAttendanceResult.error.message);
     if (leaveResult.error) throw new Error(leaveResult.error.message);
     if (holidayResult.error) throw new Error(holidayResult.error.message);
+    if (companyDayRulesResult.error) throw new Error(companyDayRulesResult.error.message);
+    if (employeeDayRulesResult.error) throw new Error(employeeDayRulesResult.error.message);
     // Match the existing Holidays screen's calendar when this tenant has no
     // saved holidays. Reads must not seed rows or invent a separate calendar.
     // Load the full saved calendar so a tenant's future custom calendar also
@@ -654,14 +666,30 @@ export class HrAttendanceControlService {
         );
         const policyForDate = resolveAttendancePolicyForDate(policy, historicalPolicies, date,
           (employeePolicies || []).filter((row: any) => row.employee_id === employee.id));
-        const employeeDatedRules = (employeePolicies || []).filter((row: any) => row.employee_id === employee.id);
-        const weeklyRule = resolvePayrollRule({ ruleKey: "weekly_working_days", effectiveDate: date, employeeOverrides: employeeDatedRules });
-        const lateRule = resolvePayrollRule({ ruleKey: "late_policy", effectiveDate: date, employeeOverrides: employeeDatedRules });
-        const confirmedLateMode = (lateRule.value as any)?.deduction_mode;
-        if (policyForDate && confirmedLateMode) policyForDate.late_deduction_mode = confirmedLateMode;
-        const workingWeekdays = Array.isArray(weeklyRule.value) ? weeklyRule.value.map(Number) : policyForDate?.working_weekdays;
-        const scheduled = workingWeekdays
-          ? workingWeekdays.includes(weekday) && !holiday
+        const dayRule = resolvePayrollRule<{ half_day_hours: number; full_day_hours: number }>({
+          ruleKey: "attendance_day_rule", effectiveDate: date,
+          tenantRules: (companyDayRulesResult.data || []).filter((row: any) => row.rule_key === "attendance_day_rule"),
+          employeeOverrides: (employeeDayRulesResult.data || []).filter((row: any) => row.employee_id === employee.id && row.rule_key === "attendance_day_rule"),
+        });
+        const paidLeaveRule = resolvePayrollRule<string[]>({
+          ruleKey: "paid_leave_types_rule", effectiveDate: date,
+          tenantRules: (companyDayRulesResult.data || []).filter((row: any) => row.rule_key === "paid_leave_types_rule"),
+          employeeOverrides: (employeeDayRulesResult.data || []).filter((row: any) => row.employee_id === employee.id && row.rule_key === "paid_leave_types_rule"),
+        });
+        const resolveDayRule = (ruleKey: string) => resolvePayrollRule<any>({
+          ruleKey, effectiveDate: date,
+          tenantRules: (companyDayRulesResult.data || []).filter((row: any) => row.rule_key === ruleKey),
+          employeeOverrides: (employeeDayRulesResult.data || []).filter((row: any) => row.employee_id === employee.id && row.rule_key === ruleKey),
+        });
+        const workingDaysRule = resolveDayRule("weekly_working_days");
+        const lateRule = resolveDayRule("late_policy");
+        const sandwichRule = resolveDayRule("sandwich_leave_behavior");
+        const workingWeekdays = Array.isArray(workingDaysRule.value) ? workingDaysRule.value : policyForDate?.working_weekdays;
+        const lateGraceMinutes = lateRule.value?.grace_minutes ?? policyForDate?.late_grace_minutes;
+        const fullDayHours = dayRule.value?.full_day_hours ?? policyForDate?.standard_daily_hours;
+        const halfDayHours = dayRule.value?.half_day_hours ?? policyForDate?.half_day_hours;
+        const scheduled = policyForDate
+          ? Boolean(workingWeekdays?.includes(weekday)) && !holiday
           : null;
         const attendance = attendanceByKey.get(
           `${employee.id}::${date}`,
@@ -691,7 +719,7 @@ export class HrAttendanceControlService {
                 0,
                 checkInMinutes -
                   timeMinutes(policyForDate!.shift_start) -
-                  policyForDate!.late_grace_minutes,
+                  Number(lateGraceMinutes),
               )
             : 0;
         const overtimeEligible = employee.overtime_eligible !== false;
@@ -725,7 +753,7 @@ export class HrAttendanceControlService {
         const leaveType = String(leave?.leave_type || "").toUpperCase();
         const paidLeave =
           Boolean(leave) &&
-          (leave?.is_paid === true || (leave?.is_paid !== false && (policyForDate || policy).paid_leave_types.includes(leaveType)));
+          (leave?.is_paid === true || (leave?.is_paid !== false && (paidLeaveRule.value ?? (policyForDate || policy).paid_leave_types).includes(leaveType)));
         let dayStatus =
           holiday
             ? "HOLIDAY"
@@ -744,7 +772,7 @@ export class HrAttendanceControlService {
           payableDays = 1;
         } else if (!policyForDate && leave && !attendance) {
           dayStatus = "LEAVE";
-        } else if (scheduled && leave && !(attendance && approvalValid && paidLeave)) {
+        } else if ((scheduled || (sandwichRule.value === "INCLUDE_WEEKENDS" && !holiday)) && leave && !(attendance && approvalValid && paidLeave)) {
           dayStatus = paidLeave ? "PAID_LEAVE" : "UNPAID_LEAVE";
           payableDays = paidLeave ? 1 : 0;
         } else if (attendance && !approvalValid) {
@@ -777,14 +805,14 @@ export class HrAttendanceControlService {
             dayStatus = holiday ? "HOLIDAY_WORKED" : "WEEK_OFF_WORKED";
             payableDays = 1;
           } else if (
-            workMinutes >= policyForDate!.standard_daily_hours * 60 ||
+            workMinutes >= Number(fullDayHours) * 60 ||
             (!attendance.check_out_time &&
               String(attendance.status).toUpperCase() === "PRESENT")
           ) {
             dayStatus =
               lateMinutes !== null && lateMinutes > 0 ? "LATE" : "PRESENT";
             payableDays = 1;
-          } else if (workMinutes >= policyForDate!.half_day_hours * 60) {
+          } else if (workMinutes >= Number(halfDayHours) * 60) {
             dayStatus = "HALF_DAY";
             payableDays = 0.5;
           }
@@ -800,10 +828,7 @@ export class HrAttendanceControlService {
           weekday,
           scheduled,
           holiday: holiday?.holiday_name || "",
-          weekly_off: workingWeekdays ? !workingWeekdays.includes(weekday) : null,
-          schedule_rule_version_id: weeklyRule.version?.id || null,
-          late_pay_rule_version_id: lateRule.version?.id || null,
-          late_deduction_policy: confirmedLateMode || policyForDate?.late_deduction_mode || null,
+          weekly_off: policyForDate ? !workingWeekdays?.includes(weekday) : null,
           working_weekdays: workingWeekdays || null,
           leave_approved: Boolean(leave),
           status: dayStatus,
@@ -813,6 +838,14 @@ export class HrAttendanceControlService {
           work_minutes: workMinutes,
           work_time: formatMinutes(workMinutes),
           payable_days: payableDays,
+          attendance_day_rule_id: dayRule.version?.id || null,
+          attendance_day_rule_source: dayRule.source,
+          paid_leave_types_rule_id: paidLeaveRule.version?.id || null,
+          paid_leave_types_rule_source: paidLeaveRule.source,
+          weekly_working_days_rule_id: workingDaysRule.version?.id || null,
+          late_policy_rule_id: lateRule.version?.id || null,
+          sandwich_leave_rule_id: sandwichRule.version?.id || null,
+          sandwich_leave_behavior: sandwichRule.value || "EXCLUDE_WEEKENDS",
           leave_type: leaveType || "",
           late_minutes: lateMinutes,
           overtime_hours: overtimeHours,
@@ -825,7 +858,7 @@ export class HrAttendanceControlService {
           policy_resolution_status: policyForDate
             ? "POLICY_FOR_DATE_FOUND"
             : "POLICY_FOR_DATE_NOT_FOUND",
-          policy: policyForDate,
+          policy: policyForDate ? { ...policyForDate, standard_daily_hours: fullDayHours, half_day_hours: halfDayHours, working_weekdays: workingWeekdays, paid_leave_types: paidLeaveRule.value ?? policyForDate.paid_leave_types, late_grace_minutes: lateGraceMinutes, late_deduction_mode: lateRule.value?.deduction_mode ?? policyForDate.late_deduction_mode, late_marks_per_half_day: lateRule.value?.marks_per_half_day ?? policyForDate.late_marks_per_half_day } : null,
           approval_status: approval,
           is_outside_zone: attendance?.is_outside_zone === true,
           is_outstation_travel: attendance?.is_outstation_travel === true,

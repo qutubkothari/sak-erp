@@ -17,6 +17,7 @@ type OvertimeDraft = {
   rate_multiplier?: number;
   minimum_hours?: number;
   cap_hours?: number;
+  grace_minutes?: number;
 };
 type SalaryCalculationPolicy = {
   annual_salary_basis: "ANNUAL_CTC" | "ANNUAL_CONFIGURED_EARNINGS";
@@ -36,6 +37,10 @@ const RULES = [
   ["payroll_close_day", "Payroll close day"], ["approval_threshold", "Approval threshold"],
   ["salary_calculation_policy", "Salary calculation policy"],
   ["employee_overtime_rule", "Company default overtime day credit"],
+  ["attendance_day_rule", "Attendance half-day and full-day hours"],
+  ["annual_bonus_rule", "Annual bonus basis and payout date"],
+  ["production_bonus_rule", "Production bonus rate per piece"],
+  ["paid_leave_types_rule", "Paid leave types"],
 ] as const;
 const today = () => new Date().toISOString().slice(0, 10);
 const unwrap = (value: any) => value?.data ?? value;
@@ -54,7 +59,7 @@ function OvertimeRuleEditor({ value, onChange }: { value: string; onChange: (val
   const update = (next: OvertimeDraft) => onChange(JSON.stringify(next));
   const numberField = (label: string, key: keyof OvertimeDraft) => (
     <label className="text-sm">{label}
-      <input type="number" min="0" max={key === "rate_multiplier" ? "10" : "24"} step="0.01" value={typeof rule[key] === "number" ? String(rule[key]) : ""}
+      <input type="number" min="0" max={key === "grace_minutes" ? "240" : key === "rate_multiplier" ? "10" : "24"} step={key === "grace_minutes" ? "1" : "0.01"} value={typeof rule[key] === "number" ? String(rule[key]) : ""}
         onChange={(event) => {
           const next = { ...rule } as Record<string, unknown>;
           if (event.target.value === "") delete next[key];
@@ -76,6 +81,7 @@ function OvertimeRuleEditor({ value, onChange }: { value: string; onChange: (val
         </select>
       </label>
       {numberField("Minimum work hours for overtime", "minimum_hours")}
+      {numberField("Grace minutes after overtime threshold", "grace_minutes")}
       {rule.method === "DAY_CREDIT" ? <>
         {numberField("Extra half day after work hours", "half_day_after_hours")}
         {numberField("Extra full day after work hours", "full_day_after_hours")}
@@ -90,7 +96,7 @@ function OvertimeRuleEditor({ value, onChange }: { value: string; onChange: (val
           </select>
         </label>
         {holidayMode === "HOURS" && numberField("Full holiday credit after work hours", "holiday_min_hours")}
-        <p className="text-xs text-stone-700 md:col-span-2">The current engine applies the extra half day only above its threshold. Confirm the exact boundary and any minute grace before entering those values.</p>
+        <p className="text-xs text-stone-700 md:col-span-2">Grace delays the threshold; it does not add a second holiday or weekly-off credit.</p>
       </> : <>
         {numberField("Overtime starts after work hours", "starts_after_hours")}
         {numberField("Hourly rate multiplier", "rate_multiplier")}
@@ -98,6 +104,56 @@ function OvertimeRuleEditor({ value, onChange }: { value: string; onChange: (val
       </>}
     </>}
   </fieldset>;
+}
+
+function StructuredRuleEditor({ ruleKey, value, onChange }: { ruleKey: string; value: string; onChange: (value: string) => void }) {
+  let parsed: any = null;
+  try { parsed = JSON.parse(value); } catch { /* Empty until HR enters a value. */ }
+  if (ruleKey === "attendance_day_rule") {
+    const rule = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    const setHours = (key: string, raw: string) => {
+      const next = { ...rule };
+      if (raw === "") delete next[key]; else next[key] = Number(raw);
+      onChange(JSON.stringify(next));
+    };
+    return <div className="grid gap-3 rounded-lg border bg-stone-50 p-4 md:col-span-2 md:grid-cols-2">
+      <p className="text-xs text-stone-600 md:col-span-2">Worked hours for a normal scheduled day. Holiday and weekly-off credits use the separate overtime rule.</p>
+      <label className="text-sm">Half-day from hours<input type="number" min="0.01" max="24" step="0.01" value={rule.half_day_hours ?? ""} onChange={(e) => setHours("half_day_hours", e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>
+      <label className="text-sm">Full-day from hours<input type="number" min="0.01" max="24" step="0.01" value={rule.full_day_hours ?? ""} onChange={(e) => setHours("full_day_hours", e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>
+    </div>;
+  }
+  if (ruleKey === "annual_bonus_rule") {
+    const rule = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    const update = (field: string, raw: string) => onChange(JSON.stringify({ ...rule, [field]: field === "basis" ? raw : Number(raw) }));
+    return <div className="grid gap-3 rounded-lg border bg-stone-50 p-4 md:col-span-2 md:grid-cols-2">
+      <p className="text-xs text-stone-600 md:col-span-2">A single annual bonus is calculated in the selected payout month. Set the separate salary-policy bonus days to zero to avoid duplicate bonus.</p>
+      <label className="text-sm">Bonus basis<select value={rule.basis ?? ""} onChange={(e) => update("basis", e.target.value)} className="mt-1 block w-full rounded border p-2"><option value="">Choose basis</option><option value="BASIC_MONTHLY">One month's Basic</option><option value="MONTHLY_GROSS">One month's configured gross earnings</option></select></label>
+      <label className="text-sm">Salary multiple<input type="number" min="0.01" max="12" step="0.01" value={rule.salary_multiple ?? ""} onChange={(e) => update("salary_multiple", e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>
+      <label className="text-sm">Payout month<input type="number" min="1" max="12" step="1" value={rule.payout_month ?? ""} onChange={(e) => update("payout_month", e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>
+      <label className="text-sm">Earliest payout day<input type="number" min="1" max="31" step="1" value={rule.payout_day ?? ""} onChange={(e) => update("payout_day", e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>
+    </div>;
+  }
+  if (ruleKey === "production_bonus_rule") {
+    const rule = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    return <label className="text-sm md:col-span-2">Approved amount per piece<input type="number" min="0" step="0.01" value={rule.rate_per_piece ?? ""} onChange={(e) => onChange(JSON.stringify({ rate_per_piece: Number(e.target.value) }))} className="mt-1 block w-full rounded border p-2" /><span className="mt-1 block text-xs text-stone-600">Enter approved piece count in the employee's monthly payroll draft. The amount is calculated from this effective rate.</span></label>;
+  }
+  if (ruleKey === "paid_leave_types_rule") return <label className="text-sm md:col-span-2">Leave types that retain salary<input value={Array.isArray(parsed) ? parsed.join(", ") : ""} onChange={(e) => onChange(JSON.stringify(e.target.value.split(",").map((item) => item.trim().toUpperCase()).filter(Boolean)))} placeholder="CASUAL, SICK" className="mt-1 block w-full rounded border p-2" /><span className="mt-1 block text-xs text-stone-600">Use the exact leave type names in leave requests. An empty list means no leave types are paid; this does not create leave dates or balances.</span></label>;
+  if (ruleKey === "weekly_working_days") {
+    const days = Array.isArray(parsed) ? parsed.map(Number) : [];
+    return <fieldset className="rounded-lg border bg-stone-50 p-4 md:col-span-2"><legend className="px-1 text-sm font-semibold">Scheduled working days</legend><div className="flex flex-wrap gap-4">{WEEKDAYS.map(([day, label]) => <label key={day} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={days.includes(day)} onChange={(e) => onChange(JSON.stringify(e.target.checked ? [...days, day].sort() : days.filter((current: number) => current !== day)))} />{label}</label>)}</div></fieldset>;
+  }
+  if (ruleKey === "late_policy") {
+    const rule = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    const update = (next: any) => onChange(JSON.stringify(next));
+    return <div className="grid gap-3 rounded-lg border bg-stone-50 p-4 md:col-span-2 md:grid-cols-2">
+      <label className="text-sm">Late grace minutes<input type="number" min="0" max="240" step="1" value={rule.grace_minutes ?? ""} onChange={(e) => { const next = { ...rule }; if (e.target.value === "") delete next.grace_minutes; else next.grace_minutes = Number(e.target.value); update(next); }} className="mt-1 block w-full rounded border p-2" /></label>
+      <label className="text-sm">Late deduction<select value={rule.deduction_mode ?? ""} onChange={(e) => update({ ...rule, deduction_mode: e.target.value })} className="mt-1 block w-full rounded border p-2"><option value="">Choose policy</option><option value="NONE">Record only</option><option value="PER_MINUTE">Deduct by minute</option><option value="HALF_DAY_AFTER_MARKS">Half day after marks</option></select></label>
+      {rule.deduction_mode === "HALF_DAY_AFTER_MARKS" && <label className="text-sm">Marks per half day<input type="number" min="1" step="1" value={rule.marks_per_half_day ?? ""} onChange={(e) => update({ ...rule, marks_per_half_day: Number(e.target.value) })} className="mt-1 block w-full rounded border p-2" /></label>}
+    </div>;
+  }
+  if (ruleKey === "sandwich_leave_behavior") return <label className="text-sm md:col-span-2">Weekends between leave dates<select value={typeof parsed === "string" ? parsed : ""} onChange={(e) => onChange(JSON.stringify(e.target.value))} className="mt-1 block w-full rounded border p-2"><option value="">Choose policy</option><option value="INCLUDE_WEEKENDS">Count as leave</option><option value="EXCLUDE_WEEKENDS">Exclude from leave</option><option value="DISABLED">Do not apply sandwich rule</option></select></label>;
+  if (["payroll_close_day", "approval_threshold"].includes(ruleKey)) return <label className="text-sm md:col-span-2">{ruleKey === "payroll_close_day" ? "Payroll close day of month" : "Approval threshold"}<input type="number" min={ruleKey === "payroll_close_day" ? "1" : "0"} max={ruleKey === "payroll_close_day" ? "31" : undefined} step="1" value={typeof parsed === "number" ? parsed : ""} onChange={(e) => onChange(e.target.value === "" ? "" : JSON.stringify(Number(e.target.value)))} className="mt-1 block w-full rounded border p-2" /></label>;
+  return <label className="text-sm md:col-span-2">Rule value (JSON)<textarea value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 block min-h-28 w-full rounded border p-2 font-mono text-xs" /></label>;
 }
 
 export default function PayrollRulesPage() {
@@ -115,6 +171,7 @@ export default function PayrollRulesPage() {
   const [to, setTo] = useState("");
   const [overrideRows, setOverrideRows] = useState<any[]>([]);
   const [salaryPolicyDraft, setSalaryPolicyDraft] = useState<SalaryCalculationPolicy>(DEFAULT_SALARY_POLICY);
+  const [salaryPolicyConfirmed, setSalaryPolicyConfirmed] = useState(false);
 
   useEffect(() => {
     const requestedEmployee = new URLSearchParams(window.location.search).get("employeeId");
@@ -145,15 +202,16 @@ export default function PayrollRulesPage() {
   useEffect(() => {
     const saved = salaryPolicyRule?.value;
     setSalaryPolicyDraft(saved && typeof saved === "object" ? { ...DEFAULT_SALARY_POLICY, ...(saved as Partial<SalaryCalculationPolicy>) } : DEFAULT_SALARY_POLICY);
+    setSalaryPolicyConfirmed(Boolean(saved));
   }, [salaryPolicyRule, employeeId]);
   const changeRuleKey = (nextKey: string) => {
     setKey(nextKey);
-    if (nextKey === "employee_overtime_rule") setValue("");
-    if (nextKey === "salary_calculation_policy") setValue(JSON.stringify(DEFAULT_SALARY_POLICY, null, 2));
+    const existing = rules.find((item) => item.rule_key === nextKey)?.value;
+    setValue(existing === undefined ? "" : JSON.stringify(existing));
   };
 
   const save = async () => {
-    if (!enabled || !reason.trim() || !from || (key !== "salary_calculation_policy" && !value.trim())) return;
+    if (!enabled || !reason.trim() || !from || (key === "salary_calculation_policy" && !salaryPolicyConfirmed) || (key !== "salary_calculation_policy" && !value.trim())) return;
     setBusy(true); setError("");
     try {
       let parsed: unknown;
@@ -182,6 +240,11 @@ export default function PayrollRulesPage() {
 
   return <main className="mx-auto max-w-6xl p-6 text-stone-900">
     <div className="mb-6 flex items-center justify-between gap-4"><div><Link className="text-sm text-amber-800 underline" href="/dashboard/hr">HR dashboard</Link><h1 className="mt-2 text-2xl font-bold">Payroll rules</h1><p className="mt-1 text-sm text-stone-600">Profile defaults â†’ tenant rules â†’ employee overrides. Values resolve for the selected date.</p></div></div>
+    <nav aria-label="HR setup screens" className="mb-6 grid gap-3 text-sm sm:grid-cols-3">
+      <Link href="/dashboard/hr/management?section=management&tab=payroll" className="rounded-xl border bg-white p-4 font-semibold text-amber-900">Employee salary setup<span className="mt-1 block font-normal text-stone-600">Basic, HRA, TA, DA, Medical, Special Allowance and monthly payroll entries.</span></Link>
+      <Link href="/dashboard/hr/management?section=management&tab=employees" className="rounded-xl border bg-white p-4 font-semibold text-amber-900">Employee profile<span className="mt-1 block font-normal text-stone-600">Travel per diem, employee identity and employment details.</span></Link>
+      <Link href="/dashboard/hr/management?section=management&tab=holidays" className="rounded-xl border bg-white p-4 font-semibold text-amber-900">Leave and holiday register<span className="mt-1 block font-normal text-stone-600">Approved leave and dated paid holidays; rules below set paid leave types and entitlement.</span></Link>
+    </nav>
     {error && <div role="alert" className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
     <div className="mb-5 grid gap-3 rounded-xl border bg-white p-4 md:grid-cols-3">
       <label className="text-sm">Effective date<input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>
@@ -196,16 +259,16 @@ export default function PayrollRulesPage() {
         <h3 className="mt-4 text-xs font-semibold uppercase text-stone-500">History</h3><ul className="mt-2 space-y-2 text-xs">{((employeeId ? rule?.employee_overrides : rule?.history) || []).length ? ((employeeId ? rule?.employee_overrides : rule?.history) || []).map((row: any) => <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2"><span>{row.effective_from} - {row.effective_to || "Open"}: {JSON.stringify(row.rule_value)}; {row.reason || "No reason"}<span className="block text-stone-500">Recorded by {row.created_by || "Unknown"}{row.created_at ? ` on ${new Date(row.created_at).toLocaleDateString()}` : ""}</span></span>{enabled && <button disabled={busy} className="text-amber-800 underline" onClick={() => void endRule(row, Boolean(employeeId))}>End From Date</button>}</li>) : <li className="text-stone-500">No saved history.</li>}</ul>
       </section>;
     })}</div>
-    <section className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Change From Date</h2><p className="mt-1 text-sm text-stone-600">{employeeId ? "Creates an employee-specific override." : "Creates a tenant rule version. Choose an effective date and enter the business reason."}</p>{key === "salary_calculation_policy" && <p className="mt-2 rounded bg-amber-50 p-3 text-sm text-amber-950">Workbook model: annual salary basis ÷ configured annual divisor. Bonus is accrued separately and held by default. Employee overrides can use a different bonus and divisor.</p>}{key === "employee_overtime_rule" && !employeeId && <p className="mt-2 rounded bg-amber-50 p-3 text-sm text-amber-950">Default: up to 10:00 hours earns 0 extra; more than 10:00 through 12:00 earns 0.5 day; more than 12:00 earns 1 day. Paid holiday, weekly off, or paid leave work earns 1 additional day, without stacking.</p>}<div className="mt-3 grid gap-3 md:grid-cols-2"><label className="text-sm">Rule<select value={key} onChange={(e) => changeRuleKey(e.target.value)} className="mt-1 block w-full rounded border p-2">{RULES.map(([ruleKey, label]) => <option key={ruleKey} value={ruleKey}>{label}</option>)}</select></label><label className="text-sm">Effective from<input required type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label><label className="text-sm">Effective to (optional)<input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>{key === "salary_calculation_policy" ? <div className="md:col-span-2 grid gap-3 rounded-lg bg-stone-50 p-3 md:grid-cols-2">
+    <section className="rounded-xl border bg-white p-4"><h2 className="font-semibold">Change From Date</h2><p className="mt-1 text-sm text-stone-600">{employeeId ? "Creates an employee-specific override." : "Creates a tenant rule version. Choose an effective date and enter the business reason."}</p>{key === "salary_calculation_policy" && <p className="mt-2 rounded bg-amber-50 p-3 text-sm text-amber-950">Workbook model: annual salary basis ÷ configured annual divisor. Bonus is accrued separately and held by default. Employee overrides can use a different bonus and divisor.</p>}{key === "employee_overtime_rule" && !employeeId && <p className="mt-2 rounded bg-amber-50 p-3 text-sm text-amber-950">Default: up to 10:00 hours earns 0 extra; more than 10:00 through 12:00 earns 0.5 day; more than 12:00 earns 1 day. Paid holiday, weekly off, or paid leave work earns 1 additional day, without stacking.</p>}{key === "salary_calculation_policy" && <label className="mt-3 flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm"><input type="checkbox" checked={salaryPolicyConfirmed} onChange={(event) => setSalaryPolicyConfirmed(event.target.checked)} />I reviewed these salary, leave and bonus values against the approved company or employee policy.</label>}<div className="mt-3 grid gap-3 md:grid-cols-2"><label className="text-sm">Rule<select value={key} onChange={(e) => changeRuleKey(e.target.value)} className="mt-1 block w-full rounded border p-2">{RULES.map(([ruleKey, label]) => <option key={ruleKey} value={ruleKey}>{label}</option>)}</select></label><label className="text-sm">Effective from<input required type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label><label className="text-sm">Effective to (optional)<input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label>{key === "salary_calculation_policy" ? <div className="md:col-span-2 grid gap-3 rounded-lg bg-stone-50 p-3 md:grid-cols-2">
   <label className="text-sm">Annual salary basis<select value={salaryPolicyDraft.annual_salary_basis} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, annual_salary_basis: e.target.value as SalaryCalculationPolicy["annual_salary_basis"] }))} className="mt-1 block w-full rounded border p-2"><option value="ANNUAL_CTC">Annual CTC</option><option value="ANNUAL_CONFIGURED_EARNINGS">12 × configured monthly earnings</option></select></label>
   <label className="text-sm">Base days per year<input type="number" min="1" max="366" value={salaryPolicyDraft.base_days_per_year} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, base_days_per_year: Number(e.target.value) }))} className="mt-1 block w-full rounded border p-2" /></label>
   <label className="text-sm">Bonus days per year<input type="number" min="0" max="366" value={salaryPolicyDraft.bonus_days_per_year} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, bonus_days_per_year: Number(e.target.value) }))} className="mt-1 block w-full rounded border p-2" /></label>
   <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={salaryPolicyDraft.include_bonus_days_in_divisor} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, include_bonus_days_in_divisor: e.target.checked }))} />Include bonus days in daily-rate divisor</label>
   <label className="text-sm">Bonus treatment<select value={salaryPolicyDraft.bonus_payment_mode} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, bonus_payment_mode: e.target.value as SalaryCalculationPolicy["bonus_payment_mode"] }))} className="mt-1 block w-full rounded border p-2"><option value="HOLD">Accrue and hold (Excel)</option><option value="PAY_MONTHLY">Pay accrued bonus monthly</option></select></label>
   <label className="text-sm">Paid weekly-off days<select multiple value={salaryPolicyDraft.paid_weekly_off_weekdays.map(String)} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, paid_weekly_off_weekdays: Array.from(e.target.selectedOptions, (o) => Number(o.value)) }))} className="mt-1 block w-full rounded border p-2">{WEEKDAYS.map(([day, label]) => <option key={day} value={day}>{label}</option>)}</select></label>
-  <label className="text-sm">Annual paid-leave entitlement (days)<input type="number" min="0" max="366" value={salaryPolicyDraft.annual_paid_leave_days ?? ""} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, annual_paid_leave_days: e.target.value === "" ? null : Number(e.target.value) }))} placeholder="Unset" className="mt-1 block w-full rounded border p-2" /></label>
+  <label className="text-sm">Annual casual-leave entitlement (days)<input type="number" min="0" max="366" value={salaryPolicyDraft.annual_paid_leave_days ?? ""} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, annual_paid_leave_days: e.target.value === "" ? null : Number(e.target.value) }))} placeholder="Unset" className="mt-1 block w-full rounded border p-2" /></label>
   <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={salaryPolicyDraft.paid_leave_counts_as_paid} onChange={(e) => setSalaryPolicyDraft((p) => ({ ...p, paid_leave_counts_as_paid: e.target.checked }))} />Approved paid leave counts as paid time</label>
   <p className="md:col-span-2 text-xs text-stone-600">For a 60-day bonus using base days only, set bonus days to 60 and clear “Include bonus days in daily-rate divisor.” Employee overrides are versioned and audited.</p>
-</div> : key === "employee_overtime_rule" ? <OvertimeRuleEditor value={value} onChange={setValue} /> : <label className="text-sm md:col-span-2">Rule value (JSON)<textarea value={value} onChange={(e) => setValue(e.target.value)} placeholder="Choose a rule" className="mt-1 block min-h-28 w-full rounded border p-2 font-mono text-xs" /></label>}<label className="text-sm md:col-span-2">Reason<input value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label></div><button disabled={!enabled || busy || !reason.trim() || (key !== "salary_calculation_policy" && !value.trim()) || !from} onClick={() => void save()} className="mt-4 rounded bg-amber-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving..." : "Save rule version"}</button><div className="mt-2 text-xs text-stone-500">Company value for this rule: {selectedRule?.company_value === undefined ? selectedRule?.value === undefined ? "Not configured" : JSON.stringify(selectedRule.value) : JSON.stringify(selectedRule.company_value)}</div></section>
+</div> : key === "employee_overtime_rule" ? <OvertimeRuleEditor value={value} onChange={setValue} /> : <StructuredRuleEditor ruleKey={key} value={value} onChange={setValue} />}<label className="text-sm md:col-span-2">Reason<input value={reason} onChange={(e) => setReason(e.target.value)} className="mt-1 block w-full rounded border p-2" /></label></div><button disabled={!enabled || busy || !reason.trim() || (key === "salary_calculation_policy" && !salaryPolicyConfirmed) || (key !== "salary_calculation_policy" && !value.trim()) || !from} onClick={() => void save()} className="mt-4 rounded bg-amber-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving..." : "Save rule version"}</button><div className="mt-2 text-xs text-stone-500">Company value for this rule: {selectedRule?.company_value === undefined ? selectedRule?.value === undefined ? "Not configured" : JSON.stringify(selectedRule.value) : JSON.stringify(selectedRule.company_value)}</div></section>
   </main>;
 }

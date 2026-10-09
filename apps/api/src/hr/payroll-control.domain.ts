@@ -113,6 +113,10 @@ export const HR_PAYROLL_RULE_KEYS = [
   "PAYROLL_VARIANCE_REVIEW_THRESHOLD_PERCENT",
   "salary_calculation_policy",
   "employee_overtime_rule",
+  "attendance_day_rule",
+  "annual_bonus_rule",
+  "production_bonus_rule",
+  "paid_leave_types_rule",
 ] as const;
 export type HrPayrollRuleKey = (typeof HR_PAYROLL_RULE_KEYS)[number] | "employee_overtime_rule";
 
@@ -126,6 +130,24 @@ export type SalaryCalculationPolicy = {
   annual_paid_leave_days: number | null;
   paid_leave_counts_as_paid: boolean;
 };
+
+export type AnnualBonusRule = {
+  basis: "BASIC_MONTHLY" | "MONTHLY_GROSS";
+  salary_multiple: number;
+  payout_month: number;
+  payout_day: number;
+};
+
+export function annualBonusForMonth(rule: AnnualBonusRule | undefined, month: string, basicMonthly: number, monthlyGross: number) {
+  if (!rule || Number(month.slice(5, 7)) !== rule.payout_month) return 0;
+  const basis = rule.basis === "BASIC_MONTHLY" ? basicMonthly : monthlyGross;
+  const year = Number(month.slice(0, 4));
+  const payout = new Date(Date.UTC(year, rule.payout_month - 1, rule.payout_day));
+  if (!Number.isFinite(basis) || basis <= 0 || payout.getUTCMonth() !== rule.payout_month - 1) {
+    throw new Error("Annual bonus requires a positive configured salary basis and a valid payout date.");
+  }
+  return Math.round(basis * rule.salary_multiple * 100) / 100;
+}
 
 export const DEFAULT_SALARY_CALCULATION_POLICY: SalaryCalculationPolicy = {
   annual_salary_basis: "ANNUAL_CTC",
@@ -220,13 +242,13 @@ export function validateHrPayrollRuleValue(ruleKey: HrPayrollRuleKey, value: unk
     case "employee_overtime_rule": {
       if (value && typeof value === "object" && !Array.isArray(value)) {
         const rule = value as Record<string, unknown>;
-        const allowed = ["eligible", "method", "starts_after_hours", "rate_multiplier", "minimum_hours", "cap_hours", "half_day_after_hours", "full_day_after_hours", "holiday_min_hours", "holiday_work_credit_days"];
+        const allowed = ["eligible", "method", "starts_after_hours", "rate_multiplier", "minimum_hours", "cap_hours", "half_day_after_hours", "full_day_after_hours", "holiday_min_hours", "holiday_work_credit_days", "grace_minutes"];
         const finite = (key: string, min = 0, max = 24) => rule[key] === undefined || (typeof rule[key] === "number" && Number.isFinite(rule[key]) && Number(rule[key]) >= min && Number(rule[key]) <= max);
         const method = String(rule.method || "").toUpperCase();
         const commonValid = Object.keys(rule).every((key) => allowed.includes(key)) && typeof rule.eligible === "boolean";
         if (commonValid && rule.eligible === false && Object.keys(rule).length === 1) return { eligible: false };
         const methodValid = ["HOURLY", "DAY_CREDIT"].includes(method);
-        const optionalValid = finite("minimum_hours") && (method === "HOURLY" ? finite("cap_hours") : rule.cap_hours === undefined);
+        const optionalValid = finite("minimum_hours") && Number.isInteger(rule.grace_minutes ?? 0) && Number(rule.grace_minutes ?? 0) >= 0 && Number(rule.grace_minutes ?? 0) <= 240 && (method === "HOURLY" ? finite("cap_hours") : rule.cap_hours === undefined);
         const hourlyValid = method !== "HOURLY" || (finite("starts_after_hours") && typeof rule.starts_after_hours === "number" &&
           typeof rule.rate_multiplier === "number" && Number.isFinite(rule.rate_multiplier) && rule.rate_multiplier >= 0 && rule.rate_multiplier <= 10);
         const dayCreditValid = method !== "DAY_CREDIT" || (["half_day_after_hours", "full_day_after_hours"].every((key) => typeof rule[key] === "number" && finite(key)) &&
@@ -237,6 +259,40 @@ export function validateHrPayrollRuleValue(ruleKey: HrPayrollRuleKey, value: unk
       }
       break;
     }
+    case "attendance_day_rule": {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const rule = value as Record<string, unknown>;
+        if (Object.keys(rule).length === 2 && Object.keys(rule).every((key) => ["half_day_hours", "full_day_hours"].includes(key)) &&
+          typeof rule.half_day_hours === "number" && Number.isFinite(rule.half_day_hours) && Number(rule.half_day_hours) > 0 &&
+          typeof rule.full_day_hours === "number" && Number.isFinite(rule.full_day_hours) && Number(rule.full_day_hours) <= 24 &&
+          Number(rule.full_day_hours) > Number(rule.half_day_hours)) return rule;
+      }
+      break;
+    }
+    case "annual_bonus_rule": {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const rule = value as Record<string, unknown>;
+        if (Object.keys(rule).length === 4 && Object.keys(rule).every((key) => ["basis", "salary_multiple", "payout_month", "payout_day"].includes(key)) &&
+          ["BASIC_MONTHLY", "MONTHLY_GROSS"].includes(String(rule.basis)) &&
+          typeof rule.salary_multiple === "number" && Number.isFinite(rule.salary_multiple) && rule.salary_multiple > 0 && rule.salary_multiple <= 12 &&
+          Number.isInteger(rule.payout_month) && Number(rule.payout_month) >= 1 && Number(rule.payout_month) <= 12 &&
+          Number.isInteger(rule.payout_day) && Number(rule.payout_day) >= 1 && Number(rule.payout_day) <= 31 &&
+          new Date(Date.UTC(2023, Number(rule.payout_month) - 1, Number(rule.payout_day))).getUTCMonth() === Number(rule.payout_month) - 1) return rule;
+      }
+      break;
+    }
+    case "production_bonus_rule": {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const rule = value as Record<string, unknown>;
+        if (Object.keys(rule).length === 1 && typeof rule.rate_per_piece === "number" && Number.isFinite(rule.rate_per_piece) && rule.rate_per_piece >= 0) return rule;
+      }
+      break;
+    }
+    case "paid_leave_types_rule":
+      if (Array.isArray(value) && value.length <= 7 && value.every((item) => typeof item === "string" && ["CASUAL", "SICK", "EARNED", "UNPAID", "MATERNITY", "PATERNITY", "COMP_OFF"].includes(item.trim().toUpperCase())) && new Set(value.map((item) => item.trim().toUpperCase())).size === value.length) {
+        return value.map((item) => item.trim().toUpperCase());
+      }
+      break;
     case "payroll_close_day":
       if (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 31) return value;
       break;
