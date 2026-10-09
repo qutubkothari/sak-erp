@@ -15,6 +15,7 @@ import {
   Loader2,
   LockKeyhole,
 } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 type ButtonVariant = "primary" | "secondary" | "approve" | "danger" | "ghost";
@@ -114,6 +115,8 @@ interface ErpMetricStripProps {
     label: string;
     value: string | number;
     tone?: "neutral" | "warning" | "success" | "danger";
+    href?: string;
+    onClick?: () => void;
   }>;
   loading?: boolean;
 }
@@ -130,25 +133,36 @@ export function ErpMetricStrip({
   loading = false,
 }: ErpMetricStripProps) {
   return (
-    <dl className="flex min-h-11 flex-wrap items-stretch divide-x divide-[#E8DCC4] rounded-md border border-[#E8DCC4] bg-white">
-      {metrics.map((metric) => (
-        <div
-          key={metric.label}
-          className="flex min-w-[10rem] flex-1 items-center gap-3 px-3 py-2"
-        >
-          <dt className="text-xs font-medium text-[#7A6555]">{metric.label}</dt>
-          <dd
-            className={`ml-auto text-lg font-bold tabular-nums ${metricToneClasses[metric.tone ?? "neutral"]}`}
-          >
-            {loading ? (
-              <span className="block h-5 w-8 animate-pulse rounded bg-[#E8DCC4]" />
-            ) : (
-              metric.value
-            )}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <div className="flex min-h-11 flex-wrap items-stretch divide-x divide-[#E8DCC4] rounded-md border border-[#E8DCC4] bg-white">
+      {metrics.map((metric) => {
+        const content = (
+          <>
+            <span className="text-xs font-medium text-[#7A6555]">{metric.label}</span>
+            <span
+              className={`ml-auto text-lg font-bold tabular-nums ${metricToneClasses[metric.tone ?? "neutral"]}`}
+            >
+              {loading ? (
+                <span className="block h-5 w-8 animate-pulse rounded bg-[#E8DCC4]" />
+              ) : (
+                metric.value
+              )}
+            </span>
+          </>
+        );
+        const className = `flex min-w-[10rem] flex-1 items-center gap-3 px-3 py-2 ${
+          loading || (!metric.href && !metric.onClick)
+            ? ""
+            : "cursor-pointer transition hover:bg-[#FAF6ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8B6F47]"
+        }`;
+        if (metric.href && !loading) {
+          return <div key={metric.label} className="flex min-w-[10rem] flex-1"><Link href={metric.href} className={className}>{content}</Link></div>;
+        }
+        if (metric.onClick && !loading) {
+          return <div key={metric.label} className="flex min-w-[10rem] flex-1"><button type="button" onClick={metric.onClick} className={`${className} text-left`}>{content}</button></div>;
+        }
+        return <div key={metric.label} className={`${className} flex min-w-[10rem] flex-1`}>{content}</div>;
+      })}
+    </div>
   );
 }
 

@@ -802,7 +802,7 @@ export class DashboardService {
         detail:
           "Purchase requisitions should be approved before sourcing or PO creation.",
         severity: pendingPRs > 5 ? "danger" : "warning",
-        route: "/dashboard/purchase/requisitions",
+        route: "/dashboard/purchase/requisitions?status=AWAITING_APPROVAL",
       });
     }
 
@@ -813,7 +813,7 @@ export class DashboardService {
         detail:
           "Pending PO commitments need manager action before supplier release.",
         severity: pendingPOs > 3 ? "danger" : "warning",
-        route: "/dashboard/purchase/orders",
+        route: "/dashboard/purchase/orders?status=PENDING",
         value: this.formatMoney(openPOValue),
       });
     }
@@ -825,7 +825,7 @@ export class DashboardService {
         detail:
           "Open goods receipts should be accepted/rejected to keep stock and AP aligned.",
         severity: "warning",
-        route: "/dashboard/purchase/grn",
+        route: "/dashboard/purchase/grn?pendingQc=true",
       });
     }
 
@@ -835,7 +835,7 @@ export class DashboardService {
         title: `${lowStock} low stock alert`,
         detail: "Review reorder exposure and open procurement coverage.",
         severity: "danger",
-        route: "/dashboard/inventory/items",
+        route: "/dashboard/inventory/low-stock",
       });
     }
 
@@ -846,7 +846,7 @@ export class DashboardService {
         detail:
           "Unverified material master records can affect procurement and production accuracy.",
         severity: "warning",
-        route: "/dashboard/inventory/items",
+        route: "/dashboard/inventory/items?verificationStatus=PENDING",
       });
     }
 
@@ -856,7 +856,7 @@ export class DashboardService {
         title: `${vendorPendingApproval} vendor pending approval`,
         detail: "Maker-checker approval is needed before vendor use.",
         severity: "warning",
-        route: "/dashboard/purchase/vendors",
+        route: "/dashboard/purchase/vendors?status=PENDING",
       });
     }
 
@@ -875,28 +875,31 @@ export class DashboardService {
     const activity = [
       ...recentPRs.map((row: any) => ({
         type: "PR",
+        id: row.id,
         number: row.pr_number || row.number || "-",
         status: row.status || "-",
         date: row.created_at || row.request_date,
-        route: "/dashboard/purchase/requisitions",
+        route: `/dashboard/purchase/requisitions?open=${encodeURIComponent(row.id)}`,
       })),
       ...recentPOs.map((row: any) => ({
         type: "PO",
+        id: row.id,
         number: row.po_number || row.number || "-",
         status: row.pr_po_status || row.status || "-",
         amount: this.n(row.rounded_total_amount ?? row.total_amount),
         date: row.created_at || row.order_date,
-        route: "/dashboard/purchase/orders",
+        route: `/dashboard/purchase/orders?viewId=${encodeURIComponent(row.id)}`,
       })),
       ...recentGRNs.map((row: any) => ({
         type: "GRN",
+        id: row.id,
         number: row.grn_number || row.number || "-",
         status: row.status || "-",
         amount: this.n(
           row.net_payable_rounded ?? row.net_payable ?? row.total_amount,
         ),
         date: row.created_at || row.receipt_date,
-        route: "/dashboard/purchase/grn",
+        route: `/dashboard/purchase/grn?viewId=${encodeURIComponent(row.id)}`,
       })),
     ]
       .sort(
@@ -923,7 +926,7 @@ export class DashboardService {
         value: openPOValue,
         displayValue: this.formatMoney(openPOValue),
         tone: "neutral",
-        route: "/dashboard/purchase/orders",
+        route: "/dashboard/purchase/orders?status=OPEN_PO",
         helper: "Approved/pending purchase commitment",
       },
       {

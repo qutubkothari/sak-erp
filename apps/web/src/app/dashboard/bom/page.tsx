@@ -166,6 +166,7 @@ interface PurchaseTrail {
 
 export default function BOMPage() {
   const router = useRouter();
+  const [pendingApprovalOnly, setPendingApprovalOnly] = useState(false);
   const todayDate = getTodayDateInputValue();
   const [boms, setBoms] = useState<BOM[]>([]);
   const [loading, setLoading] = useState(true);
@@ -214,6 +215,10 @@ export default function BOMPage() {
     }>,
   });
   const [availableBOMs, setAvailableBOMs] = useState<BOM[]>([]);
+
+  useEffect(() => {
+    setPendingApprovalOnly(new URLSearchParams(window.location.search).get("approvalStatus") === "SUBMITTED");
+  }, []);
 
   const canEditBom = hasModulePermission(
     storedUser,
@@ -770,6 +775,7 @@ export default function BOMPage() {
               (() => {
                 // Filter BOMs
                 const filteredBoms = boms.filter((bom) => {
+                  if (pendingApprovalOnly && bom.lifecycle_status !== "SUBMITTED") return false;
                   if (!searchQuery) return true;
                   return smartSearchMatches(
                     searchQuery,
@@ -1192,6 +1198,7 @@ export default function BOMPage() {
               (() => {
                 // Filter BOMs
                 const filteredBoms = boms.filter((bom) => {
+                  if (pendingApprovalOnly && bom.lifecycle_status !== "SUBMITTED") return false;
                   if (!searchQuery) return true;
                   return smartSearchMatches(
                     searchQuery,

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Calculator, Eye, FileText, PackageCheck, Plus, RefreshCw, Ship, Upload, WalletCards } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
@@ -29,6 +30,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const money = (value: any) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function ImportFilesPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<ImportFile[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -93,12 +95,12 @@ export default function ImportFilesPage() {
     const pendingCost = rows.filter((row) => String(row.status).toUpperCase() === 'LANDED_COST_PENDING').length;
     const docs = rows.reduce((sum, row) => sum + (row.documents?.length || 0), 0);
     return [
-      { label: 'Open import files', value: open },
-      { label: 'Linked GRNs', value: linkedGrns },
-      { label: 'Cost pending', value: pendingCost, tone: pendingCost ? 'warning' as const : 'neutral' as const },
-      { label: 'Documents stored', value: docs },
+      { label: 'Open import files', value: open, onClick: () => { const row = rows.find((item) => !['CLOSED', 'CANCELLED'].includes(String(item.status).toUpperCase())); if (row) router.push(`/dashboard/purchase/import-files/${row.id}`); } },
+      { label: 'Linked GRNs', value: linkedGrns, onClick: () => { const row = rows.find((item) => (item.grns?.length || 0) > 0); if (row) router.push(`/dashboard/purchase/import-files/${row.id}`); } },
+      { label: 'Cost pending', value: pendingCost, tone: pendingCost ? 'warning' as const : 'neutral' as const, onClick: () => { const row = rows.find((item) => String(item.status).toUpperCase() === 'LANDED_COST_PENDING'); if (row) router.push(`/dashboard/purchase/import-files/${row.id}`); } },
+      { label: 'Documents stored', value: docs, onClick: () => { const row = rows.find((item) => (item.documents?.length || 0) > 0); if (row) router.push(`/dashboard/purchase/import-files/${row.id}`); } },
     ];
-  }, [rows]);
+  }, [rows, router]);
 
   const vendorName = (id: string) => vendors.find((vendor) => vendor.id === id)?.name || '';
   const poLabel = (po: PurchaseOrder) => `${po.po_number || po.poNumber || 'PO'}${po.vendor?.name ? ` - ${po.vendor.name}` : ''}`;

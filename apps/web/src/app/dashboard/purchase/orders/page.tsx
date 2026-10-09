@@ -412,7 +412,10 @@ function PurchaseOrdersContent() {
   const [poEmailMessage, setPoEmailMessage] = useState('');
   const [editingPOId, setEditingPOId] = useState<string | null>(null);
   const [editingMode, setEditingMode] = useState<'create' | 'edit' | 'tracking'>('create');
-  const [filterStatus, setFilterStatus] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState(() => {
+    const requested = String(searchParams?.get('status') || 'ALL').toUpperCase();
+    return ['ALL', 'OPEN_PO', 'DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'SENT', 'ACKNOWLEDGED', 'PARTIAL', 'COMPLETED'].includes(requested) ? requested : 'ALL';
+  });
   const [filterVendor, setFilterVendor] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebouncedValue(searchTerm.trim(), 350);
@@ -3791,10 +3794,10 @@ function PurchaseOrdersContent() {
   ];
 
   const poMetrics = [
-    { label: 'Total Orders', value: orders.length },
-    { label: 'Pending Approval', value: orders.filter((order) => order.status === 'PENDING').length, tone: 'warning' as const },
-    { label: 'Approved', value: orders.filter((order) => order.status === 'APPROVED').length, tone: 'success' as const },
-    { label: 'Open Receipt', value: orders.filter((order) => order.open_po === true).length },
+    { label: 'Total Orders', value: orders.length, onClick: () => setFilterStatus('ALL') },
+    { label: 'Pending Approval', value: orders.filter((order) => order.status === 'PENDING').length, tone: 'warning' as const, onClick: () => setFilterStatus('PENDING') },
+    { label: 'Approved', value: orders.filter((order) => order.status === 'APPROVED').length, tone: 'success' as const, onClick: () => setFilterStatus('APPROVED') },
+    { label: 'Open Receipt', value: orders.filter((order) => order.open_po === true).length, onClick: () => setFilterStatus('OPEN_PO') },
   ];
 
   return (

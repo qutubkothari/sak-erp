@@ -217,6 +217,7 @@ function normalizeImportErrors(errors: unknown): string[] {
 
 export default function ItemsPage() {
   const router = useRouter();
+  const [pendingVerificationOnly, setPendingVerificationOnly] = useState(false);
   const currentUser = readStoredUser();
   const currentUserId = String(
     (currentUser as any)?.id || (currentUser as any)?.userId || "",
@@ -229,6 +230,10 @@ export default function ItemsPage() {
     hasModulePermission(currentUser, "Inventory", "approve");
   const canExport = isAdminLike(currentUser); // Only admins can export data
   const [items, setItems] = useState<Item[]>([]);
+
+  useEffect(() => {
+    setPendingVerificationOnly(new URLSearchParams(window.location.search).get("verificationStatus") === "PENDING");
+  }, []);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
@@ -2023,7 +2028,11 @@ export default function ItemsPage() {
       !typeFilter || normalizeItemCategory(item.category) === typeFilter;
     // When showDeleted is true, show only inactive items. When false, show only active items.
     const matchesActiveStatus = showDeleted ? !item.is_active : item.is_active;
-    return matchesType && matchesActiveStatus;
+    const approvalStatus = String(item.approval_status || "").toUpperCase();
+    const matchesVerification =
+      !pendingVerificationOnly ||
+      (item.is_active && !item.is_verified && ["PENDING", "PENDING_APPROVAL", "PENDING_VERIFICATION"].includes(approvalStatus));
+    return matchesType && matchesActiveStatus && matchesVerification;
   });
   const activeItemCount = items.filter((item) => item.is_active).length;
   const inactiveItemCount = items.filter((item) => !item.is_active).length;

@@ -1328,22 +1328,26 @@ export default function SrvPage() {
               label: "QC Pending",
               value: qcPendingCount,
               tone: qcPendingCount > 0 ? "warning" : "success",
+              onClick: () => setActiveSrvView("open"),
             },
             {
               label: "Posted Receipts",
               value: srvHistory.length,
               tone: "success",
+              onClick: () => setActiveSrvView("history"),
             },
-            { label: "Received Qty", value: totalReceivedQty },
+            { label: "Received Qty", value: totalReceivedQty, onClick: () => setActiveSrvView("history") },
             {
               label: "UID Tracked",
               value: uidTrackedCount,
               tone: uidTrackedCount > 0 ? "success" : "neutral",
+              onClick: () => setActiveSrvView("history"),
             },
             {
               label: "Awaiting Approval",
               value: pendingApprovalCount,
               tone: pendingApprovalCount > 0 ? "warning" : "success",
+              onClick: () => setActiveSrvView("open"),
             },
           ]}
         />

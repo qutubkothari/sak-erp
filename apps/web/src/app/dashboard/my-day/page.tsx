@@ -117,9 +117,10 @@ export default function MyDayPage() {
             label: "Items needing attention",
             value: data?.summary.total ?? 0,
             tone: (data?.summary.total ?? 0) > 0 ? "warning" : "success",
+            onClick: () => document.getElementById("my-day-worklist")?.scrollIntoView({ behavior: "smooth" }),
           },
-          { label: "Work areas", value: data?.summary.sections ?? 0 },
-          { label: "Date", value: date },
+          { label: "Work areas", value: data?.summary.sections ?? 0, onClick: () => document.getElementById("my-day-worklist")?.scrollIntoView({ behavior: "smooth" }) },
+          { label: "Date", value: date, onClick: () => window.scrollTo({ top: 0, behavior: "smooth" }) },
         ]}
       />
 
@@ -146,7 +147,7 @@ export default function MyDayPage() {
         </section>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div id="my-day-worklist" className="grid gap-4 lg:grid-cols-2">
         {(data?.sections || []).map((section) => (
           <section
             key={section.key}

@@ -80,6 +80,11 @@ function ServiceEntriesContent() {
   const [sortBy, setSortBy] = useState('completion_date');
   const [sortOrder, setSortOrder] = useState('desc');
 
+  useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get('status') || '';
+    setStatusFilter(status === 'PENDING' ? 'PENDING_APPROVAL' : status);
+  }, []);
+
   const selectedPo = useMemo(() => servicePos.find((po) => po.id === selectedPoId) || null, [servicePos, selectedPoId]);
   const openServicePoNumbers = useMemo(() => new Set(servicePos.map((po) => po.po_number)), [servicePos]);
   const fullyAcceptedServiceEntries = useMemo(() => {

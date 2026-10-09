@@ -612,6 +612,7 @@ function GRNContent() {
   const searchParams = useSearchParams();
   const initialGrnSearch = searchParams.get("search") || "";
   const viewId = searchParams.get("viewId");
+  const pendingQcOnly = searchParams.get("pendingQc") === "true";
   const attentionReview = searchParams.get("attention_review");
   const returnTo = searchParams.get("returnTo");
   const todayDate = getTodayDateInputValue();
@@ -1364,7 +1365,7 @@ function GRNContent() {
 
   useEffect(() => {
     fetchGRNs();
-  }, [filterStatus, searchTerm, filterVendor, receiptDateFrom, receiptDateTo, filterQcStatus, grnSortBy, grnSortOrder]);
+  }, [filterStatus, searchTerm, filterVendor, receiptDateFrom, receiptDateTo, filterQcStatus, grnSortBy, grnSortOrder, pendingQcOnly]);
 
   useEffect(() => {
     if (!attentionReview || consumedReview.current === attentionReview) return;
@@ -2076,6 +2077,7 @@ function GRNContent() {
       setLoading(true);
       const params = new URLSearchParams();
       params.set("compact", "true");
+      if (pendingQcOnly) params.set("pendingQc", "true");
       if (filterStatus !== "ALL") params.append("status", filterStatus);
       if (searchTerm) params.append("search", searchTerm);
       if (filterVendor) params.append("vendorId", filterVendor);
@@ -3371,21 +3373,24 @@ function GRNContent() {
         <ErpMetricStrip
           loading={loading}
           metrics={[
-            { label: "Total GRNs", value: grns.length },
+            { label: "Total GRNs", value: grns.length, onClick: () => setFilterStatus("ALL") },
             {
               label: "Draft",
               value: grns.filter((g) => g.status === "DRAFT").length,
               tone: "warning",
+              onClick: () => setFilterStatus("DRAFT"),
             },
             {
               label: "Completed",
               value: grns.filter((g) => g.status === "COMPLETED").length,
               tone: "success",
+              onClick: () => setFilterStatus("COMPLETED"),
             },
             {
               label: "Cancelled",
               value: grns.filter((g) => g.status === "CANCELLED").length,
               tone: "danger",
+              onClick: () => setFilterStatus("CANCELLED"),
             },
           ]}
         />

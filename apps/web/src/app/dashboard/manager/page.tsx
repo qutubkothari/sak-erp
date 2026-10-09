@@ -53,6 +53,18 @@ type PendingGRN = {
   status?: string;
 };
 
+const approvalQueueRoutes: Record<PendingApproval['type'], string> = {
+  PR: '/dashboard/purchase/requisitions?status=AWAITING_APPROVAL',
+  PO: '/dashboard/purchase/orders?status=PENDING',
+  GRN: '/dashboard/purchase/grn?pendingQc=true',
+  JO: '/dashboard/production/job-orders?tab=all_open',
+  QC: '/dashboard/purchase/grn?pendingQc=true',
+  SES: '/dashboard/purchase/service-entries?status=PENDING_APPROVAL',
+  LEAVE: '/dashboard/hr/management?section=management&tab=leaves',
+  BOM: '/dashboard/bom?approvalStatus=SUBMITTED',
+  ITEM: '/dashboard/inventory/items?verificationStatus=PENDING',
+};
+
 export default function ManagerDashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<ApprovalStats>({
@@ -250,7 +262,7 @@ export default function ManagerDashboardPage() {
   const handleApprovalClick = (approval: PendingApproval) => {
     switch (approval.type) {
       case 'PR':
-        router.push('/dashboard/purchase/requisitions');
+        router.push(`/dashboard/purchase/requisitions?open=${encodeURIComponent(approval.id)}`);
         break;
       case 'PO':
         router.push(`/dashboard/purchase/orders?viewId=${approval.id}`);
@@ -259,22 +271,22 @@ export default function ManagerDashboardPage() {
         router.push(`/dashboard/purchase/grn?viewId=${approval.id}`);
         break;
       case 'JO':
-        router.push('/dashboard/production/job-orders');
+        router.push(`/dashboard/production/job-orders?viewId=${approval.id}`);
         break;
       case 'QC':
         router.push(`/dashboard/purchase/grn?viewId=${approval.id}`);
         break;
       case 'SES':
-        router.push('/dashboard/purchase/service-entries');
+        router.push(`/dashboard/purchase/service-entries?viewId=${approval.id}`);
         break;
       case 'LEAVE':
-        router.push('/dashboard/hr/management?section=management&tab=leaves');
+        router.push(`/dashboard/hr/management?section=management&tab=leaves&viewId=${approval.id}`);
         break;
       case 'BOM':
-        router.push('/dashboard/bom');
+        router.push(`/dashboard/bom?viewId=${approval.id}`);
         break;
       case 'ITEM':
-        router.push('/dashboard/inventory/items');
+        router.push(`/dashboard/inventory/items?viewId=${approval.id}`);
         break;
     }
   };
@@ -316,7 +328,7 @@ export default function ManagerDashboardPage() {
         ].map((card, index) => (
           <div
             key={index}
-            onClick={() => setSelectedFilter(card.type)}
+            onClick={() => { setSelectedFilter(card.type); router.push(approvalQueueRoutes[card.type as PendingApproval['type']]); }}
             className={`bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all border-2 cursor-pointer ${
               selectedFilter === card.type ? 'ring-4 ring-opacity-50' : ''
             }`}

@@ -253,18 +253,18 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="grid border-b border-[#E8DCC4] md:grid-cols-4">
-          <div className="border-b border-[#E8DCC4] px-4 py-3 md:border-b-0 md:border-r">
+          <Link href="/dashboard/purchase/requisitions?status=AWAITING_APPROVAL" className="block border-b border-[#E8DCC4] px-4 py-3 hover:bg-[#FAF6ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8B6F47] md:border-b-0 md:border-r">
             <div className="text-xs font-semibold uppercase text-[#7A6756]">PR Pending</div>
             <div className="mt-1 text-2xl font-bold">{data?.summary?.procurement?.pendingPRs ?? 0}</div>
-          </div>
-          <div className="border-b border-[#E8DCC4] px-4 py-3 md:border-b-0 md:border-r">
+          </Link>
+          <Link href="/dashboard/purchase/orders?status=PENDING" className="block border-b border-[#E8DCC4] px-4 py-3 hover:bg-[#FAF6ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8B6F47] md:border-b-0 md:border-r">
             <div className="text-xs font-semibold uppercase text-[#7A6756]">PO Pending</div>
             <div className="mt-1 text-2xl font-bold">{data?.summary?.procurement?.pendingPOs ?? 0}</div>
-          </div>
-          <div className="border-b border-[#E8DCC4] px-4 py-3 md:border-b-0 md:border-r">
+          </Link>
+          <Link href="/dashboard/purchase/grn?pendingQc=true" className="block border-b border-[#E8DCC4] px-4 py-3 hover:bg-[#FAF6ED] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#8B6F47] md:border-b-0 md:border-r">
             <div className="text-xs font-semibold uppercase text-[#7A6756]">GRN Pending QC</div>
             <div className="mt-1 text-2xl font-bold">{data?.summary?.inventory?.draftGRNs ?? 0}</div>
-          </div>
+          </Link>
           <div className="px-4 py-3">
             <div className="text-xs font-semibold uppercase text-[#7A6756]">Last Refreshed</div>
             <div className="mt-1 text-sm font-semibold">{data?.generatedAt ? new Date(data.generatedAt).toLocaleString('en-IN') : '-'}</div>
@@ -515,7 +515,7 @@ export default function DashboardPage() {
                   <tr key={`${row.type}-${row.number}-${index}`} className="hover:bg-[#FAF6ED]">
                     <td className="px-4 py-3 font-bold text-[#8B6F47]">{row.type}</td>
                     <td className="px-4 py-3">
-                      <Link href={row.route} className="font-semibold hover:underline">{row.number}</Link>
+                      <Link href={row.route} className="font-semibold text-[#65452B] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8B6F47]">{row.number}</Link>
                     </td>
                     <td className="px-4 py-3">{row.status}</td>
                     <td className="px-4 py-3">{formatDate(row.date)}</td>

@@ -304,11 +304,11 @@ export default function AutomationPage() {
         actions={<><ErpButton size="sm" onClick={load} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh</ErpButton><ErpButton size="sm" onClick={runEnabledRules} disabled={!activeRules || workingId !== null}>{workingId === 'run-enabled' && <Loader2 className="h-4 w-4 animate-spin" />}<Play className="h-4 w-4" />Run enabled</ErpButton><ErpButton size="sm" variant="primary" onClick={() => setShowRule(true)}><Plus className="h-4 w-4" />New rule</ErpButton></>}
       />
       <ErpMetricStrip loading={loading} metrics={[
-        { label: 'Active rules', value: activeRules, tone: activeRules ? 'success' : 'neutral' },
-        { label: 'Controlled runs', value: runs.length },
-        { label: 'Communication evidence', value: communications.length },
-        { label: 'Open exception tasks', value: tasks.filter((task) => task.status === 'OPEN' || task.status === 'IN_PROGRESS').length, tone: tasks.some((task) => task.priority === 'CRITICAL' || task.priority === 'HIGH') ? 'warning' : 'neutral' },
-        { label: 'Active branches', value: branches.filter((branch) => branch.is_active).length },
+        { label: 'Active rules', value: activeRules, tone: activeRules ? 'success' : 'neutral', onClick: () => setTab('rules') },
+        { label: 'Controlled runs', value: runs.length, onClick: () => setTab('runs') },
+        { label: 'Communication evidence', value: communications.length, onClick: () => setTab('communications') },
+        { label: 'Open exception tasks', value: tasks.filter((task) => task.status === 'OPEN' || task.status === 'IN_PROGRESS').length, tone: tasks.some((task) => task.priority === 'CRITICAL' || task.priority === 'HIGH') ? 'warning' : 'neutral', onClick: () => { setTaskFilter('OPEN'); setTab('tasks'); } },
+        { label: 'Active branches', value: branches.filter((branch) => branch.is_active).length, onClick: () => setTab('branches') },
       ]} />
       <div className="rounded-md border border-[#E8DCC4] bg-white">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#E8DCC4] bg-[#FDF9F1] p-4">

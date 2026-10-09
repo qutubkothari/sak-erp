@@ -1784,23 +1784,27 @@ export default function SivPage() {
               label: "Open Jobs",
               value: openMaterialReqs.length,
               tone: "warning",
+              onClick: () => setActiveSivView("open"),
             },
             {
               label: "Pending Lines",
               value: pendingLineCount,
               tone: "warning",
+              onClick: () => setActiveSivView("open"),
             },
-            { label: "Ready Lines", value: readyLineCount, tone: "success" },
+            { label: "Ready Lines", value: readyLineCount, tone: "success", onClick: () => setActiveSivView("open") },
             {
               label: "Blocked Lines",
               value: blockedLineCount,
               tone: blockedLineCount > 0 ? "danger" : "success",
+              onClick: () => setActiveSivView("open"),
             },
-            { label: "SIV History", value: sivHistory.length },
+            { label: "SIV History", value: sivHistory.length, onClick: () => setActiveSivView("history") },
             {
               label: "Awaiting Approval",
               value: awaitingApprovalCount,
               tone: awaitingApprovalCount > 0 ? "warning" : "success",
+              onClick: () => setActiveSivView("open"),
             },
           ]}
         />

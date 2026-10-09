@@ -269,14 +269,14 @@ export default function ProjectsPage() {
       <ErpMetricStrip
         loading={loading}
         metrics={[
-          { label: 'Active Projects', value: projects.length },
-          { label: 'Production', value: projects.filter((p) => p.department === 'PRODUCTION').length },
-          { label: 'R&D', value: projects.filter((p) => p.department === 'R&D').length },
-          { label: 'Filtered', value: filteredProjects.length },
+          { label: 'Active Projects', value: projects.length, onClick: () => { setSearch(''); setDepartmentFilter(''); } },
+          { label: 'Production', value: projects.filter((p) => p.department === 'PRODUCTION').length, onClick: () => setDepartmentFilter('PRODUCTION') },
+          { label: 'R&D', value: projects.filter((p) => p.department === 'R&D').length, onClick: () => setDepartmentFilter('R&D') },
+          { label: 'Filtered', value: filteredProjects.length, onClick: () => { document.getElementById('project-register')?.scrollIntoView({ behavior: 'smooth' }); } },
         ]}
       />
 
-      <section className="border border-[#D8C8AA] bg-white">
+      <section id="project-register" className="border border-[#D8C8AA] bg-white">
         <div className="flex flex-col gap-3 border-b border-[#E6D8BF] p-3 lg:flex-row">
           <label className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7A6555]" />
