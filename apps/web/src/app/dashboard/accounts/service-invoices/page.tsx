@@ -158,7 +158,7 @@ export default function ServiceInvoicesPage() {
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">Service procurement</div>
             <h2 className="mt-1 text-xl font-bold text-[#3F2D20]">Service invoice register</h2>
-            <p className="mt-1 text-sm text-[#6F4E37]">Record supplier invoices only against accepted Service Entry Sheets.</p>
+            <p className="mt-1 text-sm text-[#6F4E37]">Record supplier invoices only against accepted Service GRNs.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <ErpButton variant="secondary" onClick={() => void load()}><RefreshCw className="h-4 w-4" />Refresh</ErpButton>
@@ -169,7 +169,7 @@ export default function ServiceInvoicesPage() {
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
       <section className="rounded-xl border border-[#E8DCC4] bg-[#FFFCF7] p-4 text-sm text-[#5E4635]">
-        <strong className="text-[#3D2B1F]">Three-way service control:</strong> approved PO → accepted Service Entry Sheet → sanctioned supplier invoice.
+        <strong className="text-[#3D2B1F]">Three-way service control:</strong> approved PO → accepted Service GRN → sanctioned supplier invoice.
         Payment notes are stored in the service payment trail for accounts follow-up.
       </section>
 
@@ -264,7 +264,7 @@ export default function ServiceInvoicesPage() {
             </div>
             <div className="space-y-4 p-5">
               <div>
-                <label className="mb-1 block text-xs font-semibold uppercase">Accepted Service Entry Sheet *</label>
+                <label className="mb-1 block text-xs font-semibold uppercase">Accepted Service GRN *</label>
                 <SearchableSelect
                   value={sesId}
                   onChange={(id) => {
@@ -277,7 +277,7 @@ export default function ServiceInvoicesPage() {
                     label: `${entry.ses_number} — ${entry.vendor?.name || 'Supplier'}`,
                     subtitle: `${entry.po?.po_number || '-'} · accepted ${money(entry.accepted_amount)}`,
                   }))}
-                  placeholder="Search accepted Service Entry Sheet"
+                  placeholder="Search accepted Service GRN"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">

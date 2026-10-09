@@ -3504,7 +3504,7 @@ function GRNContent() {
                       emptyMessage={
                         loadingCreateDependencies
                           ? "Loading purchase orders..."
-                          : "No material POs pending GRN. Service-only POs are handled in Service Entry Sheets."
+                          : "No material POs pending GRN. Service-only POs are handled in Service GRN."
                       }
                       options={purchaseOrders.map((po) => ({
                         value: po.id,
@@ -3518,8 +3518,7 @@ function GRNContent() {
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <span>
                           Service-only POs, such as transportation/job-work
-                          charges, must be accepted through Service Entry
-                          Sheets.
+                          charges, must be accepted through the Service GRN.
                         </span>
                         <button
                           type="button"
@@ -3528,7 +3527,7 @@ function GRNContent() {
                           }
                           className="font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-950"
                         >
-                          Open Service Entry Sheets
+                          Open Service GRN
                         </button>
                       </div>
                     </div>
