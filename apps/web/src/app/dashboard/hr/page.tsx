@@ -3306,17 +3306,25 @@ function HrPageContent() {
         ? response
         : response?.data || [];
       const today = getTodayDateInputValue();
-      const components = effectiveSalaryEnabled
+      const datedComponents = effectiveSalaryEnabled
         ? history.filter((component) =>
             component.effective_from &&
             String(component.effective_from).slice(0, 10) <= today &&
             (!component.effective_to || String(component.effective_to).slice(0, 10) >= today),
           )
         : history;
-      if (effectiveSalaryEnabled && history.some((component) => !component.effective_from)) {
-        alert("Some salary components have no confirmed effective date. Review their salary history before creating a new revision.");
+      const activeLegacy = effectiveSalaryEnabled
+        ? history.filter((component) => !component.effective_from &&
+            (!component.effective_to || String(component.effective_to).slice(0, 10) >= today))
+        : [];
+      const datedKeys = new Set(datedComponents.map((component) => `${component.component_type}::${component.component_name}`));
+      const legacyFallback = activeLegacy.filter((component) => !datedKeys.has(`${component.component_type}::${component.component_name}`));
+      const legacyKeys = legacyFallback.map((component) => `${component.component_type}::${component.component_name}`);
+      if (new Set(legacyKeys).size !== legacyKeys.length) {
+        alert("This employee has multiple undated versions of the same salary component. Review the history before creating a new revision.");
         return;
       }
+      const components = [...datedComponents, ...legacyFallback];
       const findByType = (type: string) =>
         components.find((component) => component.component_type === type);
       const findByName = (name: string) =>
@@ -3757,17 +3765,20 @@ function HrPageContent() {
           ? await apiClient.get<any>(`/hr/salary/${employeeId}`)
           : [];
         const existingRows: SalaryComponent[] = Array.isArray(existingResponse) ? existingResponse : existingResponse?.data || [];
-        if (existingRows.some((row) => !row.effective_from)) {
-          alert("Salary history contains an undated component. Confirm its effective date before changing this employee's salary.");
+        const usedIds = new Set<string>();
+        const targetDate = salaryRevisionEffectiveFrom;
+        const effectiveCandidates = existingRows.filter((row) => {
+          const start = row.effective_from || null;
+          return (!start || start < targetDate) && (!row.effective_to || row.effective_to >= targetDate);
+        });
+        const datedCandidateKeys = new Set(effectiveCandidates.filter((row) => row.effective_from).map((row) => `${row.component_type}::${row.component_name}`));
+        const eligibleExisting = effectiveCandidates.filter((row) => row.effective_from || !datedCandidateKeys.has(`${row.component_type}::${row.component_name}`));
+        const eligibleKeys = eligibleExisting.map((row) => `${row.component_type}::${row.component_name}`);
+        if (new Set(eligibleKeys).size !== eligibleKeys.length) {
+          alert("Salary history has overlapping or duplicate components on the selected date. Review those rows before saving.");
           setLoading(false);
           return;
         }
-        const usedIds = new Set<string>();
-        const targetDate = salaryRevisionEffectiveFrom;
-        const eligibleExisting = existingRows.filter((row) => {
-          const start = row.effective_from || null;
-          return Boolean(start) && start! < targetDate && (!row.effective_to || row.effective_to >= targetDate);
-        });
         const revisions = components.flatMap((component: any) => {
           const prior = eligibleExisting.find((row) =>
             !usedIds.has(row.id) &&
@@ -3775,7 +3786,7 @@ function HrPageContent() {
             row.component_name === component.component_name,
           );
           if (prior) usedIds.add(prior.id);
-          if (prior && Number(prior.amount) === Number(component.amount) && prior.is_taxable === component.is_taxable) return [];
+          if (prior?.effective_from && Number(prior.amount) === Number(component.amount) && prior.is_taxable === component.is_taxable) return [];
           return [{ ...component, supersedes_id: prior?.id || null }];
         });
         const editableTypes = new Set(["CTC", "BASIC", "HRA", "ALLOWANCE", "PF", "PF_EMPLOYER", "ESI", "ESI_EMPLOYER", "TAX", "DEDUCTION"]);
@@ -13926,7 +13937,7 @@ function HrPageContent() {
                   <label className="mb-1 block text-sm font-semibold text-stone-800">Reason for change</label>
                   <input type="text" value={salaryRevisionReason} onChange={(event) => setSalaryRevisionReason(event.target.value)} className="w-full rounded border border-stone-300 px-3 py-2" placeholder="Salary review, promotion, correction..." />
                 </div>
-                <p className="text-xs text-amber-900 sm:col-span-2">A revision taking effect in a past paid month must go through a correction version. Legacy salary rows keep their effective date marked unknown until confirmed.</p>
+                <p className="text-xs text-amber-900 sm:col-span-2">Choose when the new structure starts. Legacy rows with an unknown start remain historical evidence; this revision ends them before the new date without guessing their original start. A past paid month requires a separate correction version.</p>
               </div>}
               {/* Profile is tenant-scoped; the operator cannot switch it in a salary form. */}
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-4">
