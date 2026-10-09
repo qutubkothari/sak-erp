@@ -4624,6 +4624,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         const configuredPaidRestDay = recordedPayableDays <= 0 && (isConfiguredWeeklyOff || Boolean(day.holiday));
         return sum + recordedPayableDays + (configuredPaidRestDay ? 1 : 0);
       }, 0) : Number(summary.payable_days || 0);
+      const paidWeeklyOffDays = salaryPolicy.value
+        ? employeeAttendanceDays.filter((day: any) => {
+            const status = String(day.status || "").toUpperCase();
+            const weekDay = new Date(`${String(day.date).slice(0, 10)}T00:00:00.000Z`).getUTCDay();
+            return status === "WEEK_OFF" && salaryPolicy.value!.paid_weekly_off_weekdays.includes(weekDay);
+          }).length
+        : 0;
       const annualCalculation = salaryPolicy.value ? calculateAnnualSalaryPolicy({ annualSalary: annualSalaryBasis, payableDays: policyPayableDays, extraCreditDays, policy: salaryPolicy.value }) : null;
       const prorationDays = annualCalculation?.divisor_days || workingDays;
       const dailyGrossRate = annualCalculation?.daily_rate || (prorationDays > 0 ? configuredMonthlyGross / prorationDays : 0);
@@ -4706,9 +4713,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           policy: { ...attendanceRegister.policy, overtime_rule_source: "EMPLOYEE_OVERRIDE_THEN_COMPANY_DEFAULT", overtime_rule_version_ids: [...new Set(attendanceEvidenceRows.map((day: any) => day.overtime_rule_id).filter(Boolean))] },
           present_days: Number(summary.present_days || 0),
           half_days: Number(summary.half_days || 0),
-          payable_days: annualCalculation ? policyPayableDays : Number(summary.payable_days || 0),
-          base_payable_calendar_days: Number(summary.base_payable_calendar_days || 0),
-          paid_weekly_off_days: Number(summary.paid_weekly_off_days || 0),
+          payable_days: policyPayableDays,
+          base_payable_calendar_days: policyPayableDays,
+          paid_weekly_off_days: paidWeeklyOffDays,
+          comp_off_leave_days: Number(summary.comp_off_leave_days || 0),
           salary_proration_basis: annualCalculation ? "ANNUAL_SALARY_POLICY" : "SCHEDULED_WORKING_DAYS",
           salary_proration_days: prorationDays || null,
           salary_proration_rule_version_id: salaryPolicy.version?.id || null,

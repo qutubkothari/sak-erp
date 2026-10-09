@@ -4178,7 +4178,7 @@ function HrPageContent() {
           ${salaryRowsHtml}
           <tr class="highlight-yellow">
             <td class="center">${grossRowSl}</td>
-            <td><strong>Base Gross Salary (saved)</strong></td>
+            <td><strong>Total Earnings</strong></td>
             <td class="right"><strong>${fmtINR(Number(opts.grossSalary || 0))}</strong></td>
             <td></td>
           </tr>
@@ -4226,7 +4226,7 @@ function HrPageContent() {
     </div>
   </div>
 
-  <div class="calculation-note">Salary component lines use the employee's current salary setup. Saved gross, net, and payable values are shown separately; overtime and travel per diem are listed separately.</div>
+  <div class="calculation-note">Salary components and calculation lines are taken from the payroll record. Total earnings include overtime and travel per diem; net salary is total earnings less deductions. Scheduled days follow the attendance calendar. Paid days use the saved policy, count each date once, and show overtime credits separately.</div>
 
   <div class="footer">
     <div>Thanking You,</div>
@@ -4267,11 +4267,20 @@ function HrPageContent() {
 
       // Check if it's monthly payroll or regular payslip
       const isMonthlyPayroll = record.paid_for_total_days !== undefined;
+      const savedCalculationLines = record.payroll_breakdown?.calculation_lines;
+      const hasSavedCalculationLines =
+        Array.isArray(savedCalculationLines) && savedCalculationLines.length > 0;
+      const savedSalaryComponents = Array.isArray(
+        record.payroll_breakdown?.salary_components,
+      )
+        ? record.payroll_breakdown.salary_components
+        : [];
 
-      // Fetch employee salary components
-      const empRes = await apiClient.get<any>(
-        `/hr/salary/${record.employee_id}`,
-      );
+      // Monthly payroll needs its saved fixed-component reference. Regular
+      // payslips use the component and calculation snapshots saved at generation.
+      const empRes = isMonthlyPayroll
+        ? await apiClient.get<any>(`/hr/salary/${record.employee_id}`)
+        : savedSalaryComponents;
       const components = Array.isArray(empRes) ? empRes : empRes.data || [];
 
       if (isMonthlyPayroll) {
@@ -4661,28 +4670,35 @@ function HrPageContent() {
         }, 250);
       } else {
         // Regular payslip uses the standard SAK Solutions letter format.
-        const salaryComponents = Array.isArray(empRes)
-          ? empRes
-          : empRes.data || [];
+        const calculationLines = hasSavedCalculationLines
+          ? record.payroll_breakdown.calculation_lines as Array<{ kind?: string; label?: string; amount?: number; formula?: string }>
+          : [];
+        const salaryComponents = components;
         const grossTypes = new Set(["BASIC", "HRA", "ALLOWANCE", "BONUS"]);
         const deductionTypes = new Set(["DEDUCTION", "PF", "ESI", "TAX"]);
         const isHoldName = (name: unknown) =>
           typeof name === "string" && /\bon\s*hold\b|\bhold\b/i.test(name);
-        const earnings = salaryComponents.filter((sc: any) =>
-          grossTypes.has(String(sc.component_type || "")),
-        );
+        const earnings = hasSavedCalculationLines
+          ? calculationLines.filter((line) => String(line.kind).toUpperCase() === "EARNING")
+          : salaryComponents.filter((sc: any) =>
+              grossTypes.has(String(sc.component_type || "")),
+            );
         const onHold = earnings.filter((sc: any) =>
-          isHoldName(sc.component_name),
+          isHoldName(sc.label || sc.component_name),
         );
-        const deductions = salaryComponents.filter((sc: any) =>
-          deductionTypes.has(String(sc.component_type || "")),
-        );
+        const deductions = hasSavedCalculationLines
+          ? calculationLines.filter((line) => String(line.kind).toUpperCase() === "DEDUCTION")
+          : salaryComponents.filter((sc: any) =>
+              deductionTypes.has(String(sc.component_type || "")),
+            );
         const holdTotal = onHold.reduce(
           (sum: number, sc: any) => sum + (parseFloat(sc.amount) || 0),
           0,
         );
         const netSalary = Number(record.net_salary || 0);
-        const amountPaid = Math.max(0, netSalary - holdTotal);
+        const amountPaid = Number.isFinite(Number(record.amount_paid))
+          ? Number(record.amount_paid)
+          : Math.max(0, netSalary - holdTotal);
 
         const salaryMonth = String(
           record.salary_month || record.payroll_month || "",
@@ -4697,7 +4713,14 @@ function HrPageContent() {
         const daysLeave = Number(
           record.paid_leave_days ?? record.leave_days ?? 0,
         );
-        const paidDays = Math.max(0, daysPresent + daysLeave);
+        const paidDays = Math.max(
+          0,
+          Number(
+            record.payroll_breakdown?.base_payable_calendar_days ??
+              record.payroll_breakdown?.payable_days ??
+              daysPresent + daysLeave,
+          ),
+        );
         const daysAbsent = Number(
           record.absent_days ?? Math.max(0, workingDays - paidDays),
         );
@@ -4776,108 +4799,95 @@ function HrPageContent() {
               .filter(Boolean)
           : undefined;
 
+        const overtimeAmount = Number(record.overtime_amount || 0);
+        const overtimeCreditDays = Number(
+          record.payroll_breakdown?.overtime_credit_days || 0,
+        );
+        const travelDays = Number(
+          record.travel_days || record.days_travelled || 0,
+        );
+        const totalPerDiem = Number(record.total_per_diem || 0);
         const salaryRows: Array<{
           label: string;
           amount: number;
           sl?: number;
           daysInMonth?: number | string;
         }> = [];
-        if (basicSalary)
-          salaryRows.push({
-            label: "Basic Monthly",
-            amount: basicSalary,
-            daysInMonth,
+        if (hasSavedCalculationLines) {
+          calculationLines
+            .filter((line) => String(line.kind).toUpperCase() === "EARNING")
+            .filter((line) => Number(line.amount || 0) !== 0)
+            .forEach((line) => {
+              const label = String(line.label || "Earning");
+              salaryRows.push({
+                label:
+                  /^overtime$/i.test(label) && overtimeCreditDays > 0
+                    ? `Overtime (${overtimeCreditDays.toFixed(2)} credited days)`
+                    : label,
+                amount: Number(line.amount || 0),
+              });
+            });
+        } else if (salaryComponents.length) {
+          if (basicSalary)
+            salaryRows.push({ label: "Basic Monthly", amount: basicSalary, daysInMonth });
+          if (hra) salaryRows.push({ label: "HRA Monthly", amount: hra });
+          Object.entries(allowances).forEach(([name, amount]) => {
+            if (amount) salaryRows.push({ label: String(name), amount: Number(amount) });
           });
-        if (hra) salaryRows.push({ label: "HRA Monthly", amount: hra });
-
-        Object.entries(allowances).forEach(([name, amount]) => {
-          if (!amount) return;
-          salaryRows.push({ label: String(name), amount: Number(amount) });
-        });
-
-        if (bonus) salaryRows.push({ label: "Bonus Monthly", amount: bonus });
-
-        const overtimeAmount = Number(record.overtime_amount || 0);
-        const overtimeHours = Number(record.overtime_hours || 0);
-        const overtimeCreditDays = Number(
-          record.payroll_breakdown?.overtime_credit_days || 0,
-        );
-        const overtimeMode = String(
-          record.payroll_breakdown?.policy?.overtime_calculation_mode || "",
-        ).toUpperCase();
-        const formatHoursAndMinutes = (hours: number) => {
-          const totalMinutes = Math.max(0, Math.round(hours * 60));
-          const wholeHours = Math.floor(totalMinutes / 60);
-          const minutes = totalMinutes % 60;
-          return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-        };
-        if (overtimeAmount > 0) {
-          salaryRows.push({
-            label:
-              overtimeMode === "DAY_CREDIT"
-                ? `Overtime (${overtimeCreditDays.toFixed(2)} credited day${overtimeCreditDays === 1 ? "" : "s"}; ${formatHoursAndMinutes(overtimeHours)} hours recorded)`
-                : overtimeHours <= 0
-                  ? "Overtime (saved credit basis unavailable)"
-                  : `Overtime (${formatHoursAndMinutes(overtimeHours)} hours)`,
+          if (bonus) salaryRows.push({ label: "Bonus Monthly", amount: bonus });
+          if (overtimeAmount > 0) salaryRows.push({
+            label: `Overtime${overtimeCreditDays > 0 ? ` (${overtimeCreditDays.toFixed(2)} credited days)` : ""}`,
             amount: overtimeAmount,
           });
-        }
-
-        const travelDays = Number(
-          record.travel_days || record.days_travelled || 0,
-        );
-        const totalPerDiem = Number(record.total_per_diem || 0);
-        if (totalPerDiem > 0) {
-          salaryRows.push({
+          if (totalPerDiem > 0) salaryRows.push({
             label: `Outstation Travel Per Diem${travelDays > 0 ? ` (${travelDays} day${travelDays === 1 ? "" : "s"})` : ""}`,
             amount: totalPerDiem,
           });
+        } else {
+          // Older payslips without a saved component snapshot show recorded
+          // totals only; current salary setup must not masquerade as history.
+          if (grossSalary) salaryRows.push({ label: "Base earnings (saved)", amount: grossSalary });
+          if (overtimeAmount > 0) salaryRows.push({ label: "Overtime (saved)", amount: overtimeAmount });
+          if (totalPerDiem > 0) salaryRows.push({ label: "Travel per diem (saved)", amount: totalPerDiem });
         }
 
         // Anything marked "hold" is shown as "Less" rows like the sample.
         const lessRows: Array<{ label: string; amount: number }> = [];
-        if (professionalTax)
-          lessRows.push({
-            label: "Less : Professional Tax",
-            amount: professionalTax,
+        if (hasSavedCalculationLines) {
+          calculationLines
+            .filter((line) => String(line.kind).toUpperCase() === "DEDUCTION")
+            .filter((line) => Number(line.amount || 0) !== 0)
+            .forEach((line) => lessRows.push({
+              label: `Less : ${String(line.label || "Deduction")}`,
+              amount: Number(line.amount || 0),
+            }));
+        } else if (salaryComponents.length) {
+          if (professionalTax) lessRows.push({ label: "Less : Professional Tax", amount: professionalTax });
+          if (pfEmployee) lessRows.push({ label: "Less : PF (Employee)", amount: pfEmployee });
+          if (esiEmployee) lessRows.push({ label: "Less : ESI (Employee)", amount: esiEmployee });
+          if (tds) lessRows.push({ label: "Less : TDS", amount: tds });
+          Object.entries(otherDeductions).forEach(([name, amount]) => {
+            if (amount) lessRows.push({ label: `Less : ${name}`, amount: Number(amount) });
           });
-        if (pfEmployee)
-          lessRows.push({ label: "Less : PF (Employee)", amount: pfEmployee });
-        if (esiEmployee)
-          lessRows.push({
-            label: "Less : ESI (Employee)",
-            amount: esiEmployee,
-          });
-        if (tds) lessRows.push({ label: "Less : TDS", amount: tds });
-        Object.entries(otherDeductions).forEach(([name, amount]) => {
-          if (!amount) return;
-          lessRows.push({ label: `Less : ${name}`, amount: Number(amount) });
-        });
-
-        const attendanceDeduction = Number(record.attendance_deduction || 0);
-        const lateDeduction = Number(record.late_deduction || 0);
-        if (attendanceDeduction > 0) {
-          lessRows.push({
-            label: "Less : Attendance / Unpaid Days",
-            amount: attendanceDeduction,
-          });
-        }
-        if (lateDeduction > 0) {
-          lessRows.push({
-            label: "Less : Late Arrival",
-            amount: lateDeduction,
-          });
+          const attendanceDeduction = Number(record.attendance_deduction || 0);
+          const lateDeduction = Number(record.late_deduction || 0);
+          if (attendanceDeduction > 0) lessRows.push({ label: "Less : Attendance / Unpaid Days", amount: attendanceDeduction });
+          if (lateDeduction > 0) lessRows.push({ label: "Less : Late Arrival", amount: lateDeduction });
+        } else if (Number(record.total_deductions || 0) > 0) {
+          lessRows.push({ label: "Less : Total Deductions (saved)", amount: Number(record.total_deductions) });
         }
 
         const itemizedEarnings = sumAmount(salaryRows);
-        const itemizedBaseGross = sumAmount(earnings);
+        const itemizedBaseGross = hasSavedCalculationLines
+          ? sumAmount(
+              salaryRows.filter(
+                (row) => !/^overtime\b|travel per diem/i.test(row.label),
+              ),
+            )
+          : itemizedEarnings - overtimeAmount - totalPerDiem;
         const itemizedDeductions = sumAmount(lessRows);
-        const nonHoldDeductions = sumAmount(
-          lessRows.filter((row) => !/monthly hold/i.test(row.label)),
-        );
-        const itemizedNetSalary = itemizedEarnings - nonHoldDeductions;
-        const itemizedAmountPaid =
-          itemizedEarnings - itemizedDeductions - holdTotal;
+        const itemizedNetSalary = itemizedEarnings - itemizedDeductions;
+        const itemizedAmountPaid = itemizedNetSalary - holdTotal;
         const netVariance = itemizedNetSalary - netSalary;
         const paidVariance = itemizedAmountPaid - amountPaid;
         const grossVariance = itemizedBaseGross - grossSalary;
@@ -4903,7 +4913,12 @@ function HrPageContent() {
             label: "Travel Per Diem",
             value: totalPerDiem > 0 ? formatCurrency(totalPerDiem) : "-",
           },
-          { label: "Comp-Offs", value: 0 },
+          ...(record.payroll_breakdown?.comp_off_leave_days != null
+            ? [{ label: "Comp-Off Leave Used", value: Number(record.payroll_breakdown.comp_off_leave_days) }]
+            : []),
+          ...(record.payroll_breakdown?.paid_weekly_off_days != null
+            ? [{ label: "Paid Weekly Offs", value: Number(record.payroll_breakdown.paid_weekly_off_days) }]
+            : []),
           { label: "Leave(s) / Absent", value: daysAbsent },
           { label: "Approved Paid Leaves", value: daysLeave },
           {
@@ -4914,11 +4929,7 @@ function HrPageContent() {
             label: "Late Arrivals (days / minutes)",
             value: `${Number(record.late_days || 0)} days / ${Number(record.late_minutes || 0)} min`,
           },
-          {
-            label: "Overtime Hours (HH:MM)",
-            value: formatHoursAndMinutes(overtimeHours),
-          },
-          ...(overtimeMode === "DAY_CREDIT"
+          ...(overtimeCreditDays > 0
             ? [{ label: "Overtime Credit", value: `${overtimeCreditDays} days` }]
             : []),
           { label: "Paid for Total Days", value: paidDays },
@@ -4929,7 +4940,7 @@ function HrPageContent() {
           monthLabel,
           amountPaid,
           salaryRows,
-          grossSalary,
+          grossSalary: itemizedEarnings,
           lessRows,
           monthlyHold: holdTotal,
           netSalary,

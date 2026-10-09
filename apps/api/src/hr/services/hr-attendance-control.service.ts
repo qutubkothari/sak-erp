@@ -828,6 +828,9 @@ export class HrAttendanceControlService {
         present_days: count("PRESENT") + count("LATE"),
         half_days: count("HALF_DAY"),
         paid_leave_days: count("PAID_LEAVE"),
+        comp_off_leave_days: rows.filter(
+          (row) => row.status === "PAID_LEAVE" && row.leave_type === "COMP_OFF",
+        ).length,
         unpaid_leave_days: count("UNPAID_LEAVE"),
         absent_days: count("ABSENT"),
         late_days: rows.some((row) => row.derived_metrics_status)
