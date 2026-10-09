@@ -1221,6 +1221,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return data || [];
   }
 
+  async getEmployeeDirectory(tenantId: string) {
+    const { data, error } = await this.supabase
+      .from("employees")
+      .select("id,employee_code,employee_name,user_id,department_id,designation_id,branch_id")
+      .eq("tenant_id", tenantId);
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
   private async assertEmployeeBelongsToTenant(
     tenantId: string,
     employeeId: string,

@@ -28,7 +28,7 @@ import {
   RequireUpdate,
   RequirePermissions,
 } from "../../auth/decorators/permissions.decorator";
-import { hasSuperAdminBypass } from "../../auth/utils/permission-utils";
+import { hasPermission, hasSuperAdminBypass } from "../../auth/utils/permission-utils";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { HrHistoricalAttendanceImportService } from "../services/hr-historical-attendance-import.service";
@@ -164,9 +164,10 @@ export class HrController {
     return this.hrService.createEmployee(req.user.tenantId, body);
   }
   @Get("employees")
-  @RequireRead("hr")
   getEmployees(@Request() req: any) {
-    return this.hrService.getEmployees(req.user.tenantId);
+    return hasSuperAdminBypass(req.user) || hasPermission(req.user, "hr:read")
+      ? this.hrService.getEmployees(req.user.tenantId)
+      : this.hrService.getEmployeeDirectory(req.user.tenantId);
   }
   @Get("employees/me")
   getMyEmployee(@Request() req: any) {
