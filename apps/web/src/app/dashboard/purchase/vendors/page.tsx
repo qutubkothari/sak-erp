@@ -504,6 +504,7 @@ export default function VendorsPage() {
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const vendorSearchRequest = useRef(0);
+  const vendorDetailRequest = useRef(0);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("ALL");
@@ -515,6 +516,7 @@ export default function VendorsPage() {
     }
   }, []);
   const [viewingVendor, setViewingVendor] = useState<Vendor | null>(null);
+  const [vendorDetailLoading, setVendorDetailLoading] = useState(false);
   useBrainRecord('supplier', viewingVendor?.id, viewingVendor?.name);
   const [vendorImportFiles, setVendorImportFiles] = useState<VendorImportFile[]>([]);
   const [vendorImportLoading, setVendorImportLoading] = useState(false);
@@ -544,6 +546,24 @@ export default function VendorsPage() {
       }
     } finally {
       if (requestId === vendorSearchRequest.current) setLoading(false);
+    }
+  };
+
+  const openVendorDetails = async (vendor: Vendor) => {
+    const requestId = ++vendorDetailRequest.current;
+    setViewingVendor(vendor);
+    setVendorDetailLoading(true);
+    try {
+      const details = await apiClient.get<Vendor>(`/purchase/vendors/${vendor.id}`);
+      if (requestId === vendorDetailRequest.current) {
+        setViewingVendor((current) => current?.id === vendor.id ? details : current);
+      }
+    } catch (error: any) {
+      if (requestId === vendorDetailRequest.current) {
+        toast.error(error?.message || "Could not load the full vendor approval history");
+      }
+    } finally {
+      if (requestId === vendorDetailRequest.current) setVendorDetailLoading(false);
     }
   };
 
@@ -980,7 +1000,7 @@ export default function VendorsPage() {
         cell: (vendor) => (
           <button
             className="font-semibold text-[#8B6F47] hover:underline"
-            onClick={() => setViewingVendor(vendor)}
+            onClick={() => void openVendorDetails(vendor)}
           >
             {vendor.code || "-"}
           </button>
@@ -1148,7 +1168,7 @@ export default function VendorsPage() {
               className="h-8 w-8 p-0"
               title="View vendor"
               aria-label="View vendor"
-              onClick={() => setViewingVendor(vendor)}
+              onClick={() => void openVendorDetails(vendor)}
             >
               <Eye className="h-4 w-4" />
             </ErpButton>
@@ -1747,6 +1767,13 @@ export default function VendorsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F5EFE3]">
+                    {vendorDetailLoading ? (
+                      <tr>
+                        <td className="px-3 py-4 text-[#7A6555]" colSpan={6}>
+                          Loading approval history...
+                        </td>
+                      </tr>
+                    ) : <>
                     {(viewingVendor.approval_history?.length
                       ? viewingVendor.approval_history
                       : viewingVendor.approval_trail || []
@@ -1776,6 +1803,7 @@ export default function VendorsPage() {
                         </td>
                       </tr>
                     ) : null}
+                    </>}
                   </tbody>
                 </table>
               </div>
