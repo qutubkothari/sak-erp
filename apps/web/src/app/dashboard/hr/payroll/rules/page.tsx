@@ -54,7 +54,7 @@ function OvertimeRuleEditor({ value, onChange }: { value: string; onChange: (val
   const update = (next: OvertimeDraft) => onChange(JSON.stringify(next));
   const numberField = (label: string, key: keyof OvertimeDraft) => (
     <label className="text-sm">{label}
-      <input type="number" min="0" max="24" step="0.01" value={typeof rule[key] === "number" ? String(rule[key]) : ""}
+      <input type="number" min="0" max={key === "rate_multiplier" ? "10" : "24"} step="0.01" value={typeof rule[key] === "number" ? String(rule[key]) : ""}
         onChange={(event) => {
           const next = { ...rule } as Record<string, unknown>;
           if (event.target.value === "") delete next[key];
