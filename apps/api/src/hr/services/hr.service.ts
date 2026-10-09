@@ -1267,6 +1267,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return data || null;
   }
 
+  async getEmployeeForLogin(tenantId: string, userId: string, email?: string) {
+    const linked = await this.getEmployeeByUserId(tenantId, userId);
+    if (linked || !email) return linked;
+    const { data, error } = await this.supabase
+      .from("employees")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .ilike("email", email.trim())
+      .limit(2);
+    if (error) throw new Error(error.message);
+    return data?.length === 1 ? data[0] : null;
+  }
+
   async updateEmployee(tenantId: string, id: string, data: any) {
     const employeeData = sanitizeEmployeePayload(data);
     let existingEmployee: any = null;
