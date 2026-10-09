@@ -3346,11 +3346,13 @@ function JobOrdersPageContent() {
               label: "Open orders",
               value: activeJobOrderCount,
               tone: "warning",
+              onClick: () => setActiveTab("all_open"),
             },
             {
               label: "Running now",
               value: runningJobOrderCount,
               tone: runningJobOrderCount > 0 ? "success" : "neutral",
+              onClick: () => setActiveTab("production"),
             },
             {
               label: "Material blocked",
@@ -3359,11 +3361,13 @@ function JobOrdersPageContent() {
                 purchasePendingCount + awaitingMaterialCount > 0
                   ? "warning"
                   : "neutral",
+              onClick: () => setActiveTab(purchasePendingCount > 0 ? "purchase" : "siv"),
             },
             {
               label: "Waiting receipt / QC",
               value: awaitingQcCount,
               tone: awaitingQcCount > 0 ? "warning" : "neutral",
+              onClick: () => setActiveTab("srv_qc"),
             },
           ]}
         />

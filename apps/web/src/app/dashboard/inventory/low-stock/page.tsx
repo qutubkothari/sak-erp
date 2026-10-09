@@ -408,12 +408,12 @@ export default function LowStockPlanningPage() {
       />
 
       <ErpMetricStrip metrics={[
-        { label: 'Low Stock Items', value: planning?.summary.low_stock || 0 },
-        { label: 'Ignored Items', value: planning?.summary.ignored || 0 },
-        { label: 'Selected to Purchase', value: selectedRows.length },
-        { label: 'Missing / Unapproved Supplier', value: planning?.summary.missing_vendor || 0 },
-        { label: 'Covered by Open PR / PO', value: planning?.summary.covered_by_open_supply || 0 },
-        { label: 'Selected Estimated Value', value: currencyFormat.format(selectedValue) },
+        { label: 'Low Stock Items', value: planning?.summary.low_stock || 0, onClick: () => { setActiveList('planning'); setVendorFilter('ALL'); setSearch(''); } },
+        { label: 'Ignored Items', value: planning?.summary.ignored || 0, onClick: () => { setActiveList('ignored'); setVendorFilter('ALL'); setSearch(''); } },
+        { label: 'Selected to Purchase', value: selectedRows.length, onClick: () => document.getElementById('low-stock-planning-list')?.scrollIntoView({ behavior: 'smooth' }) },
+        { label: 'Missing / Unapproved Supplier', value: planning?.summary.missing_vendor || 0, onClick: () => { setActiveList('planning'); setVendorFilter('MISSING'); setSearch(''); } },
+        { label: 'Covered by Open PR / PO', value: planning?.summary.covered_by_open_supply || 0, onClick: () => router.push('/dashboard/purchase/orders?status=OPEN_PO') },
+        { label: 'Selected Estimated Value', value: currencyFormat.format(selectedValue), onClick: () => document.getElementById('low-stock-planning-list')?.scrollIntoView({ behavior: 'smooth' }) },
       ]} />
 
       {createdPrs.length > 0 && (
@@ -428,7 +428,7 @@ export default function LowStockPlanningPage() {
         </div>
       )}
 
-      <section className="overflow-hidden rounded-xl border border-[#D8C8AA] bg-white shadow-sm">
+      <section id="low-stock-planning-list" className="overflow-hidden rounded-xl border border-[#D8C8AA] bg-white shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#E8DCC4] bg-[#FFFDF8] px-4 py-3">
           <label className="min-w-[230px] text-xs font-semibold uppercase tracking-wide text-[#6F4E37]">
             Low-stock workspace

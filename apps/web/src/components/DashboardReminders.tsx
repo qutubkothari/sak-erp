@@ -87,6 +87,18 @@ const approvalPermissions: Record<ApprovalType, string[][]> = {
   ITEM: [["Inventory", "approve"]],
 };
 
+const approvalQueueRoutes: Record<ApprovalType, string> = {
+  PR: "/dashboard/purchase/requisitions?status=AWAITING_APPROVAL",
+  PO: "/dashboard/purchase/orders?status=PENDING",
+  GRN: "/dashboard/purchase/grn?pendingQc=true",
+  JO: "/dashboard/production/job-orders?tab=all_open",
+  QC: "/dashboard/purchase/grn?pendingQc=true",
+  SES: "/dashboard/purchase/service-entries?status=PENDING_APPROVAL",
+  LEAVE: "/dashboard/hr/management?section=management&tab=leaves",
+  BOM: "/dashboard/bom?approvalStatus=PENDING",
+  ITEM: "/dashboard/inventory/items?verificationStatus=PENDING",
+};
+
 export default function DashboardReminders() {
   const pathname = usePathname();
   const reminderRef = useRef<HTMLDivElement>(null);
@@ -346,6 +358,7 @@ export default function DashboardReminders() {
 
   const visibleGroups = Array.from(new Set(visibleApprovals.map((item) => item.type)));
   const title = contextType ? `${approvalLabels[contextType]} approvals` : "All pending approvals";
+  const summaryQueueHref = contextType ? approvalQueueRoutes[contextType] : "/dashboard/manager?type=ALL";
 
   return (
     <div
@@ -355,17 +368,17 @@ export default function DashboardReminders() {
     >
       {dragHandle}
       {!expanded ? (
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="flex w-full items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3 text-left hover:bg-amber-100"
-        >
-          <div>
+        <div className="flex items-center justify-between gap-2 rounded-xl bg-amber-50 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="min-w-0 flex-1 text-left hover:text-amber-950"
+          >
             <h2 className="text-sm font-bold text-amber-900">Action Required</h2>
             <p className="mt-0.5 text-xs text-amber-800">{title} · {total} pending</p>
-          </div>
-          <span className="text-xs font-semibold text-amber-900">Open</span>
-        </button>
+          </button>
+          <Link href={summaryQueueHref} className="shrink-0 rounded px-2 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700">Open queue</Link>
+        </div>
       ) : (
         <>
           <div className="border-b border-amber-100 bg-amber-50 px-4 py-3">
@@ -385,9 +398,9 @@ export default function DashboardReminders() {
               const rows = visibleApprovals.filter((item) => item.type === type);
               return (
                 <section key={type}>
-                  <div className="mb-1 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-700">
-                    <span>{approvalLabels[type]}</span><span>{rows.length}</span>
-                  </div>
+                  <Link href={approvalQueueRoutes[type]} className="mb-1 flex items-center justify-between rounded px-1 py-1 text-xs font-semibold uppercase tracking-wide text-gray-700 hover:bg-amber-50 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700">
+                    <span>{approvalLabels[type]} · open filtered queue</span><span>{rows.length}</span>
+                  </Link>
                   <div className="space-y-1.5">
                     {rows.slice(0, contextType ? 8 : 4).map((item) => {
                       const base = approvalRoutes[item.type];
@@ -404,7 +417,7 @@ export default function DashboardReminders() {
               );
             })}
             {visibleApprovals.length === 0 && contextType === "PO" && pendingPOs.length > 0 && (
-              <Link href="/dashboard/purchase/orders" className="block rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-sm">{pendingPOs.length} purchase order(s) need review. Open the PO queue.</Link>
+              <Link href={approvalQueueRoutes.PO} className="block rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-sm">{pendingPOs.length} purchase order(s) need review. Open the PO queue.</Link>
             )}
             {visibleApprovals.length === 0 && contextType === "GRN" && pendingQC.length > 0 && (
               <Link href="/dashboard/purchase/grn?pendingQc=true" className="block rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-sm">{pendingQC.length} GRN quality check(s) need review. Open the QC queue.</Link>

@@ -470,7 +470,7 @@ function PRContent() {
   const [items, setItems] = useState<PRItem[]>([]);
   const [requisitions, setRequisitions] = useState<Requisition[]>([]);
   const [loadingRequisitions, setLoadingRequisitions] = useState(true);
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterStatus, setFilterStatus] = useState(() => String(searchParams.get('status') || ''));
   const [filterVendor, setFilterVendor] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [selectedPR, setSelectedPR] = useState<PRDetail | null>(null);
@@ -2364,10 +2364,10 @@ function PRContent() {
         <ErpMetricStrip
           loading={loadingRequisitions}
           metrics={[
-            { label: 'Total requisitions', value: totalPRs },
-            { label: 'Pending approval', value: pendingApprovals, tone: pendingApprovals > 0 ? 'warning' : 'neutral' },
-            { label: 'High / urgent open', value: urgentHighPRs, tone: urgentHighPRs > 0 ? 'danger' : 'neutral' },
-            { label: 'Drafts', value: draftPRs },
+            { label: 'Total requisitions', value: totalPRs, onClick: () => { setFilterStatus(''); setFilterPriority(''); } },
+            { label: 'Pending approval', value: pendingApprovals, tone: pendingApprovals > 0 ? 'warning' : 'neutral', onClick: () => setFilterStatus('AWAITING_APPROVAL') },
+            { label: 'High / urgent open', value: urgentHighPRs, tone: urgentHighPRs > 0 ? 'danger' : 'neutral', onClick: () => setFilterPriority('HIGH') },
+            { label: 'Drafts', value: draftPRs, onClick: () => setFilterStatus('DRAFT') },
           ]}
         />
 

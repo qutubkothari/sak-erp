@@ -134,11 +134,12 @@ export default function ImportFileDetailPage() {
     const duty = Number(data?.bcd_amount || 0) + Number(data?.sws_amount || 0) + (data?.recoverable_igst ? 0 : Number(data?.import_igst_amount || 0));
     const inward = (data?.costs || []).reduce((sum: number, row: any) => sum + Number(row.inr_amount || 0) - Number(row.recoverable_tax_amount || 0), 0);
     const paid = (data?.payments || []).filter((row: any) => row.status === 'PAID').reduce((sum: number, row: any) => sum + Number(row.inr_amount || 0), 0);
+    const jumpTo = (id: string) => () => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return [
-      { label: 'Non-recoverable duty', value: `Rs. ${money(duty)}` },
-      { label: 'Inward cost pool', value: `Rs. ${money(inward)}` },
-      { label: 'Allocated landed cost', value: `Rs. ${money(data?.final_landed_cost)}` },
-      { label: 'Import payments paid', value: `Rs. ${money(paid)}` },
+      { label: 'Non-recoverable duty', value: `Rs. ${money(duty)}`, onClick: jumpTo('import-assessment') },
+      { label: 'Inward cost pool', value: `Rs. ${money(inward)}`, onClick: jumpTo('import-costs') },
+      { label: 'Allocated landed cost', value: `Rs. ${money(data?.final_landed_cost)}`, onClick: jumpTo('import-allocation-trail') },
+      { label: 'Import payments paid', value: `Rs. ${money(paid)}`, onClick: jumpTo('import-payments') },
     ];
   }, [data]);
 
@@ -243,7 +244,7 @@ export default function ImportFileDetailPage() {
         </div>
       </section>
 
-      <section className="rounded-md border border-[#E8DCC4] bg-white">
+      <section id="import-assessment" className="scroll-mt-5 rounded-md border border-[#E8DCC4] bg-white">
         <div className="border-b border-[#E8DCC4] px-5 py-4">
           <h2 className="font-semibold text-[#3D2B1F]">Import Document Chain</h2>
           <p className="text-xs text-[#7A6555]">One-click status of the foreign PO, import documents, GRN receipt, landed cost and payment trail.</p>
@@ -405,7 +406,7 @@ export default function ImportFileDetailPage() {
       </section>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-md border border-[#E8DCC4] bg-white">
+        <section id="import-costs" className="scroll-mt-5 rounded-md border border-[#E8DCC4] bg-white">
           <div className="border-b border-[#E8DCC4] px-5 py-4">
             <h2 className="font-semibold text-[#3D2B1F]">Inward Costs</h2>
             <p className="text-xs text-[#7A6555]">Freight, insurance, CHA, customs duty and other charges that affect landed valuation.</p>
@@ -507,7 +508,7 @@ export default function ImportFileDetailPage() {
         </section>
       </div>
 
-      <section className="rounded-md border border-[#E8DCC4] bg-white">
+      <section id="import-payments" className="scroll-mt-5 rounded-md border border-[#E8DCC4] bg-white">
         <div className="border-b border-[#E8DCC4] px-5 py-4">
           <h2 className="font-semibold text-[#3D2B1F]">Import Payments</h2>
           <p className="text-xs text-[#7A6555]">Foreign supplier, customs, CHA, freight, insurance and bank charges with approval trail.</p>
@@ -543,7 +544,7 @@ export default function ImportFileDetailPage() {
         </SimpleTable>
       </section>
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <section id="import-allocation-trail" className="scroll-mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Panel title="Landed Cost Allocation Trail" icon={<CheckCircle2 className="h-4 w-4" />}>
           <div className="max-h-80 overflow-auto text-sm">
             {(data?.allocations || []).map((row: any) => <div key={row.id} className="grid grid-cols-[1fr_auto] gap-3 border-b border-[#F0E8DA] py-2"><span>{row.item_code || row.item_name}<br /><span className="text-xs text-[#7A6555]">Qty {row.received_qty} / Unit landed Rs. {money(row.landed_unit_cost)} / <Link href={`/dashboard/purchase/grn?viewId=${row.grn_id}`} className="text-[#7A542F] underline">Open GRN</Link></span></span><strong>Rs. {money(row.allocated_landed_cost)}</strong></div>)}

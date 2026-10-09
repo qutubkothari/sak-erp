@@ -509,6 +509,11 @@ export default function VendorsPage() {
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [verificationFilter, setVerificationFilter] = useState("ALL");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("status")?.toUpperCase() === "PENDING") {
+      setVerificationFilter("PENDING");
+    }
+  }, []);
   const [viewingVendor, setViewingVendor] = useState<Vendor | null>(null);
   useBrainRecord('supplier', viewingVendor?.id, viewingVendor?.name);
   const [vendorImportFiles, setVendorImportFiles] = useState<VendorImportFile[]>([]);
@@ -590,26 +595,30 @@ export default function VendorsPage() {
 
   const metrics = useMemo(
     () => [
-      { label: "Total Vendors", value: vendors.length },
+      { label: "Total Vendors", value: vendors.length, onClick: () => { setCategoryFilter("ALL"); setStatusFilter("ALL"); setVerificationFilter("ALL"); } },
       {
         label: "Active",
         value: vendors.filter((vendor) => vendor.is_active).length,
         tone: "success" as const,
+        onClick: () => { setStatusFilter("ACTIVE"); setVerificationFilter("ALL"); },
       },
       {
         label: "Verified",
         value: vendors.filter((vendor) => getVendorApprovalStatus(vendor) === "APPROVED").length,
         tone: "success" as const,
+        onClick: () => setVerificationFilter("VERIFIED"),
       },
       {
         label: "Pending Verification",
         value: vendors.filter((vendor) => getVendorApprovalStatus(vendor) === "PENDING").length,
         tone: "warning" as const,
+        onClick: () => setVerificationFilter("PENDING"),
       },
       {
         label: "Rejected",
         value: vendors.filter((vendor) => getVendorApprovalStatus(vendor) === "REJECTED").length,
         tone: "danger" as const,
+        onClick: () => setVerificationFilter("REJECTED"),
       },
     ],
     [vendors],
