@@ -4227,7 +4227,6 @@ function HrPageContent() {
   </div>
 
   <div class="calculation-note">Salary component lines use the employee's current salary setup. Saved gross, net, and payable values are shown separately; overtime and travel per diem are listed separately.</div>
-  ${opts.payrollCheck ? `<div class="payroll-check"><strong>Payroll breakdown does not reconcile:</strong> ${escapeHtml(opts.payrollCheck)}</div>` : ""}
 
   <div class="footer">
     <div>Thanking You,</div>
@@ -4634,7 +4633,6 @@ function HrPageContent() {
             </div>
 
             <div style="margin-top: 6px; color: #555; font-size: 8pt;">Salary component lines use the current salary setup and are prorated by paid days. Saved gross, net, hold, and payable values are shown in the totals.</div>
-            ${monthlyPayrollCheckItems.length ? `<div class="payroll-check"><strong>Payroll breakdown does not reconcile:</strong> ${escapeHtml(monthlyPayrollCheckItems.join(" "))}</div>` : ""}
 
             <!-- Footer -->
             <div class="footer">
