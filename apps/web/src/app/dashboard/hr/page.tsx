@@ -312,6 +312,43 @@ interface ComprehensiveSalaryForm {
   other_deductions: { name: string; amount: number }[];
 }
 
+function SalaryAmountField({ label, value, onChange, annualCtc, monthlyBasic, basicField = false, hint }: {
+  label: string;
+  value: number;
+  onChange: (amount: number) => void;
+  annualCtc: number;
+  monthlyBasic: number;
+  basicField?: boolean;
+  hint?: string;
+}) {
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [percent, setPercent] = useState("");
+  const [basis, setBasis] = useState<"CTC" | "BASIC">(basicField ? "CTC" : "BASIC");
+  const numericPercent = Number(percent);
+  const basisAmount = basis === "CTC" ? annualCtc / 12 : monthlyBasic;
+  const validCalculation = percent.trim() !== "" && Number.isFinite(numericPercent) && numericPercent >= 0 && numericPercent <= 1000 && Number.isFinite(basisAmount) && basisAmount > 0;
+  const result = validCalculation ? Math.round((basisAmount * numericPercent / 100 + Number.EPSILON) * 100) / 100 : null;
+
+  return <div>
+    <label className="block text-sm font-medium mb-1">{label}{basicField ? " *" : ""}</label>
+    <div className="flex gap-2">
+      <input type="number" value={value} onChange={(event) => onChange(Number(event.target.value))} className="min-w-0 flex-1 rounded border px-3 py-2" min="0" step="0.01" required={basicField} aria-label={`${label} monthly amount`} />
+      <button type="button" aria-expanded={showCalculator} aria-label={`Calculate ${label}`} onClick={() => setShowCalculator((current) => !current)} className="rounded border border-blue-300 px-3 py-2 text-sm font-bold text-blue-800 hover:bg-blue-50">fx</button>
+    </div>
+    {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+    {showCalculator && <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="min-w-24 flex-1">Percent<input type="number" min="0" max="1000" step="0.01" value={percent} onChange={(event) => setPercent(event.target.value)} placeholder={basicField ? "50" : "10"} className="mt-1 w-full rounded border px-2 py-1" /></label>
+        <span className="pb-2">% of</span>
+        <label className="min-w-36 flex-1">Basis<select value={basis} onChange={(event) => setBasis(event.target.value as "CTC" | "BASIC")} className="mt-1 w-full rounded border px-2 py-1"><option value="CTC">Annual CTC ÷ 12</option>{!basicField && <option value="BASIC">Monthly Basic</option>}</select></label>
+        <button type="button" disabled={result === null} onClick={() => { if (result !== null) onChange(result); }} className="rounded bg-blue-700 px-3 py-2 font-semibold text-white disabled:opacity-50">Apply</button>
+      </div>
+      <p className="mt-2 text-xs text-blue-900">{result === null ? (basisAmount <= 0 ? `Enter ${basis === "CTC" ? "annual CTC" : "monthly Basic"} first.` : "Enter a percentage to see the monthly amount.") : `${numericPercent}% × ${basis === "CTC" ? "(annual CTC ÷ 12)" : "monthly Basic"} = ${result.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} per month. Click Apply to use this amount.`}</p>
+      <p className="mt-1 text-xs text-blue-900">This calculator fills the amount once. Future CTC or Basic changes do not automatically change it.</p>
+    </div>}
+  </div>;
+}
+
 function createEmptyComprehensiveSalaryForm(): ComprehensiveSalaryForm {
   return {
     employee_id: "",
@@ -14045,88 +14082,13 @@ function HrPageContent() {
                 <h4 className="font-semibold mb-3 text-green-600">
                   Fixed Components (Monthly)
                 </h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Basic Salary *
-                    </label>
-                    <input
-                      type="number"
-                      value={comprehensiveSalaryForm.basic_salary}
-                      onChange={(e) =>
-                        handleBasicSalaryChange(Number(e.target.value))
-                      }
-                      className="w-full border rounded px-3 py-2"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Keeps this employee's HRA amount. Review applicable deductions before saving.
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      HRA (House Rent Allowance)
-                    </label>
-                    <input
-                      type="number"
-                      value={comprehensiveSalaryForm.hra}
-                      onChange={(e) =>
-                        setComprehensiveSalaryForm({
-                          ...comprehensiveSalaryForm,
-                          hra: Number(e.target.value),
-                        })
-                      }
-                      className="w-full border rounded px-3 py-2"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Medical Allowance
-                    </label>
-                    <input
-                      type="number"
-                      value={comprehensiveSalaryForm.medical_allowance}
-                      onChange={(e) =>
-                        setComprehensiveSalaryForm({
-                          ...comprehensiveSalaryForm,
-                          medical_allowance: Number(e.target.value),
-                        })
-                      }
-                      className="w-full border rounded px-3 py-2"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Travelling Allowance
-                    </label>
-                    <input
-                      type="number"
-                      value={comprehensiveSalaryForm.travelling_allowance}
-                      onChange={(e) =>
-                        setComprehensiveSalaryForm({
-                          ...comprehensiveSalaryForm,
-                          travelling_allowance: Number(e.target.value),
-                        })
-                      }
-                      className="w-full border rounded px-3 py-2"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Dearness Allowance (monthly)</label>
-                    <input type="number" value={comprehensiveSalaryForm.dearness_allowance} onChange={(e) => setComprehensiveSalaryForm({ ...comprehensiveSalaryForm, dearness_allowance: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Special Allowance (monthly)</label>
-                    <input type="number" value={comprehensiveSalaryForm.special_allowance} onChange={(e) => setComprehensiveSalaryForm({ ...comprehensiveSalaryForm, special_allowance: Number(e.target.value) })} className="w-full border rounded px-3 py-2" min="0" step="0.01" />
-                  </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SalaryAmountField label="Basic Salary" basicField value={comprehensiveSalaryForm.basic_salary} onChange={handleBasicSalaryChange} annualCtc={comprehensiveSalaryForm.ctc} monthlyBasic={comprehensiveSalaryForm.basic_salary} hint="Changing Basic keeps this employee's HRA amount. Review deductions before saving." />
+                  <SalaryAmountField label="HRA (House Rent Allowance)" value={comprehensiveSalaryForm.hra} onChange={(amount) => setComprehensiveSalaryForm((current) => ({ ...current, hra: amount }))} annualCtc={comprehensiveSalaryForm.ctc} monthlyBasic={comprehensiveSalaryForm.basic_salary} />
+                  <SalaryAmountField label="Medical Allowance" value={comprehensiveSalaryForm.medical_allowance} onChange={(amount) => setComprehensiveSalaryForm((current) => ({ ...current, medical_allowance: amount }))} annualCtc={comprehensiveSalaryForm.ctc} monthlyBasic={comprehensiveSalaryForm.basic_salary} />
+                  <SalaryAmountField label="Travelling Allowance" value={comprehensiveSalaryForm.travelling_allowance} onChange={(amount) => setComprehensiveSalaryForm((current) => ({ ...current, travelling_allowance: amount }))} annualCtc={comprehensiveSalaryForm.ctc} monthlyBasic={comprehensiveSalaryForm.basic_salary} />
+                  <SalaryAmountField label="Dearness Allowance (monthly)" value={comprehensiveSalaryForm.dearness_allowance} onChange={(amount) => setComprehensiveSalaryForm((current) => ({ ...current, dearness_allowance: amount }))} annualCtc={comprehensiveSalaryForm.ctc} monthlyBasic={comprehensiveSalaryForm.basic_salary} />
+                  <SalaryAmountField label="Special Allowance (monthly)" value={comprehensiveSalaryForm.special_allowance} onChange={(amount) => setComprehensiveSalaryForm((current) => ({ ...current, special_allowance: amount }))} annualCtc={comprehensiveSalaryForm.ctc} monthlyBasic={comprehensiveSalaryForm.basic_salary} />
                 </div>
               </div>
 
