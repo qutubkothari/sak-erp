@@ -26,6 +26,7 @@ export type Permission = PermissionEntry;
 // precedence when present.
 const SCREEN_PERMISSION_FALLBACKS: Record<string, string[]> = {
   "bom-routing": ["bom-overview"],
+  "hr-payroll-setup": ["hr-management"],
 };
 
 const PRODUCTION_MANAGEMENT_DENYLIST = new Set(["production@mizantra.ae"]);
