@@ -1345,6 +1345,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return result;
   }
 
+  async updateEmployeePerDiem(tenantId: string, id: string, body: { amount?: number; reason?: string }, auditContext?: any) {
+    const amount = Number(body?.amount);
+    const reason = String(body?.reason || "").trim();
+    if (body?.amount === undefined || !Number.isFinite(amount) || amount < 0 || !reason) {
+      throw new BadRequestException("Enter a non-negative per diem rate and a reason.");
+    }
+    const { data: prior, error: readError } = await this.supabase.from("employees")
+      .select("id,employee_code,employee_name,per_diem_amount")
+      .eq("tenant_id", tenantId).eq("id", id).maybeSingle();
+    if (readError) throw new Error(readError.message);
+    if (!prior) throw new NotFoundException("Employee not found.");
+    const previousAmount = Number(prior.per_diem_amount || 0);
+    if (previousAmount === amount) throw new BadRequestException("Per diem rate is unchanged.");
+    const { data: updated, error } = await this.supabase.from("employees")
+      .update({ per_diem_amount: amount }).eq("tenant_id", tenantId).eq("id", id)
+      .select("id,employee_code,employee_name,per_diem_amount").single();
+    if (error) throw new Error(error.message);
+    if (auditContext) auditContext.auditSnapshot = {
+      action: "UPDATE", source: "HR_PAYROLL_SETUP", reason,
+      oldValue: { employee_id: id, per_diem_amount: previousAmount },
+      newValue: { employee_id: id, per_diem_amount: amount },
+    };
+    return updated;
+  }
+
   async deleteEmployee(tenantId: string, id: string) {
     const { error } = await this.supabase
       .from("employees")
