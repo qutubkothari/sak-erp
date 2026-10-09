@@ -472,11 +472,17 @@ export class HrController {
   // Leave Requests
   @Post("leaves")
   applyLeave(@Request() req: any, @Body() body: any) {
-    return this.hrService.applyLeave(req.user.tenantId, body);
+    return this.hrService.applyLeave(req.user.tenantId, body, req.user);
   }
   @Get("leaves")
-  getLeaves(@Request() req: any, @Query("employeeId") employeeId?: string) {
-    return this.hrService.getLeaves(req.user.tenantId, employeeId);
+  async getLeaves(@Request() req: any, @Query("employeeId") employeeId?: string) {
+    if (hasSuperAdminBypass(req.user) || hasPermission(req.user, "hr:read")) return this.hrService.getLeaves(req.user.tenantId, employeeId);
+    const own = await this.hrService.getEmployeeForLogin(req.user.tenantId, req.user.userId, req.user.email);
+    return own ? this.hrService.getLeaves(req.user.tenantId, own.id) : [];
+  }
+  @Get("leaves/preview")
+  previewLeave(@Request() req: any, @Query("employeeId") employeeId: string, @Query("startDate") startDate: string, @Query("endDate") endDate: string) {
+    return this.hrService.previewLeaveDays(req.user.tenantId, employeeId, startDate, endDate, req.user);
   }
   @Put("leaves/:id/approve")
   @RequireApprove("hr")
@@ -495,7 +501,7 @@ export class HrController {
 
   @Put("leaves/:id")
   updateLeave(@Request() req: any, @Param("id") id: string, @Body() body: any) {
-    return this.hrService.updateLeave(req.user.tenantId, id, body);
+    return this.hrService.updateLeave(req.user.tenantId, id, body, req.user);
   }
 
   // Holiday Calendar

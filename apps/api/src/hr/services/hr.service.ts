@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { ConflictException, NotFoundException } from "@nestjs/common";
 import { createHash } from "crypto";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -36,6 +36,8 @@ import {
   payrollAttentionGroup,
   validatePayrollAttendancePolicy,
   calculateAnnualSalaryPolicy,
+  annualBonusForMonth,
+  type AnnualBonusRule,
   type SalaryCalculationPolicy,
   payrollRunCalculationChecksum,
   buildArrearsEvidence,
@@ -653,12 +655,8 @@ const normalizeLeaveDatePayload = (data: any) => {
     );
   }
 
-  const totalDays = countLeaveDaysExcludingSundays(startDate, endDate);
-  if (totalDays <= 0) {
-    throw new BadRequestException(
-      "Selected date range contains only Sunday(s). Sunday is a paid weekly off and does not require leave.",
-    );
-  }
+  const totalDays = Math.round((Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000) + 1;
+  if (totalDays > 366) throw new BadRequestException("Leave request range cannot exceed 366 days.");
 
   return { startDate, endDate, totalDays };
 };
@@ -2349,22 +2347,46 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
   }
 
   // Leave Requests
-  async applyLeave(tenantId: string, data: any) {
+  private async assertLeaveEmployeeScope(tenantId: string, employeeId: string, actor: any, action: "create" | "update") {
+    if (hasAdminBypass(actor) || hasPermission(actor, `hr:${action}`)) return;
+    const own = await this.getEmployeeForLogin(tenantId, actor?.userId, actor?.email);
+    if (!own || String(own.id) !== employeeId) throw new ForbiddenException("Leave requests can be changed only by the employee or HR.");
+  }
+
+  private async countRequestedLeaveDays(tenantId: string, employeeId: string, startDate: string, endDate: string) {
+    const register = await this.attendanceControl.buildRegister(tenantId, startDate, endDate, employeeId);
+    const days = register.daily.filter((day: any) => String(day.employee_id) === employeeId &&
+      (day.scheduled === true || (day.sandwich_leave_behavior === "INCLUDE_WEEKENDS" && !day.holiday))).length;
+    if (days <= 0) throw new BadRequestException("The selected dates contain no applicable leave days for this employee's schedule.");
+    return days;
+  }
+
+  async previewLeaveDays(tenantId: string, employeeId: string, startDate: string, endDate: string, actor: any) {
+    await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+    await this.assertLeaveEmployeeScope(tenantId, employeeId, actor, "create");
+    const normalized = normalizeLeaveDatePayload({ start_date: startDate, end_date: endDate });
+    return { employee_id: employeeId, start_date: normalized.startDate, end_date: normalized.endDate,
+      total_days: await this.countRequestedLeaveDays(tenantId, employeeId, normalized.startDate, normalized.endDate) };
+  }
+
+  async applyLeave(tenantId: string, data: any, actor: any) {
     const employeeId = String(data?.employee_id || "").trim();
     await this.assertEmployeeBelongsToTenant(tenantId, employeeId);
+    await this.assertLeaveEmployeeScope(tenantId, employeeId, actor, "create");
 
-    const { startDate, endDate, totalDays } = normalizeLeaveDatePayload(data);
+    const { startDate, endDate } = normalizeLeaveDatePayload(data);
+    const totalDays = await this.countRequestedLeaveDays(tenantId, employeeId, startDate, endDate);
+    const leaveType = String(data?.leave_type || "CASUAL").trim().toUpperCase();
+    if (!["CASUAL", "SICK", "EARNED", "UNPAID", "MATERNITY", "PATERNITY", "COMP_OFF"].includes(leaveType)) throw new BadRequestException("Unsupported leave type.");
 
     const leaveData = {
       employee_id: employeeId,
-      leave_type: "CASUAL",
+      leave_type: leaveType,
       start_date: startDate,
       end_date: endDate,
       total_days: totalDays,
       reason: String(data?.reason || "").trim(),
-      status: String(data?.status || "PENDING")
-        .trim()
-        .toUpperCase(),
+      status: "PENDING",
       tenant_id: tenantId,
     };
 
@@ -2470,6 +2492,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       approverId,
       options.overrideMakerChecker,
     );
+    const request = (await this.getLeaves(tenantId)).find((row: any) => String(row.id) === id);
+    if (!request) throw new NotFoundException("Leave request not found.");
+    if (String(request.status).toUpperCase() !== "PENDING") throw new ConflictException("Only pending leave requests can be approved.");
+    const employeeId = String(request.employee_id);
+    const startDate = String(request.start_date).slice(0, 10);
+    const endDate = String(request.end_date).slice(0, 10);
+    const priorLeaves = await this.getLeaves(tenantId, employeeId);
+    if (priorLeaves.some((row: any) => String(row.id) !== id && String(row.status).toUpperCase() === "APPROVED" && String(row.start_date).slice(0, 10) <= endDate && String(row.end_date).slice(0, 10) >= startDate)) {
+      throw new ConflictException({ code: "LEAVE_DATE_OVERLAP", message: "An approved leave already covers one or more of these dates." });
+    }
+    const paidTypesRule = await this.getEffectivePayrollRule(tenantId, "paid_leave_types_rule", startDate, employeeId);
+    const paidTypes = Array.isArray(paidTypesRule.value) ? paidTypesRule.value : (await this.attendanceControl.getPolicy(tenantId)).paid_leave_types;
+    // The annual entitlement is the casual-leave allowance. Other paid leave
+    // categories retain pay but must not consume that separate allowance.
+    if (paidTypes.includes(String(request.leave_type).toUpperCase()) && String(request.leave_type).toUpperCase() === "CASUAL") {
+      const salaryPolicy = await this.getEffectivePayrollRule(tenantId, "salary_calculation_policy", startDate, employeeId);
+      const entitlement = (salaryPolicy.value as SalaryCalculationPolicy | undefined)?.annual_paid_leave_days;
+      if (entitlement !== null && entitlement !== undefined) {
+        if (startDate.slice(0, 4) !== endDate.slice(0, 4)) throw new ConflictException({ code: "LEAVE_SPANS_ENTITLEMENT_YEARS", message: "Split paid leave across calendar years so each year's entitlement can be checked." });
+        const used = priorLeaves.filter((row: any) => String(row.id) !== id && String(row.status).toUpperCase() === "APPROVED" && String(row.start_date).slice(0, 4) === startDate.slice(0, 4) && String(row.leave_type).toUpperCase() === "CASUAL")
+          .reduce((sum: number, row: any) => sum + Number(row.total_days || 0), 0);
+        if (used + Number(request.total_days || 0) > entitlement) throw new ConflictException({ code: "PAID_LEAVE_ENTITLEMENT_EXCEEDED", message: `This approval would exceed the configured ${entitlement}-day annual paid-leave entitlement.`, used_days: used, requested_days: Number(request.total_days || 0) });
+      }
+    }
     const updateData = {
       status: "APPROVED",
       approved_by: approverId,
@@ -2567,8 +2613,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     return data;
   }
 
-  async updateLeave(tenantId: string, id: string, data: any) {
-    const updatePayload: any = { ...data };
+  async updateLeave(tenantId: string, id: string, data: any, actor: any) {
+    const current = (await this.getLeaves(tenantId)).find((leave: any) => String(leave.id) === id);
+    if (!current) throw new NotFoundException("Leave request not found.");
+    await this.assertLeaveEmployeeScope(tenantId, String(current.employee_id), actor, "update");
+    if (String(current.status).toUpperCase() !== "PENDING") throw new ConflictException("Only pending leave requests may be edited.");
+    const updatePayload: any = { reason: data?.reason === undefined ? current.reason : String(data.reason).trim() };
+    if (data?.leave_type !== undefined) {
+      const leaveType = String(data.leave_type).trim().toUpperCase();
+      if (!["CASUAL", "SICK", "EARNED", "UNPAID", "MATERNITY", "PATERNITY", "COMP_OFF"].includes(leaveType)) throw new BadRequestException("Unsupported leave type.");
+      updatePayload.leave_type = leaveType;
+    }
     if (
       data?.start_date !== undefined ||
       data?.end_date !== undefined ||
@@ -2580,16 +2635,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         .eq("id", id)
         .maybeSingle();
       if (existingError) throw new Error(existingError.message);
-      const { startDate, endDate, totalDays } = normalizeLeaveDatePayload({
+      const { startDate, endDate } = normalizeLeaveDatePayload({
         ...data,
         start_date: data?.start_date ?? existing?.start_date,
         end_date: data?.end_date ?? existing?.end_date,
       });
       updatePayload.start_date = startDate;
       updatePayload.end_date = endDate;
-      updatePayload.total_days = totalDays;
+      updatePayload.total_days = await this.countRequestedLeaveDays(tenantId, String(current.employee_id), startDate, endDate);
     }
-    delete updatePayload.leave_type;
 
     const { data: result, error } = await this.supabase
       .from("leave_requests")
@@ -3541,7 +3595,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         const rawMinutes = Math.max(0, workedMinutes - Math.round(Number(overtimeRule.starts_after_hours) * 60));
         const minimumMinutes = Math.round(Number(overtimeRule.minimum_hours || 0) * 60);
         const capMinutes = overtimeRule.cap_hours === undefined ? rawMinutes : Math.round(Number(overtimeRule.cap_hours) * 60);
-        overtimeHours = rawMinutes < minimumMinutes ? 0 : Math.min(rawMinutes, capMinutes) / 60;
+        overtimeHours = rawMinutes < Math.max(minimumMinutes, Number(overtimeRule.grace_minutes || 0)) ? 0 : Math.min(rawMinutes, capMinutes) / 60;
         overtimeCreditDays = null;
       } else if (overtimeRule?.eligible && overtimeRule.method === "DAY_CREDIT") {
         overtimeHours = null;
@@ -4488,6 +4542,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       .lte("effective_from", monthEnd).or(`effective_to.is.null,effective_to.gte.${monthStart}`);
     if (employeeSalaryPolicyError && !isMissingRelationError(employeeSalaryPolicyError, "hr_employee_payroll_rule_overrides")) throw new ConflictException(employeeSalaryPolicyError.message);
 
+    const { data: companyAnnualBonusRules, error: companyAnnualBonusError } = await this.supabase.from("hr_payroll_rule_versions")
+      .select("id,rule_key,rule_value,effective_from,effective_to,reason,created_at")
+      .eq("tenant_id", tenantId).eq("rule_key", "annual_bonus_rule").lte("effective_from", monthEnd)
+      .or(`effective_to.is.null,effective_to.gte.${monthStart}`);
+    if (companyAnnualBonusError) throw new ConflictException(companyAnnualBonusError.message);
+    const { data: employeeAnnualBonusRules, error: employeeAnnualBonusError } = await this.supabase.from("hr_employee_payroll_rule_overrides")
+      .select("id,employee_id,rule_key,rule_value,effective_from,effective_to,reason,created_at")
+      .eq("tenant_id", tenantId).in("employee_id", payrollEmployees.map((row: any) => row.id)).eq("rule_key", "annual_bonus_rule")
+      .lte("effective_from", monthEnd).or(`effective_to.is.null,effective_to.gte.${monthStart}`);
+    if (employeeAnnualBonusError) throw new ConflictException(employeeAnnualBonusError.message);
+
+    const { data: companyProductionRules, error: companyProductionError } = await this.supabase.from("hr_payroll_rule_versions")
+      .select("id,rule_key,rule_value,effective_from,effective_to,reason,created_at")
+      .eq("tenant_id", tenantId).eq("rule_key", "production_bonus_rule").lte("effective_from", monthEnd)
+      .or(`effective_to.is.null,effective_to.gte.${monthStart}`);
+    if (companyProductionError) throw new ConflictException(companyProductionError.message);
+    const { data: employeeProductionRules, error: employeeProductionError } = await this.supabase.from("hr_employee_payroll_rule_overrides")
+      .select("id,employee_id,rule_key,rule_value,effective_from,effective_to,reason,created_at")
+      .eq("tenant_id", tenantId).in("employee_id", payrollEmployees.map((row: any) => row.id)).eq("rule_key", "production_bonus_rule")
+      .lte("effective_from", monthEnd).or(`effective_to.is.null,effective_to.gte.${monthStart}`);
+    if (employeeProductionError) throw new ConflictException(employeeProductionError.message);
+    const productionDrafts = (companyProductionRules?.length || employeeProductionRules?.length)
+      ? await this.getMonthlyPayrolls(tenantId, payrollRun.payroll_month) : [];
+
     const grossTypes = new Set(["BASIC", "HRA", "ALLOWANCE", "BONUS"]);
     const employeesWithoutSalary = payrollEmployees.filter(
       (employee: any) =>
@@ -4579,6 +4657,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       );
 
       const salaryPolicy = resolvePayrollRule<SalaryCalculationPolicy>({ ruleKey: "salary_calculation_policy", effectiveDate: payrollEffectiveDate, tenantRules: salaryPolicyRules || [], employeeOverrides: (employeeSalaryPolicies || []).filter((row: any) => String(row.employee_id) === String(employee.id)) });
+      const annualBonusRule = resolvePayrollRule<AnnualBonusRule>({ ruleKey: "annual_bonus_rule", effectiveDate: payrollEffectiveDate, tenantRules: companyAnnualBonusRules || [], employeeOverrides: (employeeAnnualBonusRules || []).filter((row: any) => String(row.employee_id) === String(employee.id)) });
+      const productionRule = resolvePayrollRule<{ rate_per_piece: number }>({ ruleKey: "production_bonus_rule", effectiveDate: payrollEffectiveDate, tenantRules: companyProductionRules || [], employeeOverrides: (employeeProductionRules || []).filter((row: any) => String(row.employee_id) === String(employee.id)) });
+      let productionBonusAmount = 0;
+      let productionQuantity: number | null = null;
+      let productionDraftId: string | null = null;
+      if (productionRule.value) {
+        const entries = productionDrafts.filter((row: any) => String(row.employee_id) === String(employee.id));
+        const draft = entries.length === 1 && String(entries[0].status).toUpperCase() === "DRAFT" ? entries[0] : null;
+        productionQuantity = draft?.attendance_summary?.salary_proration?.production_quantity ?? null;
+        if (!draft || !Number.isInteger(productionQuantity) || Number(productionQuantity) < 0) {
+          throw new ConflictException({ code: "PRODUCTION_BONUS_SOURCE_REQUIRED", message: `Keep exactly one unprocessed monthly payroll draft with an approved piece count for ${employee.employee_name || employee.employee_code}; a processed manual payroll would duplicate payment.` });
+        }
+        productionBonusAmount = roundCurrency(Number(productionQuantity) * productionRule.value.rate_per_piece);
+        if (Math.abs(Number(draft.production_incentive || 0) - productionBonusAmount) > 0.005) {
+          throw new ConflictException({ code: "PRODUCTION_BONUS_AMOUNT_CONFLICT", message: `The saved monthly production amount differs from the effective piece rate for ${employee.employee_name || employee.employee_code}.` });
+        }
+        productionDraftId = String(draft.id);
+      }
 
       const deductionTypes = new Set(["DEDUCTION", "PF", "ESI", "TAX"]);
 
@@ -4654,9 +4750,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           }).length
         : 0;
       const annualCalculation = salaryPolicy.value ? calculateAnnualSalaryPolicy({ annualSalary: annualSalaryBasis, payableDays: policyPayableDays, extraCreditDays, policy: salaryPolicy.value }) : null;
+      if (annualBonusRule.value && Number(salaryPolicy.value?.bonus_days_per_year || 0) > 0) {
+        throw new ConflictException({ code: "BONUS_POLICY_OVERLAP", message: `Set salary-policy bonus days to zero before activating annual bonus for ${employee.employee_name || employee.employee_code}.` });
+      }
+      if (annualBonusRule.value && employeeSalaryComponents.some((component: any) => String(component.component_type) === "BONUS" && Number(component.amount) > 0)) {
+        throw new ConflictException({ code: "RECURRING_BONUS_OVERLAP", message: `End the recurring Bonus salary component before activating annual bonus for ${employee.employee_name || employee.employee_code}.` });
+      }
+      const basicMonthlyForBonus = employeeSalaryComponents.filter((component: any) => String(component.component_type) === "BASIC").reduce((sum: number, component: any) => sum + Number(component.amount || 0), 0);
+      let annualBonusAmount = 0;
+      try { annualBonusAmount = annualBonusForMonth(annualBonusRule.value, payrollRun.payroll_month, basicMonthlyForBonus, configuredMonthlyGross); }
+      catch { throw new ConflictException({ code: "ANNUAL_BONUS_CONFIG_INVALID", message: `Review the annual bonus salary basis and payout date for ${employee.employee_name || employee.employee_code}.` }); }
+      const bonusPayoutDate = annualBonusAmount > 0 ? `${payrollRun.payroll_month}-${String(annualBonusRule.value!.payout_day).padStart(2, "0")}` : null;
+      if (bonusPayoutDate && new Date().toISOString().slice(0, 10) < bonusPayoutDate) {
+        throw new ConflictException({ code: "ANNUAL_BONUS_PAYOUT_DATE_NOT_REACHED", message: `Annual bonus cannot be generated before ${bonusPayoutDate}.` });
+      }
       const prorationDays = annualCalculation?.divisor_days || workingDays;
       const dailyGrossRate = annualCalculation?.daily_rate || (prorationDays > 0 ? configuredMonthlyGross / prorationDays : 0);
-      const grossSalary = annualCalculation ? roundCurrency(annualCalculation.base_pay + annualCalculation.bonus_accrual) : configuredMonthlyGross;
+      const grossSalary = annualCalculation ? roundCurrency(annualCalculation.base_pay + annualCalculation.bonus_accrual + annualBonusAmount + productionBonusAmount) : configuredMonthlyGross + annualBonusAmount + productionBonusAmount;
       const attendanceDeduction = annualCalculation ? 0 : roundCurrency(dailyGrossRate * unpaidAttendanceDays);
       const lateDays = Number(summary.late_days || 0);
       const lateMinutes = Number(summary.late_minutes || 0);
@@ -4747,6 +4857,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           salary_calculation_policy_version_id: salaryPolicy.version?.id || null,
           salary_calculation_policy_source: salaryPolicy.source,
           annual_salary_calculation: annualCalculation,
+          annual_bonus: { amount: annualBonusAmount, payout_date: bonusPayoutDate, rule_value: annualBonusRule.value || null, rule_version_id: annualBonusRule.version?.id || null, source: annualBonusRule.source },
+          production_bonus: { amount: productionBonusAmount, approved_pieces: productionQuantity, rate_per_piece: productionRule.value?.rate_per_piece ?? null, rule_version_id: productionRule.version?.id || null, monthly_draft_id: productionDraftId },
           unapproved_outside_days: unapprovedOutsideDays,
           recurring_deductions: recurringDeductions,
           daily_gross_rate: roundCurrency(dailyGrossRate),
@@ -4782,12 +4894,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
               { kind: "EARNING", label: "Bonus accrual", amount: annualCalculation.bonus_accrual, source: { bonus_days_per_year: salaryPolicy.value?.bonus_days_per_year, paid_days: annualCalculation.paid_days, base_days_per_year: salaryPolicy.value?.base_days_per_year }, formula: "Daily rate × bonus days ÷ base days per year × paid days" },
               ...(annualCalculation.bonus_held ? [{ kind: "DEDUCTION", label: "Bonus held", amount: annualCalculation.bonus_held, source: { salary_policy_version_id: salaryPolicy.version?.id || null }, formula: "Accrued bonus held under the configured bonus treatment" }] : []),
             ] : []),
+            ...(annualBonusAmount > 0 ? [{ kind: "EARNING", label: "Annual bonus", amount: annualBonusAmount, source: { rule_version_id: annualBonusRule.version?.id || null, basis: annualBonusRule.value?.basis, salary_multiple: annualBonusRule.value?.salary_multiple, payout_date: bonusPayoutDate }, formula: "Effective monthly Basic or gross × approved salary multiple, paid in payout month" }] : []),
+            ...(productionRule.value ? [{ kind: "EARNING", label: "Production bonus", amount: productionBonusAmount, source: { rule_version_id: productionRule.version?.id || null, approved_pieces: productionQuantity, rate_per_piece: productionRule.value.rate_per_piece, monthly_draft_id: productionDraftId }, formula: "Approved pieces multiplied by effective rate per piece" }] : []),
             { kind: "EARNING", label: "Overtime", amount: overtimeAmount, source: { overtime_hours: overtimeHours, overtime_credit_days: overtimeCreditDays, daily_gross_rate: roundCurrency(dailyGrossRate), salary_proration_days: prorationDays || null, salary_proration_rule_version_id: salaryPolicy.version?.id || null, attendance_records: attendanceEvidenceRows.filter((day: any) => day.overtime_rule_source !== "MISSING"), rule_source: "EMPLOYEE_OVERRIDE_THEN_COMPANY_DEFAULT", attendance_month: payrollRun.payroll_month, currency_rounding: "Math.round(value * 100) / 100" }, formula: annualCalculation ? "Approved overtime extra-credit days × annual-policy daily rate" : "Effective employee override or company default overtime day credit applied to the configured daily gross rate" },
             { kind: "EARNING", label: "Travel per diem", amount: totalPerDiem, source: { travel_days: travelDays, per_diem_amount: perDiemAmount }, formula: "Approved travel days × employee per diem" },
             { kind: "DEDUCTION", label: "Attendance deduction", amount: attendanceDeduction, source: { unpaid_attendance_days: unpaidAttendanceDays, absent_days: absentDays + unapprovedOutsideDays, unpaid_leave_days: unpaidLeaveDays, half_days: Number(summary.half_days || 0), paid_days: annualCalculation?.paid_days || attendanceDays + paidLeaveDays, attendance_month: payrollRun.payroll_month, attendance_records: attendanceEvidenceRows, daily_gross_rate: roundCurrency(dailyGrossRate), salary_proration_days: prorationDays || null, salary_proration_rule_version_id: salaryPolicy.version?.id || null, salary_proration_rule_source: salaryPolicy.source, attendance_policy: attendanceRegister.policy, currency_rounding: "Math.round(value * 100) / 100" }, formula: annualCalculation ? "Included absences reduce payable days before base salary is calculated" : "Configured monthly gross ÷ effective salary proration days × unpaid attendance days" },
             { kind: "DEDUCTION", label: "Late deduction", amount: lateDeduction, source: { late_days: lateDays, late_minutes: lateMinutes, policy: attendanceRegister.policy.late_deduction_mode, attendance_policy: attendanceRegister.policy, attendance_records: attendanceEvidenceRows.filter((day: any) => String(day.status).toUpperCase() === "LATE"), currency_rounding: "Math.round(value * 100) / 100" }, formula: "Tenant attendance policy late deduction" },
           ],
-          totals: { gross: grossSalary, deductions: totalDeductions, overtime: overtimeAmount, travel_per_diem: totalPerDiem, bonus_held: annualCalculation?.bonus_held || 0, net: netSalary },
+          totals: { gross: grossSalary, deductions: totalDeductions, overtime: overtimeAmount, travel_per_diem: totalPerDiem, annual_bonus: annualBonusAmount, production_bonus: productionBonusAmount, bonus_held: annualCalculation?.bonus_held || 0, net: netSalary },
         },
         travel_days: travelDays,
         per_diem_amount: perDiemAmount,
@@ -5026,25 +5140,53 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     data: any,
     preview: MonthlyPayrollAttendancePreview,
   ) {
-    const components = await this.getSalaryComponents(tenantId, employeeId);
+    const payrollMonth = String(data.payroll_month || preview.payroll_month);
+    const effectiveDate = monthToRange(payrollMonth).end;
+    const components = resolveSalaryComponentsAtDate(await this.getSalaryComponents(tenantId, employeeId), effectiveDate);
     const fixedComponents = components.filter(
       (component: any) =>
-        ["BASIC", "HRA"].includes(
+        ["BASIC", "HRA", "ALLOWANCE", "BONUS"].includes(
           String(component.component_type || "").toUpperCase(),
-        ) || ["Medical", "Travelling"].includes(component.component_name),
+        ),
     );
+    if (Number(data.special_allowance || 0) > 0 && fixedComponents.some((component: any) => component.component_name === "Special Allowance" && Number(component.amount) > 0)) {
+      throw new ConflictException({ code: "SPECIAL_ALLOWANCE_ALREADY_CONFIGURED", message: "This employee already has a monthly Special Allowance in salary setup. Do not add it again to this month's variable pay." });
+    }
+    if (Number(data.bonus_monthly || 0) > 0 && fixedComponents.some((component: any) => String(component.component_type) === "BONUS" && Number(component.amount) > 0)) {
+      throw new ConflictException({ code: "BONUS_ALREADY_CONFIGURED", message: "This employee already has a recurring Bonus salary component. Do not add a second monthly bonus." });
+    }
     const fixedTotal = fixedComponents.reduce(
       (sum: number, component: any) => sum + Number(component.amount || 0),
       0,
     );
-    const fullMonthGross =
-      fixedTotal +
-      Number(data.bonus_monthly || 0) +
-      Number(data.production_incentive || 0) +
-      Number(data.special_allowance || 0);
-    const payrollMonth = String(data.payroll_month || preview.payroll_month);
-    const effectiveDate = monthToRange(payrollMonth).end;
+    const annualBonusRule = await this.getEffectivePayrollRule(tenantId, "annual_bonus_rule", effectiveDate, employeeId);
+    const productionBonusRule = await this.getEffectivePayrollRule(tenantId, "production_bonus_rule", effectiveDate, employeeId);
+    const basicMonthly = fixedComponents.filter((component: any) => String(component.component_type) === "BASIC").reduce((sum: number, component: any) => sum + Number(component.amount || 0), 0);
+    let annualBonus = 0;
+    try { annualBonus = annualBonusForMonth(annualBonusRule.value as AnnualBonusRule | undefined, payrollMonth, basicMonthly, fixedTotal); }
+    catch { throw new ConflictException({ code: "ANNUAL_BONUS_CONFIG_INVALID", message: "Review this employee's annual bonus salary basis and payout date." }); }
+    if (annualBonusRule.value && fixedComponents.some((component: any) => String(component.component_type) === "BONUS" && Number(component.amount) > 0)) {
+      throw new ConflictException({ code: "RECURRING_BONUS_OVERLAP", message: "End the recurring Bonus salary component before activating the annual bonus rule." });
+    }
+    if (annualBonusRule.value && Number(data.bonus_monthly || 0) > 0 && Math.abs(Number(data.bonus_monthly) - annualBonus) > 0.005) {
+      throw new ConflictException({ code: "ANNUAL_BONUS_AMOUNT_CONFLICT", message: "The monthly bonus differs from the effective company or employee annual bonus rule." });
+    }
+    const quantityInput = data.production_quantity ?? data.attendance_summary?.salary_proration?.production_quantity;
+    const productionQuantity = quantityInput === undefined || quantityInput === null ? null : Number(quantityInput);
+    if (productionBonusRule.value && (productionQuantity === null || !Number.isInteger(productionQuantity) || productionQuantity < 0)) {
+      throw new ConflictException({ code: "PRODUCTION_QUANTITY_REQUIRED", message: "Enter the approved piece count for this employee and month; zero is allowed." });
+    }
+    const productionIncentive = productionBonusRule.value
+      ? roundCurrency(productionQuantity! * Number((productionBonusRule.value as any).rate_per_piece))
+      : Number(data.production_incentive || 0);
+    if (productionBonusRule.value && Number(data.production_incentive || 0) > 0 && Math.abs(Number(data.production_incentive) - productionIncentive) > 0.005) {
+      throw new ConflictException({ code: "PRODUCTION_BONUS_AMOUNT_CONFLICT", message: "The production incentive differs from approved pieces multiplied by the effective rate." });
+    }
+    const monthlyBonus = annualBonusRule.value ? annualBonus : Number(data.bonus_monthly || 0);
     const salaryPolicy = await this.getEffectivePayrollRule(tenantId, "salary_calculation_policy", effectiveDate, employeeId);
+    if (annualBonusRule.value && Number((salaryPolicy.value as SalaryCalculationPolicy | undefined)?.bonus_days_per_year || 0) > 0) {
+      throw new ConflictException({ code: "BONUS_POLICY_OVERLAP", message: "Set salary-policy bonus days to zero before using an annual bonus rule, to avoid paying bonus twice." });
+    }
     const annualCtc = components.filter((component: any) => String(component.component_type).toUpperCase() === "CTC").reduce((sum: number, component: any) => sum + Number(component.amount || 0), 0);
     const configuredMonthlyEarnings = components.filter((component: any) => ["BASIC", "HRA", "ALLOWANCE", "BONUS"].includes(String(component.component_type).toUpperCase())).reduce((sum: number, component: any) => sum + Number(component.amount || 0), 0);
     const annualSalaryBasis = salaryPolicy.value?.annual_salary_basis === "ANNUAL_CTC" ? annualCtc : configuredMonthlyEarnings * 12;
@@ -5053,9 +5195,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     const annualCalculation = salaryPolicy.value ? calculateAnnualSalaryPolicy({ annualSalary: annualSalaryBasis, payableDays, extraCreditDays: 0, policy: salaryPolicy.value }) : null;
     const prorationDays = annualCalculation?.divisor_days || preview.days_in_month;
     const unpaidDays = Math.max(0, Number(preview.days_in_month || 0) - Number(preview.payable_days || 0));
-    const dailySalaryRate = annualCalculation?.daily_rate || (prorationDays > 0 ? fullMonthGross / prorationDays : 0);
+    const dailySalaryRate = annualCalculation?.daily_rate || (prorationDays > 0 ? fixedTotal / prorationDays : 0);
     const ratio = preview.days_in_month > 0 ? Number(preview.payable_days || 0) / preview.days_in_month : 0;
-    const grossSalary = annualCalculation ? roundCurrency(annualCalculation.base_pay + annualCalculation.bonus_accrual) : roundCurrency(Math.max(0, fullMonthGross - dailySalaryRate * unpaidDays));
+    const grossSalary = annualCalculation ? roundCurrency(annualCalculation.base_pay + annualCalculation.bonus_accrual + monthlyBonus + productionIncentive + Number(data.special_allowance || 0)) : roundCurrency(Math.max(0, fixedTotal - dailySalaryRate * unpaidDays) + monthlyBonus + productionIncentive + Number(data.special_allowance || 0));
     const professionalTax = roundCurrency(Number(data.professional_tax || 0) * (annualCalculation ? 1 : ratio));
     const netSalary = roundCurrency(grossSalary - professionalTax);
     const monthlyHold =
@@ -5063,11 +5205,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       Number(data.production_incentive_hold || 0) +
       Number(annualCalculation?.bonus_held || 0);
     return {
+      bonus_monthly: monthlyBonus,
+      production_incentive: productionIncentive,
       gross_salary: grossSalary,
       net_salary: netSalary,
       monthly_hold: roundCurrency(monthlyHold),
       amount_paid: roundCurrency(netSalary - monthlyHold),
-      salary_proration: annualCalculation ? { basis: "ANNUAL_SALARY_POLICY", annual_salary_basis_amount: annualCalculation.annual_salary_basis_amount, divisor_days: prorationDays, payable_days: payableDays, daily_salary_rate: roundCurrency(dailySalaryRate), bonus_accrual: annualCalculation.bonus_accrual, bonus_held: annualCalculation.bonus_held, rule_version_id: salaryPolicy.version?.id || null, rule_source: salaryPolicy.source } : { basis: "CALENDAR_DAYS_IN_MONTH", divisor_days: prorationDays, unpaid_days: unpaidDays, daily_salary_rate: roundCurrency(dailySalaryRate), rule_version_id: null, rule_source: "DEFAULT" },
+      salary_proration: {
+        ...(annualCalculation ? { basis: "ANNUAL_SALARY_POLICY", annual_salary_basis_amount: annualCalculation.annual_salary_basis_amount, divisor_days: prorationDays, payable_days: payableDays, daily_salary_rate: roundCurrency(dailySalaryRate), bonus_accrual: annualCalculation.bonus_accrual, bonus_held: annualCalculation.bonus_held, rule_version_id: salaryPolicy.version?.id || null, rule_source: salaryPolicy.source } : { basis: "CALENDAR_DAYS_IN_MONTH", divisor_days: prorationDays, unpaid_days: unpaidDays, daily_salary_rate: roundCurrency(dailySalaryRate), rule_version_id: null, rule_source: "DEFAULT" }),
+        annual_bonus: annualBonus, annual_bonus_rule_id: annualBonusRule.version?.id || null,
+        annual_bonus_payout_date: annualBonus > 0 ? `${payrollMonth}-${String((annualBonusRule.value as AnnualBonusRule).payout_day).padStart(2, "0")}` : null,
+        production_quantity: productionQuantity, production_rate_per_piece: (productionBonusRule.value as any)?.rate_per_piece ?? null,
+        production_rule_id: productionBonusRule.version?.id || null,
+      },
     };
   }
 
@@ -5097,8 +5247,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       leaves_absent: preview.absent_days + preview.unpaid_leave_days,
       approved_paid_leaves: preview.paid_leave_days,
       paid_for_total_days: preview.payable_days,
-      bonus_monthly: data.bonus_monthly || 0,
-      production_incentive: data.production_incentive || 0,
       bonus_hold: data.bonus_hold || 0,
       production_incentive_hold: data.production_incentive_hold || 0,
       special_allowance: data.special_allowance || 0,
@@ -5172,8 +5320,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       leaves_absent: preview.absent_days + preview.unpaid_leave_days,
       approved_paid_leaves: preview.paid_leave_days,
       paid_for_total_days: preview.payable_days,
-      bonus_monthly: data.bonus_monthly || 0,
-      production_incentive: data.production_incentive || 0,
       bonus_hold: data.bonus_hold || 0,
       production_incentive_hold: data.production_incentive_hold || 0,
       special_allowance: data.special_allowance || 0,
@@ -5231,6 +5377,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     this.assertMonthlyPayrollAttendanceReady(preview);
     const amounts = await this.calculateMonthlyPayrollAmounts(tenantId, String(current.employee_id), current, preview);
     const { salary_proration, ...amountValues } = amounts;
+    if (salary_proration.production_rule_id) {
+      const existingSlips = await this.getPayslips(tenantId, String(current.employee_id));
+      if (existingSlips.some((slip: any) => String(slip.salary_month) === String(current.payroll_month) && slip.is_current !== false)) {
+        throw new ConflictException({ code: "PRODUCTION_BONUS_ALREADY_IN_PAYSLIP", message: "This month already has a current payslip. Processing the manual monthly record could pay production bonus twice." });
+      }
+    }
+    if (salary_proration.annual_bonus_payout_date && new Date().toISOString().slice(0, 10) < salary_proration.annual_bonus_payout_date) {
+      throw new ConflictException({ code: "ANNUAL_BONUS_PAYOUT_DATE_NOT_REACHED", message: `Annual bonus payroll cannot be processed before ${salary_proration.annual_bonus_payout_date}.` });
+    }
     const { data: result, error } = await this.supabase
       .from("monthly_payroll")
       .update({

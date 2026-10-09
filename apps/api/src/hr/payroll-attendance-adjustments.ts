@@ -7,6 +7,7 @@ type EmployeeOvertimeRule = {
   cap_hours?: number;
   half_day_after_hours?: number;
   full_day_after_hours?: number;
+  grace_minutes?: number;
   holiday_min_hours?: number;
   holiday_work_credit_days?: number;
 };
@@ -40,9 +41,10 @@ export function calculateOvertimeDayCredit(input: {
     return Number(rule.holiday_work_credit_days ?? (minutes >= wholeMinutes(rule.holiday_min_hours) ? 1 : 0.5));
   }
   if (minutes < wholeMinutes(rule.minimum_hours)) return 0;
+  const grace = Number(rule.grace_minutes || 0);
   return rule.holiday_work_credit_days !== undefined
-    ? minutes > wholeMinutes(rule.full_day_after_hours) ? 1 : minutes > wholeMinutes(rule.half_day_after_hours) ? 0.5 : 0
-    : minutes >= wholeMinutes(rule.full_day_after_hours) ? 1 : minutes > wholeMinutes(rule.half_day_after_hours) ? 0.5 : 0;
+    ? minutes > wholeMinutes(rule.full_day_after_hours) + grace ? 1 : minutes > wholeMinutes(rule.half_day_after_hours) + grace ? 0.5 : 0
+    : minutes >= wholeMinutes(rule.full_day_after_hours) + grace ? 1 : minutes > wholeMinutes(rule.half_day_after_hours) + grace ? 0.5 : 0;
 }
 const wholeMinutes = (hours: unknown) =>
   Math.max(0, Math.round(Number(hours || 0) * 60));
@@ -89,7 +91,7 @@ export function calculateDatedAttendanceAdjustments(input: {
     const minimumMinutes = wholeMinutes(rule.minimum_hours);
     if (workMinutes < minimumMinutes) continue;
     const rawOvertimeMinutes = Math.max(0, workMinutes - wholeMinutes(rule.starts_after_hours));
-    if (rawOvertimeMinutes < minimumMinutes) continue;
+    if (rawOvertimeMinutes < Math.max(minimumMinutes, Number(rule.grace_minutes || 0))) continue;
     const payableMinutes = Math.min(rawOvertimeMinutes, rule.cap_hours === undefined ? rawOvertimeMinutes : wholeMinutes(rule.cap_hours));
     const payableHours = payableMinutes / 60;
     const hourlyDivisor = Number(input.salaryProrationDays || input.workingDays);
