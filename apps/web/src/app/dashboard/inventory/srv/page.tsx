@@ -141,6 +141,7 @@ export default function SrvPage() {
   const [loading, setLoading] = useState(false);
   const [openSrvs, setOpenSrvs] = useState<ReceiptVoucherRow[]>([]);
   const [srvHistory, setSrvHistory] = useState<ReceiptVoucherRow[]>([]);
+  const [historyMetricFilter, setHistoryMetricFilter] = useState<'ALL' | 'UID' | 'APPROVAL' | 'QTY'>('ALL');
   const [activeSrvView, setActiveSrvView] = useState<"open" | "history">(
     "open",
   );
@@ -1265,7 +1266,7 @@ export default function SrvPage() {
     (row) => !row.approved_by,
   ).length;
   const approvedCount = srvHistory.length - pendingApprovalCount;
-  const uidTrackedCount = [...openSrvs, ...srvHistory].filter((row) =>
+  const uidTrackedCount = srvHistory.filter((row) =>
     String(row.uid || "").trim(),
   ).length;
   const qcPendingCount = openSrvs.length;
@@ -1273,6 +1274,14 @@ export default function SrvPage() {
     (sum, row) => sum + (Number(row.quantity) || 0),
     0,
   );
+  const visibleSrvHistory = srvHistory.filter((row) => historyMetricFilter === 'UID' ? Boolean(String(row.uid || '').trim())
+    : historyMetricFilter === 'APPROVAL' ? !row.approved_by
+    : historyMetricFilter === 'QTY' ? Number(row.quantity || 0) > 0 : true);
+  const openHistoryMetric = (filter: typeof historyMetricFilter) => {
+    setHistoryMetricFilter(filter);
+    switchSrvView('history');
+    window.setTimeout(() => document.getElementById('srv-history-register')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
   const focusedOpenSrv = openSrvs.find(
     (row) =>
       (focusJobId && String(row.job_order_id || "").trim() === focusJobId) ||
@@ -1328,26 +1337,26 @@ export default function SrvPage() {
               label: "QC Pending",
               value: qcPendingCount,
               tone: qcPendingCount > 0 ? "warning" : "success",
-              onClick: () => setActiveSrvView("open"),
+              onClick: () => switchSrvView("open"),
             },
             {
               label: "Posted Receipts",
               value: srvHistory.length,
               tone: "success",
-              onClick: () => setActiveSrvView("history"),
+              onClick: () => openHistoryMetric('ALL'),
             },
-            { label: "Received Qty", value: totalReceivedQty, onClick: () => setActiveSrvView("history") },
+            { label: "Received Qty", value: totalReceivedQty, onClick: () => openHistoryMetric('QTY') },
             {
               label: "UID Tracked",
               value: uidTrackedCount,
               tone: uidTrackedCount > 0 ? "success" : "neutral",
-              onClick: () => setActiveSrvView("history"),
+              onClick: () => openHistoryMetric('UID'),
             },
             {
               label: "Awaiting Approval",
               value: pendingApprovalCount,
               tone: pendingApprovalCount > 0 ? "warning" : "success",
-              onClick: () => setActiveSrvView("open"),
+              onClick: () => openHistoryMetric('APPROVAL'),
             },
           ]}
         />
@@ -1610,11 +1619,12 @@ export default function SrvPage() {
         )}
 
         {activeSrvView === "history" && (
-          <div className="min-h-0 flex-1 rounded-md border border-[#E8DCC4] bg-white">
+          <div id="srv-history-register" className="min-h-0 flex-1 scroll-mt-24 rounded-md border border-[#E8DCC4] bg-white">
             <div className="border-b border-[#E8DCC4] px-4 py-3">
               <h2 className="text-base font-bold text-[#4A3426]">
                 Posted SRV History
               </h2>
+              {historyMetricFilter !== 'ALL' && <button type="button" onClick={() => setHistoryMetricFilter('ALL')} className="mt-1 text-xs font-bold text-[#175CD3] underline">Showing {visibleSrvHistory.length} matching receipts · Clear filter</button>}
               <p className="mt-0.5 text-xs text-[#7A6555]">
                 Posted receipts, approvals, UID traceability, and reversal
                 controls.
@@ -1654,7 +1664,7 @@ export default function SrvPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E8DCC4] bg-white">
-                  {srvHistory.length === 0 && (
+                  {visibleSrvHistory.length === 0 && (
                     <tr>
                       <td
                         colSpan={9}
@@ -1664,7 +1674,7 @@ export default function SrvPage() {
                       </td>
                     </tr>
                   )}
-                  {[...srvHistory]
+                  {[...visibleSrvHistory]
                     .sort((a, b) => {
                       const aTs = a.movement_date
                         ? new Date(a.movement_date).getTime() || 0

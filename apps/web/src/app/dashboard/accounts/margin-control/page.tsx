@@ -20,6 +20,7 @@ export default function MarginControlPage() {
   const [error, setError] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [metricFilter, setMetricFilter] = useState<'OPEN' | 'EXPECTED' | 'REALISED' | null>(null);
   const [form, setForm] = useState({ title: '', source_module: 'SALES', signal_key: 'CASH_COLLECTION', priority: 'MEDIUM', expected_value: '' });
 
   const load = useCallback(async () => {
@@ -56,6 +57,14 @@ export default function MarginControlPage() {
   const openActions = actions.filter((action) => !['RESOLVED', 'DISMISSED'].includes(action.status));
   const captured = Number(overview?.realised_value || 0);
   const expected = Number(overview?.expected_value || 0);
+  const visibleActions = actions.filter((action) => metricFilter === 'OPEN'
+    ? !['RESOLVED', 'DISMISSED'].includes(action.status)
+    : metricFilter === 'EXPECTED' ? Number(action.expected_value || 0) > 0
+    : metricFilter === 'REALISED' ? Number(action.realised_value || 0) > 0 : true);
+  const openMetric = (filter: NonNullable<typeof metricFilter>) => {
+    setMetricFilter(filter);
+    window.setTimeout(() => document.getElementById('roi-action-ledger')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-5 p-2 sm:p-4">
@@ -75,9 +84,9 @@ export default function MarginControlPage() {
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
       <section className="grid gap-3 sm:grid-cols-3">
-        <Metric label="Open actions" value={String(openActions.length)} hint="Require an owner and follow-through" />
-        <Metric label="Expected value protected" value={money(expected)} hint="From actions entered by your team" />
-        <Metric label="Value realised" value={money(captured)} hint={expected ? `${Math.round((captured / expected) * 100)}% of expected value` : 'Record realised value when resolved'} />
+        <Metric label="Open actions" value={String(openActions.length)} hint="Require an owner and follow-through" onClick={() => openMetric('OPEN')} />
+        <Metric label="Expected value protected" value={money(expected)} hint="From actions entered by your team" onClick={() => openMetric('EXPECTED')} />
+        <Metric label="Value realised" value={money(captured)} hint={expected ? `${Math.round((captured / expected) * 100)}% of expected value` : 'Record realised value when resolved'} onClick={() => openMetric('REALISED')} />
       </section>
 
       <section className="rounded-xl border border-[#E8DCC4] bg-white p-4 shadow-sm">
@@ -103,14 +112,14 @@ export default function MarginControlPage() {
         </form>
       </section>
 
-      <section className="rounded-xl border border-[#E8DCC4] bg-white p-4 shadow-sm">
-        <div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">ROI action ledger</h2><p className="text-sm text-slate-500">Actions are a test-safe audit trail of margin protected and cash released.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{actions.length} total</span></div>
-        {loading ? <Loading /> : actions.length ? <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="border-b text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-2 py-3">Action</th><th className="px-2 py-3">Priority</th><th className="px-2 py-3">Expected</th><th className="px-2 py-3">Realised</th><th className="px-2 py-3">Status</th><th className="px-2 py-3"></th></tr></thead><tbody>{actions.map((action) => <tr key={action.id} className="border-b border-slate-100 last:border-0"><td className="px-2 py-3"><div className="font-medium text-slate-900">{action.title}</div><div className="text-xs text-slate-500">{action.source_module}{action.source_reference ? ` · ${action.source_reference}` : ''}</div></td><td className="px-2 py-3"><span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">{action.priority}</span></td><td className="px-2 py-3">{money(action.expected_value)}</td><td className="px-2 py-3">{money(action.realised_value)}</td><td className="px-2 py-3"><span className="text-xs font-semibold text-slate-600">{action.status.replace('_', ' ')}</span></td><td className="px-2 py-3">{!['RESOLVED', 'DISMISSED'].includes(action.status) && <button onClick={() => resolve(action)} disabled={savingId === action.id} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">{savingId === action.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Resolve</button>}</td></tr>)}</tbody></table></div> : <Empty text="No ROI actions have been logged yet. Use the operational signals above to create the first owned action through the API-enabled workflow." />}
+      <section id="roi-action-ledger" className="scroll-mt-24 rounded-xl border border-[#E8DCC4] bg-white p-4 shadow-sm">
+        <div className="mb-4 flex items-center justify-between"><div><h2 className="font-semibold text-slate-900">ROI action ledger</h2><p className="text-sm text-slate-500">Actions are a test-safe audit trail of margin protected and cash released.</p></div><div className="flex items-center gap-3"><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{visibleActions.length} records</span>{metricFilter && <button type="button" onClick={() => setMetricFilter(null)} className="text-xs font-bold text-emerald-700 underline">Clear filter</button>}</div></div>
+        {loading ? <Loading /> : visibleActions.length ? <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="border-b text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-2 py-3">Action</th><th className="px-2 py-3">Priority</th><th className="px-2 py-3">Expected</th><th className="px-2 py-3">Realised</th><th className="px-2 py-3">Status</th><th className="px-2 py-3"></th></tr></thead><tbody>{visibleActions.map((action) => <tr key={action.id} className="border-b border-slate-100 last:border-0"><td className="px-2 py-3"><div className="font-medium text-slate-900">{action.title}</div><div className="text-xs text-slate-500">{action.source_module}{action.source_reference ? ` · ${action.source_reference}` : ''}</div></td><td className="px-2 py-3"><span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">{action.priority}</span></td><td className="px-2 py-3">{money(action.expected_value)}</td><td className="px-2 py-3">{money(action.realised_value)}</td><td className="px-2 py-3"><span className="text-xs font-semibold text-slate-600">{action.status.replace('_', ' ')}</span></td><td className="px-2 py-3">{!['RESOLVED', 'DISMISSED'].includes(action.status) && <button onClick={() => resolve(action)} disabled={savingId === action.id} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">{savingId === action.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Resolve</button>}</td></tr>)}</tbody></table></div> : <Empty text="No ROI actions have been logged yet. Use the operational signals above to create the first owned action through the API-enabled workflow." />}
       </section>
     </div>
   );
 }
 
-function Metric({ label, value, hint }: { label: string; value: string; hint: string }) { return <div className="rounded-xl border border-[#E8DCC4] bg-white p-4 shadow-sm"><div className="text-sm text-slate-500">{label}</div><div className="mt-1 text-2xl font-bold text-slate-900">{value}</div><div className="mt-1 text-xs text-slate-500">{hint}</div></div>; }
+function Metric({ label, value, hint, onClick }: { label: string; value: string; hint: string; onClick: () => void }) { return <button type="button" onClick={onClick} className="rounded-xl border border-[#E8DCC4] bg-white p-4 text-left shadow-sm hover:border-emerald-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600"><div className="text-sm text-slate-500">{label}</div><div className="mt-1 text-2xl font-bold text-slate-900">{value}</div><div className="mt-1 text-xs text-slate-500">{hint}</div></button>; }
 function Loading() { return <div className="flex items-center gap-2 py-8 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" /> Loading control-tower data…</div>; }
 function Empty({ text }: { text: string }) { return <div className="rounded-lg bg-slate-50 p-6 text-sm text-slate-500">{text}</div>; }

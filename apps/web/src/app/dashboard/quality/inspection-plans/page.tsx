@@ -65,6 +65,7 @@ export default function InspectionPlansPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [metricFilter, setMetricFilter] = useState<'APPROVED' | 'DRAFT' | 'CRITICAL' | null>(null);
   const [form, setForm] = useState({
     plan_code: "",
     plan_name: "",
@@ -108,17 +109,17 @@ export default function InspectionPlansPage() {
     () => ({
       approved: plans.filter((plan) => plan.status === "APPROVED").length,
       draft: plans.filter((plan) => plan.status === "DRAFT").length,
-      critical: plans.reduce(
-        (count, plan) =>
-          count +
-          (plan.parameters || []).filter(
-            (parameter) => parameter.criticality === "CRITICAL",
-          ).length,
-        0,
-      ),
+      critical: plans.filter((plan) => (plan.parameters || []).some((parameter) => parameter.criticality === "CRITICAL")).length,
     }),
     [plans],
   );
+  const visiblePlans = plans.filter((plan) => metricFilter === 'CRITICAL'
+    ? (plan.parameters || []).some((parameter) => parameter.criticality === 'CRITICAL')
+    : metricFilter ? plan.status === metricFilter : true);
+  const openMetric = (filter: NonNullable<typeof metricFilter>) => {
+    setMetricFilter(filter);
+    window.setTimeout(() => document.getElementById('inspection-plan-register')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -233,9 +234,9 @@ export default function InspectionPlansPage() {
         </div>
       )}
       <section className="grid gap-3 sm:grid-cols-3">
-        <Metric label="Approved revisions" value={summary.approved} />
-        <Metric label="Drafts awaiting approval" value={summary.draft} />
-        <Metric label="Critical checks defined" value={summary.critical} />
+        <Metric label="Approved revisions" value={summary.approved} onClick={() => openMetric('APPROVED')} />
+        <Metric label="Drafts awaiting approval" value={summary.draft} onClick={() => openMetric('DRAFT')} />
+        <Metric label="Plans with critical checks" value={summary.critical} onClick={() => openMetric('CRITICAL')} />
       </section>
 
       {showCreate && (
@@ -469,9 +470,10 @@ export default function InspectionPlansPage() {
         </form>
       )}
 
-      <section className="overflow-hidden rounded-xl border bg-white shadow-sm">
+      <section id="inspection-plan-register" className="scroll-mt-24 overflow-hidden rounded-xl border bg-white shadow-sm">
         <div className="border-b p-4">
           <h2 className="font-semibold">Plan revision register</h2>
+          {metricFilter && <button type="button" onClick={() => setMetricFilter(null)} className="mt-1 text-xs font-bold text-emerald-700 underline">Showing {visiblePlans.length} matching plans · Clear filter</button>}
           <p className="text-xs text-slate-500">
             Item-specific plans take priority over generic plans. The highest
             effective approved revision is selected automatically.
@@ -490,7 +492,7 @@ export default function InspectionPlansPage() {
               </tr>
             </thead>
             <tbody>
-              {plans.map((plan) => (
+              {visiblePlans.map((plan) => (
                 <tr key={plan.id} className="border-b align-top">
                   <td className="p-3">
                     <b>
@@ -570,13 +572,13 @@ export default function InspectionPlansPage() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
   return (
-    <div className="rounded-xl border bg-white p-4">
+    <button type="button" onClick={onClick} className="rounded-xl border bg-white p-4 text-left hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600">
       <div className="text-xs uppercase tracking-wide text-slate-500">
         {label}
       </div>
       <div className="mt-1 text-2xl font-bold text-slate-800">{value}</div>
-    </div>
+    </button>
   );
 }

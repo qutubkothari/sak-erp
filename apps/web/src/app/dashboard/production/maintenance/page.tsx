@@ -48,6 +48,7 @@ export default function MaintenancePage() {
   const [message, setMessage] = useState("");
   const [showAsset, setShowAsset] = useState(false);
   const [showWindow, setShowWindow] = useState(false);
+  const [workMetricFilter, setWorkMetricFilter] = useState<'OPEN' | 'BREAKDOWN' | null>(null);
   const load = useCallback(async () => {
     setBusy(true);
     try {
@@ -108,6 +109,11 @@ export default function MaintenancePage() {
   const breakdowns = upcoming.filter(
     (row) => String(row.work_type || "").toUpperCase() === "BREAKDOWN",
   );
+  const visibleWork = workMetricFilter === 'BREAKDOWN' ? breakdowns : workMetricFilter === 'OPEN' ? upcoming : upcoming.slice(0, 6);
+  const openWorkMetric = (filter: 'OPEN' | 'BREAKDOWN') => {
+    setWorkMetricFilter(filter);
+    window.setTimeout(() => document.getElementById('maintenance-work-register')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
   const assetName = (id?: string) => {
     const a = assets.find((row) => row.id === id);
     return a ? `${a.asset_code} — ${a.asset_name}` : "Maintenance asset";
@@ -147,12 +153,13 @@ export default function MaintenancePage() {
         </p>
       )}
       <section className="grid gap-3 sm:grid-cols-3">
-        <Metric label="Registered machines / assets" value={assets.length} />
-        <Metric label="Open maintenance work" value={upcoming.length} />
+        <Metric label="Registered machines / assets" value={assets.length} onClick={() => document.getElementById('maintenance-machine-register')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+        <Metric label="Open maintenance work" value={upcoming.length} onClick={() => openWorkMetric('OPEN')} />
         <Metric
           label="Breakdowns needing attention"
           value={breakdowns.length}
           risk
+          onClick={() => openWorkMetric('BREAKDOWN')}
         />
       </section>
       {breakdowns.length > 0 && (
@@ -173,10 +180,11 @@ export default function MaintenancePage() {
           </div>
         </section>
       )}
-      <section className="rounded-xl border border-[#E5D7BF] bg-white p-4">
+      <section id="maintenance-work-register" className="scroll-mt-24 rounded-xl border border-[#E5D7BF] bg-white p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-bold text-[#3F2D20]">What needs attention</h2>
+            {workMetricFilter && <button type="button" onClick={() => setWorkMetricFilter(null)} className="mt-1 text-xs font-bold text-blue-700 underline">Showing {visibleWork.length} matching work orders · Clear filter</button>}
             <p className="mt-1 text-sm text-slate-500">
               Start with the closest maintenance window. The production plan
               uses these dates automatically.
@@ -199,9 +207,9 @@ export default function MaintenancePage() {
             </button>
           </div>
         </div>
-        {upcoming.length ? (
+        {visibleWork.length ? (
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            {upcoming.slice(0, 6).map((row) => (
+            {visibleWork.map((row) => (
               <article
                 key={row.id}
                 className="rounded-lg border border-[#E5D7BF] p-4"
@@ -372,7 +380,7 @@ export default function MaintenancePage() {
           </form>
         </section>
       )}
-      <section className="rounded-xl border border-[#E5D7BF] bg-white p-4">
+      <section id="maintenance-machine-register" className="scroll-mt-24 rounded-xl border border-[#E5D7BF] bg-white p-4">
         <h2 className="font-bold text-[#3F2D20]">Machine register</h2>
         <div className="mt-3 divide-y">
           {assets.map((a) => (
@@ -400,14 +408,16 @@ function Metric({
   label,
   value,
   risk = false,
+  onClick,
 }: {
   label: string;
   value: number;
   risk?: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div
-      className={`rounded-xl border p-4 ${risk && value ? "border-red-200 bg-red-50" : "border-[#E5D7BF] bg-white"}`}
+    <button type="button" onClick={onClick}
+      className={`rounded-xl border p-4 text-left hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#465E4A] ${risk && value ? "border-red-200 bg-red-50" : "border-[#E5D7BF] bg-white"}`}
     >
       <p className="text-xs uppercase text-slate-500">{label}</p>
       <p
@@ -415,6 +425,6 @@ function Metric({
       >
         {value}
       </p>
-    </div>
+    </button>
   );
 }
