@@ -117,6 +117,7 @@ export const HR_PAYROLL_RULE_KEYS = [
   "annual_bonus_rule",
   "production_bonus_rule",
   "paid_leave_types_rule",
+  "travel_per_diem_rule",
 ] as const;
 export type HrPayrollRuleKey = (typeof HR_PAYROLL_RULE_KEYS)[number] | "employee_overtime_rule";
 
@@ -129,6 +130,9 @@ export type SalaryCalculationPolicy = {
   paid_weekly_off_weekdays: number[];
   annual_paid_leave_days: number | null;
   paid_leave_counts_as_paid: boolean;
+  monthly_paid_leave_days?: number;
+  cash_out_unused_monthly_leave?: boolean;
+  auto_apply_monthly_leave_to_absence?: boolean;
 };
 
 export type AnnualBonusRule = {
@@ -225,16 +229,21 @@ export function validateHrPayrollRuleValue(ruleKey: HrPayrollRuleKey, value: unk
     case "salary_calculation_policy": {
       if (value && typeof value === "object" && !Array.isArray(value)) {
         const policy = value as Record<string, unknown>;
-        const allowed = ["annual_salary_basis", "base_days_per_year", "bonus_days_per_year", "include_bonus_days_in_divisor", "bonus_payment_mode", "paid_weekly_off_weekdays", "annual_paid_leave_days", "paid_leave_counts_as_paid"];
+        const required = ["annual_salary_basis", "base_days_per_year", "bonus_days_per_year", "include_bonus_days_in_divisor", "bonus_payment_mode", "paid_weekly_off_weekdays", "annual_paid_leave_days", "paid_leave_counts_as_paid"];
+        const allowed = [...required, "monthly_paid_leave_days", "cash_out_unused_monthly_leave", "auto_apply_monthly_leave_to_absence"];
         const wholeNumber = (item: unknown, min: number, max: number) => Number.isInteger(item) && Number(item) >= min && Number(item) <= max;
         const weekdaysValid = Array.isArray(policy.paid_weekly_off_weekdays) && policy.paid_weekly_off_weekdays.length >= 1 && policy.paid_weekly_off_weekdays.length <= 7 && policy.paid_weekly_off_weekdays.every((day) => wholeNumber(day, 0, 6)) && new Set(policy.paid_weekly_off_weekdays).size === policy.paid_weekly_off_weekdays.length;
         const leaveValid = policy.annual_paid_leave_days === null || wholeNumber(policy.annual_paid_leave_days, 0, 366);
-        const valid = Object.keys(policy).length === allowed.length && Object.keys(policy).every((key) => allowed.includes(key)) &&
+        const valid = required.every((key) => Object.prototype.hasOwnProperty.call(policy, key)) && Object.keys(policy).every((key) => allowed.includes(key)) &&
           ["ANNUAL_CTC", "ANNUAL_CONFIGURED_EARNINGS"].includes(String(policy.annual_salary_basis)) &&
           wholeNumber(policy.base_days_per_year, 1, 366) && wholeNumber(policy.bonus_days_per_year, 0, 366) &&
           typeof policy.include_bonus_days_in_divisor === "boolean" &&
           ["HOLD", "PAY_MONTHLY"].includes(String(policy.bonus_payment_mode)) &&
-          weekdaysValid && leaveValid && typeof policy.paid_leave_counts_as_paid === "boolean";
+          weekdaysValid && leaveValid && typeof policy.paid_leave_counts_as_paid === "boolean" &&
+          (policy.monthly_paid_leave_days === undefined || wholeNumber(policy.monthly_paid_leave_days, 0, 31)) &&
+          (policy.cash_out_unused_monthly_leave === undefined || typeof policy.cash_out_unused_monthly_leave === "boolean") &&
+          (policy.auto_apply_monthly_leave_to_absence === undefined || typeof policy.auto_apply_monthly_leave_to_absence === "boolean") &&
+          (policy.monthly_paid_leave_days === undefined || policy.annual_paid_leave_days === Number(policy.monthly_paid_leave_days) * 12);
         if (valid) return { ...policy, paid_weekly_off_weekdays: Array.from(policy.paid_weekly_off_weekdays as number[]) };
       }
       break;
@@ -262,10 +271,14 @@ export function validateHrPayrollRuleValue(ruleKey: HrPayrollRuleKey, value: unk
     case "attendance_day_rule": {
       if (value && typeof value === "object" && !Array.isArray(value)) {
         const rule = value as Record<string, unknown>;
-        if (Object.keys(rule).length === 2 && Object.keys(rule).every((key) => ["half_day_hours", "full_day_hours"].includes(key)) &&
+        if (["half_day_hours", "full_day_hours"].every((key) => Object.prototype.hasOwnProperty.call(rule, key)) && Object.keys(rule).every((key) => ["half_day_hours", "full_day_hours", "lunch_start", "lunch_end"].includes(key)) &&
           typeof rule.half_day_hours === "number" && Number.isFinite(rule.half_day_hours) && Number(rule.half_day_hours) > 0 &&
           typeof rule.full_day_hours === "number" && Number.isFinite(rule.full_day_hours) && Number(rule.full_day_hours) <= 24 &&
-          Number(rule.full_day_hours) > Number(rule.half_day_hours)) return rule;
+          Number(rule.full_day_hours) > Number(rule.half_day_hours) &&
+          (rule.lunch_start === undefined && rule.lunch_end === undefined ||
+            typeof rule.lunch_start === "string" && typeof rule.lunch_end === "string" &&
+            /^\d{2}:\d{2}$/.test(rule.lunch_start) && /^\d{2}:\d{2}$/.test(rule.lunch_end) &&
+            rule.lunch_start < rule.lunch_end)) return rule;
       }
       break;
     }
@@ -293,11 +306,21 @@ export function validateHrPayrollRuleValue(ruleKey: HrPayrollRuleKey, value: unk
         return value.map((item) => item.trim().toUpperCase());
       }
       break;
+    case "travel_per_diem_rule": {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const rule = value as Record<string, unknown>;
+        const validClock = (clock: unknown) => typeof clock === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(clock);
+        if (Object.keys(rule).length === 3 && Object.keys(rule).every((key) => ["departure_before", "return_at_or_after", "home_base"].includes(key)) &&
+          validClock(rule.departure_before) && validClock(rule.return_at_or_after) &&
+          typeof rule.home_base === "string" && rule.home_base.trim().length > 0 && rule.home_base.length <= 100) return rule;
+      }
+      break;
+    }
     case "payroll_close_day":
       if (Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 31) return value;
       break;
     case "sandwich_leave_behavior":
-      if (typeof value === "boolean" || ["INCLUDE_WEEKENDS", "EXCLUDE_WEEKENDS", "DISABLED"].includes(String(value))) return value;
+      if (typeof value === "boolean" || ["INCLUDE_WEEKENDS", "EXCLUDE_WEEKENDS", "DISABLED", "UNPAID_BETWEEN_ABSENCES"].includes(String(value))) return value;
       break;
     case "late_policy":
       if (value && typeof value === "object" && !Array.isArray(value)) {

@@ -4462,7 +4462,9 @@ function HrPageContent() {
 
         const daysInMonth = Math.max(1, Number(record.days_in_month || 30));
         const paidDays = Number(record.paid_for_total_days || 0);
-        const proration = paidDays > 0 ? paidDays / daysInMonth : 1;
+        const monthlyLeaveCashoutDays = Number((record as any).attendance_summary?.salary_proration?.monthly_leave_cashout_days || 0);
+        const monthlyLeaveCashoutAmount = Number((record as any).attendance_summary?.salary_proration?.monthly_leave_cashout_amount || 0);
+        const proration = Math.min(1, Math.max(0, (paidDays - monthlyLeaveCashoutDays) / daysInMonth));
         const prorateMonthlyAmount = (amount: unknown) =>
           Number(amount || 0) * proration;
         const monthlyHold = Number(
@@ -4485,7 +4487,8 @@ function HrPageContent() {
           (Number(record.bonus_monthly || 0) > 0 ? 1 : 0) +
           (Number(record.production_incentive || 0) > 0 ? 1 : 0) +
           (Number(record.special_allowance || 0) > 0 ? 1 : 0) +
-          (Number(record.total_per_diem || 0) > 0 ? 1 : 0);
+          (Number(record.total_per_diem || 0) > 0 ? 1 : 0) +
+          (monthlyLeaveCashoutAmount > 0 ? 1 : 0);
         const monthlyGrossRow = monthlyEarningRows + 1;
         const monthlyNetRow =
           monthlyGrossRow + (proratedProfessionalTax > 0 ? 2 : 1);
@@ -4500,7 +4503,7 @@ function HrPageContent() {
           Number(record.production_incentive || 0) +
           Number(record.special_allowance || 0);
         const monthlyGrossVariance =
-          fixedMonthlyGross * proration - Number(record.gross_salary || 0);
+          fixedMonthlyGross * proration + monthlyLeaveCashoutAmount - Number(record.gross_salary || 0);
         const monthlyNetVariance =
           Number(record.gross_salary || 0) -
           proratedProfessionalTax -
@@ -4511,7 +4514,7 @@ function HrPageContent() {
           Number(record.amount_paid || 0);
         const monthlyPayrollCheckItems = [
           Math.abs(monthlyGrossVariance) >= 0.01
-            ? `Current salary components prorate to ${fmtINRAmount(fixedMonthlyGross * proration)}; saved gross is ${fmtINRAmount(Number(record.gross_salary || 0))} (difference ${fmtINRAmount(monthlyGrossVariance)}).`
+            ? `Current salary components and leave cashout total ${fmtINRAmount(fixedMonthlyGross * proration + monthlyLeaveCashoutAmount)}; saved gross is ${fmtINRAmount(Number(record.gross_salary || 0))} (difference ${fmtINRAmount(monthlyGrossVariance)}).`
             : "",
           Math.abs(monthlyNetVariance) >= 0.01
             ? `Saved gross less prorated professional tax calculates ${fmtINRAmount(Number(record.gross_salary || 0) - proratedProfessionalTax)} net; saved net is ${fmtINRAmount(Number(record.net_salary || 0))} (difference ${fmtINRAmount(monthlyNetVariance)}).`
@@ -4734,6 +4737,14 @@ function HrPageContent() {
                     `
                         : ""
                     }
+                    ${monthlyLeaveCashoutAmount > 0 ? `
+                      <tr>
+                        <td class="center">${monthlyGrossRow - 1}</td>
+                        <td>Unused monthly paid leave cashout (${monthlyLeaveCashoutDays} day)</td>
+                        <td class="right">${fmtINR(monthlyLeaveCashoutAmount)}</td>
+                        <td></td>
+                      </tr>
+                    ` : ""}
                     <tr class="highlight-yellow">
                       <td class="center">${monthlyGrossRow}</td>
                       <td><strong>Base Gross Salary (saved)</strong></td>

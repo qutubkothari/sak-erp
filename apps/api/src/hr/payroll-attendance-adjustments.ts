@@ -18,6 +18,7 @@ type AttendanceDay = {
   work_hours?: number | null;
   work_minutes?: number | null;
   day_type?: "NORMAL" | "PAID_HOLIDAY" | "WEEKLY_OFF" | "PAID_LEAVE" | "UNPAID_LEAVE";
+  is_outstation_travel?: boolean;
   late_minutes?: number | null;
   policy?: {
     policy_version_id?: string | null;
@@ -31,11 +32,13 @@ type AttendanceDay = {
 export function calculateOvertimeDayCredit(input: {
   workMinutes: number;
   dayType?: AttendanceDay["day_type"];
+  travelOnRestDay?: boolean;
   rule: EmployeeOvertimeRule;
 }) {
   const { rule } = input;
   if (!rule.eligible || rule.method !== "DAY_CREDIT") return 0;
   const minutes = Math.max(0, Math.round(input.workMinutes));
+  if (input.travelOnRestDay && ["PAID_HOLIDAY", "WEEKLY_OFF"].includes(String(input.dayType || "")) && rule.holiday_work_credit_days === 1) return 1;
   if (minutes === 0) return 0;
   if (["PAID_HOLIDAY", "WEEKLY_OFF", "PAID_LEAVE"].includes(String(input.dayType || ""))) {
     return Number(rule.holiday_work_credit_days ?? (minutes >= wholeMinutes(rule.holiday_min_hours) ? 1 : 0.5));
@@ -83,7 +86,7 @@ export function calculateDatedAttendanceAdjustments(input: {
     const workMinutes = Math.max(0, Math.round(Number(day.work_minutes ?? wholeMinutes(day.work_hours))));
     if (rule.method === "DAY_CREDIT") {
       const dayType = day.day_type || input.dayTypeForDate?.(day.date) || (day.scheduled === false ? "WEEKLY_OFF" : "NORMAL");
-      const creditDays = calculateOvertimeDayCredit({ workMinutes, dayType, rule });
+      const creditDays = calculateOvertimeDayCredit({ workMinutes, dayType, travelOnRestDay: day.is_outstation_travel === true, rule });
       overtimeCreditDays += creditDays;
       overtimeAmount += input.dailyGrossRate * creditDays;
       continue;
