@@ -16,6 +16,7 @@ export type MonthlyPayrollAttendancePreview = {
   present_days: number;
   half_days: number;
   paid_leave_days: number;
+  monthly_leave_cashout_days: number;
   unpaid_leave_days: number;
   absent_days: number;
   travel_days: number;
@@ -96,11 +97,15 @@ export function buildMonthlyPayrollAttendancePreview(input: {
     rows.filter((row) => String(row.status || "").toUpperCase() === status)
       .length;
   const leaveType = (row: any) => String(row.leave_type || "").toUpperCase();
-  const paidLeaveDays = rows.filter(
+  const approvedPaidLeaveDays = rows.filter(
     (row) =>
       String(row.status || "").toUpperCase() === "PAID_LEAVE" &&
       leaveType(row) !== "COMP_OFF",
   ).length;
+  const autoPaidLeaveDays = rows.reduce((sum, row) => sum + Number(row.auto_paid_leave_days || 0), 0);
+  const paidLeaveDays = approvedPaidLeaveDays + autoPaidLeaveDays;
+  const cashoutDays = Number(sourceSummary.monthly_leave_cashout_days || 0);
+  const autoPaidHalfDays = rows.filter((row) => row.status === "HALF_DAY").reduce((sum, row) => sum + Number(row.auto_paid_leave_days || 0), 0);
   const compOffDays = rows.filter(
     (row) =>
       String(row.status || "").toUpperCase() === "PAID_LEAVE" &&
@@ -156,7 +161,7 @@ export function buildMonthlyPayrollAttendancePreview(input: {
         "A working-day payroll basis cannot be calculated because the effective schedule is missing for one or more dates.",
       );
     } else {
-      payableDays = roundDays(Number(sourceSummary.payable_days || 0));
+      payableDays = roundDays(Number(sourceSummary.payable_days || 0) + cashoutDays);
       formula =
         "Attendance Register Payable Days (uses the register's approved daily credits, including half-day fractions, paid leave, travel and comp-off where eligible).";
     }
@@ -170,7 +175,7 @@ export function buildMonthlyPayrollAttendancePreview(input: {
         daysInMonth -
           absentDays -
           unpaidLeaveDays -
-          halfDays * 0.5 -
+          halfDays * 0.5 + autoPaidHalfDays + cashoutDays -
           pendingDays -
           rejectedDays,
       ),
@@ -179,7 +184,7 @@ export function buildMonthlyPayrollAttendancePreview(input: {
       "Calendar days − unpaid absences − unpaid leave − (half days × 0.5) − unapproved outside-attendance days; approved paid leave remains paid.";
   }
 
-  const travelDays = rows.filter(isEligibleTravelDay).length;
+  const travelDays = rows.filter((row) => row.travel_per_diem_eligible === true).length;
   const dailyEvidence = rows.map((row) => ({ ...row }));
   const evidence = {
     version: 1,
@@ -222,6 +227,8 @@ export function buildMonthlyPayrollAttendancePreview(input: {
     present_days: Number(sourceSummary.present_days || 0),
     half_days: halfDays,
     paid_leave_days: paidLeaveDays,
+    monthly_leave_cashout_days: cashoutDays,
+    sandwich_unpaid_days: Number(sourceSummary.sandwich_unpaid_days || 0),
     unpaid_leave_days: unpaidLeaveDays,
     absent_days: absentDays,
     travel_days: travelDays,

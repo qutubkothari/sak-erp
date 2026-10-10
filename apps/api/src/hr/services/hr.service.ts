@@ -419,8 +419,10 @@ const isOutstationTravelMarked = (record: any): boolean => {
   return marker.includes("OUTSTATION") || marker.includes("TRAVEL");
 };
 
-const isTravelPerDiemDay = (record: any): boolean => {
+const isTravelPerDiemDay = (record: any, rule?: { departure_before: string; return_at_or_after: string; home_base: string }): boolean => {
   if (!isOutstationTravelMarked(record)) return false;
+  const departureLimit = parseTimeMinutes(rule?.departure_before || "20:00") ?? 20 * 60;
+  const returnThreshold = parseTimeMinutes(rule?.return_at_or_after || "08:00") ?? 8 * 60;
 
   const departure = parseTimeMinutes(
     record?.travel_departure_time ?? record?.departure_time,
@@ -432,13 +434,13 @@ const isTravelPerDiemDay = (record: any): boolean => {
   );
 
   // If employee reaches office before 08:00, the return day is not a travel day.
-  if (arrival !== null && arrival < 8 * 60) return false;
+  if (arrival !== null && arrival < returnThreshold) return false;
 
   // If journey starts before 20:00, that calendar day earns per diem.
-  if (departure !== null) return departure < 20 * 60;
+  if (departure !== null) return departure < departureLimit;
 
   // If only return time is captured, reaching at/after 08:00 counts as travel day.
-  if (arrival !== null) return arrival >= 8 * 60;
+  if (arrival !== null) return arrival >= returnThreshold;
 
   // Manual HR travel day marking: count unless times explicitly disqualify it.
   return true;
@@ -2534,7 +2536,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     if (paidTypes.includes(String(request.leave_type).toUpperCase()) && String(request.leave_type).toUpperCase() === "CASUAL") {
       const salaryPolicy = await this.getEffectivePayrollRule(tenantId, "salary_calculation_policy", startDate, employeeId);
       const entitlement = (salaryPolicy.value as SalaryCalculationPolicy | undefined)?.annual_paid_leave_days;
-      if (entitlement !== null && entitlement !== undefined) {
+      const monthlyEntitlement = (salaryPolicy.value as SalaryCalculationPolicy | undefined)?.monthly_paid_leave_days;
+      if (entitlement !== null && entitlement !== undefined && monthlyEntitlement === undefined) {
         if (startDate.slice(0, 4) !== endDate.slice(0, 4)) throw new ConflictException({ code: "LEAVE_SPANS_ENTITLEMENT_YEARS", message: "Split paid leave across calendar years so each year's entitlement can be checked." });
         const used = priorLeaves.filter((row: any) => String(row.id) !== id && String(row.status).toUpperCase() === "APPROVED" && String(row.start_date).slice(0, 4) === startDate.slice(0, 4) && String(row.leave_type).toUpperCase() === "CASUAL")
           .reduce((sum: number, row: any) => sum + Number(row.total_days || 0), 0);
@@ -4610,6 +4613,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       monthStart,
       monthEnd,
     );
+    travelDaysByEmployee.clear();
+    for (const day of attendanceRegister.daily || []) {
+      if (day.travel_per_diem_eligible !== true) continue;
+      const employeeId = String(day.employee_id);
+      travelDaysByEmployee.set(employeeId, (travelDaysByEmployee.get(employeeId) || 0) + 1);
+    }
     const attendanceSummaryByEmployee = new Map(
       attendanceRegister.summary.map((row: any) => [
         String(row.employee_id),
@@ -4797,7 +4806,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         const overtimeRule = resolvePayrollRule({ ruleKey: "employee_overtime_rule", effectiveDate: String(day.date), tenantRules: companyOvertimeRules || [], employeeOverrides: employeeOvertimeRules });
         const dayType = String(day.status) === "HOLIDAY_WORKED" ? "PAID_HOLIDAY" : String(day.status) === "WEEK_OFF_WORKED" ? "WEEKLY_OFF" : String(day.status) === "PAID_LEAVE_WORKED" ? "PAID_LEAVE" : String(day.status) === "UNPAID_LEAVE" ? "UNPAID_LEAVE" : "NORMAL";
         const workMinutes = Math.max(0, Math.round(Number(day.work_minutes ?? Number(day.work_hours || 0) * 60)));
-        const extraCredit = overtimeRule.value ? calculateOvertimeDayCredit({ workMinutes, dayType, rule: overtimeRule.value as any }) : 0;
+        const extraCredit = overtimeRule.value ? calculateOvertimeDayCredit({ workMinutes, dayType, travelOnRestDay: day.is_outstation_travel === true, rule: overtimeRule.value as any }) : 0;
         return { attendance_id: day.attendance_id || null, date: day.date, status: day.status, payable_days: day.payable_days, late_minutes: day.late_minutes,
           work_hours: day.work_hours, work_minutes: workMinutes, day_type: dayType, base_pay_days: Number(day.payable_days || 0), extra_day_credit: extraCredit,
           total_pay_days: Number(day.payable_days || 0) + extraCredit, overtime_rule_id: overtimeRule.version?.id || null,
@@ -4830,6 +4839,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         throw new ConflictException({ code: "ANNUAL_CTC_REQUIRED", message: `Annual CTC is required by the effective salary policy for ${employee.employee_name || employee.employee_code}.` });
       }
       const extraCreditDays = attendanceEvidenceRows.reduce((sum: number, row: any) => sum + Number(row.extra_day_credit || 0), 0);
+      const monthlyLeaveCashoutDays = salaryPolicy.value?.cash_out_unused_monthly_leave
+        ? Number(summary.monthly_leave_cashout_days || 0) : 0;
       const policyPayableDays = salaryPolicy.value ? employeeAttendanceDays.reduce((sum: number, day: any) => {
         const status = String(day.status || "").toUpperCase();
         const weekDay = new Date(`${String(day.date).slice(0, 10)}T00:00:00.000Z`).getUTCDay();
@@ -4837,9 +4848,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
         const paidLeaveExcluded = salaryPolicy.value!.paid_leave_counts_as_paid === false && status === "PAID_LEAVE";
         if (paidLeaveExcluded) return sum;
         const recordedPayableDays = Number(day.payable_days || 0);
-        const configuredPaidRestDay = recordedPayableDays <= 0 && (isConfiguredWeeklyOff || Boolean(day.holiday));
+        const configuredPaidRestDay = recordedPayableDays <= 0 && status !== "SANDWICH_UNPAID" && (isConfiguredWeeklyOff || Boolean(day.holiday));
         return sum + recordedPayableDays + (configuredPaidRestDay ? 1 : 0);
-      }, 0) : Number(summary.payable_days || 0);
+      }, monthlyLeaveCashoutDays) : Number(summary.payable_days || 0);
       const paidWeeklyOffDays = salaryPolicy.value
         ? employeeAttendanceDays.filter((day: any) => {
             const status = String(day.status || "").toUpperCase();
@@ -4864,7 +4875,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       }
       const prorationDays = annualCalculation?.divisor_days || workingDays;
       const dailyGrossRate = annualCalculation?.daily_rate || (prorationDays > 0 ? configuredMonthlyGross / prorationDays : 0);
-      const grossSalary = annualCalculation ? roundCurrency(annualCalculation.base_pay + annualCalculation.bonus_accrual + annualBonusAmount + productionBonusAmount) : configuredMonthlyGross + annualBonusAmount + productionBonusAmount;
+      const monthlyLeaveCashoutAmount = roundCurrency(dailyGrossRate * monthlyLeaveCashoutDays);
+      const grossSalary = annualCalculation ? roundCurrency(annualCalculation.base_pay + annualCalculation.bonus_accrual + annualBonusAmount + productionBonusAmount) : configuredMonthlyGross + monthlyLeaveCashoutAmount + annualBonusAmount + productionBonusAmount;
       const attendanceDeduction = annualCalculation ? 0 : roundCurrency(dailyGrossRate * unpaidAttendanceDays);
       const lateDays = Number(summary.late_days || 0);
       const lateMinutes = Number(summary.late_minutes || 0);
@@ -4944,7 +4956,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
           present_days: Number(summary.present_days || 0),
           half_days: Number(summary.half_days || 0),
           payable_days: policyPayableDays,
-          base_payable_calendar_days: policyPayableDays,
+          base_payable_calendar_days: policyPayableDays - monthlyLeaveCashoutDays,
+          monthly_leave_cashout_days: monthlyLeaveCashoutDays,
+          monthly_leave_cashout_amount: monthlyLeaveCashoutAmount,
+          sandwich_unpaid_days: Number(summary.sandwich_unpaid_days || 0),
           paid_weekly_off_days: paidWeeklyOffDays,
           comp_off_leave_days: Number(summary.comp_off_leave_days || 0),
           salary_proration_basis: annualCalculation ? "ANNUAL_SALARY_POLICY" : "SCHEDULED_WORKING_DAYS",
@@ -4988,10 +5003,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
               formula: String(component.component_type).toUpperCase() === "CTC" ? "Annual CTC salary basis; not added as a separate monthly earning" : annualCalculation && grossTypes.has(String(component.component_type)) ? "Monthly configured component retained as salary basis evidence; not added separately under the annual salary policy" : "Configured salary component amount, effective for the payroll month",
             })),
             ...(annualCalculation ? [
-              { kind: "EARNING", label: "Base salary by paid days", amount: annualCalculation.base_pay, source: { annual_salary_basis: salaryPolicy.value?.annual_salary_basis, annual_salary_basis_amount: annualCalculation.annual_salary_basis_amount, divisor_days: annualCalculation.divisor_days, daily_rate: annualCalculation.daily_rate, payable_days: annualCalculation.payable_days, salary_policy_version_id: salaryPolicy.version?.id || null }, formula: "Annual salary basis ÷ configured divisor × payable days" },
+              { kind: "EARNING", label: "Base salary by paid days", amount: roundCurrency(annualCalculation.base_pay - monthlyLeaveCashoutAmount), source: { annual_salary_basis: salaryPolicy.value?.annual_salary_basis, annual_salary_basis_amount: annualCalculation.annual_salary_basis_amount, divisor_days: annualCalculation.divisor_days, daily_rate: annualCalculation.daily_rate, payable_days: annualCalculation.payable_days - monthlyLeaveCashoutDays, salary_policy_version_id: salaryPolicy.version?.id || null }, formula: "Annual salary basis ÷ configured divisor × payable days" },
               { kind: "EARNING", label: "Bonus accrual", amount: annualCalculation.bonus_accrual, source: { bonus_days_per_year: salaryPolicy.value?.bonus_days_per_year, paid_days: annualCalculation.paid_days, base_days_per_year: salaryPolicy.value?.base_days_per_year }, formula: "Daily rate × bonus days ÷ base days per year × paid days" },
               ...(annualCalculation.bonus_held ? [{ kind: "DEDUCTION", label: "Bonus held", amount: annualCalculation.bonus_held, source: { salary_policy_version_id: salaryPolicy.version?.id || null }, formula: "Accrued bonus held under the configured bonus treatment" }] : []),
             ] : []),
+            ...(monthlyLeaveCashoutDays > 0 ? [{ kind: "EARNING", label: "Unused monthly paid leave cashout", amount: monthlyLeaveCashoutAmount, source: { days: monthlyLeaveCashoutDays, daily_rate: roundCurrency(dailyGrossRate), salary_policy_version_id: salaryPolicy.version?.id || null }, formula: "Unused monthly leave days × daily salary rate; expires at month end" }] : []),
             ...(annualBonusAmount > 0 ? [{ kind: "EARNING", label: "Annual bonus", amount: annualBonusAmount, source: { rule_version_id: annualBonusRule.version?.id || null, basis: annualBonusRule.value?.basis, salary_multiple: annualBonusRule.value?.salary_multiple, payout_date: bonusPayoutDate }, formula: "Effective monthly Basic or gross × approved salary multiple, paid in payout month" }] : []),
             ...(productionRule.value ? [{ kind: "EARNING", label: "Production bonus", amount: productionBonusAmount, source: { rule_version_id: productionRule.version?.id || null, approved_pieces: productionQuantity, rate_per_piece: productionRule.value.rate_per_piece, monthly_draft_id: productionDraftId }, formula: "Approved pieces multiplied by effective rate per piece" }] : []),
             { kind: "EARNING", label: "Overtime", amount: overtimeAmount, source: { overtime_hours: overtimeHours, overtime_credit_days: overtimeCreditDays, daily_gross_rate: roundCurrency(dailyGrossRate), salary_proration_days: prorationDays || null, salary_proration_rule_version_id: salaryPolicy.version?.id || null, attendance_records: attendanceEvidenceRows.filter((day: any) => day.overtime_rule_source !== "MISSING"), rule_source: "EMPLOYEE_OVERRIDE_THEN_COMPANY_DEFAULT", attendance_month: payrollRun.payroll_month, currency_rounding: "Math.round(value * 100) / 100" }, formula: annualCalculation ? "Approved overtime extra-credit days × annual-policy daily rate" : "Effective employee override or company default overtime day credit applied to the configured daily gross rate" },
@@ -4999,7 +5015,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
             { kind: "DEDUCTION", label: "Attendance deduction", amount: attendanceDeduction, source: { unpaid_attendance_days: unpaidAttendanceDays, absent_days: absentDays + unapprovedOutsideDays, unpaid_leave_days: unpaidLeaveDays, half_days: Number(summary.half_days || 0), paid_days: annualCalculation?.paid_days || attendanceDays + paidLeaveDays, attendance_month: payrollRun.payroll_month, attendance_records: attendanceEvidenceRows, daily_gross_rate: roundCurrency(dailyGrossRate), salary_proration_days: prorationDays || null, salary_proration_rule_version_id: salaryPolicy.version?.id || null, salary_proration_rule_source: salaryPolicy.source, attendance_policy: attendanceRegister.policy, currency_rounding: "Math.round(value * 100) / 100" }, formula: annualCalculation ? "Included absences reduce payable days before base salary is calculated" : "Configured monthly gross ÷ effective salary proration days × unpaid attendance days" },
             { kind: "DEDUCTION", label: "Late deduction", amount: lateDeduction, source: { late_days: lateDays, late_minutes: lateMinutes, policy: attendanceRegister.policy.late_deduction_mode, attendance_policy: attendanceRegister.policy, attendance_records: attendanceEvidenceRows.filter((day: any) => String(day.status).toUpperCase() === "LATE"), currency_rounding: "Math.round(value * 100) / 100" }, formula: "Tenant attendance policy late deduction" },
           ],
-          totals: { gross: grossSalary, deductions: totalDeductions, overtime: overtimeAmount, travel_per_diem: totalPerDiem, annual_bonus: annualBonusAmount, production_bonus: productionBonusAmount, bonus_held: annualCalculation?.bonus_held || 0, net: netSalary },
+          totals: { gross: grossSalary, deductions: totalDeductions, overtime: overtimeAmount, travel_per_diem: totalPerDiem, annual_bonus: annualBonusAmount, production_bonus: productionBonusAmount, monthly_leave_cashout: monthlyLeaveCashoutAmount, bonus_held: annualCalculation?.bonus_held || 0, net: netSalary },
         },
         travel_days: travelDays,
         per_diem_amount: perDiemAmount,
@@ -5290,12 +5306,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
     const annualSalaryBasis = salaryPolicy.value?.annual_salary_basis === "ANNUAL_CTC" ? annualCtc : configuredMonthlyEarnings * 12;
     if (salaryPolicy.value?.annual_salary_basis === "ANNUAL_CTC" && annualSalaryBasis <= 0) throw new ConflictException({ code: "ANNUAL_CTC_REQUIRED", message: "Annual CTC is required by the effective salary policy." });
     const payableDays = Math.max(0, Number(preview.payable_days || 0) - (salaryPolicy.value?.paid_leave_counts_as_paid === false ? Number(preview.paid_leave_days || 0) : 0));
+    const cashoutDays = salaryPolicy.value?.cash_out_unused_monthly_leave ? Number(preview.monthly_leave_cashout_days || 0) : 0;
     const annualCalculation = salaryPolicy.value ? calculateAnnualSalaryPolicy({ annualSalary: annualSalaryBasis, payableDays, extraCreditDays: 0, policy: salaryPolicy.value }) : null;
     const prorationDays = annualCalculation?.divisor_days || preview.days_in_month;
-    const unpaidDays = Math.max(0, Number(preview.days_in_month || 0) - Number(preview.payable_days || 0));
+    const unpaidDays = Math.max(0, Number(preview.days_in_month || 0) - Number(preview.payable_days || 0) + cashoutDays);
     const dailySalaryRate = annualCalculation?.daily_rate || (prorationDays > 0 ? fixedTotal / prorationDays : 0);
-    const ratio = preview.days_in_month > 0 ? Number(preview.payable_days || 0) / preview.days_in_month : 0;
-    const grossSalary = annualCalculation ? roundCurrency(annualCalculation.base_pay + annualCalculation.bonus_accrual + monthlyBonus + productionIncentive + Number(data.special_allowance || 0)) : roundCurrency(Math.max(0, fixedTotal - dailySalaryRate * unpaidDays) + monthlyBonus + productionIncentive + Number(data.special_allowance || 0));
+    const ratio = preview.days_in_month > 0 ? Math.min(1, Math.max(0, (Number(preview.payable_days || 0) - cashoutDays) / preview.days_in_month)) : 0;
+    const cashoutAmount = roundCurrency(dailySalaryRate * cashoutDays);
+    const grossSalary = annualCalculation ? roundCurrency(annualCalculation.base_pay + annualCalculation.bonus_accrual + monthlyBonus + productionIncentive + Number(data.special_allowance || 0)) : roundCurrency(Math.max(0, fixedTotal - dailySalaryRate * unpaidDays) + cashoutAmount + monthlyBonus + productionIncentive + Number(data.special_allowance || 0));
     const professionalTax = roundCurrency(Number(data.professional_tax || 0) * (annualCalculation ? 1 : ratio));
     const netSalary = roundCurrency(grossSalary - professionalTax);
     const monthlyHold =
@@ -5310,6 +5328,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_hr_holidays_tenant_name_start ON hr_holiday
       monthly_hold: roundCurrency(monthlyHold),
       amount_paid: roundCurrency(netSalary - monthlyHold),
       salary_proration: {
+        monthly_leave_cashout_days: cashoutDays,
+        monthly_leave_cashout_amount: cashoutAmount,
         ...(annualCalculation ? { basis: "ANNUAL_SALARY_POLICY", annual_salary_basis_amount: annualCalculation.annual_salary_basis_amount, divisor_days: prorationDays, payable_days: payableDays, daily_salary_rate: roundCurrency(dailySalaryRate), bonus_accrual: annualCalculation.bonus_accrual, bonus_held: annualCalculation.bonus_held, rule_version_id: salaryPolicy.version?.id || null, rule_source: salaryPolicy.source } : { basis: "CALENDAR_DAYS_IN_MONTH", divisor_days: prorationDays, unpaid_days: unpaidDays, daily_salary_rate: roundCurrency(dailySalaryRate), rule_version_id: null, rule_source: "DEFAULT" }),
         annual_bonus: annualBonus, annual_bonus_rule_id: annualBonusRule.version?.id || null,
         annual_bonus_payout_date: annualBonus > 0 ? `${payrollMonth}-${String((annualBonusRule.value as AnnualBonusRule).payout_day).padStart(2, "0")}` : null,

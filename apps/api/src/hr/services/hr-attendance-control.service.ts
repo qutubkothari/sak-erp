@@ -11,6 +11,7 @@ import {
   hasPermission,
 } from "../../auth/utils/permission-utils";
 import { resolvePayrollRule } from "../payroll-control.domain";
+import { calculateOvertimeDayCredit } from "../payroll-attendance-adjustments";
 import { DEFAULT_HR_HOLIDAYS_2026 } from "../holiday-calendar";
 
 type Policy = {
@@ -95,6 +96,12 @@ export const authoritativeWorkMinutes = (record: any) => {
 const timeMinutes = (value: unknown) => {
   const match = String(value || "").match(/(\d{1,2}):(\d{2})/);
   return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+};
+const optionalTimeMinutes = (value: unknown): number | null => {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const minutes = Number(match[1]) * 60 + Number(match[2]);
+  return Number(match[1]) <= 23 && Number(match[2]) <= 59 ? minutes : null;
 };
 const companyLocalDateTime = (value: unknown, timeZone: string) => {
   const raw = String(value || "").trim();
@@ -693,11 +700,15 @@ export class HrAttendanceControlService {
       throw new BadRequestException(
         "Attendance report range cannot exceed 366 days",
       );
+    // Keep boundary days available while classifying a holiday/rest-day run
+    // that starts in one payroll month and ends in the next.
+    const contextStart = isoDate(new Date(Date.parse(`${start}T00:00:00Z`) - 14 * 86_400_000));
+    const contextEnd = isoDate(new Date(Date.parse(`${end}T00:00:00Z`) + 14 * 86_400_000));
     const [policy, historicalPolicies] = await Promise.all([this.getPolicy(tenantId), this.getHistoricalPolicyVersions(tenantId)]);
     const { data: employeePolicies, error: employeePolicyError } = await this.reportRows(() => {
       let query = this.supabase.from("hr_employee_payroll_rule_overrides").select("*").eq("tenant_id", tenantId)
-        .in("rule_key", ["attendance_policy", "weekly_working_days", "late_policy"]).lte("effective_from", end)
-        .or(`effective_to.is.null,effective_to.gte.${start}`).order("id");
+        .in("rule_key", ["attendance_policy", "weekly_working_days", "late_policy"]).lte("effective_from", contextEnd)
+        .or(`effective_to.is.null,effective_to.gte.${contextStart}`).order("id");
       if (employeeId) query = query.eq("employee_id", employeeId);
       return query;
     });
@@ -713,13 +724,13 @@ export class HrAttendanceControlService {
     };
     const attendanceQuery = (table: string) => {
       let query = this.supabase.from(table).select("*").eq("tenant_id", tenantId)
-        .gte("attendance_date", start).lte("attendance_date", end);
+        .gte("attendance_date", contextStart).lte("attendance_date", contextEnd);
       if (employeeId) query = query.eq("employee_id", employeeId);
       return query.order("id");
     };
     const leaveQuery = () => {
       let query = this.supabase.from("leave_requests").select("*").eq("tenant_id", tenantId)
-        .eq("status", "APPROVED").lte("start_date", end).gte("end_date", start);
+        .eq("status", "APPROVED").lte("start_date", contextEnd).gte("end_date", contextStart);
       if (employeeId) query = query.eq("employee_id", employeeId);
       return query.order("id");
     };
@@ -743,12 +754,12 @@ export class HrAttendanceControlService {
         .order("id")),
       this.reportRows(() => this.supabase.from("hr_payroll_rule_versions")
         .select("id,rule_key,rule_value,effective_from,effective_to,reason,created_at")
-        .eq("tenant_id", tenantId).in("rule_key", ["attendance_day_rule", "paid_leave_types_rule", "weekly_working_days", "late_policy", "sandwich_leave_behavior"])
-        .lte("effective_from", end).order("effective_from", { ascending: false })),
+        .eq("tenant_id", tenantId).in("rule_key", ["attendance_day_rule", "paid_leave_types_rule", "weekly_working_days", "late_policy", "sandwich_leave_behavior", "salary_calculation_policy", "employee_overtime_rule", "travel_per_diem_rule"])
+        .lte("effective_from", contextEnd).order("effective_from", { ascending: false })),
       this.reportRows(() => this.supabase.from("hr_employee_payroll_rule_overrides")
         .select("id,employee_id,rule_key,rule_value,effective_from,effective_to,reason,created_at")
-        .eq("tenant_id", tenantId).in("rule_key", ["attendance_day_rule", "paid_leave_types_rule", "weekly_working_days", "late_policy", "sandwich_leave_behavior"])
-        .lte("effective_from", end).order("effective_from", { ascending: false })),
+        .eq("tenant_id", tenantId).in("rule_key", ["attendance_day_rule", "paid_leave_types_rule", "weekly_working_days", "late_policy", "sandwich_leave_behavior", "salary_calculation_policy", "employee_overtime_rule", "travel_per_diem_rule"])
+        .lte("effective_from", contextEnd).order("effective_from", { ascending: false })),
     ]);
     if (employeeError) throw new Error(employeeError.message);
     if (attendanceResult.error) throw new Error(attendanceResult.error.message);
@@ -781,7 +792,7 @@ export class HrAttendanceControlService {
       );
     }
     const leaves = leaveResult.data || [];
-    const dates = eachDate(start, end);
+    const dates = eachDate(contextStart, contextEnd);
     const currentBusinessDate = this.currentDateInZone(policy.timezone);
     const daily: any[] = [];
 
@@ -797,7 +808,7 @@ export class HrAttendanceControlService {
         );
         const policyForDate = resolveAttendancePolicyForDate(policy, historicalPolicies, date,
           (employeePolicies || []).filter((row: any) => row.employee_id === employee.id));
-        const dayRule = resolvePayrollRule<{ half_day_hours: number; full_day_hours: number }>({
+        const dayRule = resolvePayrollRule<{ half_day_hours: number; full_day_hours: number; lunch_start?: string; lunch_end?: string }>({
           ruleKey: "attendance_day_rule", effectiveDate: date,
           tenantRules: (companyDayRulesResult.data || []).filter((row: any) => row.rule_key === "attendance_day_rule"),
           employeeOverrides: (employeeDayRulesResult.data || []).filter((row: any) => row.employee_id === employee.id && row.rule_key === "attendance_day_rule"),
@@ -815,6 +826,9 @@ export class HrAttendanceControlService {
         const workingDaysRule = resolveDayRule("weekly_working_days");
         const lateRule = resolveDayRule("late_policy");
         const sandwichRule = resolveDayRule("sandwich_leave_behavior");
+        const salaryRule = resolveDayRule("salary_calculation_policy");
+        const overtimeRule = resolveDayRule("employee_overtime_rule");
+        const travelRule = resolveDayRule("travel_per_diem_rule");
         const workingWeekdays = Array.isArray(workingDaysRule.value) ? workingDaysRule.value : policyForDate?.working_weekdays;
         const lateGraceMinutes = lateRule.value?.grace_minutes ?? policyForDate?.late_grace_minutes;
         const fullDayHours = dayRule.value?.full_day_hours ?? policyForDate?.standard_daily_hours;
@@ -836,7 +850,18 @@ export class HrAttendanceControlService {
         ).toUpperCase();
         const approvalValid =
           approval === "NOT_REQUIRED" || approval === "APPROVED";
-        const workMinutes = attendance ? authoritativeWorkMinutes(attendance) : 0;
+        const rawWorkMinutes = attendance ? authoritativeWorkMinutes(attendance) : 0;
+        const localIn = this.localClockMinutes(attendance?.check_in_time, policyForDate?.timezone || policy.timezone);
+        const localOut = this.localClockMinutes(attendance?.check_out_time, policyForDate?.timezone || policy.timezone);
+        const elapsed = localIn !== null && localOut !== null && localOut >= localIn ? localOut - localIn : null;
+        const lunchStart = dayRule.value?.lunch_start ? timeMinutes(dayRule.value.lunch_start) : null;
+        const lunchEnd = dayRule.value?.lunch_end ? timeMinutes(dayRule.value.lunch_end) : null;
+        const lunchOverlap = elapsed !== null && lunchStart !== null && lunchEnd !== null
+          ? Math.max(0, Math.min(localOut!, lunchEnd) - Math.max(localIn!, lunchStart)) : 0;
+        // Imported net-work minutes are already lunch-free. Punch-derived
+        // elapsed minutes include the paid lunch interval and need one removal.
+        const workMinutes = lunchOverlap > 0 && elapsed !== null && rawWorkMinutes >= elapsed - 5
+          ? Math.max(0, rawWorkMinutes - lunchOverlap) : rawWorkMinutes;
         const hours = workMinutes / 60;
         const metricsUnresolved = Boolean(attendance && !policyForDate);
         const checkInMinutes = this.localClockMinutes(
@@ -898,7 +923,7 @@ export class HrAttendanceControlService {
                   : "ABSENT"
               : "WEEK_OFF";
         let payableDays = 0;
-        if (leave && !attendance && leave.is_paid === true) {
+        if (leave && !attendance && leave.is_paid === true && scheduled === true) {
           dayStatus = "PAID_LEAVE";
           payableDays = 1;
         } else if (!policyForDate && leave && !attendance) {
@@ -946,8 +971,27 @@ export class HrAttendanceControlService {
           } else if (workMinutes >= Number(halfDayHours) * 60) {
             dayStatus = "HALF_DAY";
             payableDays = 0.5;
+          } else if (lunchStart !== null && lunchEnd !== null && localIn !== null && localOut !== null &&
+            ((localIn <= timeMinutes(policyForDate?.shift_start) && localOut >= lunchStart) ||
+              (localIn <= lunchEnd && localOut >= timeMinutes(policyForDate?.shift_end)))) {
+            dayStatus = "HALF_DAY";
+            payableDays = 0.5;
           }
         }
+        if (attendance && approvalValid && policyForDate?.overtime_enabled && overtimeEligible && overtimeRule.value) {
+          const dayType = dayStatus === "HOLIDAY_WORKED" ? "PAID_HOLIDAY" : dayStatus === "WEEK_OFF_WORKED" ? "WEEKLY_OFF" : dayStatus === "PAID_LEAVE_WORKED" ? "PAID_LEAVE" : "NORMAL";
+          overtimeCreditDays = calculateOvertimeDayCredit({ workMinutes, dayType, rule: overtimeRule.value });
+          if ((holiday || !scheduled) && attendance.is_outstation_travel === true && overtimeRule.value.holiday_work_credit_days === 1) {
+            overtimeCreditDays = Math.max(overtimeCreditDays || 0, 1);
+          }
+        }
+        const travelDeparture = optionalTimeMinutes(attendance?.travel_departure_time);
+        const travelArrival = optionalTimeMinutes(attendance?.travel_arrival_time);
+        const departureCutoff = optionalTimeMinutes(travelRule.value?.departure_before || "20:00")!;
+        const arrivalCutoff = optionalTimeMinutes(travelRule.value?.return_at_or_after || "08:00")!;
+        const travelPerDiemEligible = attendance?.is_outstation_travel === true && approvalValid &&
+          (travelArrival === null || travelArrival >= arrivalCutoff) &&
+          (travelDeparture !== null ? travelDeparture < departureCutoff : true);
         daily.push({
           attendance_id: attendance?.id || null,
           employee_id: employee.id,
@@ -977,12 +1021,19 @@ export class HrAttendanceControlService {
           late_policy_rule_id: lateRule.version?.id || null,
           sandwich_leave_rule_id: sandwichRule.version?.id || null,
           sandwich_leave_behavior: sandwichRule.value || "EXCLUDE_WEEKENDS",
+          monthly_paid_leave_days: salaryRule.value?.monthly_paid_leave_days ?? 0,
+          auto_apply_monthly_leave_to_absence: salaryRule.value?.auto_apply_monthly_leave_to_absence === true,
+          cash_out_unused_monthly_leave: salaryRule.value?.cash_out_unused_monthly_leave === true,
+          salary_rule_version_id: salaryRule.version?.id || null,
           leave_type: leaveType || "",
           late_minutes: lateMinutes,
           overtime_hours: overtimeHours,
           overtime_minutes: overtimeMinutes,
           overtime_time: overtimeMinutes === null ? null : formatMinutes(overtimeMinutes),
           overtime_credit_days: overtimeCreditDays,
+          overtime_rule_version_id: overtimeRule.version?.id || null,
+          overtime_rule_source: overtimeRule.source,
+          lunch_deducted_minutes: rawWorkMinutes - workMinutes,
           derived_metrics_status: metricsUnresolved
             ? "HISTORICAL_POLICY_UNAVAILABLE"
             : null,
@@ -996,12 +1047,63 @@ export class HrAttendanceControlService {
           travel_departure_time: attendance?.travel_departure_time || null,
           travel_arrival_time: attendance?.travel_arrival_time || null,
           travel_evidence_url: attendance?.travel_evidence_url || "",
+          travel_per_diem_eligible: travelPerDiemEligible,
+          travel_rule_version_id: travelRule.version?.id || null,
+          travel_rule_source: travelRule.source,
         });
       }
     }
 
+    // Derive sandwich and monthly leave results without rewriting source
+    // attendance, leave approvals, or earlier effective-dated rule versions.
+    for (const employee of employees || []) {
+      const rows = daily.filter((row) => row.employee_id === employee.id).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      for (let index = 0; index < rows.length; index += 1) {
+        if (rows[index].sandwich_leave_behavior !== "UNPAID_BETWEEN_ABSENCES" || !["HOLIDAY", "WEEK_OFF"].includes(rows[index].status)) continue;
+        let last = index;
+        while (last + 1 < rows.length && ["HOLIDAY", "WEEK_OFF"].includes(rows[last + 1].status)) last += 1;
+        const before = rows[index - 1];
+        const after = rows[last + 1];
+        if (before && after && ["ABSENT", "UNPAID_LEAVE"].includes(before.status) && ["ABSENT", "UNPAID_LEAVE"].includes(after.status)) {
+          for (let cursor = index; cursor <= last; cursor += 1) {
+            if (rows[cursor].sandwich_leave_behavior !== "UNPAID_BETWEEN_ABSENCES") continue;
+            rows[cursor].status = "SANDWICH_UNPAID";
+            rows[cursor].payable_days = 0;
+            rows[cursor].sandwich_unpaid = true;
+          }
+        }
+        index = last;
+      }
+      const months = [...new Set(rows.map((row) => String(row.date).slice(0, 7)))];
+      for (const month of months) {
+        const monthRows = rows.filter((row) => String(row.date).startsWith(month));
+        const allowance = Number(monthRows[monthRows.length - 1]?.monthly_paid_leave_days || 0);
+        let remaining = allowance;
+        for (const row of monthRows) {
+          if (row.status !== "PAID_LEAVE" || row.leave_type !== "CASUAL" || row.monthly_paid_leave_days <= 0) continue;
+          if (remaining > 0) { remaining -= 1; continue; }
+          row.status = "UNPAID_LEAVE";
+          row.payable_days = 0;
+          row.monthly_leave_excess = true;
+        }
+        for (const row of monthRows) {
+          if (!row.auto_apply_monthly_leave_to_absence || remaining <= 0) continue;
+          const missing = ["ABSENT", "UNPAID_LEAVE"].includes(row.status) ? 1 : row.status === "HALF_DAY" ? 0.5 : 0;
+          const applied = Math.min(remaining, missing);
+          if (!applied) continue;
+          row.auto_paid_leave_days = applied;
+          row.payable_days += applied;
+          if (applied === 1) row.status = "PAID_LEAVE_AUTO";
+          remaining -= applied;
+        }
+        const cashout = monthRows[monthRows.length - 1]?.cash_out_unused_monthly_leave ? remaining : 0;
+        if (monthRows.length) monthRows[monthRows.length - 1].monthly_leave_cashout_days = cashout;
+      }
+    }
+
+    const visibleDaily = daily.filter((row) => row.date >= start && row.date <= end);
     const summary = (employees || []).map((employee: any) => {
-      const rows = daily.filter((row) => row.employee_id === employee.id);
+      const rows = visibleDaily.filter((row) => row.employee_id === employee.id);
       const count = (status: string) =>
         rows.filter((row) => row.status === status).length;
       return {
@@ -1013,7 +1115,9 @@ export class HrAttendanceControlService {
         working_days: rows.filter((row) => row.scheduled).length,
         present_days: count("PRESENT") + count("LATE"),
         half_days: count("HALF_DAY"),
-        paid_leave_days: count("PAID_LEAVE"),
+        paid_leave_days: count("PAID_LEAVE") + round2(rows.reduce((sum, row) => sum + Number(row.auto_paid_leave_days || 0), 0)),
+        monthly_leave_cashout_days: round2(rows.reduce((sum, row) => sum + Number(row.monthly_leave_cashout_days || 0), 0)),
+        sandwich_unpaid_days: count("SANDWICH_UNPAID"),
         comp_off_leave_days: rows.filter(
           (row) => row.status === "PAID_LEAVE" && row.leave_type === "COMP_OFF",
         ).length,
@@ -1021,7 +1125,7 @@ export class HrAttendanceControlService {
         paid_weekly_off_days: count("WEEK_OFF"),
         base_payable_calendar_days: round2(rows.reduce((sum, row) => sum + row.payable_days, 0) + count("WEEK_OFF")),
         late_deduction_pay_relevant: rows.some((row) => (row.late_deduction_policy || policy.late_deduction_mode) !== "NONE"),
-        absent_days: count("ABSENT"),
+        absent_days: count("ABSENT") + count("SANDWICH_UNPAID"),
         late_days: rows.some((row) => row.derived_metrics_status)
           ? null
           : count("LATE"),
@@ -1061,7 +1165,7 @@ export class HrAttendanceControlService {
         ).length,
       };
     });
-    return { policy, start, end, summary, daily };
+    return { policy, start, end, summary, daily: visibleDaily };
   }
 
   private async reportEmployeeScope(user: any, requestedEmployeeId?: string) {
