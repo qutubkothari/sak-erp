@@ -392,6 +392,7 @@ function JobOrdersPageContent() {
     | "stopped";
   const [activeTab, setActiveTab] = useState<JobOrderTab>("all_open");
   const [showFullRegister, setShowFullRegister] = useState(false);
+  const [metricWorklistFilter, setMetricWorklistFilter] = useState<"RUNNING" | "MATERIAL_BLOCKED" | null>(null);
   const [selectedJobOrderLoading, setSelectedJobOrderLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [completionPreview, setCompletionPreview] = useState<any>(null);
@@ -3052,6 +3053,8 @@ function JobOrdersPageContent() {
   // Filter job orders based on operational worklist stage
   const filteredJobOrders = jobOrders.filter((jo) => {
     const stage = getJobOrderWorklistStage(jo);
+    if (metricWorklistFilter === "RUNNING") return normalizeStatusKey(jo.status) === "IN_PROGRESS";
+    if (metricWorklistFilter === "MATERIAL_BLOCKED") return stage === "purchase" || stage === "siv";
     if (activeTab === "all_open")
       return stage !== "completed" && stage !== "stopped";
     return stage === activeTab;
@@ -3346,13 +3349,13 @@ function JobOrdersPageContent() {
               label: "Open orders",
               value: activeJobOrderCount,
               tone: "warning",
-              onClick: () => setActiveTab("all_open"),
+              onClick: () => { setMetricWorklistFilter(null); setActiveTab("all_open"); setShowFullRegister(true); },
             },
             {
               label: "Running now",
               value: runningJobOrderCount,
               tone: runningJobOrderCount > 0 ? "success" : "neutral",
-              onClick: () => setActiveTab("production"),
+              onClick: () => { setMetricWorklistFilter("RUNNING"); setShowFullRegister(true); },
             },
             {
               label: "Material blocked",
@@ -3361,13 +3364,13 @@ function JobOrdersPageContent() {
                 purchasePendingCount + awaitingMaterialCount > 0
                   ? "warning"
                   : "neutral",
-              onClick: () => setActiveTab(purchasePendingCount > 0 ? "purchase" : "siv"),
+              onClick: () => { setMetricWorklistFilter("MATERIAL_BLOCKED"); setShowFullRegister(true); },
             },
             {
               label: "Waiting receipt / QC",
               value: awaitingQcCount,
               tone: awaitingQcCount > 0 ? "warning" : "neutral",
-              onClick: () => setActiveTab("srv_qc"),
+              onClick: () => { setMetricWorklistFilter(null); setActiveTab("srv_qc"); setShowFullRegister(true); },
             },
           ]}
         />
@@ -3502,6 +3505,7 @@ function JobOrdersPageContent() {
 
         {showFullRegister ? (
           <>
+            {metricWorklistFilter && <div className="flex items-center justify-between rounded-md border border-[#E8DCC4] bg-white p-3 text-sm"><span>{metricWorklistFilter === "RUNNING" ? "Running now" : "Material blocked"} ({filteredJobOrders.length})</span><button type="button" className="font-semibold text-blue-700 underline" onClick={() => setMetricWorklistFilter(null)}>Clear filter</button></div>}
             <div className="rounded-md border border-[#E8DCC4] bg-white">
               <div className="grid gap-px bg-[#E8DCC4] text-sm md:grid-cols-5">
                 {[
@@ -3543,9 +3547,7 @@ function JobOrdersPageContent() {
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <select
                   value={activeTab}
-                  onChange={(event) =>
-                    setActiveTab(event.target.value as JobOrderTab)
-                  }
+                  onChange={(event) => { setMetricWorklistFilter(null); setActiveTab(event.target.value as JobOrderTab); }}
                   className="min-w-64 rounded-md border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold text-[#4A3426]"
                 >
                   {jobOrderTabs.map((tab) => (

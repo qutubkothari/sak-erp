@@ -510,12 +510,15 @@ function Today({
   onSelect: (visit: Visit) => void;
   onBegin: (visit: Visit) => void;
 }) {
+  const [visitFilter, setVisitFilter] = useState<'ALL' | 'COMPLETED' | 'CHECKED_IN'>('ALL');
+  const visibleVisits = visits.filter((visit) => visitFilter === 'ALL' || visit.status === visitFilter);
+  const openMetric = (filter: typeof visitFilter) => { setVisitFilter(filter); window.setTimeout(() => document.getElementById('fsm-today-visits')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0); };
   const next = visits.find(
     (visit) => !["COMPLETED", "CANCELLED", "MISSED"].includes(visit.status),
   );
   return (
     <div className="grid gap-5 lg:grid-cols-[1.45fr_.75fr]">
-      <section>
+      <section id="fsm-today-visits" className="scroll-mt-24">
         <div className="mb-3 flex items-end justify-between">
           <div>
             <p className="text-xs font-bold uppercase text-[#8B6F47]">
@@ -528,12 +531,13 @@ function Today({
             <h2 className="text-xl font-black">My customer visits</h2>
           </div>
           <span className="text-sm text-[#756252]">
-            {visits.length} planned
+            {visibleVisits.length} visits
           </span>
         </div>
+        {visitFilter !== 'ALL' && <button type="button" onClick={() => setVisitFilter('ALL')} className="mb-3 text-xs font-bold text-[#6F4E37] underline">Clear {visitFilter.toLowerCase()} filter</button>}
         <div className="space-y-3">
-          {visits.length ? (
-            visits.map((visit, index) => (
+          {visibleVisits.length ? (
+            visibleVisits.map((visit, index) => (
               <article
                 key={visit.id}
                 className={`rounded-2xl border bg-white p-4 shadow-sm ${next?.id === visit.id ? "border-[#B9975B] ring-2 ring-[#EAD9B9]" : "border-[#E3D7C3]"}`}
@@ -605,14 +609,16 @@ function Today({
             Day at a glance
           </p>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-            <Metric value={visits.length} label="Planned" />
+            <Metric value={visits.length} label="All visits" onClick={() => openMetric('ALL')} />
             <Metric
               value={visits.filter((v) => v.status === "COMPLETED").length}
               label="Done"
+              onClick={() => openMetric('COMPLETED')}
             />
             <Metric
               value={visits.filter((v) => v.status === "CHECKED_IN").length}
               label="Active"
+              onClick={() => openMetric('CHECKED_IN')}
             />
           </div>
         </div>
@@ -1062,12 +1068,12 @@ function Empty({ title, text }: any) {
     </div>
   );
 }
-function Metric({ value, label }: any) {
+function Metric({ value, label, onClick }: { value: number; label: string; onClick: () => void }) {
   return (
-    <div>
+    <button type="button" onClick={onClick} className="rounded-lg p-1 text-center hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
       <b className="block text-2xl">{value}</b>
       <span className="text-xs text-emerald-100">{label}</span>
-    </div>
+    </button>
   );
 }
 function Kpi({ label, value }: any) {

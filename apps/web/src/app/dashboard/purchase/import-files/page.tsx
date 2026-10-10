@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Calculator, Eye, FileText, PackageCheck, Plus, RefreshCw, Ship, Upload, WalletCards } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
@@ -30,8 +29,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 const money = (value: any) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function ImportFilesPage() {
-  const router = useRouter();
   const [rows, setRows] = useState<ImportFile[]>([]);
+  const [metricFilter, setMetricFilter] = useState<'OPEN' | 'GRNS' | 'COST' | 'DOCUMENTS' | null>(null);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [error, setError] = useState('');
@@ -89,18 +88,29 @@ export default function ImportFilesPage() {
     void load();
   }, []);
 
+  const visibleRows = useMemo(() => rows.filter((row) => {
+    if (metricFilter === 'OPEN') return !['CLOSED', 'CANCELLED'].includes(String(row.status).toUpperCase());
+    if (metricFilter === 'GRNS') return (row.grns?.length || 0) > 0;
+    if (metricFilter === 'COST') return String(row.status).toUpperCase() === 'LANDED_COST_PENDING';
+    if (metricFilter === 'DOCUMENTS') return (row.documents?.length || 0) > 0;
+    return true;
+  }), [rows, metricFilter]);
+  const openMetric = (filter: NonNullable<typeof metricFilter>) => {
+    setMetricFilter(filter);
+    window.setTimeout(() => document.getElementById('import-register')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
   const metrics = useMemo(() => {
     const open = rows.filter((row) => !['CLOSED', 'CANCELLED'].includes(String(row.status).toUpperCase())).length;
-    const linkedGrns = rows.reduce((sum, row) => sum + (row.grns?.length || 0), 0);
+    const linkedGrns = rows.filter((row) => (row.grns?.length || 0) > 0).length;
     const pendingCost = rows.filter((row) => String(row.status).toUpperCase() === 'LANDED_COST_PENDING').length;
-    const docs = rows.reduce((sum, row) => sum + (row.documents?.length || 0), 0);
+    const docs = rows.filter((row) => (row.documents?.length || 0) > 0).length;
     return [
-      { label: 'Open import files', value: open, onClick: () => { const row = rows.find((item) => !['CLOSED', 'CANCELLED'].includes(String(item.status).toUpperCase())); if (row) router.push(`/dashboard/purchase/import-files/${row.id}`); } },
-      { label: 'Linked GRNs', value: linkedGrns, onClick: () => { const row = rows.find((item) => (item.grns?.length || 0) > 0); if (row) router.push(`/dashboard/purchase/import-files/${row.id}`); } },
-      { label: 'Cost pending', value: pendingCost, tone: pendingCost ? 'warning' as const : 'neutral' as const, onClick: () => { const row = rows.find((item) => String(item.status).toUpperCase() === 'LANDED_COST_PENDING'); if (row) router.push(`/dashboard/purchase/import-files/${row.id}`); } },
-      { label: 'Documents stored', value: docs, onClick: () => { const row = rows.find((item) => (item.documents?.length || 0) > 0); if (row) router.push(`/dashboard/purchase/import-files/${row.id}`); } },
+      { label: 'Open import files', value: open, onClick: () => openMetric('OPEN') },
+      { label: 'Files with linked GRNs', value: linkedGrns, onClick: () => openMetric('GRNS') },
+      { label: 'Cost pending', value: pendingCost, tone: pendingCost ? 'warning' as const : 'neutral' as const, onClick: () => openMetric('COST') },
+      { label: 'Files with documents', value: docs, onClick: () => openMetric('DOCUMENTS') },
     ];
-  }, [rows, router]);
+  }, [rows]);
 
   const vendorName = (id: string) => vendors.find((vendor) => vendor.id === id)?.name || '';
   const poLabel = (po: PurchaseOrder) => `${po.po_number || po.poNumber || 'PO'}${po.vendor?.name ? ` - ${po.vendor.name}` : ''}`;
@@ -183,18 +193,18 @@ export default function ImportFilesPage() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-md border border-[#E8DCC4] bg-white">
+      <section id="import-register" className="scroll-mt-24 overflow-hidden rounded-md border border-[#E8DCC4] bg-white">
         <div className="flex items-center justify-between border-b border-[#E8DCC4] px-5 py-4">
           <div>
             <h2 className="font-semibold text-[#3D2B1F]">Import Register</h2>
             <p className="text-xs text-[#7A6555]">Shipment, customs, GRN, cost and payment status in one trail.</p>
           </div>
-          <Ship className="h-5 w-5 text-[#8B6F47]" />
+          <div className="flex items-center gap-3">{metricFilter && <button type="button" onClick={() => setMetricFilter(null)} className="text-xs font-bold text-[#175CD3] underline">Clear {metricFilter.toLowerCase()} filter</button>}<span className="text-xs text-[#7A6555]">{visibleRows.length} files</span><Ship className="h-5 w-5 text-[#8B6F47]" /></div>
         </div>
         {loading ? (
           <div className="p-8 text-center text-sm text-[#7A6555]">Loading...</div>
-        ) : rows.length === 0 ? (
-          <div className="p-8 text-center text-sm text-[#7A6555]">No import files yet.</div>
+        ) : visibleRows.length === 0 ? (
+          <div className="p-8 text-center text-sm text-[#7A6555]">No import files match this filter.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-sm">
@@ -211,7 +221,7 @@ export default function ImportFilesPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {visibleRows.map((row) => (
                   <tr key={row.id} className="border-t border-[#F0E8DA] align-top">
                     <td className="p-3 font-semibold text-[#3D2B1F]">
                       {row.import_number}

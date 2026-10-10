@@ -102,6 +102,7 @@ export default function LowStockPlanningPage() {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [search, setSearch] = useState('');
   const [vendorFilter, setVendorFilter] = useState('ALL');
+  const [metricFilter, setMetricFilter] = useState<'SELECTED' | 'COVERED' | null>(null);
   const [requiredDate, setRequiredDate] = useState(() => addDays(getTodayDateInputValue(), 7));
   const [priority, setPriority] = useState('MEDIUM');
   const [createdPrs, setCreatedPrs] = useState<CreatedPr[]>([]);
@@ -152,10 +153,13 @@ export default function LowStockPlanningPage() {
         row.hsn_code,
       );
       const matchesVendor = vendorFilter === 'ALL'
-        || (vendorFilter === 'MISSING' ? !row.preferred_vendor_id : row.preferred_vendor_id === vendorFilter);
-      return matchesSearch && matchesVendor;
+        || (vendorFilter === 'MISSING' ? !row.purchasable : row.preferred_vendor_id === vendorFilter);
+      const matchesMetric = metricFilter === null || (metricFilter === 'SELECTED'
+        ? selectedIds.has(row.item_id)
+        : Number(row.suggested_purchase_qty || 0) <= 0);
+      return matchesSearch && matchesVendor && matchesMetric;
     });
-  }, [listRows, search, vendorFilter]);
+  }, [listRows, search, vendorFilter, metricFilter, selectedIds]);
 
   const selectableRows = activeList === 'planning'
     ? filteredRows.filter((row) => row.purchasable && Number(quantities[row.item_id] || 0) > 0)
@@ -408,12 +412,12 @@ export default function LowStockPlanningPage() {
       />
 
       <ErpMetricStrip metrics={[
-        { label: 'Low Stock Items', value: planning?.summary.low_stock || 0, onClick: () => { setActiveList('planning'); setVendorFilter('ALL'); setSearch(''); } },
-        { label: 'Ignored Items', value: planning?.summary.ignored || 0, onClick: () => { setActiveList('ignored'); setVendorFilter('ALL'); setSearch(''); } },
-        { label: 'Selected to Purchase', value: selectedRows.length, onClick: () => document.getElementById('low-stock-planning-list')?.scrollIntoView({ behavior: 'smooth' }) },
-        { label: 'Missing / Unapproved Supplier', value: planning?.summary.missing_vendor || 0, onClick: () => { setActiveList('planning'); setVendorFilter('MISSING'); setSearch(''); } },
-        { label: 'Covered by Open PR / PO', value: planning?.summary.covered_by_open_supply || 0, onClick: () => router.push('/dashboard/purchase/orders?status=OPEN_PO') },
-        { label: 'Selected Estimated Value', value: currencyFormat.format(selectedValue), onClick: () => document.getElementById('low-stock-planning-list')?.scrollIntoView({ behavior: 'smooth' }) },
+        { label: 'Low Stock Items', value: planning?.summary.low_stock || 0, onClick: () => { setActiveList('planning'); setVendorFilter('ALL'); setMetricFilter(null); setSearch(''); } },
+        { label: 'Ignored Items', value: planning?.summary.ignored || 0, onClick: () => { setActiveList('ignored'); setVendorFilter('ALL'); setMetricFilter(null); setSearch(''); } },
+        { label: 'Selected to Purchase', value: selectedRows.length, onClick: () => { setActiveList('planning'); setVendorFilter('ALL'); setMetricFilter('SELECTED'); setSearch(''); } },
+        { label: 'Missing / Unapproved Supplier', value: planning?.summary.missing_vendor || 0, onClick: () => { setActiveList('planning'); setVendorFilter('MISSING'); setMetricFilter(null); setSearch(''); } },
+        { label: 'Covered by Open PR / PO', value: planning?.summary.covered_by_open_supply || 0, onClick: () => { setActiveList('planning'); setVendorFilter('ALL'); setMetricFilter('COVERED'); setSearch(''); } },
+        { label: 'Selected Estimated Value', value: currencyFormat.format(selectedValue), onClick: () => { setActiveList('planning'); setVendorFilter('ALL'); setMetricFilter('SELECTED'); setSearch(''); } },
       ]} />
 
       {createdPrs.length > 0 && (
@@ -429,6 +433,7 @@ export default function LowStockPlanningPage() {
       )}
 
       <section id="low-stock-planning-list" className="overflow-hidden rounded-xl border border-[#D8C8AA] bg-white shadow-sm">
+        {metricFilter && <div className="flex items-center justify-between border-b p-3 text-sm"><span>{metricFilter === 'SELECTED' ? 'Selected to purchase' : 'Covered by open supply'} ({filteredRows.length})</span><button type="button" className="font-semibold text-blue-700 underline" onClick={() => setMetricFilter(null)}>Clear filter</button></div>}
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[#E8DCC4] bg-[#FFFDF8] px-4 py-3">
           <label className="min-w-[230px] text-xs font-semibold uppercase tracking-wide text-[#6F4E37]">
             Low-stock workspace
@@ -437,6 +442,7 @@ export default function LowStockPlanningPage() {
               onChange={(event) => {
                 const nextList = event.target.value as typeof activeList;
                 setActiveList(nextList);
+                setMetricFilter(null);
                 if (nextList === 'ignored') setSelectedIds(new Set());
               }}
               className="mt-1 block w-full rounded-lg border border-[#D8C8AA] bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-[#4A3526]"

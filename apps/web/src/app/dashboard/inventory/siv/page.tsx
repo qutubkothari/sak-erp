@@ -253,6 +253,8 @@ export default function SivPage() {
   const [manualIssueBusy, setManualIssueBusy] = useState(false);
   const [showManualIssue, setShowManualIssue] = useState(false);
   const [showAllOpenRequests, setShowAllOpenRequests] = useState(false);
+  const [lineMetricFilter, setLineMetricFilter] = useState<"PENDING" | "READY" | "BLOCKED" | null>(null);
+  const [historyMetricFilter, setHistoryMetricFilter] = useState<"PENDING" | null>(null);
 
   const switchSivView = useCallback((view: "open" | "history") => {
     setActiveSivView(view);
@@ -1689,21 +1691,15 @@ export default function SivPage() {
     if (filterAssignedTo === "unassigned") return !r.assigned_to;
     return r.assigned_to === filterAssignedTo;
   });
-  const pendingLineCount = openMaterialReqs.reduce(
-    (sum, req) => sum + Number(req.pendingLines || 0),
-    0,
+  const pendingMaterialLines = openMaterialReqs.flatMap((req) =>
+    (req.materialLines || [])
+      .filter((line) => Number(line.pending_quantity || 0) > 0)
+      .map((line) => ({ req, line })),
   );
-  const readyLineCount = openMaterialReqs.reduce(
-    (sum, req) =>
-      sum +
-      (req.materialLines || []).filter(
-        (line) =>
-          Number(line.pending_quantity || 0) > 0 &&
-          Number(line.available_quantity || 0) + 1e-9 >=
-            Number(line.pending_quantity || 0),
-      ).length,
-    0,
-  );
+  const pendingLineCount = pendingMaterialLines.length;
+  const readyLineCount = pendingMaterialLines.filter(
+    ({ line }) => Number(line.available_quantity || 0) + 1e-9 >= Number(line.pending_quantity || 0),
+  ).length;
   const approvedHistoryCount = sivHistory.filter(
     (row) => row.approved_by,
   ).length;
@@ -1714,17 +1710,23 @@ export default function SivPage() {
   const selectedPendingHistoryRowIds = pendingHistoryRowIds.filter((id) =>
     selectedHistoryRowIds.includes(id),
   );
-  const blockedLineCount = openMaterialReqs.reduce(
-    (sum, req) =>
-      sum +
-      (req.materialLines || []).filter(
-        (line) =>
-          Number(line.pending_quantity || 0) > 0 &&
-          Number(line.available_quantity || 0) <= 0 &&
-          !itemRequiresUid(line.item_id),
-      ).length,
-    0,
+  const blockedLineCount = pendingMaterialLines.filter(
+    ({ line }) => Number(line.available_quantity || 0) <= 0 && !itemRequiresUid(line.item_id),
+  ).length;
+  const matchingMaterialLines = pendingMaterialLines.filter(({ line }) =>
+    lineMetricFilter === "PENDING" ||
+    (lineMetricFilter === "READY" && Number(line.available_quantity || 0) + 1e-9 >= Number(line.pending_quantity || 0)) ||
+    (lineMetricFilter === "BLOCKED" && Number(line.available_quantity || 0) <= 0 && !itemRequiresUid(line.item_id)),
   );
+  const visibleSivHistory = historyMetricFilter === "PENDING"
+    ? sivHistory.filter((row) => !row.approved_by)
+    : sivHistory;
+  const openLineMetric = (filter: "PENDING" | "READY" | "BLOCKED") => {
+    setLineMetricFilter(filter);
+    setHistoryMetricFilter(null);
+    setShowAllOpenRequests(true);
+    setActiveSivView("open");
+  };
   const focusedOpenRequest = openMaterialReqs.find(
     (row) =>
       (focusJobId && row.id === focusJobId) ||
@@ -1784,27 +1786,27 @@ export default function SivPage() {
               label: "Open Jobs",
               value: openMaterialReqs.length,
               tone: "warning",
-              onClick: () => setActiveSivView("open"),
+              onClick: () => { setLineMetricFilter(null); setShowAllOpenRequests(true); setActiveSivView("open"); },
             },
             {
               label: "Pending Lines",
               value: pendingLineCount,
               tone: "warning",
-              onClick: () => setActiveSivView("open"),
+              onClick: () => openLineMetric("PENDING"),
             },
-            { label: "Ready Lines", value: readyLineCount, tone: "success", onClick: () => setActiveSivView("open") },
+            { label: "Ready Lines", value: readyLineCount, tone: "success", onClick: () => openLineMetric("READY") },
             {
               label: "Blocked Lines",
               value: blockedLineCount,
               tone: blockedLineCount > 0 ? "danger" : "success",
-              onClick: () => setActiveSivView("open"),
+              onClick: () => openLineMetric("BLOCKED"),
             },
-            { label: "SIV History", value: sivHistory.length, onClick: () => setActiveSivView("history") },
+            { label: "SIV History", value: sivHistory.length, onClick: () => { setHistoryMetricFilter(null); setActiveSivView("history"); } },
             {
               label: "Awaiting Approval",
               value: awaitingApprovalCount,
               tone: awaitingApprovalCount > 0 ? "warning" : "success",
-              onClick: () => setActiveSivView("open"),
+              onClick: () => { setHistoryMetricFilter("PENDING"); setActiveSivView("history"); },
             },
           ]}
         />
@@ -1938,6 +1940,29 @@ export default function SivPage() {
 
         {activeSivView === "open" && (
           <div className="min-h-0 flex-1 space-y-4">
+            {lineMetricFilter && (
+              <div className="rounded-md border border-[#E8DCC4] bg-white p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="font-semibold text-[#4A3426]">{lineMetricFilter === "PENDING" ? "Pending" : lineMetricFilter === "READY" ? "Ready" : "Blocked"} material lines ({matchingMaterialLines.length})</h2>
+                  <button type="button" className="text-sm font-semibold text-blue-700 underline" onClick={() => setLineMetricFilter(null)}>Clear filter</button>
+                </div>
+                {matchingMaterialLines.length === 0 ? <p className="text-sm text-[#7A6555]">No matching material lines.</p> : (
+                  <div className="max-h-72 overflow-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead><tr className="border-b border-[#E8DCC4]"><th className="py-2">Job</th><th>Item</th><th className="text-right">Pending</th><th className="text-right">Available</th></tr></thead>
+                      <tbody>{matchingMaterialLines.map(({ req, line }) => (
+                        <tr key={`${req.id}-${line.id}`} className="border-b border-[#F2EBDD]">
+                          <td className="py-2"><button type="button" className="font-semibold text-blue-700 underline" onClick={() => { setSelectedMaterialJobId(req.id); document.getElementById(`siv-job-${req.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }}>{req.job_order_number || req.id}</button></td>
+                          <td>{line.item_code || line.item_name || line.id}</td>
+                          <td className="text-right">{Number(line.pending_quantity || 0)}</td>
+                          <td className="text-right">{Number(line.available_quantity || 0)}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
             {focusedIssueMode ? (
               <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -2886,15 +2911,16 @@ export default function SivPage() {
 
         {activeSivView === "history" && (
           <div className="min-h-0 flex-1 space-y-4">
-            {sivHistory.length === 0 && (
+            {historyMetricFilter && <div className="flex items-center justify-between rounded-md border border-[#E8DCC4] bg-white p-3 text-sm"><span>Awaiting approval ({visibleSivHistory.length})</span><button type="button" className="font-semibold text-blue-700 underline" onClick={() => setHistoryMetricFilter(null)}>Clear filter</button></div>}
+            {visibleSivHistory.length === 0 && (
               <div className="rounded-md border border-[#E8DCC4] bg-white p-8 text-center">
-                <p className="text-[#7A6555]">No SIV history.</p>
+                <p className="text-[#7A6555]">No matching SIV history.</p>
               </div>
             )}
             {(() => {
               // Group rows by job_order_id
               const groupMap = new Map<string, SivHistoryRow[]>();
-              for (const row of sivHistory) {
+              for (const row of visibleSivHistory) {
                 const key = row.job_order_id || row.job_order_number || row.id;
                 if (!groupMap.has(key)) groupMap.set(key, []);
                 groupMap.get(key)!.push(row);

@@ -1932,6 +1932,9 @@ function HrPageContent() {
   );
   const [attendanceEmployeeFilter, setAttendanceEmployeeFilter] =
     useState("ALL");
+  const [attendanceDrilldown, setAttendanceDrilldown] = useState<
+    "PRESENT" | "LATE" | "ABSENT" | "MISSING_OUT" | "WORK_TIME" | null
+  >(null);
   const [attendanceForm, setAttendanceForm] = useState({
     employee_id: "",
     attendance_date: getTodayDateInputValue(),
@@ -5935,19 +5938,24 @@ function HrPageContent() {
     [employees],
   );
 
+  const matchesAttendanceDrilldown = (record: AttendanceRecord, kind: NonNullable<typeof attendanceDrilldown>) => {
+    const status = normalizeStatus(record.status);
+    if (kind === "PRESENT") return ["PRESENT", "LATE", "HALF_DAY", "WORK_FROM_HOME", "IN_PROGRESS", "HOLIDAY_WORKED", "WEEK_OFF_WORKED", "PAID_LEAVE_WORKED"].includes(status);
+    if (kind === "LATE") return status === "LATE";
+    if (kind === "ABSENT") return status === "ABSENT";
+    if (kind === "MISSING_OUT") return Boolean(record.check_in_time && !record.check_out_time);
+    return (attendanceHoursToMinutes(record.work_hours) || 0) > 0;
+  };
+  const openAttendanceDrilldown = (kind: NonNullable<typeof attendanceDrilldown>) => {
+    setAttendanceDrilldown(kind);
+    setAttendancePage(1);
+    window.setTimeout(() => document.getElementById("attendance-register")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  };
   const attendanceSummary = useMemo(() => {
-    const present = attendance.filter((record) =>
-      ["PRESENT", "LATE", "HALF_DAY", "WORK_FROM_HOME", "IN_PROGRESS", "HOLIDAY_WORKED", "WEEK_OFF_WORKED", "PAID_LEAVE_WORKED"].includes(
-        normalizeStatus(record.status),
-      ),
-    ).length;
-    const late = attendance.filter(
-      (record) => normalizeStatus(record.status) === "LATE",
-    ).length;
-    const absent = attendance.filter((record) => normalizeStatus(record.status) === "ABSENT").length;
-    const missingOut = attendance.filter(
-      (record) => record.check_in_time && !record.check_out_time,
-    ).length;
+    const present = attendance.filter((record) => matchesAttendanceDrilldown(record, "PRESENT")).length;
+    const late = attendance.filter((record) => matchesAttendanceDrilldown(record, "LATE")).length;
+    const absent = attendance.filter((record) => matchesAttendanceDrilldown(record, "ABSENT")).length;
+    const missingOut = attendance.filter((record) => matchesAttendanceDrilldown(record, "MISSING_OUT")).length;
     const totalWorkMinutes = attendance.reduce(
       (sum, record) => sum + (attendanceHoursToMinutes(record.work_hours) || 0),
       0,
@@ -5993,7 +6001,7 @@ function HrPageContent() {
       }
     };
 
-    return [...attendance].sort((a, b) => {
+    return attendance.filter((record) => !attendanceDrilldown || matchesAttendanceDrilldown(record, attendanceDrilldown)).sort((a, b) => {
       const left = getComparableValue(a);
       const right = getComparableValue(b);
       const directionMultiplier = attendanceSort.direction === "asc" ? 1 : -1;
@@ -6017,7 +6025,7 @@ function HrPageContent() {
       if (leftDate !== rightDate) return rightDate - leftDate;
       return String(a.id || "").localeCompare(String(b.id || ""));
     });
-  }, [attendance, attendanceSort, getAttendancePayDayCredit]);
+  }, [attendance, attendanceDrilldown, attendanceSort, getAttendancePayDayCredit]);
 
   const attendancePageSize = 50;
   const attendancePageCount = Math.max(
@@ -6031,7 +6039,7 @@ function HrPageContent() {
 
   useEffect(() => {
     setAttendancePage(1);
-  }, [attendance, attendanceSort, attendanceFromDate, attendanceToDate, attendanceEmployeeFilter]);
+  }, [attendance, attendanceDrilldown, attendanceSort, attendanceFromDate, attendanceToDate, attendanceEmployeeFilter]);
 
   useEffect(() => {
     if (attendancePage > attendancePageCount) setAttendancePage(attendancePageCount);
@@ -8296,7 +8304,7 @@ function HrPageContent() {
 
                 {!isEmployeePortal && (
                   <div className="mt-5 grid gap-3 md:grid-cols-5">
-                    <div className="rounded-xl border border-[#A6F4C5] bg-[#F6FEF9] p-4">
+                    <button type="button" onClick={() => openAttendanceDrilldown("PRESENT")} className="rounded-xl border border-[#A6F4C5] bg-[#F6FEF9] p-4 text-left hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#027A48]" aria-label="Show present attendance records">
                       <div className="flex items-center gap-2 text-sm font-semibold text-[#027A48]">
                         <CheckCircle2 className="h-4 w-4" />
                         Present records
@@ -8304,8 +8312,8 @@ function HrPageContent() {
                       <div className="mt-2 text-2xl font-bold text-[#2F1B12]">
                         {formatCount(attendanceSummary.present)}
                       </div>
-                    </div>
-                    <div className="rounded-xl border border-[#FEDF89] bg-[#FFFCF5] p-4">
+                    </button>
+                    <button type="button" onClick={() => openAttendanceDrilldown("LATE")} className="rounded-xl border border-[#FEDF89] bg-[#FFFCF5] p-4 text-left hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#B54708]" aria-label="Show late attendance records">
                       <div className="flex items-center gap-2 text-sm font-semibold text-[#B54708]">
                         <Clock3 className="h-4 w-4" />
                         Late marks
@@ -8313,17 +8321,17 @@ function HrPageContent() {
                       <div className="mt-2 text-2xl font-bold text-[#2F1B12]">
                         {formatCount(attendanceSummary.late)}
                       </div>
-                    </div>
-                    <div className="rounded-xl border border-[#FECDCA] bg-[#FEF3F2] p-4">
+                    </button>
+                    <button type="button" onClick={() => openAttendanceDrilldown("ABSENT")} className="rounded-xl border border-[#FECDCA] bg-[#FEF3F2] p-4 text-left hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#B42318]" aria-label="Show absent attendance records">
                       <div className="flex items-center gap-2 text-sm font-semibold text-[#B42318]">
                         <AlertTriangle className="h-4 w-4" />
-                        Absence / leave
+                        Absent records
                       </div>
                       <div className="mt-2 text-2xl font-bold text-[#2F1B12]">
                         {formatCount(attendanceSummary.absent)}
                       </div>
-                    </div>
-                    <div className="rounded-xl border border-[#B2DDFF] bg-[#F5FAFF] p-4">
+                    </button>
+                    <button type="button" onClick={() => openAttendanceDrilldown("MISSING_OUT")} className="rounded-xl border border-[#B2DDFF] bg-[#F5FAFF] p-4 text-left hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#175CD3]" aria-label="Show attendance records missing checkout">
                       <div className="flex items-center gap-2 text-sm font-semibold text-[#175CD3]">
                         <FileWarning className="h-4 w-4" />
                         Missing checkout
@@ -8331,8 +8339,8 @@ function HrPageContent() {
                       <div className="mt-2 text-2xl font-bold text-[#2F1B12]">
                         {formatCount(attendanceSummary.missingOut)}
                       </div>
-                    </div>
-                    <div className="rounded-xl border border-[#E8DCC4] bg-white p-4">
+                    </button>
+                    <button type="button" onClick={() => openAttendanceDrilldown("WORK_TIME")} className="rounded-xl border border-[#E8DCC4] bg-white p-4 text-left hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#8B6F47]" aria-label="Show attendance records contributing to work time">
                       <div className="flex items-center gap-2 text-sm font-semibold text-[#8B6F47]">
                         <GaugeCircle className="h-4 w-4" />
                         Work Time
@@ -8340,7 +8348,7 @@ function HrPageContent() {
                       <div className="mt-2 text-2xl font-bold text-[#2F1B12]">
                         {formatAttendanceDuration(attendanceSummary.totalWorkMinutes)}
                       </div>
-                    </div>
+                    </button>
                   </div>
                 )}
               </div>
@@ -8946,6 +8954,11 @@ function HrPageContent() {
               </div>
             </div>
 
+          <div id="attendance-register" className="scroll-mt-24" />
+          {attendanceDrilldown && <div className="flex items-center justify-between rounded-xl border border-[#B2DDFF] bg-[#F5FAFF] px-4 py-3 text-sm">
+            <span className="font-semibold text-[#175CD3]">Showing {formatCount(sortedAttendance.length)} {({ PRESENT: "present", LATE: "late", ABSENT: "absent", MISSING_OUT: "missing checkout", WORK_TIME: "work time" } as const)[attendanceDrilldown]} records</span>
+            <button type="button" onClick={() => setAttendanceDrilldown(null)} className="font-bold text-[#175CD3] underline">Clear filter</button>
+          </div>}
           {/* Attendance History Table (Desktop View) */}
           <div className="hidden overflow-hidden rounded-2xl border border-[#E8DCC4] bg-white shadow-sm md:block">
             <div className="flex items-center justify-between border-b border-[#E8DCC4] bg-[#FAF9F6] px-5 py-4">
@@ -8956,7 +8969,7 @@ function HrPageContent() {
                 <h4 className="font-bold text-[#2F1B12]">Monthly attendance register</h4>
               </div>
               <span className="rounded-full border border-[#E8DCC4] bg-white px-3 py-1 text-xs font-semibold text-[#6F5A49]">
-                {formatCount(attendanceSummary.records)} daily entries
+                {formatCount(sortedAttendance.length)} daily entries
               </span>
             </div>
             <div className="overflow-x-auto">
@@ -8996,7 +9009,7 @@ function HrPageContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EFE3CF] bg-white">
-                  {attendance.length === 0 && (
+                  {sortedAttendance.length === 0 && (
                     <tr>
                       <td
                         colSpan={attendanceColumnCount}
@@ -9325,10 +9338,10 @@ function HrPageContent() {
             <div className="flex items-center justify-between px-1">
               <h4 className="font-bold text-[#2F1B12]">Monthly attendance register</h4>
               <span className="rounded-full border border-[#E8DCC4] bg-white px-3 py-1 text-xs font-semibold text-[#6F5A49]">
-                {formatCount(attendanceSummary.records)} daily entries
+                {formatCount(sortedAttendance.length)} daily entries
               </span>
             </div>
-            {attendance.length === 0 && (
+            {sortedAttendance.length === 0 && (
               <div className="rounded-2xl border border-dashed border-[#D8C4A8] bg-[#FAF9F6] p-6 text-center text-sm text-[#7A6555]">
                 No attendance records found for the selected period.
               </div>
