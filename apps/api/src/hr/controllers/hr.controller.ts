@@ -344,6 +344,16 @@ export class HrController {
     return this.attendanceControl.getApprovals(req.user, status || "PENDING");
   }
 
+  @Put("attendance/my/checkout-whatsapp-opt-in")
+  setMyCheckoutWhatsAppOptIn(@Request() req: any, @Body() body: { enabled?: boolean }) {
+    return this.attendanceControl.setMyCheckoutWhatsAppOptIn(req.user, body?.enabled === true);
+  }
+
+  @Post("attendance/:id/missed-checkout-request")
+  requestMissedCheckout(@Request() req: any, @Param("id") id: string, @Body() body: any) {
+    return this.attendanceControl.requestMissedCheckout(req.user, id, body);
+  }
+
   @Put("attendance/approvals/:id/approve")
   approveAttendance(
     @Request() req: any,

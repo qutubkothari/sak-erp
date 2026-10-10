@@ -107,6 +107,7 @@ interface Employee {
   date_of_joining: string;
   per_diem_amount?: number | string | null;
   per_diem_rate?: number | string | null;
+  attendance_whatsapp_opt_in?: boolean;
   manager_id?: string | null;
   overtime_eligible?: boolean;
 }
@@ -118,7 +119,8 @@ interface AttendanceApproval {
   id: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
   approval_type: string;
-  selfie_url: string;
+  selfie_url: string | null;
+  proposed_checkout_time?: string | null;
   location?: string | null;
   reason?: string | null;
   requested_at: string;
@@ -132,6 +134,7 @@ interface AttendancePolicy {
   shift_start: string;
   shift_end: string;
   late_grace_minutes: number;
+  missed_checkout_reminder_minutes?: number;
   standard_daily_hours: number;
   half_day_hours: number;
   overtime_after_hours: number;
@@ -184,6 +187,8 @@ interface AttendanceRecord {
   employee_per_diem_amount?: number | string | null;
   work_hours?: number;
   status: string;
+  approval_status?: string;
+  metadata?: { missed_checkout_absent_at?: string; missed_checkout_correction_approval_id?: string } | null;
   calendar_only?: boolean;
   can_edit_attendance?: boolean;
   calendar_holiday?: string;
@@ -2037,17 +2042,26 @@ function HrPageContent() {
   ) => {
     const verb = decision === "approve" ? "Approve" : "Reject";
     const confirmed = await confirmDialog({
-      title: `${verb} Outside Check-in`,
-      message: `${verb} the outside-location attendance submitted by ${approval.employee?.employee_name || "this employee"}?`,
+      title: `${verb} ${approval.approval_type === "MISSED_CHECK_OUT" ? "Missed Checkout" : "Outside Attendance"}`,
+      message: approval.approval_type === "MISSED_CHECK_OUT"
+        ? `${verb} ${approval.employee?.employee_name || "this employee"}'s claimed checkout at ${approval.proposed_checkout_time ? new Date(approval.proposed_checkout_time).toLocaleString("en-IN") : "the requested time"}? Review the reason and punch history first.`
+        : `${verb} the outside-location attendance submitted by ${approval.employee?.employee_name || "this employee"}?`,
       confirmLabel: verb,
       variant: decision === "reject" ? "danger" : "info",
     });
     if (!confirmed) return;
+    const comment = approval.approval_type === "MISSED_CHECK_OUT"
+      ? window.prompt(decision === "approve" ? "Manager approval note (optional)" : "Reason for rejecting this checkout claim")
+      : "";
+    if (approval.approval_type === "MISSED_CHECK_OUT" && comment === null) return;
+    if (approval.approval_type === "MISSED_CHECK_OUT" && decision === "reject" && !comment?.trim()) {
+      alert("Enter a reason for rejection."); return;
+    }
     setLoading(true);
     try {
       await apiClient.put(
         `/hr/attendance/approvals/${approval.id}/${decision}`,
-        {},
+        { comment: comment?.trim() || "" },
       );
       await Promise.all([loadAttendanceControls(), fetchData()]);
     } catch (error: any) {
@@ -2055,6 +2069,32 @@ function HrPageContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const requestMissedCheckout = async (record: AttendanceRecord) => {
+    const local = window.prompt("Actual checkout (YYYY-MM-DD HH:mm, company local time)", `${record.attendance_date} ${attendancePolicy?.shift_end?.slice(0, 5) || "18:00"}`);
+    if (!local) return;
+    if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(local)) { alert("Enter checkout as YYYY-MM-DD HH:mm."); return; }
+    const reason = window.prompt("Why was checkout missed? Your manager will see this reason.");
+    if (!reason?.trim()) return;
+    setLoading(true);
+    try {
+      await apiClient.post(`/hr/attendance/${record.id}/missed-checkout-request`, {
+        proposed_checkout_local: local.replace(" ", "T"), reason: reason.trim(),
+      });
+      alert("Checkout correction sent to your manager. The day remains absent until approved.");
+      await fetchData();
+    } catch (error: any) { alert(error?.message || "Could not submit checkout correction."); }
+    finally { setLoading(false); }
+  };
+
+  const setCheckoutWhatsAppOptIn = async (enabled: boolean) => {
+    setLoading(true);
+    try {
+      await apiClient.put("/hr/attendance/my/checkout-whatsapp-opt-in", { enabled });
+      setEmployees((current) => current.map((employee) => ({ ...employee, attendance_whatsapp_opt_in: enabled })));
+    } catch (error: any) { alert(error?.message || "Could not update WhatsApp reminder preference."); }
+    finally { setLoading(false); }
   };
 
   const handleSaveAttendancePolicy = async () => {
@@ -8409,6 +8449,13 @@ function HrPageContent() {
             </div>
 
             {/* Status Badge */}
+            {isEmployeePortal && employees[0] && (
+              <label className="mb-4 flex items-start gap-3 rounded-xl border border-[#D8C4A8] bg-[#FAF9F6] p-3 text-sm text-[#4A3426]">
+                <input type="checkbox" className="mt-1" checked={employees[0].attendance_whatsapp_opt_in === true}
+                  disabled={loading} onChange={(event) => void setCheckoutWhatsAppOptIn(event.target.checked)} />
+                <span><strong>WhatsApp missed-checkout reminder</strong><span className="mt-1 block text-xs text-[#7A6555]">Send one reminder to my registered mobile after shift end if I remain checked in. Requires the company WhatsApp connection and automation to be enabled.</span></span>
+              </label>
+            )}
             {!isEmployeePortal && (
               <div className="mb-4">
                 {todayAttendance?.check_in_time ? (
@@ -8712,11 +8759,10 @@ function HrPageContent() {
                     Manager action required
                   </div>
                   <h4 className="text-lg font-bold text-[#2F1B12]">
-                    Outside-location check-ins
+                    Attendance approvals
                   </h4>
                   <p className="text-sm text-[#6F5A49]">
-                    Verify the stamped selfie, time and location before the day
-                    becomes payroll-eligible.
+                    Review outside-location evidence or a missed-checkout claim before approving the attendance day.
                   </p>
                 </div>
                 <span className="rounded-full bg-[#FEF0C7] px-3 py-1 text-xs font-bold text-[#B54708]">
@@ -8750,7 +8796,9 @@ function HrPageContent() {
                       )}
                     </div>
                     <div className="mt-3 text-sm text-[#4A3426]">
-                      <div>{approval.location || "Location not available"}</div>
+                      <div>{approval.approval_type === "MISSED_CHECK_OUT"
+                        ? `Claimed checkout: ${approval.proposed_checkout_time ? new Date(approval.proposed_checkout_time).toLocaleString("en-IN") : "Not provided"}`
+                        : approval.location || "Location not available"}</div>
                       {approval.reason && (
                         <div className="mt-1 text-xs text-[#7A6555]">
                           {approval.reason}
@@ -8758,13 +8806,13 @@ function HrPageContent() {
                       )}
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <button
+                      {approval.selfie_url && <button
                         type="button"
-                        onClick={() => openFileUrlInNewTab(approval.selfie_url)}
+                        onClick={() => openFileUrlInNewTab(approval.selfie_url!)}
                         className="rounded-lg border border-[#D8C4A8] px-3 py-2 text-xs font-bold text-[#4A3426]"
                       >
                         View stamped selfie
-                      </button>
+                      </button>}
                       <button
                         type="button"
                         onClick={() =>
@@ -9120,6 +9168,13 @@ function HrPageContent() {
                           )}
                           {isEmployeePortal && (
                             <td className="whitespace-nowrap px-6 py-4 text-right">
+                              {record.check_in_time && !record.check_out_time && record.metadata?.missed_checkout_absent_at && (
+                                <button type="button" disabled={loading || record.approval_status === "PENDING"}
+                                  onClick={() => void requestMissedCheckout(record)}
+                                  className="mr-2 rounded-lg border border-amber-400 px-3 py-2 text-xs font-bold text-amber-800 disabled:opacity-60">
+                                  {record.approval_status === "PENDING" ? "Awaiting manager" : "Request checkout approval"}
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 disabled={!record.can_edit_attendance}
@@ -9386,6 +9441,13 @@ function HrPageContent() {
                       </a>
                     ))}
                   </div>
+                )}
+                {isEmployeePortal && record.check_in_time && !record.check_out_time && record.metadata?.missed_checkout_absent_at && (
+                  <button type="button" disabled={loading || record.approval_status === "PENDING"}
+                    onClick={() => void requestMissedCheckout(record)}
+                    className="mt-3 w-full rounded-xl border border-amber-400 px-3 py-2 text-sm font-bold text-amber-800 disabled:opacity-60">
+                    {record.approval_status === "PENDING" ? "Awaiting manager approval" : "Request checkout approval"}
+                  </button>
                 )}
                 {!isEmployeePortal && canCorrectAttendance && record.can_edit_attendance && (
                   <button
@@ -10811,6 +10873,7 @@ function HrPageContent() {
                 ["Shift starts", "shift_start", "time"],
                 ["Shift ends", "shift_end", "time"],
                 ["Late grace (minutes)", "late_grace_minutes", "number"],
+                ["Missed checkout reminder after shift (minutes)", "missed_checkout_reminder_minutes", "number"],
                 ["Full-day hours", "standard_daily_hours", "number"],
                 ["Half-day minimum hours", "half_day_hours", "number"],
                 [
