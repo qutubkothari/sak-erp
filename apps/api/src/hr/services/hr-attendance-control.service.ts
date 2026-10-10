@@ -165,14 +165,14 @@ export const requiresAttendanceDerivedMetricsReview = (
   employee?: any,
 ) =>
   summary?.derived_metrics_status === "HISTORICAL_POLICY_UNAVAILABLE" &&
-  hasAttendanceDerivedMetricsPayrollEffect(policy, employee);
+  (summary?.late_deduction_pay_relevant ?? hasAttendanceDerivedMetricsPayrollEffect(policy, employee));
 
-export function resolveAttendancePolicyForDate(current: Policy | null, versions: any[], date: string): Policy | null {
+export function resolveAttendancePolicyForDate(current: Policy | null, versions: any[], date: string, employeeOverrides: any[] = []): Policy | null {
   const candidates = [
     ...(current ? [{ id: String(current.id || "current"), rule_key: "attendance_policy", rule_value: current, effective_from: current.effective_from, effective_to: current.effective_to }] : []),
     ...versions.map((row) => ({ ...row, rule_key: "attendance_policy" })),
   ];
-  const resolved = resolvePayrollRule({ ruleKey: "attendance_policy", effectiveDate: date, tenantRules: candidates });
+  const resolved = resolvePayrollRule({ ruleKey: "attendance_policy", effectiveDate: date, tenantRules: candidates, employeeOverrides });
   return resolved.version ? ({
     ...(resolved.value as Record<string, unknown>),
     effective_from: resolved.version.effective_from,
