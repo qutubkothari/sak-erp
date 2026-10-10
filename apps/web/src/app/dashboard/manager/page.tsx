@@ -53,6 +53,15 @@ type PendingGRN = {
   status?: string;
 };
 
+type MissedCheckoutApproval = {
+  id: string;
+  approval_type: string;
+  requested_at: string;
+  reason?: string;
+  proposed_checkout_time?: string;
+  employee?: { employee_name?: string; employee_code?: string } | null;
+};
+
 const approvalQueueRoutes: Record<PendingApproval['type'], string> = {
   PR: '/dashboard/purchase/requisitions?status=AWAITING_APPROVAL',
   PO: '/dashboard/purchase/orders?status=PENDING',
@@ -81,6 +90,8 @@ export default function ManagerDashboardPage() {
   });
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checkoutApprovals, setCheckoutApprovals] = useState<MissedCheckoutApproval[]>([]);
+  const [checkoutBusy, setCheckoutBusy] = useState<string | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
 
   useEffect(() => {
@@ -159,11 +170,14 @@ export default function ManagerDashboardPage() {
       // The action-required widget already uses these two live queues.  Keep the
       // dashboard on the same sources so a PO/QC item cannot be visible in one
       // place and disappear from the manager worklist.
-      const [managerResult, poResult, qcResult] = await Promise.allSettled([
+      const [managerResult, poResult, qcResult, checkoutResult] = await Promise.allSettled([
         apiClient.get<PendingApproval[]>('/manager/pending-approvals'),
         apiClient.get<PendingPO[]>('/purchase/orders?status=PENDING'),
         apiClient.get<PendingGRN[]>('/purchase/grn?pendingQc=true'),
+        apiClient.get<MissedCheckoutApproval[]>('/hr/attendance/approvals?status=PENDING'),
       ]);
+      setCheckoutApprovals(checkoutResult.status === 'fulfilled' && Array.isArray(checkoutResult.value)
+        ? checkoutResult.value.filter((row) => row.approval_type === 'MISSED_CHECK_OUT') : []);
 
       const managerApprovals = managerResult.status === 'fulfilled' && Array.isArray(managerResult.value)
         ? managerResult.value
@@ -223,6 +237,20 @@ export default function ManagerDashboardPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const decideCheckout = async (approval: MissedCheckoutApproval, decision: 'approve' | 'reject') => {
+    const comment = window.prompt(decision === 'approve'
+      ? 'Approval note (actual checkout time will be recorded as a manager-approved correction)'
+      : 'Reason for rejecting the checkout correction');
+    if (comment === null || (decision === 'reject' && !comment.trim())) return;
+    setCheckoutBusy(approval.id);
+    try {
+      await apiClient.put(`/hr/attendance/approvals/${approval.id}/${decision}`, { comment: comment.trim() });
+      setCheckoutApprovals((current) => current.filter((row) => row.id !== approval.id));
+    } catch (error: any) {
+      alert(error?.message || 'Could not decide checkout correction.');
+    } finally { setCheckoutBusy(null); }
   };
 
   const filteredApprovals = selectedFilter === 'ALL' 
@@ -312,6 +340,19 @@ export default function ManagerDashboardPage() {
           </div>
         </div>
       </div>
+
+      <section className="mb-6 rounded-lg border-2 border-[#E8DCC4] bg-white p-5">
+        <h2 className="text-lg font-bold text-[#36454F]">Missed checkout corrections ({checkoutApprovals.length})</h2>
+        <p className="mt-1 text-sm text-[#6F4E37]">Review the employee's claimed checkout time and reason before deciding. The original punch history is retained.</p>
+        {checkoutApprovals.length === 0 ? <p className="mt-3 text-sm text-[#8B6F47]">No checkout corrections awaiting approval.</p> :
+          <div className="mt-3 space-y-3">{checkoutApprovals.map((item) => <div key={item.id} className="rounded-lg border border-[#E8DCC4] p-3">
+            <div className="font-semibold text-[#36454F]">{item.employee?.employee_name || item.employee?.employee_code || 'Employee'}</div>
+            <div className="text-sm text-[#6F4E37]">Claimed checkout: {item.proposed_checkout_time ? new Date(item.proposed_checkout_time).toLocaleString() : 'Unavailable'} · Requested: {new Date(item.requested_at).toLocaleString()}</div>
+            <p className="my-2 text-sm text-[#4A3426]">Reason: {item.reason || 'No reason provided'}</p>
+            <div className="flex gap-2"><button disabled={checkoutBusy === item.id} onClick={() => void decideCheckout(item, 'approve')} className="rounded bg-green-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Approve checkout</button>
+              <button disabled={checkoutBusy === item.id} onClick={() => void decideCheckout(item, 'reject')} className="rounded border border-red-600 px-3 py-2 text-sm font-semibold text-red-700 disabled:opacity-50">Reject</button></div>
+          </div>)}</div>}
+      </section>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">

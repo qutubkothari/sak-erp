@@ -6,9 +6,10 @@ import { HrAttendanceControlService } from "./services/hr-attendance-control.ser
 import { HrAttendanceNotificationScheduler } from "./services/hr-attendance-notification.scheduler";
 import { HrHistoricalAttendanceImportService } from "./services/hr-historical-attendance-import.service";
 import { AuditService } from "../audit/audit.service";
+import { WhatsAppModule } from "../whatsapp/whatsapp.module";
 
 @Module({
-  imports: [AccountingModule],
+  imports: [AccountingModule, WhatsAppModule],
   providers: [HrService, HrAttendanceControlService, HrAttendanceNotificationScheduler, HrHistoricalAttendanceImportService, AuditService],
   controllers: [HrController],
   exports: [HrService],

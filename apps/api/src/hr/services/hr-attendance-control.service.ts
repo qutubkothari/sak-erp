@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
 } from "@nestjs/common";
@@ -94,6 +95,25 @@ export const authoritativeWorkMinutes = (record: any) => {
 const timeMinutes = (value: unknown) => {
   const match = String(value || "").match(/(\d{1,2}):(\d{2})/);
   return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+};
+const companyLocalDateTime = (value: unknown, timeZone: string) => {
+  const raw = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) return null;
+  const [date, clock] = raw.split("T");
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = clock.split(":").map(Number);
+  if (hour > 23 || minute > 59 || new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) !== date) return null;
+  const target = Date.UTC(year, month - 1, day, hour, minute);
+  let instant = target;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const parts = new Intl.DateTimeFormat("en-GB", { timeZone,
+      year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(new Date(instant));
+    const part = (type: string) => Number(parts.find((row) => row.type === type)?.value || 0);
+    const observed = Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"));
+    instant += target - observed;
+  }
+  return new Date(instant);
 };
 const eachDate = (start: string, end: string) => {
   const dates: string[] = [];
@@ -218,6 +238,7 @@ export class HrAttendanceControlService {
       "shift_start",
       "shift_end",
       "late_grace_minutes",
+      "missed_checkout_reminder_minutes",
       "standard_daily_hours",
       "half_day_hours",
       "overtime_after_hours",
@@ -469,6 +490,72 @@ export class HrAttendanceControlService {
     }));
   }
 
+  async setMyCheckoutWhatsAppOptIn(user: any, enabled: boolean) {
+    const tenantId = String(user?.tenantId || "");
+    const userId = String(user?.userId || user?.id || "");
+    const { data: employee, error } = await this.supabase.from("employees")
+      .select("id,contact_number,attendance_whatsapp_opt_in")
+      .eq("tenant_id", tenantId).eq("user_id", userId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!employee) throw new BadRequestException("Employee profile is not linked to this login.");
+    if (enabled && !/^\d{10,15}$/.test(String(employee.contact_number || "").replace(/\D/g, ""))) {
+      throw new BadRequestException("Ask HR to add a valid mobile number before enabling WhatsApp reminders.");
+    }
+    const { data, error: updateError } = await this.supabase.from("employees")
+      .update({ attendance_whatsapp_opt_in: enabled })
+      .eq("tenant_id", tenantId).eq("id", employee.id)
+      .select("id,attendance_whatsapp_opt_in").single();
+    if (updateError) throw new Error(updateError.message);
+    return data;
+  }
+
+  async requestMissedCheckout(user: any, attendanceId: string, body: any) {
+    const tenantId = String(user?.tenantId || "");
+    const userId = String(user?.userId || user?.id || "");
+    const reason = String(body?.reason || "").trim();
+    const policy = await this.getPolicy(tenantId);
+    const proposed = companyLocalDateTime(body?.proposed_checkout_local, policy.timezone);
+    if (reason.length < 5 || !proposed || proposed.getTime() > Date.now()) {
+      throw new BadRequestException("Enter the actual checkout time and a reason of at least five characters.");
+    }
+    const { data: employee, error: employeeError } = await this.supabase.from("employees")
+      .select("id,manager_id")
+      .eq("tenant_id", tenantId).eq("user_id", userId).maybeSingle();
+    if (employeeError) throw new Error(employeeError.message);
+    if (!employee) throw new BadRequestException("Employee profile is not linked to this login.");
+    if (!employee.manager_id) throw new BadRequestException("Ask HR to assign your manager before requesting checkout approval.");
+    const { data: attendance, error } = await this.supabase.from("attendance")
+      .select("id,tenant_id,employee_id,attendance_date,check_in_time,check_out_time,status,metadata")
+      .eq("tenant_id", tenantId).eq("employee_id", employee.id).eq("id", attendanceId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!attendance || !attendance.check_in_time || attendance.check_out_time ||
+        String(attendance.status).toUpperCase() !== "ABSENT" ||
+        !attendance.metadata?.missed_checkout_absent_at) {
+      throw new ConflictException("This day is not a finalized missed-checkout absence. Refresh attendance before requesting approval.");
+    }
+    const checkInTime = new Date(attendance.check_in_time).getTime();
+    if (proposed.getTime() <= checkInTime || proposed.getTime() > checkInTime + 24 * 60 * 60 * 1000) {
+      throw new BadRequestException("Proposed checkout must be after check-in and within 24 hours.");
+    }
+    const { data: pending, error: pendingError } = await this.supabase.from("attendance_approvals")
+      .select("id")
+      .eq("tenant_id", tenantId).eq("attendance_id", attendanceId)
+      .eq("approval_type", "MISSED_CHECK_OUT").eq("status", "PENDING").maybeSingle();
+    if (pendingError) throw new Error(pendingError.message);
+    if (pending) return { id: pending.id, status: "PENDING", already_pending: true };
+    const { data: request, error: createError } = await this.supabase.from("attendance_approvals")
+      .insert({ tenant_id: tenantId, attendance_id: attendanceId, employee_id: employee.id,
+        manager_employee_id: employee.manager_id, approval_type: "MISSED_CHECK_OUT",
+        status: "PENDING", selfie_url: null, proposed_checkout_time: proposed.toISOString(), reason })
+      .select().single();
+    if (createError?.code === "23505") throw new ConflictException("A checkout approval is already pending.");
+    if (createError) throw new Error(createError.message);
+    const { error: statusError } = await this.supabase.from("attendance")
+      .update({ approval_status: "PENDING" }).eq("tenant_id", tenantId).eq("id", attendanceId);
+    if (statusError) throw new Error(statusError.message);
+    return request;
+  }
+
   async decideApproval(
     user: any,
     approvalId: string,
@@ -503,6 +590,50 @@ export class HrAttendanceControlService {
           "Only the assigned manager or authorised HR approver can decide this request",
         );
       }
+    }
+    if (approval.approval_type === "MISSED_CHECK_OUT") {
+      const { data: attendance, error: attendanceError } = await this.supabase.from("attendance")
+        .select("id,check_in_time,check_out_time,attendance_date,employee_id")
+        .eq("tenant_id", tenantId).eq("id", approval.attendance_id).maybeSingle();
+      if (attendanceError || !attendance) throw new BadRequestException("Attendance record is unavailable.");
+      let workMinutes = 0;
+      let lateMinutes = 0;
+      let overtimeHours = 0;
+      let dayStatus = "ABSENT";
+      if (decision === "APPROVED") {
+        const { data: punches, error: punchError } = await this.supabase.from("attendance_punches")
+          .select("punch_type,punch_at").eq("tenant_id", tenantId)
+          .eq("attendance_id", attendance.id).order("punch_at", { ascending: true });
+        if (punchError) throw new Error(punchError.message);
+        let openIn: number | null = null;
+        if (!punches?.length) openIn = Date.parse(String(attendance.check_in_time));
+        for (const punch of punches || []) {
+          const at = Date.parse(String(punch.punch_at));
+          if (punch.punch_type === "IN") openIn = at;
+          else if (openIn !== null && at >= openIn) { workMinutes += Math.round((at - openIn) / 60000); openIn = null; }
+        }
+        const proposedAt = Date.parse(String(approval.proposed_checkout_time));
+        if (openIn === null) throw new ConflictException("The last movement is already an OUT punch. HR must review this attendance record.");
+        if (!Number.isFinite(proposedAt) || proposedAt <= openIn) throw new BadRequestException("The claimed checkout must follow the last check-in punch.");
+        workMinutes += Math.round((proposedAt - openIn) / 60000);
+        if (workMinutes < 0 || workMinutes > 1440) throw new BadRequestException("Proposed work time is invalid.");
+        const metrics = await this.calculateAttendanceMetrics(tenantId, String(attendance.attendance_date).slice(0, 10), attendance.check_in_time, workMinutes);
+        if (!metrics.policy) throw new ConflictException("Attendance policy for this date is unavailable. HR must review it.");
+        lateMinutes = Number(metrics.lateMinutes || 0);
+        overtimeHours = Number(metrics.overtimeHours || 0);
+        dayStatus = workMinutes >= Number(metrics.policy.standard_daily_hours) * 60
+          ? lateMinutes > 0 ? "LATE" : "PRESENT"
+          : workMinutes >= Number(metrics.policy.half_day_hours) * 60 ? "HALF_DAY" : "ABSENT";
+      }
+      const { data: decided, error: decisionError } = await this.supabase.rpc("hr_decide_missed_checkout", {
+        p_tenant_id: tenantId, p_approval_id: approvalId,
+        p_decided_by: String(user?.userId || user?.id || ""),
+        p_decision: decision, p_comment: String(comment || ""),
+        p_work_minutes: workMinutes, p_late_minutes: lateMinutes,
+        p_overtime_hours: overtimeHours, p_day_status: dayStatus,
+      });
+      if (decisionError) throw new ConflictException(decisionError.message);
+      return decided;
     }
     const now = new Date().toISOString();
     const decidedBy = String(user?.userId || user?.id || "") || null;
