@@ -164,7 +164,7 @@ NOTIFY pgrst, 'reload schema';`;
     const [costs, documents, grns, events, payments, allocations, assessmentLines] = await Promise.all([
       this.supabase.from('import_file_costs').select('*, supplier:vendors(id,name,code)').eq('tenant_id', tenantId).eq('import_file_id', id).order('created_at', { ascending: false }),
       this.supabase.from('import_file_documents').select('*').eq('tenant_id', tenantId).eq('import_file_id', id).order('uploaded_at', { ascending: false }),
-      this.supabase.from('import_file_grns').select('*, grn:grns(id,grn_number,status,invoice_number,receipt_date,purchase_order_id)').eq('tenant_id', tenantId).eq('import_file_id', id).order('created_at', { ascending: false }),
+      this.supabase.from('import_file_grns').select('*, grn:grns(id,grn_number,status,invoice_number,receipt_date,po_id)').eq('tenant_id', tenantId).eq('import_file_id', id).order('created_at', { ascending: false }),
       this.supabase.from('import_file_events').select('*').eq('tenant_id', tenantId).eq('import_file_id', id).order('created_at', { ascending: false }),
       this.supabase.from('import_file_payments').select('*, supplier:vendors(id,name,code)').eq('tenant_id', tenantId).eq('import_file_id', id).order('created_at', { ascending: false }),
       this.supabase.from('import_file_grn_allocations').select('*').eq('tenant_id', tenantId).eq('import_file_id', id).order('created_at', { ascending: false }),
@@ -326,12 +326,12 @@ NOTIFY pgrst, 'reload schema';`;
     if (!grnId) throw new BadRequestException('Select a GRN.');
     const { data: grn, error: grnError } = await this.supabase
       .from('grns')
-      .select('id,grn_number,purchase_order_id')
+      .select('id,grn_number,po_id')
       .eq('tenant_id', tenantId)
       .eq('id', grnId)
       .maybeSingle();
     if (grnError || !grn) throw new BadRequestException('GRN not found.');
-    if (file.po_id && String(file.po_id) !== String(grn.purchase_order_id)) throw new BadRequestException('The GRN must belong to this Import File PO.');
+    if (file.po_id && String(file.po_id) !== String(grn.po_id)) throw new BadRequestException('The GRN must belong to this Import File PO.');
     const alloc = this.num(body.allocatedLandedCost);
     const { data, error } = await this.supabase.from('import_file_grns').upsert({
       tenant_id: tenantId,
