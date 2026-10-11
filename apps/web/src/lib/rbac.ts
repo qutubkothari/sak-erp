@@ -15,6 +15,7 @@ export type StoredUser = {
   firstName?: string;
   lastName?: string;
   enabledFeatures?: string[];
+  configuredFeatures?: string[];
   featureAccessConfigured?: boolean;
 };
 
