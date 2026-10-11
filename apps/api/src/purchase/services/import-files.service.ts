@@ -175,7 +175,7 @@ NOTIFY pgrst, 'reload schema';`;
     if (linkedGrnIds.length) {
       const { data: sourceLines } = await this.supabase
         .from('grn_items')
-        .select('id,grn_id,item_id,item_code,item_name,accepted_qty,received_qty,quantity,rate,total_amount')
+        .select('id,grn_id,item_id,item_code,item_name,accepted_qty,received_qty,rate,amount')
         .eq('tenant_id', tenantId)
         .in('grn_id', linkedGrnIds);
       assessmentSourceLines = sourceLines || [];
@@ -438,12 +438,12 @@ NOTIFY pgrst, 'reload schema';`;
     for (const linked of file.grns || []) {
       const { data: lines, error } = await this.supabase
         .from('grn_items')
-        .select('id,grn_id,item_id,item_code,item_name,received_qty,accepted_qty,quantity,rate,total_amount')
+        .select('id,grn_id,item_id,item_code,item_name,received_qty,accepted_qty,rate,amount')
         .eq('tenant_id', tenantId)
         .eq('grn_id', linked.grn_id);
       if (error) throw new BadRequestException(error.message);
       for (const line of lines || []) {
-        const qty = this.num(line.accepted_qty ?? line.received_qty ?? line.quantity);
+        const qty = this.num(line.accepted_qty ?? line.received_qty);
         const rate = this.num(line.rate);
         if (qty <= 0) continue;
         const baseValue = this.num(qty * rate);
