@@ -9,6 +9,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { apiClient } from "../../../../../lib/api-client";
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
 
 type Benefit = {
   id: string;
@@ -30,10 +31,11 @@ type Dashboard = {
     amount: number;
     source?: string;
   }>;
-  benchmark?: { cohort?: { market?: string | null }; privacy_note?: string };
+  benchmark?: { cohort?: { market?: string | null; currency_code?: string | null }; privacy_note?: string };
 };
 
 const number = (value: unknown) => Number(value || 0);
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 export default function MizantraImpactPage() {
   const [data, setData] = useState<Dashboard | null>(null);
@@ -49,9 +51,19 @@ export default function MizantraImpactPage() {
   useEffect(() => {
     load();
   }, [load]);
-  const currency = data?.benchmark?.cohort?.market === "INDIA" ? "INR" : "AED";
+  const cohortMarket = String(data?.benchmark?.cohort?.market || "").toUpperCase();
+  const explicitCurrency = String(data?.benchmark?.cohort?.currency_code || "").trim().toUpperCase();
+  const currency = explicitCurrency ||
+    (cohortMarket === "INDIA" ? "INR" : cohortMarket === "EGYPT" ? "EGP" : cohortMarket === "UAE" ? "AED" : TENANT_BASE_CURRENCY.currency);
+  const currencyLocale = currency === "INR"
+    ? "en-IN"
+    : currency === "EGP"
+      ? "en-EG"
+      : currency === "AED"
+        ? "en-AE"
+        : TENANT_BASE_CURRENCY.locale;
   const money = (value: unknown) =>
-    `${currency} ${new Intl.NumberFormat(currency === "INR" ? "en-IN" : "en-AE", { maximumFractionDigits: 0 }).format(number(value))}`;
+    `${currency} ${new Intl.NumberFormat(currencyLocale, { maximumFractionDigits: 0 }).format(number(value))}`;
   const waterfall = useMemo(() => {
     const verified = (data?.source_benefits || []).filter(
       (benefit) =>

@@ -5,6 +5,9 @@ import { BarChart3, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { apiClient } from "../../../../../lib/api-client";
 import { useLocale } from "@/lib/locale";
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 type MarginLine = {
   item_id: string;
@@ -98,7 +101,7 @@ export default function CostingPage() {
   const [drafting, setDrafting] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [selectedJobId, setSelectedJobId] = useState("");
-  const currency = String(production?.currency_code || tenantCurrency || "AED");
+  const currency = String(production?.currency_code || tenantCurrency || TENANT_BASE_CURRENCY.currency);
   const money = useCallback(
     (value: number) => new Intl.NumberFormat(appLocale, {
       style: "currency",

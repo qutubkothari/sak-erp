@@ -414,6 +414,20 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     return localized.replace(/\bAED\b/g, "EGP");
   }, [currency]);
 
+  useEffect(() => {
+    const originalPrompt = window.prompt;
+    const localizedPrompt: typeof window.prompt = (message, defaultValue) =>
+      originalPrompt.call(
+        window,
+        typeof message === "string" ? localizeBaseCurrencyLabel(message) : message,
+        defaultValue,
+      );
+    window.prompt = localizedPrompt;
+    return () => {
+      if (window.prompt === localizedPrompt) window.prompt = originalPrompt;
+    };
+  }, [localizeBaseCurrencyLabel]);
+
   const setLanguage = useCallback((next: AppLanguage) => {
     setLanguageState(next);
     localStorage.setItem("mizantra-language", next);

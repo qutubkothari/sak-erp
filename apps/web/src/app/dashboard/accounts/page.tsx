@@ -5976,7 +5976,7 @@ function AccountingForm({
               placeholder="Bank, RBI, CB, contract rate"
             />
             <p className="md:col-span-2 text-xs text-gray-600">
-              Example: AED 1 = {TENANT_BASE_CURRENCY.currency} 22.65. Rates preserve transaction-currency
+              Example: transaction currency 1 = {TENANT_BASE_CURRENCY.currency} [rate]. Rates preserve transaction-currency
               evidence while the tenant general ledger reports in {TENANT_BASE_CURRENCY.currency}.
             </p>
           </div>
