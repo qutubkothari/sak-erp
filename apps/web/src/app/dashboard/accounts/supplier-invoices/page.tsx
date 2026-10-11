@@ -45,11 +45,11 @@ function formatDate(val?: string | null) {
   if (!val) return '-';
   const d = new Date(val);
   if (isNaN(d.getTime())) return '-';
-  return new Intl.DateTimeFormat('en-IN', {
+  return new Intl.DateTimeFormat(TENANT_BASE_CURRENCY.currency === 'EGP' ? TENANT_BASE_CURRENCY.locale : 'en-IN', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-    timeZone: 'Asia/Kolkata',
+    timeZone: TENANT_BASE_CURRENCY.currency === 'EGP' ? TENANT_BASE_CURRENCY.timezone : 'Asia/Kolkata',
   }).format(d);
 }
 
@@ -59,7 +59,7 @@ function formatAmount(val?: number | null) {
 }
 
 function formatRoundedAmount(val?: number | null) {
-  return formatAmount(Math.round(Number(val ?? 0)));
+  return formatAmount(roundPayableAmount(Number(val ?? 0)));
 }
 
 function parseNumber(value: any): number {
@@ -68,7 +68,8 @@ function parseNumber(value: any): number {
 }
 
 function roundPayableAmount(value: number): number {
-  return Math.round(Number.isFinite(value) ? value : 0);
+  const safe = Number.isFinite(value) ? value : 0;
+  return TENANT_BASE_CURRENCY.currency === 'EGP' ? Math.round(safe * 100) / 100 : Math.round(safe);
 }
 
 function calculateRoundedPayable(gross: number, tax: number, freight: number, freightGst: number): number {
@@ -206,7 +207,10 @@ export default function SupplierInvoicesPage() {
     if (!window.confirm(`Sanction payment for ${inv.grn_number}? This will move it to Accounts Payable.`)) return;
     const notes = window.prompt('Approval notes / reference (optional)', '') ?? '';
     try {
-      await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, { notes: notes.trim() || null });
+      const result: any = await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, { notes: notes.trim() || null });
+      if (result?.finance_journal?.id) {
+        alert(`Supplier invoice sanctioned. Finance journal ${result.finance_journal.id} is a draft; a different Super Admin must post it before USD payment.`);
+      }
       // Remove from selection if it was selected
       setSelectedInvoiceIds(prev => {
         const next = new Set(prev);
@@ -236,14 +240,15 @@ export default function SupplierInvoicesPage() {
     if (!window.confirm(confirmMsg)) return;
     
     setBulkSanctionSubmitting(true);
-    const results = { success: [] as string[], failed: [] as string[] };
+    const results = { success: [] as string[], failed: [] as string[], financeDrafts: [] as string[] };
     
     for (const inv of selected) {
       try {
-        await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, {
+        const result: any = await apiClient.post(`/purchase/grn/${inv.id}/approve-invoice`, {
           notes: `Bulk sanctioned from Supplier Invoices on ${new Date().toISOString()}`,
         });
         results.success.push(inv.grn_number);
+        if (result?.finance_journal?.id) results.financeDrafts.push(`${inv.grn_number}: ${result.finance_journal.id}`);
       } catch (e: any) {
         results.failed.push(`${inv.grn_number}: ${e.message || 'Failed'}`);
       }
@@ -254,7 +259,7 @@ export default function SupplierInvoicesPage() {
     await fetchInvoices();
     
     if (results.failed.length === 0) {
-      alert(`Successfully sanctioned ${results.success.length} invoice${results.success.length > 1 ? 's' : ''}`);
+      alert(`Successfully sanctioned ${results.success.length} invoice${results.success.length > 1 ? 's' : ''}${results.financeDrafts.length ? `\nDraft finance journals for a different Super Admin to post:\n${results.financeDrafts.join('\n')}` : ''}`);
     } else {
       alert(`Sanction Results:\nSuccess: ${results.success.length}\nFailed: ${results.failed.length}\n\nFailed items:\n${results.failed.join('\n')}`);
     }
@@ -354,14 +359,14 @@ export default function SupplierInvoicesPage() {
     },
     {
       id: 'tax_amount',
-      label: 'Tax (GST)',
+      label: TENANT_BASE_CURRENCY.currency === 'EGP' ? 'Tax (VAT)' : 'Tax (GST)',
       accessor: (r) => Number(r.tax_amount ?? 0),
       cell: (r) => formatAmount(r.tax_amount),
       align: 'right',
     },
     {
       id: 'gst_percentage',
-      label: 'GST %',
+      label: TENANT_BASE_CURRENCY.currency === 'EGP' ? 'VAT %' : 'GST %',
       accessor: (r) => Number(r.gst_percentage ?? 0),
       cell: (r) => (
         <span className={Number(r.gst_percentage ?? 0) === 0 ? 'text-gray-400' : 'text-amber-600 font-medium'}>
@@ -606,25 +611,25 @@ export default function SupplierInvoicesPage() {
                   <section className="rounded-md border border-[#E8DCC4] bg-white">
                     <div className="border-b border-[#E8DCC4] px-5 py-3">
                       <h3 className="text-sm font-bold uppercase tracking-wide text-[#3F2D20]">Purchase-Derived Invoice Values</h3>
-                      <p className="mt-1 text-xs text-[#7A6756]">Gross, GST %, tax and net payable are controlled by GRN/PO posting. Only invoice freight can be revised here.</p>
+                      <p className="mt-1 text-xs text-[#7A6756]">Gross, {TENANT_BASE_CURRENCY.currency === 'EGP' ? 'VAT' : 'GST'} %, tax and net payable are controlled by GRN/PO posting. Only invoice freight can be revised here.</p>
                     </div>
                     <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
                       <div>
-                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Gross Amount (Rs.)</label>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Gross Amount ({TENANT_BASE_CURRENCY.currency === 'EGP' ? 'EGP' : 'Rs.'})</label>
                         <input type="number" step="0.01" min="0"
                           value={editForm.gross_amount}
                           readOnly
                           className="w-full rounded-md border border-[#D9C9AD] bg-[#F7F3EA] px-3 py-2 text-sm text-[#6F4E37]" />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">GST %</label>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">{TENANT_BASE_CURRENCY.currency === 'EGP' ? 'VAT' : 'GST'} %</label>
                         <input type="number" step="0.01" min="0" max="100"
                           value={editForm.gst_percentage}
                           readOnly
                           className="w-full rounded-md border border-[#D9C9AD] bg-[#F7F3EA] px-3 py-2 text-sm text-[#6F4E37]" />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Tax / GST Amount (Rs.)</label>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Tax / {TENANT_BASE_CURRENCY.currency === 'EGP' ? 'VAT' : 'GST'} Amount ({TENANT_BASE_CURRENCY.currency === 'EGP' ? 'EGP' : 'Rs.'})</label>
                         <input type="number" step="0.01" min="0"
                           value={editForm.tax_amount}
                           readOnly
@@ -640,7 +645,7 @@ export default function SupplierInvoicesPage() {
                     </div>
                     <div className="grid gap-4 p-5 md:grid-cols-2">
                       <div>
-                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Freight Value (Rs.)</label>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Freight Value ({TENANT_BASE_CURRENCY.currency === 'EGP' ? 'EGP' : 'Rs.'})</label>
                         <input type="number" step="0.01" min="0"
                           value={editForm.freight_amount}
                           onChange={(e) => {
@@ -653,7 +658,7 @@ export default function SupplierInvoicesPage() {
                           className="w-full rounded-md border border-[#D9C9AD] bg-white px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]" />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Freight GST (Rs.)</label>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Freight {TENANT_BASE_CURRENCY.currency === 'EGP' ? 'VAT' : 'GST'} ({TENANT_BASE_CURRENCY.currency === 'EGP' ? 'EGP' : 'Rs.'})</label>
                         <input type="number" step="0.01" min="0"
                           value={editForm.freight_gst_amount}
                           onChange={(e) => {
@@ -671,7 +676,7 @@ export default function SupplierInvoicesPage() {
                   <section className="rounded-md border border-[#E8DCC4] bg-white p-5">
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
-                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Net Payable (Rs.)</label>
+                        <label className="block text-sm font-semibold text-[#5C4738] mb-1">Net Payable ({TENANT_BASE_CURRENCY.currency === 'EGP' ? 'EGP' : 'Rs.'})</label>
                         <input type="number" step="1" min="0"
                           value={editForm.net_payable_amount}
                           readOnly

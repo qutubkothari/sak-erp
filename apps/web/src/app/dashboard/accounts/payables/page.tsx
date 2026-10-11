@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { getProfileLocaleSettings } from "@/lib/profile-branding";
 const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
@@ -115,8 +115,9 @@ interface GRNDetail extends GRNPayable {
   freight_adjustments?: FreightAdjustment[];
 }
 
+const AMOUNT_PREFIX = TENANT_BASE_CURRENCY.currency === 'EGP' ? 'EGP' : '₹';
 const fmtINR = (n: number | null | undefined) =>
-  (+(n || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+  (+(n || 0)).toLocaleString(TENANT_BASE_CURRENCY.currency === 'EGP' ? TENANT_BASE_CURRENCY.locale : 'en-IN', { minimumFractionDigits: 2 });
 
 const toPaisa = (value: number | string | null | undefined) => {
   const amount = Number.parseFloat(String(value ?? '0'));
@@ -155,6 +156,16 @@ const hydratePayableGrn = (grn: any) => {
 const getPayableNet = (grn: any) => +(grn?.net ?? grn?.net_payable_amount ?? 0);
 const getPayableSettled = (grn: any) => +(grn?.settled ?? 0);
 const getPayableOutstanding = (grn: any) => +(grn?.outstanding ?? grn?.outstanding_amount ?? Math.max(0, getPayableNet(grn) - getPayableSettled(grn)));
+const bookedEgpForUsdPayment = (grn: GRNDetail, usdAmount: number) => {
+  const totalUsd = Number(grn.transaction_net_payable_amount || 0);
+  const totalEgp = Number(grn.net_payable_amount || 0);
+  const priorUsd = (grn.payment_entries || []).reduce((sum, entry) => sum + Number(entry.transaction_amount || 0), 0);
+  const priorEgp = (grn.payment_entries || []).reduce((sum, entry) => sum + Number(entry.transaction_currency_code === 'USD' ? entry.amount : 0), 0);
+  if (totalUsd <= 0 || usdAmount <= 0) return 0;
+  return Math.abs(usdAmount - (totalUsd - priorUsd)) <= 0.0001
+    ? Number((totalEgp - priorEgp).toFixed(2))
+    : Number((usdAmount / totalUsd * totalEgp).toFixed(2));
+};
 const isSubcontractPayable = (row?: any) =>
   String(row?.source_type || '').toUpperCase() === 'SUBCONTRACT' || String(row?.id || '').startsWith('subcontract:');
 const isSystemPaymentEntry = (entry?: PaymentEntry | null) =>
@@ -168,6 +179,8 @@ const BLANK_FORM = {
   amount: '',
   transaction_amount: '',
   payment_exchange_rate: '',
+  payment_exchange_rate_source: '',
+  accounting_journal_id: '',
   advance_adjustment_amount: '',
   tds_amount: '',
   short_payment_amount: '',
@@ -228,6 +241,7 @@ export default function AccountsPayablePage() {
   const [editPaymentError, setEditPaymentError] = useState<string | null>(null);
   const [reversePaymentTarget, setReversePaymentTarget] = useState<PaymentEntry | null>(null);
   const [reversePaymentReason, setReversePaymentReason] = useState('');
+  const [reversePaymentJournalId, setReversePaymentJournalId] = useState('');
   const [reversePaymentError, setReversePaymentError] = useState<string | null>(null);
   const [reversePaymentSubmitting, setReversePaymentSubmitting] = useState(false);
 
@@ -467,6 +481,7 @@ export default function AccountsPayablePage() {
   useEscapeKey(!!reversePaymentTarget, () => {
     setReversePaymentTarget(null);
     setReversePaymentReason('');
+    setReversePaymentJournalId('');
     setReversePaymentError(null);
   });
   useEscapeKey(showAdvanceModal, () => setShowAdvanceModal(false));
@@ -722,15 +737,21 @@ export default function AccountsPayablePage() {
       }
       try {
         setSubmitting(true);
-        await apiClient.post(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment`, {
+        const result: any = await apiClient.post(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment`, {
           amount: 0,
           transaction_amount: transactionAmount,
           payment_exchange_rate: paymentRate,
+          payment_exchange_rate_source: paymentForm.payment_exchange_rate_source,
+          accounting_journal_id: paymentForm.accounting_journal_id || undefined,
           payment_method: paymentForm.payment_method,
           payment_reference: paymentForm.payment_reference || undefined,
           payment_date: paymentForm.payment_date,
           payment_notes: paymentForm.payment_notes || undefined,
         });
+        if (result?.status === 'JOURNAL_DRAFT') {
+          setPaymentForm((current) => ({ ...current, accounting_journal_id: String(result.journal_id) }));
+          return;
+        }
         setShowPaymentModal(false);
         setShowGRNDetailModal(false);
         setShowDetailsModal(false);
@@ -812,6 +833,7 @@ export default function AccountsPayablePage() {
     setEditingPayment(entry);
     setEditPaymentError(null);
     setEditPaymentForm({
+      ...BLANK_FORM,
       amount: entry.amount.toString(),
       transaction_amount: entry.transaction_amount?.toString() || '',
       payment_exchange_rate: entry.payment_exchange_rate?.toString() || '',
@@ -907,11 +929,17 @@ export default function AccountsPayablePage() {
     try {
       setReversePaymentSubmitting(true);
       setReversePaymentError(null);
-      await apiClient.post(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${reversePaymentTarget.id}/reverse`, {
+      const result: any = await apiClient.post(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment/${reversePaymentTarget.id}/reverse`, {
         reason,
+        reversal_journal_id: reversePaymentJournalId || undefined,
       });
+      if (result?.status === 'REVERSAL_JOURNAL_DRAFT') {
+        setReversePaymentJournalId(String(result.journal_id));
+        return;
+      }
       setReversePaymentTarget(null);
       setReversePaymentReason('');
+      setReversePaymentJournalId('');
       // Refresh data
       await viewGRNDetail(selectedGRNDetail);
       await Promise.all([fetchVendorPayables(), fetchAdvances()]);
@@ -1125,7 +1153,7 @@ export default function AccountsPayablePage() {
       id: 'total_paid',
       label: 'Paid So Far',
       accessor: (v) => v.total_paid,
-      cell: (v) => <span className="text-green-700 font-semibold">₹{fmtINR(v.total_paid)}</span>,
+      cell: (v) => <span className="text-green-700 font-semibold">{AMOUNT_PREFIX} {fmtINR(v.total_paid)}</span>,
       sortAccessor: (v) => v.total_paid,
       align: 'right',
     },
@@ -1136,7 +1164,7 @@ export default function AccountsPayablePage() {
       cell: (v) => {
         const balance = vendorAdvanceBalances.get(v.vendor_id) || 0;
         return balance > 0 ? (
-          <div className="text-sm font-semibold text-blue-600">₹{fmtINR(balance)}</div>
+          <div className="text-sm font-semibold text-blue-600">{AMOUNT_PREFIX} {fmtINR(balance)}</div>
         ) : (
           <div className="text-sm text-gray-400">—</div>
         );
@@ -1156,10 +1184,10 @@ export default function AccountsPayablePage() {
         const netOutstanding = Math.max(0, v.total_outstanding - advance);
         return (
           <div className="text-lg font-bold text-orange-600">
-            ₹{fmtINR(netOutstanding)}
+            {AMOUNT_PREFIX} {fmtINR(netOutstanding)}
             {advance > 0 && (
               <div className="text-xs font-normal text-blue-600">
-                (after ₹{fmtINR(advance)} advance)
+                (after {AMOUNT_PREFIX} {fmtINR(advance)} advance)
               </div>
             )}
           </div>
@@ -1224,8 +1252,8 @@ export default function AccountsPayablePage() {
     { id: 'po_number', label: 'PO No.', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', cell: (g) => g.purchase_order?.po_number ? <a href={`/dashboard/purchase/orders?viewId=${g.purchase_order.id || g.po_id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.purchase_order.po_number}</a> : '—', minWidth: 150 },
     { id: 'receipt_date', label: 'Receipt Date', accessor: (g) => g.receipt_date ? new Date(g.receipt_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.receipt_date || '', minWidth: 130 },
     { id: 'net', label: 'Net Payable', accessor: (g) => getPayableNet(g), cell: (g) => `${TENANT_BASE_CURRENCY.currency} ${fmtINR(getPayableNet(g))}`, sortAccessor: (g) => getPayableNet(g), align: 'right', minWidth: 140 },
-    { id: 'settled', label: 'Settled', accessor: (g) => getPayableSettled(g), cell: (g) => <span className="font-semibold text-green-700">Rs. {fmtINR(getPayableSettled(g))}</span>, sortAccessor: (g) => getPayableSettled(g), align: 'right', minWidth: 130 },
-    { id: 'outstanding', label: 'Outstanding', accessor: (g) => getPayableOutstanding(g), cell: (g) => <span className="font-bold text-orange-600">Rs. {fmtINR(getPayableOutstanding(g))}</span>, sortAccessor: (g) => getPayableOutstanding(g), align: 'right', minWidth: 140 },
+    { id: 'settled', label: 'Settled', accessor: (g) => getPayableSettled(g), cell: (g) => <span className="font-semibold text-green-700">{AMOUNT_PREFIX} {fmtINR(getPayableSettled(g))}</span>, sortAccessor: (g) => getPayableSettled(g), align: 'right', minWidth: 130 },
+    { id: 'outstanding', label: 'Outstanding', accessor: (g) => getPayableOutstanding(g), cell: (g) => <span className="font-bold text-orange-600">{AMOUNT_PREFIX} {fmtINR(getPayableOutstanding(g))}</span>, sortAccessor: (g) => getPayableOutstanding(g), align: 'right', minWidth: 140 },
     { id: 'status', label: 'Status', accessor: (g) => g.payment_status || 'UNPAID', cell: (g) => paymentStatusBadge(g.payment_status), sortAccessor: (g) => g.payment_status || '', minWidth: 120 },
     { id: 'actions', label: 'Actions', accessor: () => '', cell: (g) => <button type="button" onClick={() => viewGRNDetail(g)} className="rounded-md border border-[#D8C8AA] px-3 py-1.5 text-xs font-semibold text-[#5E4635] hover:bg-[#F7F0E4]">History</button>, sortable: false, hideable: false, minWidth: 120 },
   ];
@@ -1236,8 +1264,8 @@ export default function AccountsPayablePage() {
     { id: 'vendor', label: 'Vendor', accessor: (g) => g.vendor?.name || '—', sortAccessor: (g) => g.vendor?.name || '', searchAccessor: (g) => `${g.vendor?.name || ''} ${g.vendor?.code || ''}`, minWidth: 190 },
     { id: 'po_number', label: 'PO No.', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', cell: (g) => g.purchase_order?.po_number ? <a href={`/dashboard/purchase/orders?viewId=${g.purchase_order.id || g.po_id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.purchase_order.po_number}</a> : '—', minWidth: 150 },
     { id: 'invoice_date', label: 'Invoice Date', accessor: (g) => g.invoice_date ? new Date(g.invoice_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.invoice_date || '', minWidth: 130 },
-    { id: 'net', label: 'Net Payable', accessor: (g) => getPayableNet(g), cell: (g) => <span className="tabular-nums">Rs. {fmtINR(getPayableNet(g))}</span>, sortAccessor: (g) => getPayableNet(g), align: 'right', minWidth: 160 },
-    { id: 'settled', label: 'Total Paid', accessor: (g) => getPayableSettled(g), cell: (g) => <span className="font-bold text-green-700 tabular-nums">Rs. {fmtINR(getPayableSettled(g))}</span>, sortAccessor: (g) => getPayableSettled(g), align: 'right', minWidth: 160 },
+    { id: 'net', label: 'Net Payable', accessor: (g) => getPayableNet(g), cell: (g) => <span className="tabular-nums">{AMOUNT_PREFIX} {fmtINR(getPayableNet(g))}</span>, sortAccessor: (g) => getPayableNet(g), align: 'right', minWidth: 160 },
+    { id: 'settled', label: 'Total Paid', accessor: (g) => getPayableSettled(g), cell: (g) => <span className="font-bold text-green-700 tabular-nums">{AMOUNT_PREFIX} {fmtINR(getPayableSettled(g))}</span>, sortAccessor: (g) => getPayableSettled(g), align: 'right', minWidth: 160 },
     { id: 'payment_method', label: 'Method', accessor: (g) => g.payment_method || '—', sortAccessor: (g) => g.payment_method || '', minWidth: 120 },
     { id: 'payment_reference', label: 'Reference', accessor: (g) => g.payment_reference || '—', searchAccessor: (g) => g.payment_reference || '', minWidth: 180 },
     { id: 'payment_date', label: 'Payment Date', accessor: (g) => g.payment_date ? new Date(g.payment_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.payment_date || '', minWidth: 130 },
@@ -1250,8 +1278,8 @@ export default function AccountsPayablePage() {
     { id: 'po_number', label: 'PO Number', accessor: (a) => a.purchase_order?.po_number || '—', sortAccessor: (a) => a.purchase_order?.po_number || '', searchAccessor: (a) => a.purchase_order?.po_number || '', minWidth: 160 },
     { id: 'vendor', label: 'Vendor', accessor: (a) => a.vendor?.name || '—', sortAccessor: (a) => a.vendor?.name || '', searchAccessor: (a) => `${a.vendor?.name || ''} ${a.vendor?.code || ''}`, minWidth: 190 },
     { id: 'amount', label: 'Total', accessor: (a) => a.amount || 0, cell: (a) => `${TENANT_BASE_CURRENCY.currency} ${fmtINR(a.amount || 0)}`, sortAccessor: (a) => a.amount || 0, align: 'right', minWidth: 130 },
-    { id: 'utilized_amount', label: 'Used', accessor: (a) => a.utilized_amount || 0, cell: (a) => <span className="text-amber-600">₹{fmtINR(a.utilized_amount || 0)}</span>, sortAccessor: (a) => a.utilized_amount || 0, align: 'right', minWidth: 130 },
-    { id: 'balance_amount', label: 'Balance', accessor: (a) => a.balance_amount || 0, cell: (a) => <span className="font-bold text-green-700">₹{fmtINR(a.balance_amount || 0)}</span>, sortAccessor: (a) => a.balance_amount || 0, align: 'right', minWidth: 130 },
+    { id: 'utilized_amount', label: 'Used', accessor: (a) => a.utilized_amount || 0, cell: (a) => <span className="text-amber-600">{AMOUNT_PREFIX} {fmtINR(a.utilized_amount || 0)}</span>, sortAccessor: (a) => a.utilized_amount || 0, align: 'right', minWidth: 130 },
+    { id: 'balance_amount', label: 'Balance', accessor: (a) => a.balance_amount || 0, cell: (a) => <span className="font-bold text-green-700">{AMOUNT_PREFIX} {fmtINR(a.balance_amount || 0)}</span>, sortAccessor: (a) => a.balance_amount || 0, align: 'right', minWidth: 130 },
     { id: 'status', label: 'Status', accessor: (a) => (a.balance_amount || 0) > 0.009 ? 'Available' : 'Fully Used', cell: (a) => (a.balance_amount || 0) > 0.009 ? <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">Available</span> : <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">Fully Used</span>, minWidth: 130 },
     {
       id: 'actions', label: 'Actions', accessor: () => '', sortable: false, hideable: false, minWidth: 120,
@@ -1276,11 +1304,11 @@ export default function AccountsPayablePage() {
     { id: 'invoice_date', label: 'Invoice Date', accessor: (g) => g.invoice_date ? new Date(g.invoice_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.invoice_date || '', minWidth: 130 },
     { id: 'grn_number', label: 'GRN Number', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <a href={`/dashboard/purchase/grn?viewId=${g.id}`} target="_blank" className="font-semibold text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.grn_number}</a>, minWidth: 150 },
     { id: 'receipt_date', label: 'Receipt Date', accessor: (g) => g.receipt_date ? new Date(g.receipt_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.receipt_date || '', minWidth: 130 },
-    { id: 'gross', label: 'Gross', accessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), cell: (g) => <span title={((g.freight_amount || 0) > 0 || (g.freight_gst_amount || 0) > 0) ? `Items: ${TENANT_BASE_CURRENCY.currency} ${fmtINR(g.gross_amount)} + Freight: ${TENANT_BASE_CURRENCY.currency} ${fmtINR((g.freight_amount || 0) + (g.freight_gst_amount || 0))}` : undefined}>₹{fmtINR(+(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0))}</span>, sortAccessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), align: 'right', minWidth: 130 },
-    { id: 'debit', label: 'Debit', accessor: (g) => g.debit_note_amount || 0, cell: (g) => <span className="text-red-600">-₹{fmtINR(g.debit_note_amount)}</span>, sortAccessor: (g) => g.debit_note_amount || 0, align: 'right', minWidth: 120 },
-    { id: 'net', label: 'Net Invoice', accessor: (g) => getPayableNet(g), cell: (g) => <span className="font-semibold">Rs. {fmtINR(getPayableNet(g))}</span>, sortAccessor: (g) => getPayableNet(g), align: 'right', minWidth: 140 },
-    { id: 'paid', label: 'Settled', accessor: (g) => getPayableSettled(g), cell: (g) => <span className="text-green-700">Rs. {fmtINR(getPayableSettled(g))}</span>, sortAccessor: (g) => getPayableSettled(g), align: 'right', minWidth: 120 },
-    { id: 'outstanding', label: 'Outstanding', accessor: (g) => getPayableOutstanding(g), cell: (g) => <span className="font-bold text-orange-600">Rs. {fmtINR(getPayableOutstanding(g))}</span>, sortAccessor: (g) => getPayableOutstanding(g), align: 'right', minWidth: 150 },
+    { id: 'gross', label: 'Gross', accessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), cell: (g) => <span title={((g.freight_amount || 0) > 0 || (g.freight_gst_amount || 0) > 0) ? `Items: ${TENANT_BASE_CURRENCY.currency} ${fmtINR(g.gross_amount)} + Freight: ${TENANT_BASE_CURRENCY.currency} ${fmtINR((g.freight_amount || 0) + (g.freight_gst_amount || 0))}` : undefined}>{AMOUNT_PREFIX} {fmtINR(+(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0))}</span>, sortAccessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), align: 'right', minWidth: 130 },
+    { id: 'debit', label: 'Debit', accessor: (g) => g.debit_note_amount || 0, cell: (g) => <span className="text-red-600">-{AMOUNT_PREFIX} {fmtINR(g.debit_note_amount)}</span>, sortAccessor: (g) => g.debit_note_amount || 0, align: 'right', minWidth: 120 },
+    { id: 'net', label: 'Net Invoice', accessor: (g) => getPayableNet(g), cell: (g) => <span className="font-semibold">{AMOUNT_PREFIX} {fmtINR(getPayableNet(g))}</span>, sortAccessor: (g) => getPayableNet(g), align: 'right', minWidth: 140 },
+    { id: 'paid', label: 'Settled', accessor: (g) => getPayableSettled(g), cell: (g) => <span className="text-green-700">{AMOUNT_PREFIX} {fmtINR(getPayableSettled(g))}</span>, sortAccessor: (g) => getPayableSettled(g), align: 'right', minWidth: 120 },
+    { id: 'outstanding', label: 'Outstanding', accessor: (g) => getPayableOutstanding(g), cell: (g) => <span className="font-bold text-orange-600">{AMOUNT_PREFIX} {fmtINR(getPayableOutstanding(g))}</span>, sortAccessor: (g) => getPayableOutstanding(g), align: 'right', minWidth: 150 },
     { id: 'status', label: 'Status', accessor: (g) => g.payment_status || 'UNPAID', cell: (g) => paymentStatusBadge(g.payment_status), sortAccessor: (g) => g.payment_status || '', minWidth: 120 },
     { id: 'actions', label: 'Actions', hideable: false, sortable: false, cell: (g) => {
       const outstanding = getPayableOutstanding(g);
@@ -1342,11 +1370,11 @@ export default function AccountsPayablePage() {
           </div>
           <div className="p-4 border-r border-[#E8DCC4]">
             <div className="text-xs text-green-700 font-semibold mb-1">Total Paid</div>
-            <div className="text-xl font-bold text-green-600">₹{fmtINR(totalPaid)}</div>
+            <div className="text-xl font-bold text-green-600">{AMOUNT_PREFIX} {fmtINR(totalPaid)}</div>
           </div>
           <div className="p-4">
             <div className="text-xs text-red-700 font-semibold mb-1">Outstanding</div>
-            <div className="text-xl font-bold text-red-600">₹{fmtINR(totalOutstanding)}</div>
+            <div className="text-xl font-bold text-red-600">{AMOUNT_PREFIX} {fmtINR(totalOutstanding)}</div>
           </div>
         </div>
 
@@ -1386,7 +1414,7 @@ export default function AccountsPayablePage() {
           <div className="bg-white rounded-md border border-[#E8DCC4] overflow-hidden">
             <div className="p-4 border-b border-[#E8DCC4] flex justify-between items-center">
               <div><h3 className="font-semibold text-[#3F2D20]">Paid Invoices</h3><p className="text-xs text-[#7A6756] mt-0.5">Fully settled GRN invoices</p></div>
-              <div className="text-sm font-bold text-green-700">Total Paid: ₹{fmtINR(paidInvoices.reduce((s: number, g: any) => s + g.settled, 0))}</div>
+              <div className="text-sm font-bold text-green-700">Total Paid: {AMOUNT_PREFIX} {fmtINR(paidInvoices.reduce((s: number, g: any) => s + g.settled, 0))}</div>
             </div>
             {loadingPaid ? <div className="p-8 text-center text-gray-400">Loading...</div> : paidInvoices.length === 0 ? (
               <div className="p-10 text-center text-gray-400"><div className="text-4xl mb-2">💳</div><p>No paid invoices yet</p></div>
@@ -1425,7 +1453,7 @@ export default function AccountsPayablePage() {
                   <p className="text-xs text-[#7A6756] mt-0.5">PO-specific and blanket advances available for invoice settlement</p>
                 </div>
                 <div className="text-sm font-bold text-[#6F4E37]">
-                  Total Available: ₹{fmtINR(advances.reduce((s: number, a: any) => s + (a.balance_amount || 0), 0))}
+                  Total Available: {AMOUNT_PREFIX} {fmtINR(advances.reduce((s: number, a: any) => s + (a.balance_amount || 0), 0))}
                 </div>
               </div>
               {loadingAdvances ? (
@@ -1454,7 +1482,7 @@ export default function AccountsPayablePage() {
             <div className="p-5 border-b border-[#E8DCC4] bg-[#FAF9F6] flex justify-between items-center">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">{selectedVendor.vendor_name}</h2>
-                <p className="text-xs text-gray-500">{selectedVendor.vendor_code} · Outstanding: <strong className="text-orange-600">₹{fmtINR(selectedVendor.total_outstanding)}</strong></p>
+                <p className="text-xs text-gray-500">{selectedVendor.vendor_code} · Outstanding: <strong className="text-orange-600">{AMOUNT_PREFIX} {fmtINR(selectedVendor.total_outstanding)}</strong></p>
               </div>
               <div className="flex items-center gap-3">
                 {selectedGRNIds.size > 0 && (
@@ -1546,7 +1574,7 @@ export default function AccountsPayablePage() {
                     ].filter(Boolean).map(({ label, val, cls }: any) => (
                       <div key={label} className="bg-gray-50 rounded-lg p-3 border">
                         <div className="text-xs text-gray-500 mb-0.5">{label}</div>
-                        <div className={`text-base ${cls}`}>₹{fmtINR(val)}</div>
+                        <div className={`text-base ${cls}`}>{AMOUNT_PREFIX} {fmtINR(val)}</div>
                       </div>
                     ))}
                   </div>
@@ -1570,17 +1598,17 @@ export default function AccountsPayablePage() {
                     <div className="flex flex-wrap gap-4 text-sm">
                         <div>
                           <span className="text-gray-500">Freight:</span>
-                          <span className="ml-1 font-semibold text-gray-800">₹{fmtINR(selectedGRNDetail.freight_amount || 0)}</span>
+                          <span className="ml-1 font-semibold text-gray-800">{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.freight_amount || 0)}</span>
                         </div>
                         {(selectedGRNDetail.freight_gst_amount || 0) > 0 && (
                           <div>
                             <span className="text-gray-500">Freight GST:</span>
-                            <span className="ml-1 font-semibold text-gray-800">₹{fmtINR(selectedGRNDetail.freight_gst_amount || 0)}</span>
+                            <span className="ml-1 font-semibold text-gray-800">{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.freight_gst_amount || 0)}</span>
                           </div>
                         )}
                         <div>
                           <span className="text-gray-500">Total Freight:</span>
-                          <span className="ml-1 font-bold text-blue-800">₹{fmtINR((selectedGRNDetail.freight_amount || 0) + (selectedGRNDetail.freight_gst_amount || 0))}</span>
+                          <span className="ml-1 font-bold text-blue-800">{AMOUNT_PREFIX} {fmtINR((selectedGRNDetail.freight_amount || 0) + (selectedGRNDetail.freight_gst_amount || 0))}</span>
                         </div>
                     </div>
                   </div>
@@ -1604,9 +1632,9 @@ export default function AccountsPayablePage() {
                               <tr key={adjustment.id} className="bg-white">
                                 <td className="whitespace-nowrap px-3 py-2 text-xs">{new Date(adjustment.adjusted_at).toLocaleString('en-IN')}</td>
                                 <td className="px-3 py-2 text-xs font-medium">{adjustment.adjusted_by_name}</td>
-                                <td className="whitespace-nowrap px-3 py-2 text-xs">₹{fmtINR(adjustment.old_freight_amount)} → ₹{fmtINR(adjustment.new_freight_amount)}</td>
-                                <td className="whitespace-nowrap px-3 py-2 text-xs">₹{fmtINR(adjustment.old_freight_gst_amount)} → ₹{fmtINR(adjustment.new_freight_gst_amount)}</td>
-                                <td className="whitespace-nowrap px-3 py-2 text-xs font-semibold">₹{fmtINR(adjustment.old_net_payable_amount)} → ₹{fmtINR(adjustment.new_net_payable_amount)}</td>
+                                <td className="whitespace-nowrap px-3 py-2 text-xs">{AMOUNT_PREFIX} {fmtINR(adjustment.old_freight_amount)} → {AMOUNT_PREFIX} {fmtINR(adjustment.new_freight_amount)}</td>
+                                <td className="whitespace-nowrap px-3 py-2 text-xs">{AMOUNT_PREFIX} {fmtINR(adjustment.old_freight_gst_amount)} → {AMOUNT_PREFIX} {fmtINR(adjustment.new_freight_gst_amount)}</td>
+                                <td className="whitespace-nowrap px-3 py-2 text-xs font-semibold">{AMOUNT_PREFIX} {fmtINR(adjustment.old_net_payable_amount)} → {AMOUNT_PREFIX} {fmtINR(adjustment.new_net_payable_amount)}</td>
                                 <td className="min-w-48 px-3 py-2 text-xs text-gray-600">{adjustment.reason}</td>
                               </tr>
                             ))}
@@ -1621,13 +1649,13 @@ export default function AccountsPayablePage() {
                       {selectedGRNDetail.computed_tds > 0 && (
                         <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 flex-1">
                           <div className="text-xs text-sky-600">TDS Deducted</div>
-                          <div className="font-semibold text-sky-800">₹{fmtINR(selectedGRNDetail.computed_tds)}</div>
+                          <div className="font-semibold text-sky-800">{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.computed_tds)}</div>
                         </div>
                       )}
                       {selectedGRNDetail.computed_short > 0 && (
                         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex-1">
                           <div className="text-xs text-amber-600">Short Payment</div>
-                          <div className="font-semibold text-amber-800">₹{fmtINR(selectedGRNDetail.computed_short)}</div>
+                          <div className="font-semibold text-amber-800">{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.computed_short)}</div>
                         </div>
                       )}
                     </div>
@@ -1721,7 +1749,7 @@ export default function AccountsPayablePage() {
                               <td className="px-3 py-2">{reversal.original_payment_method || '—'}</td>
                               <td className="px-3 py-2 text-gray-500 text-xs">{reversal.original_payment_reference || '—'}</td>
                               <td className="px-3 py-2 font-semibold text-red-700">
-                                -₹{fmtINR(
+                                -{AMOUNT_PREFIX} {fmtINR(
                                   +(reversal.original_amount || 0) +
                                   +(reversal.original_tds_amount || 0) +
                                   +(reversal.original_short_payment_amount || 0)
@@ -1795,7 +1823,7 @@ export default function AccountsPayablePage() {
                     onChange={(event) => setFreightAdjustmentForm((form) => ({ ...form, freight_amount: event.target.value }))}
                     className="w-full rounded-md border border-[#D9C9AD] px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]"
                   />
-                  <p className="mt-1 text-xs text-gray-500">Current: Rs. {fmtINR(selectedGRNDetail.freight_amount || 0)}</p>
+                  <p className="mt-1 text-xs text-gray-500">Current: {AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.freight_amount || 0)}</p>
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-semibold text-gray-700">Revised Freight GST (Rs.)</label>
@@ -1807,25 +1835,25 @@ export default function AccountsPayablePage() {
                     onChange={(event) => setFreightAdjustmentForm((form) => ({ ...form, freight_gst_amount: event.target.value }))}
                     className="w-full rounded-md border border-[#D9C9AD] px-3 py-2 text-sm focus:border-[#8B6F47] focus:outline-none focus:ring-2 focus:ring-[#E8DCC4]"
                   />
-                  <p className="mt-1 text-xs text-gray-500">Current: Rs. {fmtINR(selectedGRNDetail.freight_gst_amount || 0)}</p>
+                  <p className="mt-1 text-xs text-gray-500">Current: {AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.freight_gst_amount || 0)}</p>
                 </div>
               </div>
 
               <div className="grid gap-3 rounded-md border border-[#E8DCC4] bg-[#FAF9F6] p-4 sm:grid-cols-3">
                 <div>
                   <div className="text-xs text-gray-500">Current Net Payable</div>
-                  <div className="mt-1 font-semibold">Rs. {fmtINR(selectedGRNDetail.net_payable_amount)}</div>
+                  <div className="mt-1 font-semibold">{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.net_payable_amount)}</div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">Revised Freight Total</div>
                   <div className="mt-1 font-semibold text-blue-800">
-                    Rs. {fmtINR((Number.parseFloat(freightAdjustmentForm.freight_amount) || 0) + (Number.parseFloat(freightAdjustmentForm.freight_gst_amount) || 0))}
+                    {AMOUNT_PREFIX} {fmtINR((Number.parseFloat(freightAdjustmentForm.freight_amount) || 0) + (Number.parseFloat(freightAdjustmentForm.freight_gst_amount) || 0))}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs text-gray-500">Revised Net Payable</div>
                   <div className="mt-1 font-bold text-[#8B4A00]">
-                    Rs. {fmtINR(Math.round(
+                    {AMOUNT_PREFIX} {fmtINR(Math.round(
                       Number(selectedGRNDetail.gross_amount || 0)
                       + Number(selectedGRNDetail.tax_amount || 0)
                       + (Number.parseFloat(freightAdjustmentForm.freight_amount) || 0)
@@ -1882,7 +1910,7 @@ export default function AccountsPayablePage() {
               <p className="text-xs text-gray-600 mt-1">
                 {selectedGRNDetail.grn_number}
                 {selectedGRNDetail.invoice_number && <> · Invoice <strong>{selectedGRNDetail.invoice_number}</strong></>}
-                {' '}· Outstanding: <strong className="text-orange-600">₹{fmtINR(selectedGRNDetail.outstanding_amount)}</strong>
+                {' '}· Outstanding: <strong className="text-orange-600">{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.outstanding_amount)}</strong>
               </p>
             </div>
 
@@ -1894,7 +1922,7 @@ export default function AccountsPayablePage() {
               {canAdjustFreight && selectedGRNDetail.transaction_currency_code !== 'USD' && (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
                 <div>
-                  <div className="text-xs font-semibold text-blue-800">Invoice Freight: Rs. {fmtINR((selectedGRNDetail.freight_amount || 0) + (selectedGRNDetail.freight_gst_amount || 0))}</div>
+                  <div className="text-xs font-semibold text-blue-800">Invoice Freight: {AMOUNT_PREFIX} {fmtINR((selectedGRNDetail.freight_amount || 0) + (selectedGRNDetail.freight_gst_amount || 0))}</div>
                   <div className="mt-0.5 text-[11px] text-blue-700">If the supplier invoice freight differs, update it before posting payment.</div>
                 </div>
                 <button
@@ -1916,15 +1944,15 @@ export default function AccountsPayablePage() {
                   <div className="text-xs font-semibold text-green-800 mb-1">Advance Payment Applied</div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Net Payable:</span>
-                    <span className="font-medium">₹{fmtINR(selectedGRNDetail.net_payable_amount)}</span>
+                    <span className="font-medium">{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.net_payable_amount)}</span>
                   </div>
                   <div className="flex justify-between text-sm text-green-700">
                     <span>Less: Advance Paid:</span>
-                    <span className="font-medium">-₹{fmtINR(selectedGRNDetail.computed_advance || 0)}</span>
+                    <span className="font-medium">-{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.computed_advance || 0)}</span>
                   </div>
                   <div className="border-t border-green-200 mt-1 pt-1 flex justify-between text-sm font-bold">
                     <span className="text-gray-800">Outstanding:</span>
-                    <span className="text-orange-600">₹{fmtINR(selectedGRNDetail.outstanding_amount)}</span>
+                    <span className="text-orange-600">{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.outstanding_amount)}</span>
                   </div>
                 </div>
               )}
@@ -1935,11 +1963,11 @@ export default function AccountsPayablePage() {
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-md bg-white border border-green-100 px-3 py-2">
                       <div className="text-xs text-gray-500">PO advance</div>
-                      <div className="font-semibold text-green-800">Rs. {fmtINR(selectedGRNDetail.available_po_advance || 0)}</div>
+                      <div className="font-semibold text-green-800">{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.available_po_advance || 0)}</div>
                     </div>
                     <div className="rounded-md bg-white border border-green-100 px-3 py-2">
                       <div className="text-xs text-gray-500">Vendor advance</div>
-                      <div className="font-semibold text-green-800">Rs. {fmtINR(selectedGRNDetail.available_vendor_advance || 0)}</div>
+                      <div className="font-semibold text-green-800">{AMOUNT_PREFIX} {fmtINR(selectedGRNDetail.available_vendor_advance || 0)}</div>
                     </div>
                   </div>
                   <div>
@@ -1967,10 +1995,23 @@ export default function AccountsPayablePage() {
                       onChange={(e) => setPaymentForm(f => ({ ...f, payment_exchange_rate: e.target.value }))}
                       className="mt-1 w-full rounded border border-amber-300 px-3 py-2 text-sm" />
                   </label>
+                  <label className="col-span-2 text-xs font-semibold text-gray-700">Bank execution rate source
+                    <input type="text" value={paymentForm.payment_exchange_rate_source}
+                      onChange={(e) => setPaymentForm(f => ({ ...f, payment_exchange_rate_source: e.target.value }))}
+                      placeholder="Bank statement or transaction advice reference"
+                      className="mt-1 w-full rounded border border-amber-300 px-3 py-2 text-sm" />
+                  </label>
+                  <label className="col-span-2 text-xs font-semibold text-gray-700">Finance journal ID
+                    <input type="text" value={paymentForm.accounting_journal_id}
+                      onChange={(e) => setPaymentForm(f => ({ ...f, accounting_journal_id: e.target.value.trim() }))}
+                      placeholder="Prepare first, then enter the posted journal ID"
+                      className="mt-1 w-full rounded border border-amber-300 px-3 py-2 text-sm" />
+                  </label>
+                  {paymentForm.accounting_journal_id && <p className="col-span-2 text-xs text-amber-950">A different Super Admin must post this draft in Accounts → Journal entries. Return here with the same USD amount, rate and bank reference, then record the payment.</p>}
                   <div className="col-span-2 text-xs text-gray-700">
                     Booked at {Number(selectedGRNDetail.booking_exchange_rate || 0).toFixed(4)} EGP/USD.
                     {' '}EGP cash equivalent {fmtINR(Number(paymentForm.transaction_amount || 0) * Number(paymentForm.payment_exchange_rate || 0))};
-                    {' '}FX difference {fmtINR(Number(paymentForm.transaction_amount || 0) * (Number(paymentForm.payment_exchange_rate || 0) - Number(selectedGRNDetail.booking_exchange_rate || 0)))} EGP.
+                    {' '}FX difference {fmtINR(Number(paymentForm.transaction_amount || 0) * Number(paymentForm.payment_exchange_rate || 0) - bookedEgpForUsdPayment(selectedGRNDetail, Number(paymentForm.transaction_amount || 0)))} EGP.
                   </div>
                 </div> : <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Amount ({TENANT_BASE_CURRENCY.currency}) <span className="text-red-500">*</span></label>
@@ -2052,7 +2093,7 @@ export default function AccountsPayablePage() {
                   const rem = fromPaisa(remPaisa);
                   return total > 0 ? (
                     <div className="text-xs text-gray-700 bg-white rounded border border-gray-200 p-2">
-                      <span className="font-semibold">Settlement preview:</span> Cash Rs. {fmtINR(a)} + Advance Rs. {fmtINR(adv)} + TDS Rs. {fmtINR(t)} + Short Rs. {fmtINR(s)} = <strong>Rs. {fmtINR(total)}</strong> - Remaining: <strong className={remPaisa > 0 ? 'text-orange-600' : 'text-green-600'}>Rs. {fmtINR(rem)}</strong>
+                      <span className="font-semibold">Settlement preview:</span> Cash {AMOUNT_PREFIX} {fmtINR(a)} + Advance {AMOUNT_PREFIX} {fmtINR(adv)} + TDS {AMOUNT_PREFIX} {fmtINR(t)} + Short {AMOUNT_PREFIX} {fmtINR(s)} = <strong>{AMOUNT_PREFIX} {fmtINR(total)}</strong> - Remaining: <strong className={remPaisa > 0 ? 'text-orange-600' : 'text-green-600'}>{AMOUNT_PREFIX} {fmtINR(rem)}</strong>
                     </div>
                   ) : null;
                 })()}
@@ -2083,7 +2124,7 @@ export default function AccountsPayablePage() {
                 className="px-5 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
               <button onClick={recordPayment} disabled={submitting || !canRecordPayment}
                 className="px-5 py-2 bg-orange-600 text-white rounded-lg text-sm font-semibold hover:bg-orange-700 disabled:opacity-60">
-                {submitting ? 'Saving…' : '💳 Record Payment'}
+                {submitting ? 'Saving…' : selectedGRNDetail.transaction_currency_code === 'USD' && !paymentForm.accounting_journal_id ? 'Prepare USD payment journal' : '💳 Record Payment'}
               </button>
             </div>
           </div>
@@ -2259,7 +2300,7 @@ export default function AccountsPayablePage() {
               <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
                 <div className="font-semibold">Audit control</div>
                 <div className="mt-1">
-                  This will reverse Rs. {fmtINR(reversePaymentTarget.amount)} from the payment trail and recalculate outstanding/advance balances.
+                  This will reverse {selectedGRNDetail.transaction_currency_code === 'USD' ? 'EGP' : TENANT_BASE_CURRENCY.currency} {fmtINR(reversePaymentTarget.amount)} from the payment trail and recalculate outstanding/advance balances.
                 </div>
               </div>
 
@@ -2282,6 +2323,14 @@ export default function AccountsPayablePage() {
                   placeholder="Example: wrong supplier, duplicate payment, incorrect amount, bank transaction failed..."
                 />
               </div>
+              {reversePaymentTarget.transaction_currency_code === 'USD' && <label className="block text-xs font-semibold text-gray-700">
+                Reversal finance journal ID
+                <input type="text" value={reversePaymentJournalId}
+                  onChange={(event) => setReversePaymentJournalId(event.target.value.trim())}
+                  placeholder="Prepare first, then enter the posted journal ID"
+                  className="mt-1 w-full rounded border border-amber-300 px-3 py-2 text-sm" />
+                <span className="mt-1 block text-amber-900">A different Super Admin must post the reversal journal in Accounts → Journal entries before the payment trail is reversed.</span>
+              </label>}
             </div>
 
             <div className="p-4 border-t flex justify-end gap-3">
@@ -2301,7 +2350,7 @@ export default function AccountsPayablePage() {
                 disabled={reversePaymentSubmitting || !reversePaymentReason.trim()}
                 className="px-5 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
               >
-                {reversePaymentSubmitting ? 'Reversing...' : 'Reverse Payment'}
+                {reversePaymentSubmitting ? 'Saving...' : reversePaymentTarget.transaction_currency_code === 'USD' && !reversePaymentJournalId ? 'Prepare reversal journal' : 'Reverse Payment'}
               </button>
             </div>
           </div>
@@ -2332,14 +2381,14 @@ export default function AccountsPayablePage() {
                     return (
                       <div key={g.id} className="flex justify-between text-xs text-amber-900">
                         <span>{g.grn_number}{g.invoice_number ? ` · ${g.invoice_number}` : ''}</span>
-                        <span className="font-semibold">₹{fmtINR(out)}</span>
+                        <span className="font-semibold">{AMOUNT_PREFIX} {fmtINR(out)}</span>
                       </div>
                     );
                   })}
                 </div>
                 <div className="border-t border-amber-300 mt-2 pt-2 flex justify-between text-sm font-bold text-amber-900">
                   <span>Total Outstanding</span>
-                  <span>₹{fmtINR(vendorGRNs.filter(g => selectedGRNIds.has(g.id)).reduce((s, g) => {
+                  <span>{AMOUNT_PREFIX} {fmtINR(vendorGRNs.filter(g => selectedGRNIds.has(g.id)).reduce((s, g) => {
                     return s + getPayableOutstanding(g);
                   }, 0))}</span>
                 </div>

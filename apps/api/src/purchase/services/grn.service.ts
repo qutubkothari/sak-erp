@@ -4989,7 +4989,18 @@ export class GrnService {
     const bookingRate = Number(currentGRN?.booking_exchange_rate);
     const mixedCurrencyCharges = Math.abs(taxAmount) + Math.abs(freightAmount) + Math.abs(freightGstAmount) + Math.abs(debitNoteAmount) > 0.009;
     const transactionGross = foreignGrn && Number.isFinite(bookingRate) && bookingRate > 0
-      ? this.roundMoney(grossAmount / bookingRate)
+      ? this.roundMoney((grnItems ?? []).reduce((sum: number, item: any) => {
+          const poPricing = poPricingMap.get(String(item.po_item_id || '').trim());
+          if (poPricing?.transactionUnitPrice == null || poPricing.transactionUnitPrice <= 0) {
+            throw new BadRequestException('USD GRN line has no contractual USD PO unit price.');
+          }
+          const qcStatus = String(item.qc_status || '').trim().toUpperCase();
+          const accepted = this.toNumber(item.accepted_qty);
+          const rejected = this.toNumber(item.rejected_qty);
+          const payableQty = ['ACCEPTED', 'PARTIAL', 'REJECTED'].includes(qcStatus) || accepted > 0 || rejected > 0
+            ? accepted : this.toNumber(item.received_qty);
+          return sum + this.calculateDiscountedLineAmount(payableQty, poPricing.transactionUnitPrice, poPricing.discountPercent);
+        }, 0))
       : null;
 
     // Update GRN with calculated amounts
@@ -5743,7 +5754,7 @@ export class GrnService {
     const { data: currentGrn, error: fetchError } = await this.supabase
       .from("grns")
       .select(
-        "id, grn_number, status, qc_completed, invoice_approved, received_by, net_payable_amount, grn_items(id)",
+        "id, grn_number, status, qc_completed, invoice_approved, received_by, net_payable_amount, gross_amount, tax_amount, freight_amount, freight_gst_amount, debit_note_amount, transaction_currency_code, booking_exchange_rate, recognition_rate_source, recognition_rate_date, invoice_date, invoice_number, receipt_date, grn_items(id)",
       )
       .eq("id", grnId)
       .eq("tenant_id", tenantId)
@@ -5765,7 +5776,7 @@ export class GrnService {
     if (
       currentGrn.received_by &&
       currentGrn.received_by === userId &&
-      !canOverrideMakerChecker
+      (!canOverrideMakerChecker || (runtimeBaseCurrency() === 'EGP' && currentGrn.transaction_currency_code === 'USD'))
     ) {
       throw new ForbiddenException(
         "Receiver cannot sanction their own supplier invoice",
@@ -5809,6 +5820,18 @@ export class GrnService {
 
     if (error) throw new BadRequestException(error.message);
     const sanctioned = await this.findOne(tenantId, grnId);
+    if (runtimeBaseCurrency() === 'EGP' && currentGrn.transaction_currency_code === 'USD') {
+      if (!this.accountingService) throw new BadRequestException('ARWA finance service is unavailable.');
+      let financeJournal: any;
+      try {
+        financeJournal = await this.accountingService.prepareArwaUsdPurchaseInvoice(tenantId, userId, currentGrn);
+      } catch (failure) {
+        await this.supabase.from('grns').update({ invoice_approved: false, invoice_approved_by: null, invoice_approved_at: null })
+          .eq('tenant_id', tenantId).eq('id', grnId).eq('invoice_approved_by', userId);
+        throw failure;
+      }
+      return { ...(await this.findOne(tenantId, grnId)), finance_journal: financeJournal };
+    }
     // Supplier liability is prepared only after GRN QC and invoice sanction.
     // Finance may enable the PURCHASE_INVOICE posting rule when its chart is
     // ready; absence of a rule never blocks operational receiving.
@@ -5829,7 +5852,7 @@ export class GrnService {
   ) {
     const { data: currentGrn, error: fetchError } = await this.supabase
       .from("grns")
-      .select("id, grn_number, invoice_approved, paid_amount, payment_status")
+      .select("id, grn_number, invoice_approved, paid_amount, payment_status, transaction_currency_code")
       .eq("id", grnId)
       .eq("tenant_id", tenantId)
       .single();
@@ -5842,6 +5865,16 @@ export class GrnService {
       throw new BadRequestException(
         "Supplier invoice is already marked as payment due",
       );
+    }
+
+    if (runtimeBaseCurrency() === 'EGP' && currentGrn.transaction_currency_code === 'USD') {
+      const { data: invoiceJournal, error: journalError } = await this.supabase.from('accounting_journals')
+        .select('id,status').eq('tenant_id', tenantId).eq('source_type', 'PURCHASE_INVOICE')
+        .eq('source_id', grnId).maybeSingle();
+      if (journalError) throw new BadRequestException(journalError.message);
+      if (invoiceJournal?.status === 'POSTED') {
+        throw new BadRequestException('Reverse the posted supplier invoice journal before undoing sanction.');
+      }
     }
 
     const settlement = await this.getGrnSettlementSummary(tenantId, grnId);

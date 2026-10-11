@@ -299,6 +299,8 @@ export class DebitNoteController {
       close_invoice?: boolean;
       transaction_amount?: number;
       payment_exchange_rate?: number;
+      payment_exchange_rate_source?: string;
+      accounting_journal_id?: string;
     },
   ) {
     const tenantId = req.user.tenantId;
@@ -354,7 +356,7 @@ export class DebitNoteController {
     @Req() req: any,
     @Param('grnId') grnId: string,
     @Param('paymentId') paymentId: string,
-    @Body() body: { reason?: string; notes?: string },
+    @Body() body: { reason?: string; notes?: string; reversal_journal_id?: string },
   ) {
     const tenantId = req.user.tenantId;
     const userId = req.user.userId;

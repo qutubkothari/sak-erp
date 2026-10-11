@@ -26,8 +26,17 @@ ALTER TABLE public.grn_payment_entries
   ADD COLUMN IF NOT EXISTS transaction_currency_code varchar(3),
   ADD COLUMN IF NOT EXISTS transaction_amount numeric(20, 4),
   ADD COLUMN IF NOT EXISTS payment_exchange_rate numeric(20, 8),
+  ADD COLUMN IF NOT EXISTS payment_exchange_rate_source text,
+  ADD COLUMN IF NOT EXISTS accounting_journal_id uuid REFERENCES public.accounting_journals(id),
   ADD COLUMN IF NOT EXISTS cash_amount_functional numeric(20, 2),
   ADD COLUMN IF NOT EXISTS realized_fx_amount_functional numeric(20, 2);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_arwa_grn_payment_journal
+  ON public.grn_payment_entries (tenant_id, accounting_journal_id)
+  WHERE accounting_journal_id IS NOT NULL;
+
+ALTER TABLE public.grn_payment_reversals
+  ADD COLUMN IF NOT EXISTS reversal_journal_id uuid REFERENCES public.accounting_journals(id);
 
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -45,6 +54,17 @@ END $$;
 -- when a two-decimal landed-cost pool is spread over several units.
 ALTER TABLE public.stock_entries ALTER COLUMN unit_price TYPE numeric(20, 8);
 ALTER TABLE public.inventory_cost_events ALTER COLUMN unit_cost TYPE numeric(20, 8);
+ALTER TABLE public.grn_items ALTER COLUMN rate TYPE numeric(20, 8);
+
+-- A sanctioned USD invoice must have exactly one finance voucher, even when
+-- two administrators submit the same action concurrently.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_arwa_usd_purchase_invoice_journal
+  ON public.accounting_journals (tenant_id, source_id)
+  WHERE source_type = 'PURCHASE_INVOICE' AND transaction_currency_code = 'USD';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_arwa_usd_supplier_payment_reversal
+  ON public.accounting_journals (tenant_id, reversal_of_id)
+  WHERE source_type = 'REVERSAL' AND transaction_currency_code = 'USD' AND reversal_of_id IS NOT NULL;
 
 -- Super Admin approved this ARWA finance account on 11 October 2026.
 -- It remains inactive as a posting destination until the journal workflow is

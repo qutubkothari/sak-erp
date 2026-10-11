@@ -4,6 +4,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EmailService } from '../../email/email.service';
 import { allocatePoSettlement } from '../utils/po-settlement';
 import { derivePayableDueDate } from '../utils/payable-due-date';
+import { AccountingService } from '../../accounting/accounting.service';
 
 function formatShortDate(value?: string): string {
   if (!value) return '-';
@@ -34,7 +35,7 @@ export class DebitNoteService {
     };
   }
 
-  constructor(private emailService: EmailService) {
+  constructor(private emailService: EmailService, private readonly accountingService?: AccountingService) {
     this.supabase = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_KEY!,
@@ -402,7 +403,7 @@ export class DebitNoteService {
     if (!error) return;
 
     if (payload.transaction_currency_code === 'USD' &&
-      this.isSchemaMismatchError(error, ['transaction_currency_code', 'transaction_amount', 'payment_exchange_rate', 'cash_amount_functional', 'realized_fx_amount_functional'])) {
+      this.isSchemaMismatchError(error, ['transaction_currency_code', 'transaction_amount', 'payment_exchange_rate', 'payment_exchange_rate_source', 'accounting_journal_id', 'cash_amount_functional', 'realized_fx_amount_functional'])) {
       throw new BadRequestException('USD payment schema is not installed; no payment was recorded.');
     }
 
@@ -501,7 +502,7 @@ export class DebitNoteService {
   private async fetchGrnForPayment(tenantId: string, grnId: string) {
     const full = await this.supabase
       .from('grns')
-      .select('id, po_id, vendor_id, status, invoice_approved, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, tds_amount, short_payment_amount, payment_status, transaction_currency_code, transaction_net_payable_amount, booking_exchange_rate')
+      .select('id, grn_number, po_id, vendor_id, status, invoice_approved, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, tds_amount, short_payment_amount, payment_status, transaction_currency_code, transaction_net_payable_amount, booking_exchange_rate')
       .eq('id', grnId)
       .eq('tenant_id', tenantId)
       .maybeSingle();
@@ -915,6 +916,58 @@ export class DebitNoteService {
     return { message: 'Debit note sent successfully' };
   }
 
+  private async assertArwaUsdPaymentJournal(
+    tenantId: string, grnId: string, journalId: string, preparerId: string,
+    usdAmount: number, bookedEgp: number, paymentRate: number, paymentDate: string,
+  ) {
+    const { data: journal, error } = await this.supabase.from('accounting_journals')
+      .select('id,status,source_type,source_id,journal_date,transaction_currency_code,exchange_rate,created_by,posted_by,lines:accounting_journal_lines(account_id,debit,credit)')
+      .eq('tenant_id', tenantId).eq('id', journalId).maybeSingle();
+    if (error || !journal || journal.status !== 'POSTED' || journal.source_type !== 'SUPPLIER_PAYMENT' ||
+        journal.source_id !== grnId || journal.transaction_currency_code !== 'USD' ||
+        String(journal.journal_date).slice(0, 10) !== paymentDate ||
+        Math.abs(Number(journal.exchange_rate) - paymentRate) > 0.00000001 ||
+        !journal.created_by || journal.created_by !== preparerId ||
+        !journal.posted_by || journal.posted_by === preparerId) {
+      throw new BadRequestException('A matching USD payment journal posted by a different Super Admin is required.');
+    }
+    const lines: any[] = journal.lines || [];
+    if (lines.length < 2 || lines.length > 3) throw new BadRequestException('USD payment journal has unexpected lines.');
+    const { data: accounts, error: accountError } = await this.supabase.from('accounting_accounts')
+      .select('id,account_code').eq('tenant_id', tenantId).in('id', lines.map((line) => line.account_id));
+    if (accountError || (accounts || []).length !== new Set(lines.map((line) => line.account_id)).size) {
+      throw new BadRequestException('USD payment journal account mapping is incomplete.');
+    }
+    const codeById = new Map((accounts || []).map((account: any) => [account.id, account.account_code]));
+    const amounts = new Map<string, { debit: number; credit: number }>();
+    for (const line of lines) {
+      const code = String(codeById.get(line.account_id) || '');
+      const current = amounts.get(code) || { debit: 0, credit: 0 };
+      current.debit += Math.round(Number(line.debit || 0) * 100) / 100;
+      current.credit += Math.round(Number(line.credit || 0) * 100) / 100;
+      amounts.set(code, current);
+    }
+    const book = Math.round(bookedEgp * 100) / 100;
+    const cash = Math.round(usdAmount * paymentRate * 100) / 100;
+    const fx = Math.round((cash - book) * 100) / 100;
+    const expected = new Map<string, { debit: number; credit: number }>([
+      ['2112', { debit: book, credit: 0 }],
+      ['1114', { debit: 0, credit: cash }],
+      ...(fx > 0 ? [['5411', { debit: fx, credit: 0 }] as const] : []),
+      ...(fx < 0 ? [['4311', { debit: 0, credit: -fx }] as const] : []),
+    ]);
+    if (amounts.size !== expected.size || [...expected.entries()].some(([code, amount]) => {
+      const actual = amounts.get(code);
+      return !actual || Math.abs(actual.debit - amount.debit) > 0.001 || Math.abs(actual.credit - amount.credit) > 0.001;
+    })) {
+      throw new BadRequestException('USD payment journal does not balance the expected AP, bank and FX amounts.');
+    }
+    const { data: existing, error: existingError } = await this.supabase.from('grn_payment_entries')
+      .select('id').eq('tenant_id', tenantId).eq('accounting_journal_id', journalId).maybeSingle();
+    if (existingError) throw new BadRequestException(existingError.message);
+    if (existing) throw new BadRequestException('This USD payment journal was already recorded.');
+  }
+
   // Record a payment entry against a GRN (supports multiple partial payments)
   async recordPayment(
     tenantId: string,
@@ -932,6 +985,8 @@ export class DebitNoteService {
       close_invoice?: boolean;
       transaction_amount?: number;
       payment_exchange_rate?: number;
+      payment_exchange_rate_source?: string;
+      accounting_journal_id?: string;
       created_by?: string;
     },
   ) {
@@ -956,7 +1011,7 @@ export class DebitNoteService {
       : gross + tax - debit;
 
     const foreignPayable = runtimeBaseCurrency() === 'EGP' && grn.transaction_currency_code === 'USD';
-    let foreignSettlement: { transactionAmount: number; paymentRate: number; cashBase: number; fxDifference: number } | null = null;
+    let foreignSettlement: { transactionAmount: number; paymentRate: number; bookedBase: number; cashBase: number; fxDifference: number } | null = null;
     if (foreignPayable) {
       if (!Number.isFinite(Number(grn.transaction_net_payable_amount)) || Number(grn.transaction_net_payable_amount) <= 0) {
         throw new BadRequestException('USD supplier payable needs a reconciled USD amount without mixed-currency charges.');
@@ -970,9 +1025,12 @@ export class DebitNoteService {
       if (!Number.isFinite(transactionAmount) || transactionAmount <= 0 || !Number.isFinite(paymentRate) || paymentRate <= 0 || !Number.isFinite(bookingRate) || bookingRate <= 0) {
         throw new BadRequestException('USD payment amount and positive EGP/USD payment rate are required.');
       }
+      if (!String(paymentData.payment_exchange_rate_source || '').trim() || !String(paymentData.payment_reference || '').trim()) {
+        throw new BadRequestException('USD payment requires a bank rate source and bank payment reference.');
+      }
       const { data: priorEntries, error: priorEntriesError } = await this.supabase
         .from('grn_payment_entries')
-        .select('transaction_amount')
+        .select('transaction_amount,amount')
         .eq('tenant_id', tenantId)
         .eq('grn_id', grnId);
       if (priorEntriesError) throw new BadRequestException(priorEntriesError.message);
@@ -980,14 +1038,20 @@ export class DebitNoteService {
       if (transactionAmount > remainingUsd + 0.0001) {
         throw new BadRequestException(`USD payment exceeds the remaining USD ${remainingUsd.toFixed(2)} supplier balance.`);
       }
-      const bookedBase = Math.round(transactionAmount * bookingRate * 100) / 100;
+      const remainingBooked = Math.round((netPayable - (priorEntries || []).reduce((sum: number, entry: any) => sum + Number(entry.amount || 0), 0)) * 100) / 100;
+      const bookedBase = Math.abs(transactionAmount - remainingUsd) <= 0.0001
+        ? remainingBooked
+        : Math.round(transactionAmount / Number(grn.transaction_net_payable_amount) * netPayable * 100) / 100;
+      if (bookedBase <= 0 || bookedBase > remainingBooked + 0.009) {
+        throw new BadRequestException('USD payment cannot be allocated to the remaining EGP payable.');
+      }
       const cashBase = Math.round(transactionAmount * paymentRate * 100) / 100;
-      foreignSettlement = { transactionAmount, paymentRate, cashBase, fxDifference: Math.round((cashBase - bookedBase) * 100) / 100 };
+      foreignSettlement = { transactionAmount, paymentRate, bookedBase, cashBase, fxDifference: Math.round((cashBase - bookedBase) * 100) / 100 };
     }
     const tdsAmount = parseFloat(String(paymentData.tds_amount || 0));
     const shortAmount = parseFloat(String(paymentData.short_payment_amount || 0));
     const entryAmount = foreignSettlement
-      ? Math.round(foreignSettlement.transactionAmount * Number(grn.booking_exchange_rate) * 100) / 100
+      ? foreignSettlement.bookedBase
       : parseFloat(String(paymentData.amount || 0));
     const advanceAmount = parseFloat(String(paymentData.advance_adjustment_amount || 0));
     this.validateSettlementInput(entryAmount, tdsAmount, shortAmount, paymentData.short_payment_reason, advanceAmount);
@@ -1011,11 +1075,35 @@ export class DebitNoteService {
     }
 
     if (foreignPayable) {
-      // A cash subledger entry without the AP/bank/FX journal would present a
-      // settled invoice while the EGP books remain unbalanced. Keep USD
-      // settlement closed until category-aware invoice and payment postings,
-      // their reversal, and the two-person ARWA approval path are complete.
-      throw new BadRequestException('USD supplier payment is awaiting the balanced AP, bank, and FX journal workflow. No payment was recorded.');
+      if (!this.accountingService) throw new BadRequestException('ARWA finance service is unavailable.');
+      const { data: invoiceJournal, error: invoiceJournalError } = await this.supabase.from('accounting_journals')
+        .select('id,status').eq('tenant_id', tenantId).eq('source_type', 'PURCHASE_INVOICE')
+        .eq('source_id', grnId).maybeSingle();
+      if (invoiceJournalError || invoiceJournal?.status !== 'POSTED') {
+        throw new BadRequestException('Post the matched USD supplier invoice journal before preparing payment.');
+      }
+      const paymentDateForJournal = String(paymentData.payment_date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDateForJournal) || paymentDateForJournal > new Date().toISOString().slice(0, 10)) {
+        throw new BadRequestException('USD payment date must be a valid bank execution date no later than today.');
+      }
+      const paymentJournal = await this.accountingService.prepareArwaUsdSupplierPayment(tenantId, String(paymentData.created_by || ''), {
+        grnId, grnNumber: String(grn.grn_number || grnId), paymentDate: paymentDateForJournal,
+        paymentReference: String(paymentData.payment_reference || ''),
+        usdAmount: foreignSettlement!.transactionAmount,
+        bookRate: Number(grn.booking_exchange_rate), bookedEgp: foreignSettlement!.bookedBase,
+        paymentRate: foreignSettlement!.paymentRate,
+        paymentRateSource: String(paymentData.payment_exchange_rate_source).trim(),
+      });
+      if (!paymentData.accounting_journal_id) {
+        return { status: 'JOURNAL_DRAFT', journal_id: paymentJournal.id,
+          message: 'USD payment journal prepared. A different Super Admin must post it before the payable is marked paid.' };
+      }
+      if (String(paymentData.accounting_journal_id) !== String(paymentJournal.id)) {
+        throw new BadRequestException('The posted journal does not match this USD payment reference and amount.');
+      }
+      await this.assertArwaUsdPaymentJournal(tenantId, grnId, paymentJournal.id, String(paymentData.created_by || ''),
+        foreignSettlement!.transactionAmount, foreignSettlement!.bookedBase, foreignSettlement!.paymentRate,
+        paymentDateForJournal);
     }
 
     const paymentDate = paymentData.payment_date || new Date().toISOString().split('T')[0];
@@ -1028,6 +1116,8 @@ export class DebitNoteService {
           transaction_currency_code: 'USD',
           transaction_amount: foreignSettlement.transactionAmount,
           payment_exchange_rate: foreignSettlement.paymentRate,
+          payment_exchange_rate_source: String(paymentData.payment_exchange_rate_source).trim(),
+          accounting_journal_id: paymentData.accounting_journal_id,
           cash_amount_functional: foreignSettlement.cashBase,
           realized_fx_amount_functional: foreignSettlement.fxDifference,
         } : {}),
@@ -1434,7 +1524,7 @@ export class DebitNoteService {
     grnId: string,
     paymentEntryId: string,
     userId: string,
-    body: { reason?: string; notes?: string } = {},
+    body: { reason?: string; notes?: string; reversal_journal_id?: string } = {},
   ) {
     const reason = String(body?.reason || body?.notes || '').trim();
     if (!reason) {
@@ -1451,6 +1541,44 @@ export class DebitNoteService {
 
     if (fetchError) throw new Error(`Database error: ${fetchError.message}`);
     if (!existingEntry) throw new NotFoundException(`Payment entry not found (id: ${paymentEntryId})`);
+
+    let postedReversalJournalId: string | null = null;
+    if (runtimeBaseCurrency() === 'EGP' && existingEntry.transaction_currency_code === 'USD') {
+      if (!existingEntry.accounting_journal_id || !this.accountingService) {
+        throw new BadRequestException('USD payment journal is missing; Finance must reconcile this entry before reversal.');
+      }
+      const reversalJournal = await this.accountingService.prepareArwaUsdPaymentReversal(
+        tenantId, userId, existingEntry.accounting_journal_id, reason,
+      );
+      if (!body.reversal_journal_id) {
+        return { status: 'REVERSAL_JOURNAL_DRAFT', journal_id: reversalJournal.id,
+          message: 'A different Super Admin must post the reversal journal before the payment is reversed.' };
+      }
+      if (String(body.reversal_journal_id) !== String(reversalJournal.id)) {
+        throw new BadRequestException('Reversal journal does not match the original USD payment.');
+      }
+      const { data: postedReversal, error: journalError } = await this.supabase.from('accounting_journals')
+        .select('id,status,source_type,source_id,reversal_of_id,created_by,posted_by,lines:accounting_journal_lines(account_id,debit,credit)')
+        .eq('tenant_id', tenantId).eq('id', reversalJournal.id).maybeSingle();
+      if (journalError || !postedReversal || postedReversal.status !== 'POSTED' ||
+          postedReversal.source_type !== 'REVERSAL' ||
+          postedReversal.source_id !== existingEntry.accounting_journal_id ||
+          postedReversal.reversal_of_id !== existingEntry.accounting_journal_id ||
+          !postedReversal.created_by || postedReversal.created_by === postedReversal.posted_by) {
+        throw new BadRequestException('A matching USD reversal journal posted by a different Super Admin is required.');
+      }
+      const { data: originalJournal, error: originalJournalError } = await this.supabase.from('accounting_journals')
+        .select('lines:accounting_journal_lines(account_id,debit,credit)')
+        .eq('tenant_id', tenantId).eq('id', existingEntry.accounting_journal_id).maybeSingle();
+      if (originalJournalError || !originalJournal) throw new BadRequestException('Original USD payment journal could not be verified.');
+      const signature = (lines: any[], reverse = false) => (lines || [])
+        .map((line: any) => `${line.account_id}:${Number(reverse ? line.credit : line.debit).toFixed(2)}:${Number(reverse ? line.debit : line.credit).toFixed(2)}`)
+        .sort().join('|');
+      if (signature(postedReversal.lines || []) !== signature(originalJournal.lines || [], true)) {
+        throw new BadRequestException('Posted reversal journal does not exactly reverse the original payment lines.');
+      }
+      postedReversalJournalId = postedReversal.id;
+    }
 
     const { data: grnForAdvanceReversal } = await this.supabase
       .from('grns')
@@ -1488,6 +1616,7 @@ export class DebitNoteService {
         original_payment_method: existingEntry.payment_method || null,
         original_payment_reference: existingEntry.payment_reference || null,
         reversal_reason: reason,
+        ...(postedReversalJournalId ? { reversal_journal_id: postedReversalJournalId } : {}),
         reversed_by: userId || null,
         original_entry: {
           ...existingEntry,

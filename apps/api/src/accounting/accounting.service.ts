@@ -414,6 +414,147 @@ export class AccountingService {
     }
   }
 
+  /** Prepare an ARWA supplier invoice in EGP without posting the ledger. */
+  async prepareArwaUsdPurchaseInvoice(tenantId: string, userId: string, grn: any) {
+    if (runtimeBaseCurrency() !== 'EGP' || String(grn.transaction_currency_code).toUpperCase() !== 'USD') {
+      throw new BadRequestException('This finance path is only for ARWA USD supplier invoices.');
+    }
+    const { data: prior, error: priorError } = await this.supabase.from('accounting_journals')
+      .select('id,status,total_debit,created_by').eq('tenant_id', tenantId)
+      .eq('source_type', 'PURCHASE_INVOICE').eq('source_id', grn.id).maybeSingle();
+    if (priorError) throw new BadRequestException(priorError.message);
+    if (prior) {
+      if (Math.abs(Number(prior.total_debit) - Number(grn.net_payable_amount)) > 0.01) {
+        throw new BadRequestException('Existing invoice journal differs from the GRN amount; Finance must reconcile it.');
+      }
+      return prior;
+    }
+    const { data: rows, error: rowsError } = await this.supabase.from('grn_items')
+      .select('accepted_qty,rate,po_item:purchase_order_items(discount_percent),item:items(category)')
+      .eq('tenant_id', tenantId).eq('grn_id', grn.id);
+    if (rowsError || !rows?.length) throw new BadRequestException(rowsError?.message || 'No received inventory lines for invoice journal.');
+    const byCode = new Map<string, number>();
+    for (const row of rows as any[]) {
+      const category = String(row.item?.category || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+      const code = category === 'RAW_MATERIAL' ? '1131' : category === 'FINISHED_GOODS' ? '1135' : '';
+      if (!code) throw new BadRequestException(`No approved ARWA inventory ledger for category ${category || 'unknown'}.`);
+      const quantity = Number(row.accepted_qty);
+      const rate = Number(row.rate);
+      const discount = Number(row.po_item?.discount_percent || 0);
+      if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(rate) || rate <= 0 || !Number.isFinite(discount) || discount < 0 || discount >= 100) {
+        throw new BadRequestException('GRN quantity, EGP rate or PO discount is invalid for invoice posting.');
+      }
+      byCode.set(code, (byCode.get(code) || 0) + Math.round(quantity * rate * (1 - discount / 100) * 100) / 100);
+    }
+    const total = Math.round([...byCode.values()].reduce((sum, amount) => sum + amount, 0) * 100) / 100;
+    if (Math.abs(total - Number(grn.net_payable_amount)) > 0.01 ||
+        Math.abs(total - Number(grn.gross_amount)) > 0.01 ||
+        Number(grn.tax_amount || 0) !== 0 || Number(grn.freight_amount || 0) !== 0 ||
+        Number(grn.freight_gst_amount || 0) !== 0 || Number(grn.debit_note_amount || 0) !== 0) {
+      throw new BadRequestException('USD invoice journal needs a reconciled material-only supplier amount; allocate taxes, freight or deductions separately.');
+    }
+    const rate = Number(grn.booking_exchange_rate);
+    if (!Number.isFinite(rate) || rate <= 0 || !grn.recognition_rate_source || !grn.recognition_rate_date) {
+      throw new BadRequestException('GRN recognition rate and provenance are required for the USD invoice journal.');
+    }
+    const codes = [...byCode.keys(), '2112'];
+    const { data: accounts, error: accountError } = await this.supabase.from('accounting_accounts')
+      .select('id,account_code,is_active,is_group').eq('tenant_id', tenantId).in('account_code', codes);
+    if (accountError) throw new BadRequestException(accountError.message);
+    const accountByCode = new Map((accounts || []).map((account: any) => [account.account_code, account]));
+    for (const code of codes) {
+      const account: any = accountByCode.get(code);
+      if (!account || !account.is_active || account.is_group) throw new BadRequestException(`ARWA account ${code} must be active and postable.`);
+    }
+    return this.createJournal(tenantId, userId, {
+      journal_date: String(grn.invoice_date || grn.receipt_date).slice(0, 10),
+      source_type: 'PURCHASE_INVOICE', source_id: grn.id,
+      transaction_currency_code: 'USD', exchange_rate: rate,
+      narration: `USD supplier invoice ${grn.invoice_number || grn.grn_number}; recognition rate ${rate} EGP/USD (${grn.recognition_rate_source}, ${grn.recognition_rate_date})`,
+      lines: [
+        ...[...byCode.entries()].map(([code, amount]) => ({ account_id: (accountByCode.get(code) as any).id, debit: amount, credit: 0 })),
+        { account_id: (accountByCode.get('2112') as any).id, debit: 0, credit: total },
+      ],
+    });
+  }
+
+  async prepareArwaUsdSupplierPayment(tenantId: string, userId: string, body: {
+    grnId: string; grnNumber: string; paymentDate: string; paymentReference: string;
+    usdAmount: number; bookRate: number; bookedEgp: number; paymentRate: number; paymentRateSource: string;
+  }) {
+    if (runtimeBaseCurrency() !== 'EGP') throw new BadRequestException('ARWA USD payment journal is unavailable for this profile.');
+    const { grnId, grnNumber, paymentDate, paymentReference, usdAmount, bookRate, bookedEgp, paymentRate, paymentRateSource } = body;
+    if (!paymentReference.trim() || !paymentRateSource.trim() || !Number.isFinite(usdAmount) || usdAmount <= 0 ||
+        !Number.isFinite(bookRate) || bookRate <= 0 || !Number.isFinite(bookedEgp) || bookedEgp <= 0 ||
+        !Number.isFinite(paymentRate) || paymentRate <= 0) {
+      throw new BadRequestException('USD amount, book rate, bank rate and payment reference are required.');
+    }
+    const bookEgp = Math.round(bookedEgp * 100) / 100;
+    const cashEgp = Math.round(usdAmount * paymentRate * 100) / 100;
+    const difference = Math.round((cashEgp - bookEgp) * 100) / 100;
+    const journalNumber = `FXPAY-${grnId.slice(0, 8)}-${createHash('sha256').update(paymentReference.trim()).digest('hex').slice(0, 12)}`;
+    const { data: prior, error: priorError } = await this.supabase.from('accounting_journals')
+      .select('id,status,total_debit,exchange_rate,created_by,journal_date,source_type,source_id,transaction_currency_code').eq('tenant_id', tenantId)
+      .eq('journal_number', journalNumber).maybeSingle();
+    if (priorError) throw new BadRequestException(priorError.message);
+    if (prior) {
+      const expectedDebit = bookEgp + Math.max(0, difference);
+      if (prior.source_type !== 'SUPPLIER_PAYMENT' || prior.source_id !== grnId ||
+          prior.transaction_currency_code !== 'USD' || String(prior.journal_date).slice(0, 10) !== paymentDate ||
+          Math.abs(Number(prior.total_debit) - expectedDebit) > 0.01 ||
+          Math.abs(Number(prior.exchange_rate) - paymentRate) > 0.00000001) {
+        throw new BadRequestException('Payment reference already has a journal with different amounts or rate.');
+      }
+      return prior;
+    }
+    const codes = ['2112', '1114', ...(difference > 0 ? ['5411'] : difference < 0 ? ['4311'] : [])];
+    const { data: accounts, error: accountError } = await this.supabase.from('accounting_accounts')
+      .select('id,account_code,is_active,is_group').eq('tenant_id', tenantId).in('account_code', codes);
+    if (accountError) throw new BadRequestException(accountError.message);
+    const byCode = new Map((accounts || []).map((account: any) => [account.account_code, account]));
+    for (const code of codes) {
+      const account: any = byCode.get(code);
+      if (!account || !account.is_active || account.is_group) throw new BadRequestException(`ARWA account ${code} must be active and postable.`);
+    }
+    return this.createJournal(tenantId, userId, {
+      journal_number: journalNumber, journal_date: paymentDate,
+      source_type: 'SUPPLIER_PAYMENT', source_id: grnId,
+      transaction_currency_code: 'USD', exchange_rate: paymentRate,
+      narration: `USD ${usdAmount.toFixed(2)} to ${grnNumber}; bank reference ${paymentReference}; payable at ${bookRate} EGP/USD, cash at ${paymentRate} EGP/USD; rate source ${paymentRateSource}`,
+      lines: [
+        { account_id: (byCode.get('2112') as any).id, debit: bookEgp, credit: 0 },
+        ...(difference > 0 ? [{ account_id: (byCode.get('5411') as any).id, debit: difference, credit: 0 }] : []),
+        { account_id: (byCode.get('1114') as any).id, debit: 0, credit: cashEgp },
+        ...(difference < 0 ? [{ account_id: (byCode.get('4311') as any).id, debit: 0, credit: -difference }] : []),
+      ],
+    });
+  }
+
+  async prepareArwaUsdPaymentReversal(tenantId: string, userId: string, originalJournalId: string, reason: string) {
+    if (runtimeBaseCurrency() !== 'EGP' || !reason.trim()) throw new BadRequestException('ARWA USD reversal needs a reason.');
+    const original = await this.getJournal(tenantId, originalJournalId);
+    if (original.status !== 'POSTED' || original.source_type !== 'SUPPLIER_PAYMENT' || original.transaction_currency_code !== 'USD') {
+      throw new BadRequestException('Only a posted ARWA USD supplier payment journal can be reversed here.');
+    }
+    const { data: prior, error: priorError } = await this.supabase.from('accounting_journals')
+      .select('id,status,reversal_of_id').eq('tenant_id', tenantId)
+      .eq('reversal_of_id', originalJournalId).maybeSingle();
+    if (priorError) throw new BadRequestException(priorError.message);
+    if (prior) return prior;
+    return this.createJournal(tenantId, userId, {
+      journal_number: `REV-${original.journal_number}`.slice(0, 60),
+      journal_date: new Date().toISOString().slice(0, 10),
+      source_type: 'REVERSAL', source_id: originalJournalId,
+      reversal_of_id: originalJournalId, adjustment_type: 'REVERSAL',
+      transaction_currency_code: 'USD', exchange_rate: Number(original.exchange_rate),
+      narration: `Reverse ${original.journal_number}: ${reason.trim()}`,
+      lines: (original.lines || []).map((line: any) => ({
+        account_id: line.account_id, debit: Number(line.credit || 0), credit: Number(line.debit || 0),
+        description: `Reverse payment journal ${original.journal_number}`,
+      })),
+    });
+  }
+
   async listAccounts(tenantId: string, query: any = {}) {
     let q = this.supabase.from('accounting_accounts').select('*').eq('tenant_id', tenantId).order('account_code');
     if (query.type) q = q.eq('account_type', String(query.type).toUpperCase());
@@ -628,7 +769,7 @@ export class AccountingService {
     // temporary two-person floor; configured four-stage rules below win once
     // finance staff are assigned. Other tenants retain their existing rules.
     if (runtimeBaseCurrency() === 'EGP' &&
-        ['PURCHASE_INVOICE', 'SUPPLIER_PAYMENT'].includes(String(journal.source_type || '').toUpperCase()) &&
+        ['PURCHASE_INVOICE', 'SUPPLIER_PAYMENT', 'REVERSAL'].includes(String(journal.source_type || '').toUpperCase()) &&
         String(journal.transaction_currency_code || '').toUpperCase() === 'USD') {
       if (!this.isFinanceOverride(actor) || !journal.created_by || journal.created_by === userId) {
         throw new BadRequestException('ARWA USD journal requires a different Super Admin to post after preparation.');
