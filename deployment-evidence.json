@@ -1,0 +1,17 @@
+﻿{
+  "profile": "ARWA",
+  "version": "684814adb69436d3427af276148aa1be42d2346d",
+  "web_build_id": "HXIzCBGlssq8v780hP3Zg",
+  "deployed_at_utc": "2026-10-11T07:59:17Z",
+  "api_local_auth_status": 401,
+  "web_local_login_status": 200,
+  "public_login_status": 200,
+  "public_api_auth_status": 401,
+  "api_process": "online",
+  "web_process": "online",
+  "api_env_sha256_before_and_after": "7dafece7b88819dcb1eda738a9f72b3e0a94016b6cf04e689061273cc8aa0cfe",
+  "rollback_api": "apps/api/dist.pre-arwa-egp-20261011-684814a",
+  "rollback_web": "apps/web/.next.pre-arwa-egp-20261011-684814a",
+  "database_or_business_data_changed": false,
+  "deployment_note": "The deployment helper stopped after the artifact swap due to a shell variable typo. Both services were restarted manually; local and public health checks then passed. Prior build directories were retained."
+}
