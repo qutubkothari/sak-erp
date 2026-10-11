@@ -155,6 +155,9 @@ export default function DashboardLayout({
           ? {
               ...currentUser,
               featureAccessConfigured: true,
+              configuredFeatures: Array.isArray(featureAccess.configured_features)
+                ? featureAccess.configured_features
+                : [],
               enabledFeatures: Array.isArray(featureAccess.enabled_features)
                 ? featureAccess.enabled_features
                 : [],
