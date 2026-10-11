@@ -113,6 +113,9 @@ export default function FeatureAccessPage() {
   const changed = features.filter(
     (feature) => (feature.is_enabled !== false) !== saved[feature.feature_key],
   );
+  const changedScreenCount = new Set(
+    changed.map((feature) => feature.screen_route?.trim() || `feature:${feature.feature_key}`),
+  ).size;
   const filteredGroups = useMemo(() => {
     const query = search.trim().toLowerCase();
     return groups
@@ -190,7 +193,7 @@ export default function FeatureAccessPage() {
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D9C9AA] bg-[#FFFDF8] p-4">
         <div>
           <b className="text-[#344C67]">Safe access model</b>
-          <p className="text-sm text-slate-600">Client entitlement → role/screen permission → user access. Disabling a feature never deletes its data.</p>
+          <p className="text-sm text-slate-600">Client entitlement → role/screen permission → user access. Disabling a feature never deletes its data. Save shows affected screens and setting changes; some screens have separate feature and sidebar switches.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select value={moduleFilter} onChange={(event) => setModuleFilter(event.target.value)} className="rounded-lg border border-[#D9C9AA] bg-white px-3 py-2 text-sm text-[#344C67]" aria-label="Filter features by module">
@@ -205,7 +208,7 @@ export default function FeatureAccessPage() {
           <Link href="/dashboard/settings" className="rounded-lg border border-[#8B6F47] px-3 py-2 text-sm font-semibold text-[#6F4E37]">Users & Roles</Link>
           <button type="button" onClick={() => void load()} className="rounded-lg border px-3 py-2" title="Refresh"><RefreshCw className="h-4 w-4" /></button>
           <button type="button" disabled={!changed.length || saving} onClick={() => void save()} className="inline-flex items-center gap-2 rounded-lg bg-[#80613B] px-4 py-2 text-sm font-bold text-white disabled:opacity-40">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save {changed.length ? `(${changed.length})` : ""}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save {changed.length ? `(${changedScreenCount} ${changedScreenCount === 1 ? "screen" : "screens"} · ${changed.length} ${changed.length === 1 ? "setting" : "settings"})` : ""}
           </button>
         </div>
       </section>
