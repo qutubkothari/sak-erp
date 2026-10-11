@@ -56,6 +56,17 @@ ALTER TABLE public.stock_entries ALTER COLUMN unit_price TYPE numeric(20, 8);
 ALTER TABLE public.inventory_cost_events ALTER COLUMN unit_cost TYPE numeric(20, 8);
 ALTER TABLE public.grn_items ALTER COLUMN rate TYPE numeric(20, 8);
 
+-- The ARWA landed-cost RPC records a distinct valuation event. Keep every
+-- pre-existing event type valid while allowing that new event to be audited.
+ALTER TABLE public.inventory_cost_events
+  DROP CONSTRAINT IF EXISTS inventory_cost_events_event_type_check;
+ALTER TABLE public.inventory_cost_events
+  ADD CONSTRAINT inventory_cost_events_event_type_check
+  CHECK (event_type IN (
+    'PURCHASE_RECEIPT', 'SALES_ISSUE', 'SALES_RETURN', 'PRODUCTION_ISSUE',
+    'PRODUCTION_RECEIPT', 'ADJUSTMENT', 'LANDED_COST'
+  ));
+
 -- A sanctioned USD invoice must have exactly one finance voucher, even when
 -- two administrators submit the same action concurrently.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arwa_usd_purchase_invoice_journal
