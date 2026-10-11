@@ -622,6 +622,18 @@ export class AccountingService {
     if (error) throw new BadRequestException(error.message);
     if (!journal) throw new NotFoundException('Journal not found');
     if (!['DRAFT', 'REVIEWED', 'APPROVED'].includes(journal.status)) throw new BadRequestException('Only draft, reviewed or approved journals can be posted.');
+    // ARWA currently has two Super Admins and no configured finance stage
+    // assignments. For USD purchase journals, the existing operational
+    // bootstrap path must still have an independent human poster. This is a
+    // temporary two-person floor; configured four-stage rules below win once
+    // finance staff are assigned. Other tenants retain their existing rules.
+    if (runtimeBaseCurrency() === 'EGP' &&
+        ['PURCHASE_INVOICE', 'SUPPLIER_PAYMENT'].includes(String(journal.source_type || '').toUpperCase()) &&
+        String(journal.transaction_currency_code || '').toUpperCase() === 'USD') {
+      if (!this.isFinanceOverride(actor) || !journal.created_by || journal.created_by === userId) {
+        throw new BadRequestException('ARWA USD journal requires a different Super Admin to post after preparation.');
+      }
+    }
     const manualOrRecurring = !journal.source_type || /^(MANUAL|RECURRING)/i.test(String(journal.source_type));
     // Once roles are configured, maker-checker applies to both manual and
     // operational auto-drafted vouchers. Bootstrap tenants retain the
