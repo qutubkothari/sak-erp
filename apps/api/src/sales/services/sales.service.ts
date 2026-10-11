@@ -170,7 +170,7 @@ export class SalesService {
       state: toTitleCase(customerData.state),
       country: toTitleCase(
         customerData.country ||
-          (regional.marketProfile === "UAE" ? "United Arab Emirates" : "India"),
+          (regional.marketProfile === "EGYPT" ? "Egypt" : regional.marketProfile === "UAE" ? "United Arab Emirates" : "India"),
       ),
       pincode: customerData.pincode,
       credit_limit: customerData.credit_limit || 0,
