@@ -444,9 +444,23 @@ export const SCREEN_DEFINITIONS: ScreenDefinition[] = [
   },
   {
     key: "reports-cockpit",
-    label: "Reports Cockpit",
+    label: "MIS & Reports",
     module: "Reports",
     route: "/dashboard/reports",
+    match: "prefix",
+  },
+  {
+    key: "support-workspace",
+    label: "Support",
+    module: "Settings",
+    route: "/dashboard/support",
+    match: "prefix",
+  },
+  {
+    key: "warranty-portal",
+    label: "Warranty",
+    module: "Service Management",
+    route: "/warranty",
     match: "exact",
   },
   {
