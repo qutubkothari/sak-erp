@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import {
   Injectable,
   NotFoundException,
@@ -1247,7 +1248,7 @@ export class SalesService {
       company: { name: "SAK ERP" },
       customer: this.pdfCustomer(quotation.customers),
       items: this.buildPdfItems(lines),
-      currency: quotation.currency_code || "INR",
+      currency: quotation.currency_code || runtimeBaseCurrency(),
       tax_rate: taxable > 0 ? tax / taxable : 0,
       discount: Number(quotation.discount_amount || 0),
       notes: [
@@ -1387,7 +1388,7 @@ export class SalesService {
         delivery_terms: source.delivery_terms,
         notes: source.notes,
         terms_conditions: source.terms_conditions,
-        currency_code: source.currency_code || "INR",
+        currency_code: source.currency_code || runtimeBaseCurrency(),
         place_of_supply: source.place_of_supply,
         incoterm: source.incoterm,
         customer_reference: source.customer_reference,
@@ -1533,10 +1534,10 @@ export class SalesService {
     const rows = (quotation.quotation_items || [])
       .map(
         (item: any, index: number) => `
-      <tr><td>${index + 1}</td><td>${this.escapeSalesHtml(item.item_description || "Item")}</td><td>${Number(item.quantity || 0)}</td><td>Rs. ${this.formatSalesMoney(item.unit_price)}</td><td>Rs. ${this.formatSalesMoney(item.line_total)}</td></tr>`,
+      <tr><td>${index + 1}</td><td>${this.escapeSalesHtml(item.item_description || "Item")}</td><td>${Number(item.quantity || 0)}</td><td>${runtimeBaseCurrency()} ${this.formatSalesMoney(item.unit_price)}</td><td>${runtimeBaseCurrency()} ${this.formatSalesMoney(item.line_total)}</td></tr>`,
       )
       .join("");
-    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>${this.escapeSalesHtml(subject)}</h2><p>${this.escapeSalesHtml(intro)}</p><table style="border-collapse:collapse;width:100%"><thead><tr><th style="border:1px solid #ddd;padding:8px">No.</th><th style="border:1px solid #ddd;padding:8px">Item / Description</th><th style="border:1px solid #ddd;padding:8px">Qty</th><th style="border:1px solid #ddd;padding:8px">Rate</th><th style="border:1px solid #ddd;padding:8px">Amount</th></tr></thead><tbody>${rows}</tbody></table><p style="font-size:16px"><strong>Net quotation value: Rs. ${this.formatSalesMoney(quotation.net_amount)}</strong></p><p>Valid until: ${this.escapeSalesHtml(String(quotation.valid_until || "-").slice(0, 10))} &nbsp; | &nbsp; Revision: ${Number(quotation.revision_no || 0)}</p><p style="white-space:pre-wrap">${this.escapeSalesHtml(quotation.terms_conditions || "")}</p></div>`;
+    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>${this.escapeSalesHtml(subject)}</h2><p>${this.escapeSalesHtml(intro)}</p><table style="border-collapse:collapse;width:100%"><thead><tr><th style="border:1px solid #ddd;padding:8px">No.</th><th style="border:1px solid #ddd;padding:8px">Item / Description</th><th style="border:1px solid #ddd;padding:8px">Qty</th><th style="border:1px solid #ddd;padding:8px">Rate</th><th style="border:1px solid #ddd;padding:8px">Amount</th></tr></thead><tbody>${rows}</tbody></table><p style="font-size:16px"><strong>Net quotation value: ${runtimeBaseCurrency()} ${this.formatSalesMoney(quotation.net_amount)}</strong></p><p>Valid until: ${this.escapeSalesHtml(String(quotation.valid_until || "-").slice(0, 10))} &nbsp; | &nbsp; Revision: ${Number(quotation.revision_no || 0)}</p><p style="white-space:pre-wrap">${this.escapeSalesHtml(quotation.terms_conditions || "")}</p></div>`;
     const pdf = this.quotePdfService
       ? await this.renderQuotationPdf(req, quotationId)
       : null;
@@ -1807,7 +1808,7 @@ export class SalesService {
             "",
         ).trim() || null,
       customer_po_date: conversionData?.customer_po_date || null,
-      currency_code: quotation.currency_code || "INR",
+      currency_code: quotation.currency_code || runtimeBaseCurrency(),
       place_of_supply: quotation.place_of_supply || null,
       incoterm: quotation.incoterm || null,
       release_status: "PENDING",
@@ -1977,7 +1978,7 @@ export class SalesService {
       exposure.projected_exposure > exposure.credit_limit + 0.01
     ) {
       throw new BadRequestException(
-        `Credit limit exceeded for ${exposure.customer_name}. Available credit is Rs. ${exposure.available_credit.toFixed(2)}; this order requires Rs. ${Number(proposedAmount || 0).toFixed(2)}. Record an advance or obtain a credit-limit increase.`,
+        `Credit limit exceeded for ${exposure.customer_name}. Available credit is ${runtimeBaseCurrency()} ${exposure.available_credit.toFixed(2)}; this order requires ${runtimeBaseCurrency()} ${Number(proposedAmount || 0).toFixed(2)}. Record an advance or obtain a credit-limit increase.`,
       );
     }
     return exposure;
@@ -2218,7 +2219,7 @@ export class SalesService {
         current_outstanding: statement.current_outstanding,
         ageing: statement.ageing || [],
         transactions: statement.transactions || [],
-        currency: "INR",
+        currency: runtimeBaseCurrency(),
       },
     );
     const safeCustomerCode = String(
@@ -2266,7 +2267,7 @@ export class SalesService {
       body.message ||
         "Please find attached your customer account statement for the selected period.",
     ).trim();
-    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>Customer Account Statement</h2><p>Dear ${this.escapeSalesHtml(customer.contact_person || customer.customer_name || "Customer")},</p><p>${this.escapeSalesHtml(message)}</p><p><strong>Statement period:</strong> ${this.escapeSalesHtml(statement.period.from)} to ${this.escapeSalesHtml(statement.period.to)}<br><strong>Closing balance:</strong> Rs. ${this.formatSalesMoney(statement.closing_balance)}<br><strong>Current outstanding:</strong> Rs. ${this.formatSalesMoney(statement.current_outstanding)}</p><p>Please contact our Accounts Receivable team if any reconciliation is required.</p></div>`;
+    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>Customer Account Statement</h2><p>Dear ${this.escapeSalesHtml(customer.contact_person || customer.customer_name || "Customer")},</p><p>${this.escapeSalesHtml(message)}</p><p><strong>Statement period:</strong> ${this.escapeSalesHtml(statement.period.from)} to ${this.escapeSalesHtml(statement.period.to)}<br><strong>Closing balance:</strong> ${runtimeBaseCurrency()} ${this.formatSalesMoney(statement.closing_balance)}<br><strong>Current outstanding:</strong> ${runtimeBaseCurrency()} ${this.formatSalesMoney(statement.current_outstanding)}</p><p>Please contact our Accounts Receivable team if any reconciliation is required.</p></div>`;
     const { tenantId } = req.user as any;
     const result: any = await this.emailService.sendEmail({
       to: recipient,
@@ -2364,8 +2365,8 @@ export class SalesService {
       `Dunning Level: ${level}`,
       `Customer Code: ${customer.customer_code || "-"}`,
       `Payment Due By: ${String(notice.due_by || "-").slice(0, 10)}`,
-      `Overdue Amount: INR ${Number(notice.overdue_amount || 0).toFixed(2)}`,
-      `Total Outstanding: INR ${Number(notice.total_outstanding || 0).toFixed(2)}`,
+      `Overdue Amount: ${runtimeBaseCurrency()} ${Number(notice.overdue_amount || 0).toFixed(2)}`,
+      `Total Outstanding: ${runtimeBaseCurrency()} ${Number(notice.total_outstanding || 0).toFixed(2)}`,
       notice.status === "CANCELLED"
         ? `CANCELLED: ${notice.cancellation_reason || "No reason recorded"}`
         : "",
@@ -2397,7 +2398,7 @@ export class SalesService {
         email: customer.email || "",
       },
       items,
-      currency: "INR",
+      currency: runtimeBaseCurrency(),
       tax_rate: 0,
       notes,
     });
@@ -2965,7 +2966,7 @@ export class SalesService {
       company: { name: "SAK ERP" },
       customer: this.pdfCustomer(order.customers),
       items: this.buildPdfItems(lines),
-      currency: order.currency_code || "INR",
+      currency: order.currency_code || runtimeBaseCurrency(),
       tax_rate: taxable > 0 ? tax / taxable : 0,
       discount: Number(order.discount_amount || 0),
       notes: [
@@ -3120,7 +3121,7 @@ export class SalesService {
         .eq("tenant_id", tenantId)
         .eq("id", soId);
       throw new BadRequestException(
-        `Credit release failed. Exposure exceeds the customer limit by Rs. ${Math.abs(exposure.available_credit).toFixed(2)}`,
+        `Credit release failed. Exposure exceeds the customer limit by ${runtimeBaseCurrency()} ${Math.abs(exposure.available_credit).toFixed(2)}`,
       );
     }
     const availability: any = await this.getSalesOrderAvailability(req, soId);
@@ -3341,7 +3342,7 @@ export class SalesService {
         updatePayload[field] = String(soData[field] || "").trim() || null;
     }
     if ("currency_code" in soData)
-      updatePayload.currency_code = String(soData.currency_code || "INR")
+      updatePayload.currency_code = String(soData.currency_code || runtimeBaseCurrency())
         .trim()
         .toUpperCase();
     if (updatePayload.incoterm)
@@ -5814,7 +5815,7 @@ export class SalesService {
       company: { name: "SAK ERP" },
       customer: this.pdfCustomer(flow.customer),
       items,
-      currency: flow.sales_order?.currency_code || "INR",
+      currency: flow.sales_order?.currency_code || runtimeBaseCurrency(),
       show_totals: false,
       notes: [
         flow.sales_order?.so_number
@@ -6233,7 +6234,7 @@ export class SalesService {
       company: { name: "SAK ERP" },
       customer: this.pdfCustomer(invoice.customer),
       items: this.buildPdfItems(lines),
-      currency: invoice.currency_code || "INR",
+      currency: invoice.currency_code || runtimeBaseCurrency(),
       tax_rate: taxable > 0 ? tax / taxable : 0,
       discount: Number(invoice.discount_amount || 0),
       notes: [
@@ -6294,7 +6295,7 @@ export class SalesService {
           unit_price: Number(payment.amount || 0),
         },
       ],
-      currency: invoice.currency_code || "INR",
+      currency: invoice.currency_code || runtimeBaseCurrency(),
       notes: [
         invoice.sales_order?.so_number
           ? `Sales Order: ${invoice.sales_order.so_number}`
@@ -6344,7 +6345,7 @@ export class SalesService {
     const subject = String(
       body?.subject || `Payment receipt ${payment.receipt_number}`,
     ).trim();
-    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>${this.escapeSalesHtml(subject)}</h2><p>Dear ${this.escapeSalesHtml(invoice.customer?.contact_person || invoice.customer?.customer_name || "Customer")},</p><p>Thank you. We have recorded your payment against invoice <strong>${this.escapeSalesHtml(invoice.invoice_number)}</strong>.</p><p><strong>Receipt:</strong> ${this.escapeSalesHtml(payment.receipt_number)}<br><strong>Amount received:</strong> Rs. ${this.formatSalesMoney(payment.amount)}</p><p>The official customer receipt voucher is attached.</p></div>`;
+    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>${this.escapeSalesHtml(subject)}</h2><p>Dear ${this.escapeSalesHtml(invoice.customer?.contact_person || invoice.customer?.customer_name || "Customer")},</p><p>Thank you. We have recorded your payment against invoice <strong>${this.escapeSalesHtml(invoice.invoice_number)}</strong>.</p><p><strong>Receipt:</strong> ${this.escapeSalesHtml(payment.receipt_number)}<br><strong>Amount received:</strong> ${runtimeBaseCurrency()} ${this.formatSalesMoney(payment.amount)}</p><p>The official customer receipt voucher is attached.</p></div>`;
     await this.emailService.sendEmail({
       to: recipient,
       subject,
@@ -6387,10 +6388,10 @@ export class SalesService {
     const rows = (invoice.items || [])
       .map(
         (item: any, index: number) =>
-          `<tr><td>${index + 1}</td><td>${this.escapeSalesHtml(item.item_description || "Item")}</td><td>${Number(item.quantity || 0)}</td><td>Rs. ${this.formatSalesMoney(item.unit_price)}</td><td>Rs. ${this.formatSalesMoney(item.line_total)}</td></tr>`,
+          `<tr><td>${index + 1}</td><td>${this.escapeSalesHtml(item.item_description || "Item")}</td><td>${Number(item.quantity || 0)}</td><td>${runtimeBaseCurrency()} ${this.formatSalesMoney(item.unit_price)}</td><td>${runtimeBaseCurrency()} ${this.formatSalesMoney(item.line_total)}</td></tr>`,
       )
       .join("");
-    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>Sales Invoice ${this.escapeSalesHtml(invoice.invoice_number)}</h2><p>Dear ${this.escapeSalesHtml(invoice.customer?.contact_person || invoice.customer?.customer_name || "Customer")},</p><p>Please find the invoice summary below.</p><table style="border-collapse:collapse;width:100%"><thead><tr><th style="border:1px solid #ddd;padding:8px">No.</th><th style="border:1px solid #ddd;padding:8px">Item</th><th style="border:1px solid #ddd;padding:8px">Qty</th><th style="border:1px solid #ddd;padding:8px">Rate</th><th style="border:1px solid #ddd;padding:8px">Amount</th></tr></thead><tbody>${rows}</tbody></table><p><strong>Invoice value: Rs. ${this.formatSalesMoney(invoice.net_amount)}</strong><br>Outstanding: Rs. ${this.formatSalesMoney(invoice.balance_amount)}<br>Due date: ${this.escapeSalesHtml(String(invoice.due_date || "-").slice(0, 10))}</p></div>`;
+    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>Sales Invoice ${this.escapeSalesHtml(invoice.invoice_number)}</h2><p>Dear ${this.escapeSalesHtml(invoice.customer?.contact_person || invoice.customer?.customer_name || "Customer")},</p><p>Please find the invoice summary below.</p><table style="border-collapse:collapse;width:100%"><thead><tr><th style="border:1px solid #ddd;padding:8px">No.</th><th style="border:1px solid #ddd;padding:8px">Item</th><th style="border:1px solid #ddd;padding:8px">Qty</th><th style="border:1px solid #ddd;padding:8px">Rate</th><th style="border:1px solid #ddd;padding:8px">Amount</th></tr></thead><tbody>${rows}</tbody></table><p><strong>Invoice value: ${runtimeBaseCurrency()} ${this.formatSalesMoney(invoice.net_amount)}</strong><br>Outstanding: ${runtimeBaseCurrency()} ${this.formatSalesMoney(invoice.balance_amount)}<br>Due date: ${this.escapeSalesHtml(String(invoice.due_date || "-").slice(0, 10))}</p></div>`;
     const pdf = this.quotePdfService
       ? await this.renderSalesInvoicePdf(req, invoiceId)
       : null;
@@ -6705,7 +6706,7 @@ export class SalesService {
         billing_status: "POSTED",
         notes: body.notes || null,
         external_reference: body.external_reference || null,
-        currency_code: orderControl.currency_code || "INR",
+        currency_code: orderControl.currency_code || runtimeBaseCurrency(),
         place_of_supply:
           body.place_of_supply || orderControl.place_of_supply || null,
         tax_type: taxType,
@@ -7745,7 +7746,7 @@ export class SalesService {
   }
 
   private formatSalesMoney(value: any) {
-    return (Number(value) || 0).toLocaleString("en-IN", {
+    return (Number(value) || 0).toLocaleString(runtimeBaseCurrency() === "EGP" ? "en-EG" : "en-AE", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });

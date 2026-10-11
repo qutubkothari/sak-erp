@@ -1,4 +1,6 @@
 'use client';
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 import { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '../../../../../lib/api-client';

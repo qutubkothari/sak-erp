@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { ForbiddenException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -20,7 +21,7 @@ export class StakeholderMisService {
   }
 
   private money(value: number, currencyCode: string) {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: currencyCode, maximumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat(currencyCode === "EGP" ? "en-EG" : currencyCode === "INR" ? "en-IN" : "en-AE", { style: "currency", currency: currencyCode, maximumFractionDigits: 0 }).format(value);
   }
 
   private roleNames(input: { roles?: unknown; role?: unknown }): string[] {
@@ -62,8 +63,8 @@ export class StakeholderMisService {
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();
-    const code = String(data?.currency_code || "INR").trim().toUpperCase();
-    return /^[A-Z]{3}$/.test(code) ? code : "INR";
+    const code = String(data?.currency_code || runtimeBaseCurrency()).trim().toUpperCase();
+    return /^[A-Z]{3}$/.test(code) ? code : runtimeBaseCurrency();
   }
 
   private async legacySalesDocuments(

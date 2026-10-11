@@ -1,3 +1,5 @@
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/date';
@@ -7,10 +9,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Format a number as Indian Rupees */
-export function formatCurrency(amount: number | null | undefined, currency = 'INR'): string {
+/** Format a tenant-base amount in the configured currency and locale. */
+export function formatCurrency(amount: number | null | undefined, currency = TENANT_BASE_CURRENCY.currency): string {
   if (amount == null || isNaN(amount)) return '—';
-  return new Intl.NumberFormat('en-IN', {
+  return new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
     style: 'currency',
     currency,
     minimumFractionDigits: 2,

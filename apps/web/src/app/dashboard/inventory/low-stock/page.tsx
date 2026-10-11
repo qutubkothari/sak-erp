@@ -1,5 +1,8 @@
 'use client';
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
@@ -71,7 +74,7 @@ type CreatedPr = {
 };
 
 const numberFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 3 });
-const currencyFormat = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
+const currencyFormat = new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, { style: 'currency', currency: TENANT_BASE_CURRENCY.currency, maximumFractionDigits: 2 });
 
 function addDays(dateText: string, days: number) {
   const date = new Date(`${dateText}T00:00:00`);

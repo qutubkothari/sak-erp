@@ -1,5 +1,8 @@
 "use client";
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -44,7 +47,7 @@ export default function ProductionStandardizationStudio() {
     bom_id: "",
     output_quantity: 1,
     output_uom: "PCS",
-    currency_code: "INR",
+    currency_code: TENANT_BASE_CURRENCY.currency,
     operation_mappings: [],
     component_mappings: [],
     quality_parameters: {},

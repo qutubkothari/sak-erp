@@ -1,4 +1,6 @@
 "use client";
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { captureBrainSelection } from "@/lib/brain-context";
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -643,7 +645,7 @@ async function createStampedAttendancePhoto(
     const smallFont = Math.max(18, Math.round(canvas.width * 0.018));
     const padding = Math.max(18, Math.round(canvas.width * 0.018));
     const maxTextWidth = canvas.width - padding * 2;
-    const dateText = stamp.timestamp.toLocaleString("en-IN", {
+    const dateText = stamp.timestamp.toLocaleString(TENANT_BASE_CURRENCY.locale, {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -4173,16 +4175,16 @@ function HrPageContent() {
         if (!parsed) return raw;
         const { year, month } = parsed;
         const date = new Date(year, month - 1, 1);
-        const monthName = date.toLocaleString("en-IN", { month: "long" });
+        const monthName = date.toLocaleString(TENANT_BASE_CURRENCY.locale, { month: "long" });
         return `${monthName} ${year}`;
       };
 
       const fmtINR = (n: number) =>
-        Number(n || 0).toLocaleString("en-IN", {
+        Number(n || 0).toLocaleString(TENANT_BASE_CURRENCY.locale, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         });
-      const fmtINRAmount = (n: number) => `Rs. ${fmtINR(n)}`;
+      const fmtINRAmount = (n: number) => `${TENANT_BASE_CURRENCY.currency} ${fmtINR(n)}`;
 
       let branding = buildDocumentBranding(null);
       const generatedOn = new Date().toLocaleDateString("en-IN", {
@@ -4334,7 +4336,7 @@ function HrPageContent() {
   <div class="greeting"><strong>Dear Sir,</strong></div>
 
   <div class="message">
-    We are pleased to inform you that Rs. <strong>${fmtINR(opts.amountPaid)}</strong> towards your salary for the month of <strong>${escapeHtml(opts.monthLabel)}</strong> has been credited to your bank account. The detailed breakup of the payment is as under:
+    We are pleased to inform you that ${TENANT_BASE_CURRENCY.currency} <strong>${fmtINR(opts.amountPaid)}</strong> towards your salary for the month of <strong>${escapeHtml(opts.monthLabel)}</strong> has been credited to your bank account. The detailed breakup of the payment is as under:
   </div>
 
   <div class="content-grid">
@@ -4344,7 +4346,7 @@ function HrPageContent() {
           <tr>
             <th class="center" style="width:50px;">Sl. No.</th>
             <th>Salary Break Up</th>
-            <th class="right" style="width:150px;">Amount (INR)</th>
+            <th class="right" style="width:150px;">Amount (${TENANT_BASE_CURRENCY.currency})</th>
             <th class="center" style="width:120px;">Days In Month</th>
           </tr>
         </thead>
@@ -4544,12 +4546,12 @@ function HrPageContent() {
             <style>
               @page { margin: 0.5cm; }
               body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #000; font-size: 11pt; }
-              
+
               /* Letterhead */
-              .letterhead { 
-                display: flex; 
-                justify-content: space-between; 
-                align-items: flex-start; 
+              .letterhead {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
                 border-bottom: 2px solid #1e3a8a;
                 padding-bottom: 15px;
                 margin-bottom: 20px;
@@ -4590,33 +4592,33 @@ function HrPageContent() {
               }
               .generated-on-label { font-weight: bold; text-transform: uppercase; letter-spacing: 0.06em; }
               .generated-on-value { font-size: 11pt; color: #111827; }
-              
+
               /* Letter Content */
               .date { margin: 15px 0 20px 0; font-size: 10pt; }
               .recipient { margin: 15px 0; font-size: 10pt; line-height: 1.5; }
               .greeting { margin: 20px 0 15px 0; font-size: 10pt; }
               .message { margin: 15px 0 25px 0; font-size: 10pt; line-height: 1.6; }
-              
+
               /* Table Layout */
-              .content-grid { 
-                display: grid; 
-                grid-template-columns: 1fr 230px; 
-                gap: 15px; 
+              .content-grid {
+                display: grid;
+                grid-template-columns: 1fr 230px;
+                gap: 15px;
                 margin: 20px 0;
               }
-              
+
               /* Main Table */
               table { width: 100%; border-collapse: collapse; }
               th, td { border: 1px solid #000; padding: 5px 8px; text-align: left; font-size: 10pt; }
               th { background: #f5f5f5; font-weight: bold; }
               .center { text-align: center; }
               .right { text-align: right; }
-              
+
               /* Highlighting */
               .highlight-yellow { background: #fff8dc !important; font-weight: bold; }
               .highlight-green { background: #d4edda !important; font-weight: bold; }
               .highlight-red { color: #dc3545; }
-              
+
               /* Side Table */
               .side-table th { background: #f8f9fa; text-align: left; width: 60%; }
               .side-table td { text-align: right; width: 40%; }
@@ -4626,13 +4628,13 @@ function HrPageContent() {
                 thead { display: table-header-group; }
                 * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
               }
-              
+
               /* Footer */
               .footer { margin-top: 40px; font-size: 10pt; line-height: 1.8; }
               .footer-address { margin-top: 30px; font-size: 8pt; color: #666; line-height: 1.5; }
               .footer-works { font-weight: bold; margin-bottom: 5px; }
               .payroll-check { margin-top: 8px; color: #9b1c1c; font-size: 8pt; line-height: 1.35; }
-              
+
               @media print {
                 body { padding: 10px; }
                 .no-print { display: none; }
@@ -4657,7 +4659,7 @@ function HrPageContent() {
 
             <!-- Message -->
             <div class="message">
-              We are pleased to inform you that Rs. <strong>${fmtINR(record.amount_paid)}</strong> towards your salary for the month of <strong>${escapeHtml(monthLabel)}</strong> has been credited to your bank account. The detailed breakup of the payment is as under:
+              We are pleased to inform you that ${TENANT_BASE_CURRENCY.currency} <strong>${fmtINR(record.amount_paid)}</strong> towards your salary for the month of <strong>${escapeHtml(monthLabel)}</strong> has been credited to your bank account. The detailed breakup of the payment is as under:
             </div>
 
             <!-- Main Content Grid -->
@@ -4669,7 +4671,7 @@ function HrPageContent() {
                     <tr>
                       <th class="center" style="width:50px;">Sl. No.</th>
                       <th>Salary Break Up</th>
-                      <th class="right" style="width:150px;">Amount (INR)</th>
+                      <th class="right" style="width:150px;">Amount (${TENANT_BASE_CURRENCY.currency})</th>
                       <th class="center" style="width:120px;">Days In Month</th>
                     </tr>
                   </thead>
@@ -5521,7 +5523,7 @@ function HrPageContent() {
   };
   const formatPerDiemAmount = (amount: number) =>
     amount > 0
-      ? `₹${amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
+      ? `${TENANT_BASE_CURRENCY.currency} ${amount.toLocaleString(TENANT_BASE_CURRENCY.locale, { maximumFractionDigits: 2 })}`
       : "-";
   const isPendingLeaveStatus = (status: unknown) => {
     const s = normalizeStatus(status);
@@ -6395,7 +6397,7 @@ function HrPageContent() {
   ]);
 
   const formatCurrency = (value: number) =>
-    `Rs. ${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+    `${TENANT_BASE_CURRENCY.currency} ${Number(value || 0).toLocaleString(TENANT_BASE_CURRENCY.locale, { maximumFractionDigits: 0 })}`;
 
   const filteredSalaryGroups = useMemo(
     () => filterSalaryComponentGroups(groupSalaryComponents(salaryComponents), salaryComponentSearch),
@@ -11222,7 +11224,7 @@ function HrPageContent() {
 
               <div className="mt-4">
                 <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
-                  Per Diem Amount (₹)
+                  Per Diem Amount ({TENANT_BASE_CURRENCY.currency})
                 </label>
                 <input
                   type="number"
@@ -12722,7 +12724,7 @@ function HrPageContent() {
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-[#8B6F47]">
-                    Per Diem Amount (₹)
+                    Per Diem Amount ({TENANT_BASE_CURRENCY.currency})
                   </label>
                   <input
                     type="number"

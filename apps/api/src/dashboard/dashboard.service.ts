@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -40,9 +41,9 @@ type RoiOpportunity = {
   route: string;
 };
 
-const INR = new Intl.NumberFormat("en-IN", {
+const TENANT_CURRENCY = new Intl.NumberFormat(runtimeBaseCurrency() === "EGP" ? "en-EG" : "en-AE", {
   style: "currency",
-  currency: "INR",
+  currency: runtimeBaseCurrency(),
   maximumFractionDigits: 0,
 });
 
@@ -92,7 +93,7 @@ export class DashboardService {
   }
 
   private formatMoney(value: number): string {
-    return INR.format(Math.round(Number.isFinite(value) ? value : 0));
+    return TENANT_CURRENCY.format(Math.round(Number.isFinite(value) ? value : 0));
   }
 
   private n(value: unknown): number {

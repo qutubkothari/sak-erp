@@ -9,12 +9,18 @@ export function getTenantProfile(
 
 export function getProfileLocaleSettings(
   profile = getTenantProfile(),
-): { currency: string; locale: string } {
+): { currency: string; locale: string; marketProfile: string; country: string; timezone: string } {
   if (profile) {
     const config = profiles[profile];
-    return { currency: config.currency, locale: config.locale };
+    return {
+      currency: config.currency,
+      locale: config.locale,
+      marketProfile: config.marketProfile,
+      country: config.country,
+      timezone: config.timezone,
+    };
   }
-  return { currency: 'AED', locale: 'en-GB' };
+  return { currency: 'AED', locale: 'en-GB', marketProfile: 'UAE', country: 'AE', timezone: 'Asia/Dubai' };
 }
 
 /** Currency used by tenant-base totals. Explicit transaction currencies stay on their records. */

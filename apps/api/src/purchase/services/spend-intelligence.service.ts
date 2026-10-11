@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
@@ -31,7 +32,7 @@ export class SpendIntelligenceService {
     for (const rows of priceGroups.values()) { const priced = rows.filter((x: any) => x.rate > 0 && x.qty > 0); const vendors = new Set(priced.map((x: any) => x.vendor_id)); if (priced.length < 2 || vendors.size < 2) continue; const best = Math.min(...priced.map((x: any) => x.rate)); const latest = priced[0]; const potential = priced.reduce((s: number, x: any) => s + Math.max(0, x.rate - best) * x.qty, 0); if (potential <= 0) continue; priceVariancePotential += potential; priceOpportunities.push({ item_code: latest.item_code, item_name: latest.item_name, best_rate: best, highest_rate: Math.max(...priced.map((x: any) => x.rate)), suppliers: vendors.size, potential_savings: potential }); }
     priceOpportunities.sort((a, b) => b.potential_savings - a.potential_savings);
     const pipeline = opportunities || []; const openExpected = pipeline.filter((x: any) => !['REALIZED', 'DISMISSED'].includes(x.status)).reduce((s: number, x: any) => s + this.n(x.expected_savings), 0); const realized = pipeline.filter((x: any) => x.status === 'REALIZED').reduce((s: number, x: any) => s + this.n(x.realized_savings), 0);
-    const currencyCode = String(tenant?.default_currency || (String(tenant?.market_profile || '').toUpperCase() === 'EGYPT' ? 'EGP' : String(tenant?.market_profile || '').toUpperCase() === 'UAE' ? 'AED' : 'INR')).toUpperCase();
+    const currencyCode = String(tenant?.default_currency || (String(tenant?.market_profile || '').toUpperCase() === 'EGYPT' ? 'EGP' : String(tenant?.market_profile || '').toUpperCase() === 'UAE' ? 'AED' : runtimeBaseCurrency())).toUpperCase();
     return { currency_code: currencyCode, kpis: { total_spend: totalSpend, supplier_count: suppliers.length, top_supplier_share_pct: suppliers[0]?.spend_share_pct || 0, price_variance_potential: priceVariancePotential, pipeline_expected: openExpected, realized_savings: realized }, suppliers, price_opportunities: priceOpportunities.slice(0, 25), opportunities: pipeline };
   }
   async createOpportunity(tenantId: string, userId: string, b: any) {

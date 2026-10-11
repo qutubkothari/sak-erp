@@ -1,5 +1,8 @@
 "use client";
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import {
   FormEvent,
   Suspense,
@@ -215,7 +218,7 @@ const EMPTY_LEAD = {
   product_interest: "",
   requirement: "",
   expected_value: "",
-  currency_code: "INR",
+  currency_code: TENANT_BASE_CURRENCY.currency,
   priority: "MEDIUM",
   next_follow_up_at: "",
   expected_close_date: "",
@@ -248,16 +251,16 @@ const DEFAULT_INTAKE_SETTINGS: IntakeSettings = {
 const field =
   "w-full rounded-xl border border-[#D9C9AC] bg-white px-3 py-2.5 text-sm text-[#2F241B] outline-none transition focus:border-[#8B6F47] focus:ring-2 focus:ring-[#EADCC4]";
 
-function money(value: any, currency = "INR") {
+function money(value: any, currency = TENANT_BASE_CURRENCY.currency) {
   const amount = Number(value || 0);
   try {
-    return new Intl.NumberFormat("en-IN", {
+    return new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
       style: "currency",
-      currency: currency || "INR",
+      currency: currency || TENANT_BASE_CURRENCY.currency,
       maximumFractionDigits: 0,
     }).format(amount);
   } catch {
-    return `${currency || "INR"} ${amount.toLocaleString("en-IN")}`;
+    return `${currency || TENANT_BASE_CURRENCY.currency} ${amount.toLocaleString(TENANT_BASE_CURRENCY.locale)}`;
   }
 }
 

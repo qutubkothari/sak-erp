@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
@@ -277,7 +278,7 @@ export class CrmCommercialService {
         stage_id: stage.id,
         status,
         amount: Math.max(0, this.number(body.amount)),
-        currency_code: this.text(body.currency_code).toUpperCase() || "INR",
+        currency_code: this.text(body.currency_code).toUpperCase() || runtimeBaseCurrency(),
         probability: stage.probability,
         expected_close_date: body.expected_close_date || null,
         next_step: this.text(body.next_step) || null,

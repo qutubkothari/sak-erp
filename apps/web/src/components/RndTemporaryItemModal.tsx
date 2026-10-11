@@ -1,5 +1,7 @@
 'use client';
 
+import { getProfileLocaleSettings } from '@/lib/profile-branding';
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useEffect, useState } from 'react';
 import { FlaskConical, X } from 'lucide-react';
 import { apiClient } from '../../lib/api-client';
@@ -206,7 +208,7 @@ export default function RndTemporaryItemModal({ open, vendors, onClose, onCreate
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#5E4635]">Preferred Price</label>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-sm text-[#7A6555]">₹</span>
+              <span className="absolute left-3 top-2.5 text-sm text-[#7A6555]">{TENANT_BASE_CURRENCY.currency}</span>
               <input
                 type="number"
                 min="0"

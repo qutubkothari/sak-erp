@@ -38,7 +38,7 @@ type Workspace = {
 
 const field = "w-full rounded-xl border border-[#D9C9AC] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#8B6F47] focus:ring-2 focus:ring-[#EADCC4]";
 const blank: Workspace = { accounts: [], contacts: [], opportunities: [], stages: [], kpis: { accounts: 0, contacts: 0, open_opportunities: 0, open_pipeline: 0, weighted_pipeline: 0 } };
-function money(value: any, currency = "INR") {
+function money(value: any, currency = TENANT_BASE_CURRENCY.currency) {
   try { return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(Number(value || 0)); }
   catch { return `${currency} ${Number(value || 0).toLocaleString("en-IN")}`; }
 }

@@ -1,11 +1,14 @@
 'use client';
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 
 type Ncr = { id: string; ncr_number?: string; status?: string; nonconformance_type?: string; item_name?: string; quantity_affected?: number; cost_impact?: number; ncr_date?: string };
-const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value || 0));
+const money = (value: number) => new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, { style: 'currency', currency: TENANT_BASE_CURRENCY.currency, maximumFractionDigits: 0 }).format(Number(value || 0));
 const openStatuses = new Set(['OPEN', 'UNDER_REVIEW', 'ACTION_PLANNED', 'IN_PROGRESS', 'RESOLVED']);
 
 export default function CostOfQualityPage() {

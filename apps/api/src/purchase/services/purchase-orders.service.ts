@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 
 const PAYMENT_TERMS_LABELS: Record<string, string> = {
@@ -439,7 +440,7 @@ export class PurchaseOrdersService {
     const isImportPo =
       source?.isImportPurchase === true ||
       termsMetadata.isImportPurchase === true ||
-      String(source?.supplierCurrency || termsMetadata.supplierCurrency || 'INR').trim().toUpperCase() !== 'INR';
+      String(source?.supplierCurrency || termsMetadata.supplierCurrency || runtimeBaseCurrency()).trim().toUpperCase() !== runtimeBaseCurrency();
 
     const lines = Array.isArray(items) ? items : [];
     let itemsSubtotal = 0;
@@ -758,7 +759,7 @@ export class PurchaseOrdersService {
       additionalExpenses: safeNumber(po.other_charges ?? 0),
       customsDuty: safeNumber(po.customs_duty ?? 0),
       remarks: (po.notes || po.remarks || '').replace(/\nDepartment:.*?(\n|$)/g, '').replace(/\nPriority:.*?(\n|$)/g, '').replace(/^Generated from PR:.*?\n?/m, '').trim() || undefined,
-      currency: 'INR',
+      currency: runtimeBaseCurrency(),
       projectName: po.project_name || '',
       preparedBy: po.created_by_name || '',
       reviewedBy: '',
@@ -1078,7 +1079,7 @@ export class PurchaseOrdersService {
   ) {
     const items: any[] = Array.isArray(po?.purchase_order_items) ? po.purchase_order_items : [];
     const poNumber = po?.po_number;
-    
+
     if (items.length === 0) {
       if (process.env.DEBUG_RECEIPT_SUMMARY === 'true') {
         console.log(`[computeReceiptSummary] PO ${poNumber}: No items, status=NO_ITEMS`);
@@ -1602,12 +1603,12 @@ export class PurchaseOrdersService {
           const freightGstAmount = freightGstApplicable ? this.safeNumber(data.freightGstAmount) : 0;
           const additionalExpenses = this.safeNumber(data.otherCharges);
           const isImportPurchase = data.isImportPurchase === true;
-          const supplierCurrency = String(data.supplierCurrency || 'INR').trim().toUpperCase();
+          const supplierCurrency = String(data.supplierCurrency || runtimeBaseCurrency()).trim().toUpperCase();
           const customsExchangeRate = this.safeNumber(data.customsExchangeRate);
           const importNotes = String(data.importNotes || '').trim();
           // Check if any freight-related field was explicitly provided (including 0 values)
           const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.project_name !== undefined || data.projectId !== undefined || data.project_id !== undefined || data.otherCharges !== undefined || data.isImportPurchase !== undefined || data.supplierCurrency !== undefined || data.customsExchangeRate !== undefined || data.importNotes !== undefined || data.paymentTerms !== undefined;
-          if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses || isImportPurchase || supplierCurrency !== 'INR' || customsExchangeRate || importNotes || paymentTermsForStorage.displayText) {
+          if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses || isImportPurchase || supplierCurrency !== runtimeBaseCurrency() || customsExchangeRate || importNotes || paymentTermsForStorage.displayText) {
             return JSON.stringify({
               ...this.parseTermsMetadata(data.termsAndConditions),
               project,
@@ -1656,7 +1657,7 @@ export class PurchaseOrdersService {
 
     // Insert items
     try {
-      const isImportPo = data.isImportPurchase === true || String(data.supplierCurrency || 'INR').trim().toUpperCase() !== 'INR';
+      const isImportPo = data.isImportPurchase === true || String(data.supplierCurrency || runtimeBaseCurrency()).trim().toUpperCase() !== runtimeBaseCurrency();
       const items = data.items.map((item: any) => {
         const orderedQty = this.safeNumber(item.orderedQty || item.quantity);
         const rate = this.safeNumber(item.rate || item.unitPrice);
@@ -1667,7 +1668,7 @@ export class PurchaseOrdersService {
         const taxableAmount = Math.max(0, baseAmount - discountAmount);
         const taxAmount = taxableAmount * (taxPercent / 100);
         const finalAmount = taxableAmount + taxAmount;
-        
+
         return {
           po_id: po.id,
           pr_item_id: item.prItemId,
@@ -1868,7 +1869,7 @@ export class PurchaseOrdersService {
         !this.isOpenPurchaseOrder(poStatus, receipt)
       ) continue;
       if (filters?.pendingOnly && !['APPROVED', 'PARTIAL'].includes(receiptAwarePoStatus)) continue;
-      
+
       // GRN creation must only list POs that still have receivable balance.
       // Empty/ambiguous POs are excluded so completed POs cannot slip through.
       if (
@@ -1881,7 +1882,7 @@ export class PurchaseOrdersService {
       ) {
         continue;
       }
-      
+
       const amountAwarePo = this.withPoAmountCalculation(hydratedPo);
       result.push({
         ...amountAwarePo,
@@ -2236,7 +2237,7 @@ export class PurchaseOrdersService {
         terms_and_conditions: (existingPO as any)?.terms_and_conditions,
       });
     }
-    
+
     const { error } = await this.supabase
       .from('purchase_orders')
       .update({
@@ -2261,12 +2262,12 @@ export class PurchaseOrdersService {
           const freightGstAmount = freightGstApplicable ? this.safeNumber(data.freightGstAmount) : 0;
           const additionalExpenses = this.safeNumber(data.otherCharges);
           const isImportPurchase = data.isImportPurchase === true;
-          const supplierCurrency = String(data.supplierCurrency || 'INR').trim().toUpperCase();
+          const supplierCurrency = String(data.supplierCurrency || runtimeBaseCurrency()).trim().toUpperCase();
           const customsExchangeRate = this.safeNumber(data.customsExchangeRate);
           const importNotes = String(data.importNotes || '').trim();
           // Check if any freight-related field was explicitly provided (including 0 values for removal)
           const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.project_name !== undefined || data.projectId !== undefined || data.project_id !== undefined || data.otherCharges !== undefined || data.isImportPurchase !== undefined || data.supplierCurrency !== undefined || data.customsExchangeRate !== undefined || data.importNotes !== undefined || hasPaymentTermsUpdate;
-          if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses || isImportPurchase || supplierCurrency !== 'INR' || customsExchangeRate || importNotes || paymentTermsForStorage?.displayText) {
+          if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses || isImportPurchase || supplierCurrency !== runtimeBaseCurrency() || customsExchangeRate || importNotes || paymentTermsForStorage?.displayText) {
             return JSON.stringify({
               ...existingTermsMetadata,
               ...this.parseTermsMetadata(data.termsAndConditions),
@@ -2310,7 +2311,7 @@ export class PurchaseOrdersService {
       })
       .eq('tenant_id', tenantId)
       .eq('id', id);
-    
+
     console.log('=== PO UPDATE - After update:', {
       id,
       paymentStatus: data.paymentStatus,
@@ -2367,7 +2368,7 @@ export class PurchaseOrdersService {
         return matched?.id ? String(matched.id) : null;
       };
 
-      const isImportPo = data.isImportPurchase === true || String(data.supplierCurrency || 'INR').trim().toUpperCase() !== 'INR';
+      const isImportPo = data.isImportPurchase === true || String(data.supplierCurrency || runtimeBaseCurrency()).trim().toUpperCase() !== runtimeBaseCurrency();
       const normalizedItems = data.items.map((item: any) => {
         const orderedQty = this.safeNumber(item.orderedQty ?? item.ordered_qty ?? item.quantity);
         const rate = this.safeNumber(item.rate ?? item.unitPrice ?? item.unit_price);
@@ -2524,7 +2525,7 @@ export class PurchaseOrdersService {
       console.error('Status update error:', error);
       throw new BadRequestException(error.message);
     }
-    
+
     console.log('Status updated successfully:', data);
 
     // AUTOMATIC EMAIL DISABLED - Vendors were receiving unsolicited emails
@@ -2541,7 +2542,7 @@ export class PurchaseOrdersService {
 
   async updateTracking(tenantId: string, id: string, trackingData: any) {
     console.log('Updating PO tracking:', { tenantId, id, trackingData });
-    
+
     const updateData: any = {
       updated_at: new Date().toISOString(),
     };
@@ -2587,7 +2588,7 @@ export class PurchaseOrdersService {
       console.error('Tracking update error:', error);
       throw new BadRequestException(error.message);
     }
-    
+
     console.log('Tracking updated successfully:', data);
     return this.findOne(tenantId, id);
   }
@@ -2853,7 +2854,7 @@ export class PurchaseOrdersService {
     }
 
     const pdfFilename = this.worldClassPoPdfService.generateFilename(po.po_number);
-    
+
     // Add PDF to attachments
     attachments.push({
       filename: pdfFilename,
@@ -3211,7 +3212,7 @@ export class PurchaseOrdersService {
 
   async sendTrackingReminder(tenantId: string, poId: string) {
     const po = await this.findOne(tenantId, poId);
-    
+
     if (!po.vendor?.email) {
       throw new BadRequestException('Vendor email not found');
     }

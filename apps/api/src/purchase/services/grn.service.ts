@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import {
   Injectable,
   NotFoundException,
@@ -4257,7 +4258,7 @@ export class GrnService {
       const totalAmount = grossAmount + taxAmount;
 
       console.log(
-        `Debit Note Calculation: Gross=₹${grossAmount}, GST(${gstPercentage}%)=₹${taxAmount}, Total=₹${totalAmount}`,
+        `Debit Note Calculation: Gross=${runtimeBaseCurrency()} ${grossAmount}, GST(${gstPercentage}%)=${runtimeBaseCurrency()} ${taxAmount}, Total=${runtimeBaseCurrency()} ${totalAmount}`,
       );
 
       // Generate debit note number
@@ -4365,7 +4366,7 @@ export class GrnService {
         .eq("tenant_id", tenantId);
 
       console.log(
-        `Debit note ${debitNote.debit_note_number} created for ₹${totalAmount}`,
+        `Debit note ${debitNote.debit_note_number} created for ${runtimeBaseCurrency()} ${totalAmount}`,
       );
     } catch (error) {
       console.error("Error in createDebitNoteForRejections:", error);
@@ -5607,8 +5608,8 @@ export class GrnService {
       if (newTotal > poTotal + 0.01) {
         // Allow 1 paisa tolerance for rounding
         throw new BadRequestException(
-          `Invoice amount (₹${netPayable.toLocaleString()}) would exceed PO total (₹${poTotal.toLocaleString()}). ` +
-            `Already invoiced: ₹${otherInvoicesTotal.toLocaleString()}, Remaining: ₹${Math.max(0, poTotal - otherInvoicesTotal).toLocaleString()}`,
+          `Invoice amount (${runtimeBaseCurrency()} ${netPayable.toLocaleString()}) would exceed PO total (${runtimeBaseCurrency()} ${poTotal.toLocaleString()}). ` +
+            `Already invoiced: ${runtimeBaseCurrency()} ${otherInvoicesTotal.toLocaleString()}, Remaining: ${runtimeBaseCurrency()} ${Math.max(0, poTotal - otherInvoicesTotal).toLocaleString()}`,
         );
       }
     }

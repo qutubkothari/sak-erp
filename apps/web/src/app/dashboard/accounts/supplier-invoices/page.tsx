@@ -1,4 +1,6 @@
 'use client';
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 import { useState, useEffect } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
@@ -53,7 +55,7 @@ function formatDate(val?: string | null) {
 
 function formatAmount(val?: number | null) {
   const n = Number(val ?? 0);
-  return `Rs. ${n.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+  return `${TENANT_BASE_CURRENCY.currency} ${n.toLocaleString(TENANT_BASE_CURRENCY.locale, { minimumFractionDigits: 2 })}`;
 }
 
 function formatRoundedAmount(val?: number | null) {

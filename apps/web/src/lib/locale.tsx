@@ -402,9 +402,16 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   // with an explicit AED value remains transaction-currency evidence.
   const localizeBaseCurrencyLabel = useCallback((value: string) => {
     if (currency !== "EGP" || (typeof window !== "undefined" && /\/uae-compliance(?:\/|$)/.test(window.location.pathname))) return value;
-    if (!/\bAED\b/.test(value) || /^\s*AED\s*$/.test(value)) return value;
-    if (/\bAED\s*[\d.,]|[\d.,]\s*AED\b/.test(value)) return value;
-    return value.replace(/\bAED\b/g, "EGP");
+    let localized = value;
+    // These legacy screens render tenant-base amounts with Indian-only symbols
+    // and labels. Preserve standalone INR codes used by explicit FX selections.
+    localized = localized.replace(/\u20b9\s*/g, "EGP ");
+    localized = localized.replace(/\bRs\.?\s*/gi, "EGP ");
+    localized = localized.replace(/\b(INR)\b(?=\s*(?:amount|value|rate|total|benefit|investment)\b)/gi, "EGP");
+    localized = localized.replace(/\bINR\b(?=\)|:)/gi, "EGP");
+    if (!/\bAED\b/.test(localized) || /^\s*AED\s*$/.test(localized)) return localized;
+    if (/\bAED\s*[\d.,]|[\d.,]\s*AED\b/.test(localized)) return localized;
+    return localized.replace(/\bAED\b/g, "EGP");
   }, [currency]);
 
   const setLanguage = useCallback((next: AppLanguage) => {

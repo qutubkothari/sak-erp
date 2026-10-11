@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -206,7 +207,7 @@ export class AutomationService {
       ? { currency_code: 'EGP', tax_regime: 'EGYPT_VAT', timezone: 'Africa/Cairo' }
       : market === 'UAE'
         ? { currency_code: 'AED', tax_regime: 'UAE_VAT', timezone: 'Asia/Dubai' }
-        : { currency_code: 'INR', tax_regime: 'GST', timezone: 'Asia/Kolkata' };
+        : { currency_code: runtimeBaseCurrency(), tax_regime: 'GST', timezone: 'Asia/Kolkata' };
     return { market, ...regional };
   }
 

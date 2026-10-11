@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { EmailService } from "../email/email.service";
@@ -158,7 +159,7 @@ export class CrmGrowthService {
     const targetMonth = this.month(body.month || body.target_month);
     if (!body.user_id && !body.territory_id) throw new BadRequestException("Select a salesperson or territory.");
     if (body.user_id && body.territory_id) throw new BadRequestException("A target must belong to either one salesperson or one territory.");
-    const payload = { tenant_id: tenantId, target_month: targetMonth, user_id: body.user_id || null, territory_id: body.territory_id || null, currency_code: this.text(body.currency_code).toUpperCase() || "INR", target_amount: Math.max(0, this.number(body.target_amount)), target_wins: Math.max(0, Math.floor(this.number(body.target_wins))), target_new_leads: Math.max(0, Math.floor(this.number(body.target_new_leads))), target_calls: Math.max(0, Math.floor(this.number(body.target_calls))), target_visits: Math.max(0, Math.floor(this.number(body.target_visits))), target_quotations: Math.max(0, Math.floor(this.number(body.target_quotations))), target_collections: Math.max(0, this.number(body.target_collections)), created_by: userId, updated_at: new Date().toISOString() };
+    const payload = { tenant_id: tenantId, target_month: targetMonth, user_id: body.user_id || null, territory_id: body.territory_id || null, currency_code: this.text(body.currency_code).toUpperCase() || runtimeBaseCurrency(), target_amount: Math.max(0, this.number(body.target_amount)), target_wins: Math.max(0, Math.floor(this.number(body.target_wins))), target_new_leads: Math.max(0, Math.floor(this.number(body.target_new_leads))), target_calls: Math.max(0, Math.floor(this.number(body.target_calls))), target_visits: Math.max(0, Math.floor(this.number(body.target_visits))), target_quotations: Math.max(0, Math.floor(this.number(body.target_quotations))), target_collections: Math.max(0, this.number(body.target_collections)), created_by: userId, updated_at: new Date().toISOString() };
     let query = this.db.from("crm_sales_targets").select("id").eq("tenant_id", tenantId).eq("target_month", targetMonth);
     query = body.user_id ? query.eq("user_id", body.user_id).is("territory_id", null) : query.eq("territory_id", body.territory_id).is("user_id", null);
     const existing = await query.maybeSingle();
@@ -189,7 +190,7 @@ export class CrmGrowthService {
   async createCampaign(tenantId: string, userId: string, body: any) {
     const name = this.text(body.campaign_name); if (!name) throw new BadRequestException("Campaign name is required.");
     const code = this.text(body.campaign_code).toUpperCase() || await this.nextCode(tenantId, "crm_campaigns", "campaign_code", "CMP");
-    const { data, error } = await this.db.from("crm_campaigns").insert({ tenant_id: tenantId, campaign_code: code, campaign_name: name, campaign_type: this.text(body.campaign_type).toUpperCase() || "OTHER", owner_user_id: body.owner_user_id || userId, status: this.text(body.status).toUpperCase() || "PLANNED", start_date: body.start_date || null, end_date: body.end_date || null, budget: Math.max(0, this.number(body.budget)), expected_revenue: Math.max(0, this.number(body.expected_revenue)), currency_code: this.text(body.currency_code).toUpperCase() || "INR", description: this.text(body.description) || null, created_by: userId }).select("*").single();
+    const { data, error } = await this.db.from("crm_campaigns").insert({ tenant_id: tenantId, campaign_code: code, campaign_name: name, campaign_type: this.text(body.campaign_type).toUpperCase() || "OTHER", owner_user_id: body.owner_user_id || userId, status: this.text(body.status).toUpperCase() || "PLANNED", start_date: body.start_date || null, end_date: body.end_date || null, budget: Math.max(0, this.number(body.budget)), expected_revenue: Math.max(0, this.number(body.expected_revenue)), currency_code: this.text(body.currency_code).toUpperCase() || runtimeBaseCurrency(), description: this.text(body.description) || null, created_by: userId }).select("*").single();
     if (error) this.fail(error, "Unable to create the CRM campaign."); return data;
   }
 

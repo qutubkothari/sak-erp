@@ -1,4 +1,7 @@
 'use client';
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useBrainRecord } from '@/hooks/useBrainRecord';
 import { ASK_LIST_CONTEXT_KEY, capturePurchaseOrderList } from '@/lib/brain-context';
 import MizantraReview from '@/components/MizantraReview';
@@ -375,7 +378,7 @@ function PurchaseOrdersContent() {
     Array<{ id: string; pr_number: string; department?: string; status?: string }>
   >([]);
   const [loadingPrList, setLoadingPrList] = useState(false);
-  
+
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   type VendorOption = { id: string; name: string; contact_person: string };
   type POAttachment = { url: string; name: string };
@@ -829,17 +832,17 @@ function PurchaseOrdersContent() {
   const fetchVendors = async (): Promise<VendorOption[]> => {
     try {
       const token = localStorage.getItem('accessToken');
-      
+
       const response = await fetch('/api/v1/purchase/vendors?isActive=true', {
         headers: { Authorization: `Bearer ${token}` },
       });
-      
-      
+
+
       const data = await response.json();
-      
+
       if (data && data.length > 0) {
       }
-      
+
       // VERIFICATION FILTER DISABLED TEMPORARILY - uncomment below to re-enable
       // setVendors(Array.isArray(data) ? data.filter((v: any) => v.is_verified === true).sort((a: any, b: any) => a.name.localeCompare(b.name)) : []);
       const normalized = Array.isArray(data) ? data.sort((a: any, b: any) => a.name.localeCompare(b.name)) : [];
@@ -1084,7 +1087,7 @@ function PurchaseOrdersContent() {
         `/api/v1/items/${itemId}/stock`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      
+
       if (response.ok) {
         const data = await response.json();
         setStockInfo(prev => ({ ...prev, [itemId]: data }));
@@ -1097,7 +1100,7 @@ function PurchaseOrdersContent() {
     try {
       setLoadingPR(true);
       setSupplierAttachments({});
-      
+
       // Fetch fresh items data to ensure we have prices
       const token = localStorage.getItem('accessToken');
       const itemsResponse = await fetch('/api/v1/inventory/items', {
@@ -1105,9 +1108,9 @@ function PurchaseOrdersContent() {
       });
       const itemsData = await itemsResponse.json();
       const freshItems = itemsData || [];
-      
+
       const prData = await apiClient.get(`/purchase/requisitions/${prId}/available-for-po`);
-      
+
       // Store PR ID for later use
       setCurrentPrId(prId);
       setCurrentPrDepartment(String(prData.department || prData.project_department || '').trim());
@@ -1126,7 +1129,7 @@ function PurchaseOrdersContent() {
         setRfqHistory([]);
         setRfqRespondedVendorIds([]);
       }
-      
+
       // Map PR items to PO items and fetch preferred vendors
       const prItemsRaw = Array.isArray(prData.purchase_requisition_items) ? prData.purchase_requisition_items : [];
       const poItemsPromises = prItemsRaw.map(async (item: any) => {
@@ -1138,7 +1141,7 @@ function PurchaseOrdersContent() {
         let preferredVendorId = resolveVendorIdFromAny(item);
         let preferredVendorName = resolveVendorNameFromAny(item);
         let itemId = item.item_id;
-        
+
         // If no item_id, try to find by item_code
         if (!itemId && item.item_code && freshItems.length > 0) {
           const masterItem = freshItems.find((i: any) => i.code === item.item_code);
@@ -1147,7 +1150,7 @@ function PurchaseOrdersContent() {
           } else {
           }
         }
-        
+
         if (itemId && freshItems.length > 0) {
           const masterItem = freshItems.find((i: any) => i.id === item.item_id);
           if (masterItem) {
@@ -1158,7 +1161,7 @@ function PurchaseOrdersContent() {
             }
           }
         }
-        
+
         if (itemId && freshItems.length > 0) {
           const masterItem = freshItems.find((i: any) => i.id === itemId);
           if (masterItem) {
@@ -1169,19 +1172,19 @@ function PurchaseOrdersContent() {
             }
           }
         }
-        
+
         // Fetch preferred vendor for this item only if the PR line did not already carry one.
         if (itemId && !preferredVendorId) {
           try {
             const vendorResponse = await fetch(`/api/v1/items/${itemId}/vendors/preferred`, {
               headers: { Authorization: `Bearer ${token}` },
             });
-            
-            
+
+
             if (vendorResponse.ok) {
               const preferredVendor = await vendorResponse.json();
               const resolvedVendorId = resolveVendorIdFromAny(preferredVendor, { allowBareId: true });
-              
+
               if (preferredVendor && resolvedVendorId) {
                 preferredVendorId = resolvedVendorId;
                 preferredVendorName = resolveVendorNameFromAny(preferredVendor) || preferredVendorName;
@@ -1198,11 +1201,11 @@ function PurchaseOrdersContent() {
           }
         } else {
         }
-        
+
         const quantity = item.requested_qty || 0;
         const subtotal = quantity * unitPrice;
         const totalWithTax = subtotal + (subtotal * 18 / 100);
-        
+
         // Get UOM from PR item or master item
         let uom = resolveUomFromItem(item);
         if (!uom && itemId && freshItems.length > 0) {
@@ -1211,7 +1214,7 @@ function PurchaseOrdersContent() {
             uom = resolveUomFromItem(masterItem);
           }
         }
-        
+
         return {
           prItemId: item.id ? String(item.id) : undefined,
           itemId: itemId || '',
@@ -1355,7 +1358,7 @@ function PurchaseOrdersContent() {
     if (submitting) {
       return;
     }
-    
+
     // Generate idempotency key from form data
     const submitKey = JSON.stringify({
       vendorId: formData.vendorId,
@@ -1364,26 +1367,26 @@ function PurchaseOrdersContent() {
       status: poStatus,
       ts: Date.now(), // Still allow if 5+ seconds passed
     });
-    
+
     // Layer 3: Idempotency check (prevent exact duplicate within 5 seconds)
     if (lastSubmitKey && Math.abs(Date.now() - parseInt(lastSubmitKey.split('"ts":')[1]?.split(',')[0] || '0')) < 5000) {
       setAlertMessage({ type: 'error', message: 'Duplicate submission blocked. Please wait a moment.' });
       return;
     }
-    
+
     isSubmittingRef.current = true;
     setLastSubmitKey(submitKey);
-    
+
     try {
       setSubmitting(true);
       const token = localStorage.getItem('accessToken');
-      
+
       if (!formData.orderDate) {
         setAlertMessage({ type: 'error', message: 'Please select an order date' });
         setSubmitting(false);
         return;
       }
-      
+
       if (formData.items.length === 0) {
         setAlertMessage({ type: 'error', message: 'Please add at least one item' });
         setSubmitting(false);
@@ -1427,7 +1430,7 @@ function PurchaseOrdersContent() {
         setSubmitting(false);
         return;
       }
-      
+
       // Check if all items have itemId (or at least itemCode for pre-filled items)
       const invalidItems = formData.items.filter(item => !item.itemId && !item.itemCode);
       if (invalidItems.length > 0) {
@@ -1594,22 +1597,22 @@ function PurchaseOrdersContent() {
 
       const createdPOs = [];
       const createdPORows: PurchaseOrder[] = [];
-      
+
       // Create a PO for each vendor
       for (const vendorId of vendorIds) {
         const vendorItems = itemsByVendor[vendorId];
-        
+
         // Transform items for API
         const transformedItems = vendorItems.map(item => {
           let finalItemId = item.itemId;
-          
+
           if (!finalItemId && item.itemCode) {
             const foundItem = items.find(i => i.code === item.itemCode);
             if (foundItem) {
               finalItemId = foundItem.id;
             }
           }
-          
+
           return {
             prItemId: (item as any).prItemId,
             itemId: finalItemId,
@@ -1684,7 +1687,7 @@ function PurchaseOrdersContent() {
           items: transformedItems,
         };
 
-        
+
         const response = await fetch('/api/v1/purchase/orders', {
           method: 'POST',
           headers: {
@@ -1717,9 +1720,9 @@ function PurchaseOrdersContent() {
       }
       await fetchOrders({ silent: true });
       resetForm();
-      setAlertMessage({ 
-        type: 'success', 
-        message: `Successfully created ${createdPOs.length} supplier-wise Purchase Order(s): ${createdPOs.join(', ')}` 
+      setAlertMessage({
+        type: 'success',
+        message: `Successfully created ${createdPOs.length} supplier-wise Purchase Order(s): ${createdPOs.join(', ')}`
       });
     } catch (error: any) {
       setAlertMessage({ type: 'error', message: error.message || 'Failed to create PO. Please try again.' });
@@ -1735,7 +1738,7 @@ function PurchaseOrdersContent() {
       setAlertMessage({ type: 'error', message: 'Please select an order date' });
       return;
     }
-    
+
     if (formData.items.length === 0) {
       setAlertMessage({ type: 'error', message: 'Please add at least one item' });
       return;
@@ -2122,10 +2125,10 @@ function PurchaseOrdersContent() {
   const handleUpdateItem = async (index: number, field: string, value: any) => {
     const updatedItems = [...(formData.items || [])];
     const normalizedVendorValue = field === 'vendorId' ? String(value || '').trim() : '';
-    
+
     // Check for duplicate items when changing itemId
     if (field === 'itemId' && value) {
-      const isDuplicate = (formData.items || []).some((item, i) => 
+      const isDuplicate = (formData.items || []).some((item, i) =>
         i !== index && item.itemId === value
       );
       if (isDuplicate) {
@@ -2133,7 +2136,7 @@ function PurchaseOrdersContent() {
         return;
       }
     }
-    
+
     // If selecting an item from dropdown, populate itemCode, itemName, unitPrice, and preferred vendor
     if (field === 'itemId' && value) {
       const selectedItem = items.find(item => item.id === value);
@@ -2148,19 +2151,19 @@ function PurchaseOrdersContent() {
           includeDrawing: selectedItem.drawing_required === 'COMPULSORY',
           selectedDrawingId: '',
         };
-        
+
         // Fetch stock info for this item
         fetchStockInfo(value);
         fetchDrawingOptionsForItem(value);
-        
+
         // Fetch preferred vendor for this item
         try {
           const token = localStorage.getItem('accessToken');
           const response = await fetch(`/api/v1/items/${value}/vendors/preferred`, {
             headers: { Authorization: `Bearer ${token}` },
           });
-          
-          
+
+
           if (response.ok) {
             const preferredVendor = await response.json();
 
@@ -2524,7 +2527,7 @@ function PurchaseOrdersContent() {
       const detailedPO = await apiClient.get<PurchaseOrder>(`/purchase/orders/${po.id}`).catch(() => po);
       const activePO = detailedPO || po;
       setTrailPO(activePO);
-      
+
       // Fetch related data in parallel
       const [grnsData, poSettlementData, vendorBalanceData] = await Promise.all([
         apiClient.get<any[]>(`/purchase/grn?poId=${activePO.id}`).catch(() => []),
@@ -2668,7 +2671,7 @@ function PurchaseOrdersContent() {
   const handleSaveTracking = async (poId: string) => {
     try {
       const token = localStorage.getItem('accessToken');
-      
+
       const trackingData = {
         tracking_number: formData.trackingNumber || null,
         shipped_date: formData.shippedDate || null,
@@ -2759,7 +2762,7 @@ function PurchaseOrdersContent() {
         vendorOptions = [...vendorOptions, currentPoVendor].sort((a, b) => a.name.localeCompare(b.name));
         setVendors(vendorOptions);
       }
-      
+
       // Populate form with PO data for editing
       const editItems = data.purchase_order_items?.map((item: any) => ({
         poItemId: item.id || '',
@@ -2788,7 +2791,7 @@ function PurchaseOrdersContent() {
         selectedDrawingId: item.selected_drawing_id || item.selectedDrawingId || '',
         drawingSelections: item.drawing_selections || item.drawingSelections || [],
       })) || [];
-      
+
       setFormData({
         vendorId: resolvedVendorId,
         orderDate: data.po_date || getTodayDateInputValue(),
@@ -2885,7 +2888,7 @@ function PurchaseOrdersContent() {
         attachments: Array.isArray(data.attachments) ? data.attachments : [],
         items: editItems,
       });
-      
+
       setEditingPOId(poId);
       setEditingMode(mode);
       setShowModal(true);
@@ -5758,9 +5761,9 @@ function PurchaseOrdersContent() {
                     {(selectedPO as any).tracking_url && (
                       <div className="col-span-2">
                         <p className="text-sm text-gray-600 mb-1">Track Shipment</p>
-                        <a 
-                          href={(selectedPO as any).tracking_url} 
-                          target="_blank" 
+                        <a
+                          href={(selectedPO as any).tracking_url}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:text-blue-800 underline text-sm"
                         >
@@ -6276,8 +6279,8 @@ function PurchaseOrdersContent() {
                   Complete lifecycle from PR to Payments
                 </p>
               </div>
-              <button 
-                onClick={() => setShowTrailModal(false)} 
+              <button
+                onClick={() => setShowTrailModal(false)}
                 className="text-gray-400 hover:text-gray-700 text-2xl"
               >
                 Ã—
@@ -6892,8 +6895,8 @@ function PurchaseOrdersContent() {
             </div>
 
             <div className="p-4 border-t flex justify-end gap-3 bg-gray-50">
-              <button 
-                onClick={() => setShowTrailModal(false)} 
+              <button
+                onClick={() => setShowTrailModal(false)}
                 className="px-5 py-2 bg-gray-600 text-white rounded-lg text-sm font-semibold hover:bg-gray-700"
               >
                 Close

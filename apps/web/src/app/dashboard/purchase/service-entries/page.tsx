@@ -1,5 +1,8 @@
 'use client';
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useEffect, useMemo, useState } from 'react';
 import { Check, ClipboardCheck, FileCheck2, FileText, Plus, RefreshCw, Send, ShieldCheck, X } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
@@ -52,7 +55,7 @@ type ServiceEntry = {
   items?: Array<{ item_code: string; item_name: string; accepted_qty: number; uom?: string; amount?: number }>;
 };
 
-const money = (value: unknown) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(value || 0));
+const money = (value: unknown) => new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, { style: 'currency', currency: TENANT_BASE_CURRENCY.currency }).format(Number(value || 0));
 
 function ServiceEntriesContent() {
   const [entries, setEntries] = useState<ServiceEntry[]>([]);

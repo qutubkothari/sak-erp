@@ -1,5 +1,8 @@
 'use client';
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useEffect, useMemo, useState } from 'react';
 import { BellRing, Building2, ChevronRight, History, Lightbulb, ListTodo, Loader2, MessageSquareText, Play, Plus, RefreshCw, ShieldCheck, Trash2, Wand2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -118,7 +121,7 @@ export default function AutomationPage() {
     ? { branch_code: '', branch_name: '', market_profile: 'EGYPT', currency_code: 'EGP', tax_regime: 'EGYPT_VAT', timezone: 'Africa/Cairo' }
     : branchMarket === 'UAE'
       ? { branch_code: '', branch_name: '', market_profile: 'UAE', currency_code: 'AED', tax_regime: 'UAE_VAT', timezone: 'Asia/Dubai' }
-      : { branch_code: '', branch_name: '', market_profile: 'INDIA', currency_code: 'INR', tax_regime: 'GST', timezone: 'Asia/Kolkata' };
+      : { branch_code: '', branch_name: '', market_profile: 'INDIA', currency_code: TENANT_BASE_CURRENCY.currency, tax_regime: 'GST', timezone: 'Asia/Kolkata' };
   const [branchForm, setBranchForm] = useState(branchDefaults);
 
   useEffect(() => {

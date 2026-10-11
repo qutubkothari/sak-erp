@@ -1,5 +1,8 @@
 'use client';
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { Suspense, useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient } from '../../../../lib/api-client';
@@ -346,7 +349,7 @@ interface UIDRecord {
 }
 
 const formatSalesAmount = (value: number | null | undefined) =>
-  `Rs. ${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+  `${TENANT_BASE_CURRENCY.currency} ${Number(value || 0).toLocaleString(TENANT_BASE_CURRENCY.locale, { minimumFractionDigits: 2 })}`;
 
 const formatIndianNumber = (value: number | null | undefined) =>
   Number(value || 0).toLocaleString('en-IN');
@@ -550,7 +553,7 @@ function SalesPageContent() {
     status: 'ACTIVE',
     warranty_type: 'STANDARD',
   });
-  
+
   // Customer form
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null);
@@ -1954,7 +1957,7 @@ function SalesPageContent() {
   const handleSaveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     setCustomerFormError(null);
-    
+
     // For updates, skip duplicate check
     if (editingCustomerId) {
       await actuallyCreateCustomer();
@@ -2221,7 +2224,7 @@ function SalesPageContent() {
       alert('Please wait for the quotation photo upload to finish.');
       return;
     }
-    
+
     // For updates, skip duplicate check
     if (editingQuotationId) {
       await actuallyCreateQuotation();
@@ -2443,7 +2446,7 @@ function SalesPageContent() {
       // Fetch full quotation details with items
       const fullQuotation = await apiClient.get<any>(`/sales/quotations/${quotation.id}`);
       setSelectedQuotationForSO(fullQuotation);
-      
+
       // Initialize conversion items with pending quantities
       const initialConversionItems: {[key: string]: number} = {};
       if (fullQuotation.quotation_items) {
@@ -2453,7 +2456,7 @@ function SalesPageContent() {
         });
       }
       setConversionItems(initialConversionItems);
-      
+
       setSOConversionForm({
         ...soConversionForm,
         payment_terms: fullQuotation.payment_terms || '',
@@ -2546,14 +2549,14 @@ function SalesPageContent() {
 
   const handleCreateDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate all items have UIDs selected
     const itemsWithoutUIDs = dispatchForm.items.filter(item => !item.uid || item.uid.length === 0);
     if (itemsWithoutUIDs.length > 0) {
       alert('❌ All dispatch items must have UIDs selected.\n\nPlease select at least one UID for each item before creating the dispatch.');
       return;
     }
-    
+
     setLoading(true);
     setError(null);
     try {
@@ -2666,7 +2669,7 @@ function SalesPageContent() {
   const updateQuotationItem = (index: number, field: keyof QuotationItem, value: any) => {
     // Check for duplicate items when changing item_id
     if (field === 'item_id' && value) {
-      const isDuplicate = quotationForm.items.some((item, i) => 
+      const isDuplicate = quotationForm.items.some((item, i) =>
         i !== index && item.item_id === value
       );
       if (isDuplicate) {
@@ -2674,7 +2677,7 @@ function SalesPageContent() {
         return;
       }
     }
-    
+
     const newItems = [...quotationForm.items];
     newItems[index] = { ...newItems[index], [field]: value };
     setQuotationForm({ ...quotationForm, items: newItems });
@@ -2716,19 +2719,19 @@ function SalesPageContent() {
     const newItems = [...dispatchForm.items];
     if (field === 'sales_order_item_id') {
       // Check for duplicate sales order items
-      const isDuplicate = dispatchForm.items.some((item, i) => 
+      const isDuplicate = dispatchForm.items.some((item, i) =>
         i !== index && item.sales_order_item_id === value
       );
       if (isDuplicate) {
         alert('This sales order item is already added to the dispatch. Please select a different item.');
         return;
       }
-      
+
       // Auto-fill item_id from selected SO item
       const soItem = salesOrderItems.find(item => item.id === value);
       if (soItem) {
-        newItems[index] = { 
-          ...newItems[index], 
+        newItems[index] = {
+          ...newItems[index],
           sales_order_item_id: value,
           item_id: soItem.item_id,
           // Quantity is based on selected *saleable* UIDs (auto-fills)
@@ -2773,7 +2776,7 @@ function SalesPageContent() {
 
   const fetchAvailableUIDs = async (itemId: string, rowIndex: number) => {
     if (!itemId) return;
-    
+
     setLoadingUIDs({ ...loadingUIDs, [rowIndex]: true });
     try {
       // Fetch only saleable UIDs for dispatch: QC PASSED + IN_STOCK status
@@ -2783,7 +2786,7 @@ function SalesPageContent() {
       // Handle paginated response structure: { data: [...], pagination: {...} }
       const uids = response?.data || (Array.isArray(response) ? response : []);
       setAvailableUIDs({ ...availableUIDs, [itemId]: uids });
-      
+
       if (uids.length === 0) {
         alert(`⚠️ No saleable UIDs found for this item. Ensure QC is PASSED and inventory is IN_STOCK.`);
       }
@@ -2825,7 +2828,7 @@ function SalesPageContent() {
   const handleConvertToSO = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedQuotationForSO) return;
-    
+
     // Build items array with selected quantities
     const items = Object.entries(conversionItems)
       .filter(([_, qty]) => qty > 0)
@@ -2833,12 +2836,12 @@ function SalesPageContent() {
         quotation_item_id,
         quantity,
       }));
-    
+
     if (items.length === 0) {
       alert('Please specify quantities to convert for at least one item.');
       return;
     }
-    
+
     const payload = {
       ...soConversionForm,
       items,
@@ -2892,7 +2895,7 @@ function SalesPageContent() {
       alert('Please add at least one item');
       return;
     }
-    
+
     // Check for duplicates before creating
     await salesOrderDuplicateDetection.checkDuplicates(
       () => apiClient.post('/sales/orders/check-duplicates', directSOForm),
@@ -3025,35 +3028,35 @@ function SalesPageContent() {
     const sortedData = [...filteredData].sort((a, b) => {
       const aVal: any = a[sortColumn as keyof T] ?? a[sortKey];
       const bVal: any = b[sortColumn as keyof T] ?? b[sortKey];
-      
+
       if (aVal === null || aVal === undefined) return 1;
       if (bVal === null || bVal === undefined) return -1;
-      
+
       if (typeof aVal === 'string' && typeof bVal === 'string') {
         return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
-      
+
       if (aVal instanceof Date && bVal instanceof Date) {
         return sortDirection === 'asc' ? aVal.getTime() - bVal.getTime() : bVal.getTime() - aVal.getTime();
       }
-      
+
       if (typeof aVal === 'number' && typeof bVal === 'number') {
         return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
       }
-      
+
       // Try to parse as dates if they're strings
       const aNum = typeof aVal === 'number' ? aVal : (typeof aVal === 'string' ? new Date(aVal).getTime() : 0);
       const bNum = typeof bVal === 'number' ? bVal : (typeof bVal === 'string' ? new Date(bVal).getTime() : 0);
-      
+
       return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
     });
-    
+
     // Paginate
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     const paginatedData = sortedData.slice(startIndex, endIndex);
     const totalPages = Math.ceil(sortedData.length / itemsPerPage);
-    
+
     return { paginatedData, totalPages, totalItems: sortedData.length };
   };
 
@@ -3093,7 +3096,7 @@ function SalesPageContent() {
 
   const renderPagination = (totalPages: number, totalItems: number) => {
     if (totalPages <= 1) return null;
-    
+
     return (
       <div className="mt-3 flex flex-col items-center justify-between gap-4 rounded-md border border-[#E8DCC4] bg-white px-4 py-3 sm:flex-row">
         <div className="text-sm text-[#6F4E37]">
@@ -3835,15 +3838,15 @@ function SalesPageContent() {
                               const convertedQty = item.converted_quantity || 0;
                               const pendingQty = item.pending_quantity || (item.quantity - convertedQty);
                               const currentConvertQty = conversionItems[item.id!] || 0;
-                              
+
                               return (
                                 <tr key={item.id} className={pendingQty === 0 ? 'bg-gray-50 opacity-60' : ''}>
                                   <td className="px-4 py-3">
                                     <div className="text-sm font-medium text-gray-900">{item.item_description}</div>
                                     {convertedQty > 0 && (
                                       <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
-                                        <div 
-                                          className="bg-green-500 h-2 rounded-full" 
+                                        <div
+                                          className="bg-green-500 h-2 rounded-full"
                                           style={{ width: `${(convertedQty / item.quantity) * 100}%` }}
                                         ></div>
                                       </div>
@@ -3881,7 +3884,7 @@ function SalesPageContent() {
                           </tbody>
                         </table>
                       </div>
-                      
+
                       {/* Quick Actions */}
                       <div className="mt-3 flex space-x-2">
                         <button
@@ -3945,7 +3948,7 @@ function SalesPageContent() {
                         />
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
@@ -3967,7 +3970,7 @@ function SalesPageContent() {
                         />
                       </div>
                     </div>
-                    
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Special Instructions</label>
                       <textarea
@@ -6396,7 +6399,7 @@ function SalesPageContent() {
                     + Add Item
                   </button>
                 </div>
-                
+
                 {directSOForm.items.length === 0 ? (
                   <p className="text-gray-500 text-sm">No items added. Click &ldquo;+ Add Item&rdquo; to start.</p>
                 ) : (
@@ -6406,9 +6409,9 @@ function SalesPageContent() {
                         <div className="col-span-3">
                           <label className="block text-xs text-gray-600 mb-1">Item *</label>
                           <SearchableSelect
-                            options={items.map(i => ({ 
-                              label: `${i.code} - ${i.name || i.description || i.item_name}`, 
-                              value: i.id 
+                            options={items.map(i => ({
+                              label: `${i.code} - ${i.name || i.description || i.item_name}`,
+                              value: i.id
                             }))}
                             value={item.item_id || ''}
                             onChange={(value) => {

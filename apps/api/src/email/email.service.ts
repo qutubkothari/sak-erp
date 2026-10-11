@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
@@ -507,7 +508,7 @@ export class EmailService {
                 ${customMessageHtml}
               </div>
             ` : ''}
-            
+
             <table class="table">
               <thead>
                 <tr>
@@ -534,10 +535,10 @@ export class EmailService {
                 `).join('')}
               </tbody>
             </table>
-            
+
             <p><strong>Expected Response Date:</strong> ${responseDate}</p>
             <p><strong>Remarks:</strong> ${remarks}</p>
-            
+
             <p>Please provide your best quotation including:</p>
             <ul>
               <li>Unit prices</li>
@@ -545,7 +546,7 @@ export class EmailService {
               <li>Payment terms</li>
               <li>Delivery terms</li>
             </ul>
-            
+
             <p>Thank you for your cooperation.</p>
             <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
           </div>
@@ -559,6 +560,7 @@ export class EmailService {
   }
 
   private generatePOTemplate(poData: any, branding: DocumentBranding): string {
+    const currencyCode = String(poData?.currency_code || poData?.supplier_currency || poData?.supplierCurrency || runtimeBaseCurrency()).trim().toUpperCase();
     const vendorName = this.escapeHtml(poData?.vendor_name || 'Vendor');
     const deliveryAddress = poData?.delivery_address ? this.escapeHtml(poData.delivery_address) : '';
     const remarks = poData?.remarks ? this.escapeHtml(poData.remarks) : '';
@@ -587,12 +589,12 @@ export class EmailService {
                 ${customMessageHtml}
               </div>
             ` : ''}
-            
+
             <div class="info-box">
               <strong>PO Date:</strong> ${this.escapeHtml(poData?.po_date || '-')}<br>
               <strong>Expected Delivery:</strong> ${this.escapeHtml(poData?.delivery_date || '-')}<br>
             </div>
-            
+
             <table class="table">
               <thead>
                 <tr>
@@ -612,29 +614,29 @@ export class EmailService {
                     <td>${idx + 1}</td>
                     <td>${this.escapeHtml(item?.item_name || '-')}</td>
                     <td>${item.quantity}</td>
-                    <td>₹${item.unit_price.toFixed(2)}</td>
+                    <td>${currencyCode} ${item.unit_price.toFixed(2)}</td>
                     <td>${item.tax_percent}%</td>
                     <td>${this.escapeHtml(item?.payment_terms || item?.paymentTerms || '-')}</td>
                     <td>${this.escapeHtml(item?.delivery_terms || item?.deliveryTerms || '-')}</td>
-                    <td>₹${item.amount.toFixed(2)}</td>
+                    <td>${currencyCode} ${item.amount.toFixed(2)}</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
-            
-            ${poData.customs_duty ? `<p><strong>Customs Duty:</strong> ₹${poData.customs_duty.toFixed(2)}</p>` : ''}
-            ${poData.other_charges ? `<p><strong>Other Charges:</strong> ₹${poData.other_charges.toFixed(2)}</p>` : ''}
-            <p class="total">Total Amount: ₹${poData.total_amount.toFixed(2)}</p>
-            
+
+            ${poData.customs_duty ? `<p><strong>Customs Duty:</strong> ${currencyCode} ${poData.customs_duty.toFixed(2)}</p>` : ''}
+            ${poData.other_charges ? `<p><strong>Other Charges:</strong> ${currencyCode} ${poData.other_charges.toFixed(2)}</p>` : ''}
+            <p class="total">Total Amount: ${currencyCode} ${poData.total_amount.toFixed(2)}</p>
+
             ${deliveryAddress ? `
               <div class="info-box">
                 <strong>Delivery Address:</strong><br>
                 ${deliveryAddress}
               </div>
             ` : ''}
-            
+
             ${remarks ? `<p><strong>Remarks:</strong> ${remarks}</p>` : ''}
-            
+
             <p>Please acknowledge receipt of this PO and confirm the delivery schedule.</p>
             <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
           </div>
@@ -649,7 +651,7 @@ export class EmailService {
 
   private generateTrackingReminderTemplate(poData: any, branding: DocumentBranding): string {
     const daysOverdue = Math.floor((new Date().getTime() - new Date(poData.delivery_date).getTime()) / (1000 * 60 * 60 * 24));
-    
+
     return `
       <!DOCTYPE html>
       <html>
@@ -663,13 +665,13 @@ export class EmailService {
           ${this.renderEmailHeader('Tracking Information Request', this.escapeHtml(`PO: ${poData.po_number || ''}`), branding, '#FFA500', 'Follow-up on vendor shipment tracking')}
           <div class="content">
             <p>Dear ${poData.vendor_name},</p>
-            
+
             <div class="alert-box">
-              ${daysOverdue > 0 
-                ? `<strong>⚠️ URGENT:</strong> This order is ${daysOverdue} days overdue.` 
+              ${daysOverdue > 0
+                ? `<strong>⚠️ URGENT:</strong> This order is ${daysOverdue} days overdue.`
                 : '<strong>📦 Reminder:</strong> Please provide tracking information for this order.'}
             </div>
-            
+
             <p>We request you to provide the following tracking details:</p>
             <ul>
               <li>Tracking Number</li>
@@ -678,7 +680,7 @@ export class EmailService {
               <li>Expected Delivery Date</li>
               <li>Tracking URL (if available)</li>
             </ul>
-            
+
             <p><strong>PO Details:</strong></p>
             <ul>
               <li>PO Number: ${poData.po_number}</li>
@@ -686,7 +688,7 @@ export class EmailService {
               <li>Expected Delivery: ${poData.delivery_date}</li>
               <li>Total Items: ${poData.items?.length || 0}</li>
             </ul>
-            
+
             <p>Please update us at your earliest convenience.</p>
             <p>Thank you for your cooperation.</p>
             <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
@@ -701,6 +703,7 @@ export class EmailService {
   }
 
   private generateSOTemplate(soData: any, branding: DocumentBranding): string {
+    const currencyCode = String(soData?.currency_code || soData?.currency || runtimeBaseCurrency()).trim().toUpperCase();
     return `
       <!DOCTYPE html>
       <html>
@@ -715,13 +718,13 @@ export class EmailService {
           <div class="content">
             <p>Dear ${soData.customer_name},</p>
             <p>Thank you for your order! We are pleased to confirm the following:</p>
-            
+
             <div class="info-box">
               <strong>Order Date:</strong> ${soData.order_date}<br>
               <strong>Expected Delivery:</strong> ${soData.delivery_date || 'To be confirmed'}<br>
               <strong>Payment Terms:</strong> ${soData.payment_terms || '-'}
             </div>
-            
+
             <table class="table">
               <thead>
                 <tr>
@@ -738,22 +741,22 @@ export class EmailService {
                     <td>${idx + 1}</td>
                     <td>${item.item_name}</td>
                     <td>${item.quantity}</td>
-                    <td>₹${item.unit_price.toFixed(2)}</td>
-                    <td>₹${item.amount.toFixed(2)}</td>
+                    <td>${currencyCode} ${item.unit_price.toFixed(2)}</td>
+                    <td>${currencyCode} ${item.amount.toFixed(2)}</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
-            
-            <p class="total">Total Amount: ₹${soData.total_amount.toFixed(2)}</p>
-            
+
+            <p class="total">Total Amount: ${currencyCode} ${soData.total_amount.toFixed(2)}</p>
+
             ${soData.shipping_address ? `
               <div class="info-box">
                 <strong>Shipping Address:</strong><br>
                 ${soData.shipping_address}
               </div>
             ` : ''}
-            
+
             <p>We will notify you once your order is dispatched.</p>
             <p>Thank you for your business!</p>
             <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
@@ -782,7 +785,7 @@ export class EmailService {
           <div class="content">
             <p>Dear ${dispatchData.customer_name},</p>
             <p>Your order has been dispatched!</p>
-            
+
             <div class="info-box">
               <strong>Dispatch Date:</strong> ${dispatchData.dispatch_date}<br>
               <strong>Expected Delivery:</strong> ${dispatchData.expected_delivery}<br>
@@ -790,7 +793,7 @@ export class EmailService {
               ${dispatchData.carrier_name ? `<strong>Carrier:</strong> ${dispatchData.carrier_name}<br>` : ''}
               ${dispatchData.tracking_url ? `<strong>Track Shipment:</strong> <a href="${dispatchData.tracking_url}">Click here</a>` : ''}
             </div>
-            
+
             <table class="table">
               <thead>
                 <tr>
@@ -811,9 +814,9 @@ export class EmailService {
                 `).join('')}
               </tbody>
             </table>
-            
+
             ${dispatchData.remarks ? `<p><strong>Remarks:</strong> ${dispatchData.remarks}</p>` : ''}
-            
+
             <p>Please inspect the goods upon delivery and report any discrepancies immediately.</p>
             <p>Thank you for your business!</p>
             <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
@@ -842,13 +845,13 @@ export class EmailService {
           <div class="content">
             <p>Dear ${certificateData.customer_name},</p>
             <p>This certifies that the following products have been issued and delivered:</p>
-            
+
             <div class="certificate-box">
               <p><strong>Issue Date:</strong> ${certificateData.issue_date}</p>
               <p><strong>Sales Order:</strong> ${certificateData.so_number}</p>
               <p><strong>Dispatch Number:</strong> ${certificateData.dispatch_number}</p>
             </div>
-            
+
             <table class="table">
               <thead>
                 <tr>
@@ -871,10 +874,10 @@ export class EmailService {
                 `).join('')}
               </tbody>
             </table>
-            
+
             <p><strong>Quality Assurance:</strong> All products have undergone quality inspection and meet our quality standards.</p>
             <p><strong>Warranty Information:</strong> ${certificateData.warranty_info || 'Standard warranty terms apply as per sales agreement.'}</p>
-            
+
             <p>Please retain this certificate for warranty claims and service requests.</p>
             <p>Best regards,<br>${this.escapeHtml(branding.companyName)}</p>
           </div>
@@ -888,10 +891,10 @@ export class EmailService {
   }
 
   // Generic email sending method
-  async sendEmail(options: { 
-    to: string; 
-    subject: string; 
-    html: string; 
+  async sendEmail(options: {
+    to: string;
+    subject: string;
+    html: string;
     attachments?: any[];
     from?: 'admin' | 'sales' | 'support' | 'technical' | 'purchase' | 'production' | 'accounts' | 'reminders' | 'quality' | 'documents' | 'hr' | 'noreply';
     tenantId?: string;
@@ -937,7 +940,7 @@ export class EmailService {
             <div class="alert-box">
               <strong>Action Required:</strong> The following items have reached or fallen below their reorder levels. Please take immediate action to replenish stock.
             </div>
-            
+
             <table class="table">
               <thead>
                 <tr>
@@ -962,7 +965,7 @@ export class EmailService {
                 `).join('')}
               </tbody>
             </table>
-            
+
             <p><strong>Recommended Actions:</strong></p>
             <ul>
               <li>Review Purchase Requisitions for these items</li>
@@ -970,7 +973,7 @@ export class EmailService {
               <li>Contact vendors for urgent requirements</li>
               <li>Consider alternative suppliers if needed</li>
             </ul>
-            
+
             <p>Access the ERP system to view detailed information and take action.</p>
           </div>
           <div class="footer">

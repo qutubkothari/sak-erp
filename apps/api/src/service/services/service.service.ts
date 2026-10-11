@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { extname } from 'path';
@@ -246,7 +247,7 @@ export class ServiceService {
           .from('customers')
           .select('id, customer_name, customer_code')
           .in('id', customerIds);
-        
+
         if (customers) {
           customersMap = Object.fromEntries(customers.map(c => [c.id, c]));
         }
@@ -259,7 +260,7 @@ export class ServiceService {
           .from('warranties')
           .select('id, warranty_number, warranty_end_date')
           .in('id', warrantyIds);
-        
+
         if (warranties) {
           warrantiesMap = Object.fromEntries(warranties.map(w => [w.id, w]));
         }
@@ -1792,7 +1793,7 @@ export class ServiceService {
       `Service Confirmation: ${confirmation.confirmation_number || '-'}`,
       `Due Date: ${String(invoice.due_date || '-').slice(0, 10)}`,
       invoice.notes ? `Billing Notes: ${invoice.notes}` : '',
-      Number(invoice.paid_amount || 0) > 0 ? `Amount Received: INR ${Number(invoice.paid_amount).toFixed(2)} | Outstanding: INR ${Number(invoice.balance_amount || 0).toFixed(2)}` : '',
+      Number(invoice.paid_amount || 0) > 0 ? `Amount Received: ${runtimeBaseCurrency()} ${Number(invoice.paid_amount).toFixed(2)} | Outstanding: ${runtimeBaseCurrency()} ${Number(invoice.balance_amount || 0).toFixed(2)}` : '',
       invoice.billing_status === 'CANCELLED' ? `CANCELLED: ${invoice.cancellation_reason || 'Invoice cancelled'}` : '',
     ].filter(Boolean).join('\n');
     const buffer = await this.quotePdfService.renderQuotePdf(tenantId, {
@@ -1808,7 +1809,7 @@ export class ServiceService {
         email: invoice.customer?.email || '',
       },
       items,
-      currency: 'INR',
+      currency: runtimeBaseCurrency(),
       tax_rate: Number(confirmation.tax_percentage || 0) / 100,
       notes,
     });
@@ -1833,8 +1834,8 @@ export class ServiceService {
       `Status: ${payment.reversed_at ? 'REVERSED' : 'POSTED'}`,
       payment.reversed_at ? `Reversal Reason: ${payment.reversal_reason || '-'}` : '',
       payment.notes ? `Notes: ${payment.notes}` : '',
-      `Invoice Value: INR ${Number(invoice.net_amount || 0).toFixed(2)}`,
-      `Current Outstanding: INR ${Number(invoice.balance_amount || 0).toFixed(2)}`,
+      `Invoice Value: ${runtimeBaseCurrency()} ${Number(invoice.net_amount || 0).toFixed(2)}`,
+      `Current Outstanding: ${runtimeBaseCurrency()} ${Number(invoice.balance_amount || 0).toFixed(2)}`,
     ].filter(Boolean).join('\n');
     const buffer = await this.quotePdfService.renderQuotePdf(tenantId, {
       document_label: 'SERVICE RECEIPT VOUCHER',
@@ -1854,7 +1855,7 @@ export class ServiceService {
         unit: 'RECEIPT',
         unit_price: Number(payment.amount || 0),
       }],
-      currency: 'INR',
+      currency: runtimeBaseCurrency(),
       tax_rate: 0,
       notes,
     });
@@ -1875,9 +1876,9 @@ export class ServiceService {
     const escapeHtml = (value: unknown) => String(value ?? '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    const money = (value: unknown) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = (value: unknown) => Number(value || 0).toLocaleString(runtimeBaseCurrency() === 'EGP' ? 'en-EG' : 'en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const subject = String(input?.subject || `Service payment receipt ${payment.receipt_number}`).trim();
-    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>${escapeHtml(subject)}</h2><p>Dear ${escapeHtml(invoice.customer?.contact_person || invoice.customer?.customer_name || 'Customer')},</p><p>Thank you. We have recorded your payment against service invoice <strong>${escapeHtml(invoice.invoice_number)}</strong>.</p><p><strong>Receipt:</strong> ${escapeHtml(payment.receipt_number)}<br><strong>Amount received:</strong> Rs. ${money(payment.amount)}</p><p>The official service receipt voucher is attached.</p></div>`;
+    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>${escapeHtml(subject)}</h2><p>Dear ${escapeHtml(invoice.customer?.contact_person || invoice.customer?.customer_name || 'Customer')},</p><p>Thank you. We have recorded your payment against service invoice <strong>${escapeHtml(invoice.invoice_number)}</strong>.</p><p><strong>Receipt:</strong> ${escapeHtml(payment.receipt_number)}<br><strong>Amount received:</strong> ${runtimeBaseCurrency()} ${money(payment.amount)}</p><p>The official service receipt voucher is attached.</p></div>`;
     await this.emailService.sendEmail({
       to: recipient,
       subject,
@@ -1908,17 +1909,17 @@ export class ServiceService {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
-    const money = (value: unknown) => Number(value || 0).toLocaleString('en-IN', {
+    const money = (value: unknown) => Number(value || 0).toLocaleString(runtimeBaseCurrency() === 'EGP' ? 'en-EG' : 'en-AE', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
     const confirmation = invoice.confirmation || {};
     const billableParts = (invoice.service_parts || []).filter((part: any) => part.charged_to_customer);
     const partRows = billableParts.map((part: any, index: number) =>
-      `<tr><td>${index + 1}</td><td>${escapeHtml(part.part_code || part.part_name || 'Service part')}</td><td style="text-align:right">${Number(part.quantity || 0)}</td><td style="text-align:right">Rs. ${money(part.unit_price)}</td><td style="text-align:right">Rs. ${money(part.total_cost)}</td></tr>`,
+      `<tr><td>${index + 1}</td><td>${escapeHtml(part.part_code || part.part_name || 'Service part')}</td><td style="text-align:right">${Number(part.quantity || 0)}</td><td style="text-align:right">${runtimeBaseCurrency()} ${money(part.unit_price)}</td><td style="text-align:right">${runtimeBaseCurrency()} ${money(part.total_cost)}</td></tr>`,
     ).join('');
     const subject = String(input?.subject || `Customer service invoice ${invoice.invoice_number}`).trim();
-    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>Customer Service Invoice ${escapeHtml(invoice.invoice_number)}</h2><p>Dear ${escapeHtml(invoice.customer?.contact_person || invoice.customer?.customer_name || 'Customer')},</p><p>Please find the service invoice summary below.</p><table style="border-collapse:collapse;width:100%"><tbody><tr><td style="border:1px solid #ddd;padding:8px"><strong>Service ticket</strong></td><td style="border:1px solid #ddd;padding:8px">${escapeHtml(invoice.ticket?.ticket_number || '-')}</td></tr><tr><td style="border:1px solid #ddd;padding:8px"><strong>Confirmation</strong></td><td style="border:1px solid #ddd;padding:8px">${escapeHtml(confirmation.confirmation_number || '-')}</td></tr><tr><td style="border:1px solid #ddd;padding:8px"><strong>Work performed</strong></td><td style="border:1px solid #ddd;padding:8px">${escapeHtml(confirmation.work_performed || '-')}</td></tr></tbody></table>${partRows ? `<h3>Billable parts</h3><table style="border-collapse:collapse;width:100%"><thead><tr><th style="border:1px solid #ddd;padding:8px">No.</th><th style="border:1px solid #ddd;padding:8px">Part</th><th style="border:1px solid #ddd;padding:8px">Qty</th><th style="border:1px solid #ddd;padding:8px">Rate</th><th style="border:1px solid #ddd;padding:8px">Amount</th></tr></thead><tbody>${partRows}</tbody></table>` : ''}<p><strong>Taxable value: Rs. ${money(invoice.taxable_amount)}</strong><br>GST: Rs. ${money(invoice.tax_amount)}<br><strong>Invoice value: Rs. ${money(invoice.net_amount)}</strong><br>Outstanding: Rs. ${money(invoice.balance_amount)}<br>Due date: ${escapeHtml(String(invoice.due_date || '-').slice(0, 10))}</p></div>`;
+    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>Customer Service Invoice ${escapeHtml(invoice.invoice_number)}</h2><p>Dear ${escapeHtml(invoice.customer?.contact_person || invoice.customer?.customer_name || 'Customer')},</p><p>Please find the service invoice summary below.</p><table style="border-collapse:collapse;width:100%"><tbody><tr><td style="border:1px solid #ddd;padding:8px"><strong>Service ticket</strong></td><td style="border:1px solid #ddd;padding:8px">${escapeHtml(invoice.ticket?.ticket_number || '-')}</td></tr><tr><td style="border:1px solid #ddd;padding:8px"><strong>Confirmation</strong></td><td style="border:1px solid #ddd;padding:8px">${escapeHtml(confirmation.confirmation_number || '-')}</td></tr><tr><td style="border:1px solid #ddd;padding:8px"><strong>Work performed</strong></td><td style="border:1px solid #ddd;padding:8px">${escapeHtml(confirmation.work_performed || '-')}</td></tr></tbody></table>${partRows ? `<h3>Billable parts</h3><table style="border-collapse:collapse;width:100%"><thead><tr><th style="border:1px solid #ddd;padding:8px">No.</th><th style="border:1px solid #ddd;padding:8px">Part</th><th style="border:1px solid #ddd;padding:8px">Qty</th><th style="border:1px solid #ddd;padding:8px">Rate</th><th style="border:1px solid #ddd;padding:8px">Amount</th></tr></thead><tbody>${partRows}</tbody></table>` : ''}<p><strong>Taxable value: ${runtimeBaseCurrency()} ${money(invoice.taxable_amount)}</strong><br>GST: ${runtimeBaseCurrency()} ${money(invoice.tax_amount)}<br><strong>Invoice value: ${runtimeBaseCurrency()} ${money(invoice.net_amount)}</strong><br>Outstanding: ${runtimeBaseCurrency()} ${money(invoice.balance_amount)}<br>Due date: ${escapeHtml(String(invoice.due_date || '-').slice(0, 10))}</p></div>`;
 
     const pdf = this.quotePdfService ? await this.renderCustomerServiceInvoicePdf(tenantId, invoiceId) : null;
     await this.emailService.sendEmail({
@@ -2262,7 +2263,7 @@ export class ServiceService {
         email: customer.email || '',
       },
       items,
-      currency: 'INR',
+      currency: runtimeBaseCurrency(),
       tax_rate: Number((estimate as any).tax_percentage || 0) / 100,
       notes,
       terms: (estimate as any).terms_and_conditions || '',
@@ -2391,13 +2392,13 @@ export class ServiceService {
     const escapeHtml = (value: unknown) => String(value ?? '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-    const money = (value: unknown) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = (value: unknown) => Number(value || 0).toLocaleString(runtimeBaseCurrency() === 'EGP' ? 'en-EG' : 'en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const rows = [...((estimate as any).items || [])]
       .sort((a: any, b: any) => Number(a.line_no || 0) - Number(b.line_no || 0))
-      .map((item: any, index: number) => `<tr><td style="border:1px solid #ddd;padding:8px">${index + 1}</td><td style="border:1px solid #ddd;padding:8px">${escapeHtml(item.description)}</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${Number(item.quantity || 0)} ${escapeHtml(item.uom || '')}</td><td style="border:1px solid #ddd;padding:8px;text-align:right">Rs. ${money(item.unit_price)}</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${Number(item.discount_percent || 0)}%</td><td style="border:1px solid #ddd;padding:8px;text-align:right">Rs. ${money(item.line_total)}</td></tr>`)
+      .map((item: any, index: number) => `<tr><td style="border:1px solid #ddd;padding:8px">${index + 1}</td><td style="border:1px solid #ddd;padding:8px">${escapeHtml(item.description)}</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${Number(item.quantity || 0)} ${escapeHtml(item.uom || '')}</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${runtimeBaseCurrency()} ${money(item.unit_price)}</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${Number(item.discount_percent || 0)}%</td><td style="border:1px solid #ddd;padding:8px;text-align:right">${runtimeBaseCurrency()} ${money(item.line_total)}</td></tr>`)
       .join('');
     const subject = String(input?.subject || `${eventType === 'REMINDER_SENT' ? 'Reminder: ' : ''}Service estimate ${estimate.estimate_number}`).trim();
-    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>Service Estimate ${escapeHtml(estimate.estimate_number)}</h2><p>Dear ${escapeHtml(customer.contact_person || customer.customer_name || 'Customer')},</p><p>Please find our service estimate for ticket <strong>${escapeHtml((estimate as any).ticket?.ticket_number || '-')}</strong>.</p><table style="border-collapse:collapse;width:100%"><thead><tr><th style="border:1px solid #ddd;padding:8px">No.</th><th style="border:1px solid #ddd;padding:8px">Description</th><th style="border:1px solid #ddd;padding:8px">Quantity</th><th style="border:1px solid #ddd;padding:8px">Rate</th><th style="border:1px solid #ddd;padding:8px">Discount</th><th style="border:1px solid #ddd;padding:8px">Amount</th></tr></thead><tbody>${rows}</tbody></table><p><strong>Taxable value: Rs. ${money(estimate.subtotal)}</strong><br>GST (${money(estimate.tax_percentage)}%): Rs. ${money(estimate.tax_amount)}<br><strong>Estimate total: Rs. ${money(estimate.total_amount)}</strong></p><p>Estimate date: ${escapeHtml(String(estimate.estimate_date || '-').slice(0, 10))}<br>Valid until: ${escapeHtml(String(estimate.valid_until || '-').slice(0, 10))}<br>Revision: ${Number(estimate.revision_no || 0)}</p>${estimate.terms_and_conditions ? `<p style="white-space:pre-wrap"><strong>Terms &amp; Conditions</strong><br>${escapeHtml(estimate.terms_and_conditions)}</p>` : ''}</div>`;
+    const html = `<div style="font-family:Arial,sans-serif;color:#2f241c"><h2>Service Estimate ${escapeHtml(estimate.estimate_number)}</h2><p>Dear ${escapeHtml(customer.contact_person || customer.customer_name || 'Customer')},</p><p>Please find our service estimate for ticket <strong>${escapeHtml((estimate as any).ticket?.ticket_number || '-')}</strong>.</p><table style="border-collapse:collapse;width:100%"><thead><tr><th style="border:1px solid #ddd;padding:8px">No.</th><th style="border:1px solid #ddd;padding:8px">Description</th><th style="border:1px solid #ddd;padding:8px">Quantity</th><th style="border:1px solid #ddd;padding:8px">Rate</th><th style="border:1px solid #ddd;padding:8px">Discount</th><th style="border:1px solid #ddd;padding:8px">Amount</th></tr></thead><tbody>${rows}</tbody></table><p><strong>Taxable value: ${runtimeBaseCurrency()} ${money(estimate.subtotal)}</strong><br>GST (${money(estimate.tax_percentage)}%): ${runtimeBaseCurrency()} ${money(estimate.tax_amount)}<br><strong>Estimate total: ${runtimeBaseCurrency()} ${money(estimate.total_amount)}</strong></p><p>Estimate date: ${escapeHtml(String(estimate.estimate_date || '-').slice(0, 10))}<br>Valid until: ${escapeHtml(String(estimate.valid_until || '-').slice(0, 10))}<br>Revision: ${Number(estimate.revision_no || 0)}</p>${estimate.terms_and_conditions ? `<p style="white-space:pre-wrap"><strong>Terms &amp; Conditions</strong><br>${escapeHtml(estimate.terms_and_conditions)}</p>` : ''}</div>`;
     const { data: engagement, error: engagementError } = await this.supabase.from('service_estimate_engagements').insert({
       tenant_id: tenantId,
       estimate_id: estimateId,

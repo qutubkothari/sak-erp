@@ -3,7 +3,7 @@
  */
 
 export type Region = 'UAE' | 'INDIA' | 'GLOBAL';
-export type Currency = 'AED' | 'INR' | 'USD' | 'SAR' | 'OMR' | 'QAR';
+export type Currency = 'AED' | 'INR' | 'EGP' | 'USD' | 'SAR' | 'OMR' | 'QAR';
 
 /**
  * Employee Types
@@ -23,7 +23,7 @@ export interface Employee {
   gender?: 'MALE' | 'FEMALE' | 'OTHER';
   marital_status?: 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED';
   address?: string;
-  
+
   // UAE Specific
   visa_number?: string;
   visa_expiry?: string;
@@ -33,14 +33,14 @@ export interface Employee {
   passport_expiry?: string;
   labour_card_number?: string;
   labour_card_expiry?: string;
-  
+
   // India Specific
   pan_number?: string;
   aadhar_number?: string;
   uan_number?: string;
   pf_number?: string;
   esi_number?: string;
-  
+
   reporting_manager_id?: string;
   probation_end_date?: string;
   confirmation_date?: string;
@@ -149,14 +149,14 @@ export interface Payslip {
   employee_id: string;
   payroll_run_id: string;
   salary_month: string;
-  
+
   // Attendance
   days_in_month: number;
   days_present: number;
   days_absent: number;
   days_leave: number;
   paid_days: number;
-  
+
   // Earnings
   basic_salary: number;
   hra: number;
@@ -166,7 +166,7 @@ export interface Payslip {
   overtime_amount: number;
   arrears: number;
   gross_salary: number;
-  
+
   // Deductions
   pf_employee: number;
   pf_employer: number;
@@ -177,14 +177,14 @@ export interface Payslip {
   loan_recovery: number;
   other_deductions: { [key: string]: number };
   total_deductions: number;
-  
+
   // Net
   net_salary: number;
-  
+
   // Hold
   hold_amount?: number;
   amount_paid: number;
-  
+
   status: 'DRAFT' | 'PROCESSED' | 'PAID';
   payment_date?: string;
   payment_mode?: 'BANK_TRANSFER' | 'CASH' | 'CHEQUE';
@@ -196,7 +196,7 @@ export interface Payslip {
  */
 export interface StatutoryInfo {
   employee_id: string;
-  
+
   // India
   pan_number?: string;
   uan_number?: string;
@@ -205,7 +205,7 @@ export interface StatutoryInfo {
   pf_joining_date?: string;
   esi_joining_date?: string;
   pt_state?: string;
-  
+
   // UAE
   labour_card_number?: string;
   wps_id?: string;
@@ -218,20 +218,20 @@ export interface StatutoryInfo {
 export interface KPIMetrics {
   employee_id: string;
   period: string;
-  
+
   // Auto-calculated
   attendance_rate: number;
   punctuality_score: number;
   leave_utilization: number;
   overtime_hours: number;
-  
+
   // Manual entry
   quality_score?: number;
   productivity_score?: number;
   teamwork_rating?: number;
   customer_satisfaction?: number;
   innovation_score?: number;
-  
+
   overall_score?: number;
 }
 
@@ -270,7 +270,7 @@ export interface HRModuleConfig {
   region: Region;
   currency: Currency;
   workWeek: string[];
-  
+
   features: {
     payroll: boolean;
     attendance: boolean;
@@ -278,7 +278,7 @@ export interface HRModuleConfig {
     performance: boolean;
     compliance: boolean;
   };
-  
+
   compliance: {
     // UAE
     wps?: boolean;
@@ -287,7 +287,7 @@ export interface HRModuleConfig {
       calculation: 'uae-labour-law';
     };
     visaTracking?: boolean;
-    
+
     // India
     pf?: {
       enabled: boolean;
@@ -313,11 +313,11 @@ export interface HRModuleConfig {
       formula: 'india' | 'uae' | 'custom';
     };
   };
-  
+
   leave: {
     types: LeaveType[];
   };
-  
+
   payroll: {
     paymentCycle: 'MONTHLY' | 'WEEKLY' | 'BI_WEEKLY';
     overtimeMultiplier: number;

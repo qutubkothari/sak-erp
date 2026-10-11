@@ -1,5 +1,8 @@
 'use client';
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -121,9 +124,9 @@ function formatDate(value?: string) {
 
 function formatAmount(value?: number) {
   if (!value) return '-';
-  return new Intl.NumberFormat('en-IN', {
+  return new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
     style: 'currency',
-    currency: 'INR',
+    currency: TENANT_BASE_CURRENCY.currency,
     maximumFractionDigits: 0,
   }).format(value);
 }

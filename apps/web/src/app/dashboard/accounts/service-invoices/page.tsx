@@ -1,5 +1,8 @@
 'use client';
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useEffect, useMemo, useState } from 'react';
 import { Check, CreditCard, Plus, RefreshCw, X } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
@@ -40,7 +43,7 @@ type Invoice = {
 };
 
 const money = (amount: unknown) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(amount || 0));
+  new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, { style: 'currency', currency: TENANT_BASE_CURRENCY.currency }).format(Number(amount || 0));
 
 export default function ServiceInvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);

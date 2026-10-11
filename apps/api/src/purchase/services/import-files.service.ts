@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
@@ -55,7 +56,7 @@ ALTER TABLE public.import_files ADD CONSTRAINT import_files_status_check CHECK (
 CREATE TABLE IF NOT EXISTS public.import_file_costs (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL, import_file_id UUID NOT NULL REFERENCES public.import_files(id) ON DELETE CASCADE,
  cost_type VARCHAR(50) NOT NULL, supplier_id UUID REFERENCES public.vendors(id) ON DELETE SET NULL, document_number VARCHAR(120), cost_date DATE,
- currency VARCHAR(10) NOT NULL DEFAULT 'INR', exchange_rate NUMERIC(15,6) NOT NULL DEFAULT 1, foreign_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+ currency VARCHAR(10) NOT NULL DEFAULT '${runtimeBaseCurrency()}', exchange_rate NUMERIC(15,6) NOT NULL DEFAULT 1, foreign_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
  inr_amount NUMERIC(15,2) NOT NULL DEFAULT 0, recoverable_tax_amount NUMERIC(15,2) NOT NULL DEFAULT 0, allocation_basis VARCHAR(30) NOT NULL DEFAULT 'VALUE',
  notes TEXT, created_by UUID, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -92,7 +93,7 @@ CREATE TABLE IF NOT EXISTS public.import_file_assessment_lines (
 );
 CREATE TABLE IF NOT EXISTS public.import_file_payments (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL, import_file_id UUID NOT NULL REFERENCES public.import_files(id) ON DELETE CASCADE,
- supplier_id UUID REFERENCES public.vendors(id) ON DELETE SET NULL, payment_category VARCHAR(50) NOT NULL, document_number VARCHAR(120), currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+ supplier_id UUID REFERENCES public.vendors(id) ON DELETE SET NULL, payment_category VARCHAR(50) NOT NULL, document_number VARCHAR(120), currency VARCHAR(10) NOT NULL DEFAULT '${runtimeBaseCurrency()}',
  exchange_rate NUMERIC(15,6) NOT NULL DEFAULT 1, foreign_amount NUMERIC(15,2) NOT NULL DEFAULT 0, inr_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
  status VARCHAR(30) NOT NULL DEFAULT 'PENDING_APPROVAL', payment_date DATE, payment_reference VARCHAR(160), notes TEXT,
  created_by UUID, approved_by UUID, approved_at TIMESTAMPTZ, paid_by UUID, paid_at TIMESTAMPTZ, reversed_by UUID, reversed_at TIMESTAMPTZ, reversal_reason TEXT,
@@ -277,7 +278,7 @@ NOTIFY pgrst, 'reload schema';`;
     await this.one(tenantId, id);
     const amount = this.num(body.inrAmount);
     const costType = String(body.costType || '').trim().toUpperCase();
-    if (!costType || amount <= 0) throw new BadRequestException('Cost type and INR amount are required.');
+    if (!costType || amount <= 0) throw new BadRequestException(`Cost type and ${runtimeBaseCurrency()} amount are required.`);
     const { data, error } = await this.supabase.from('import_file_costs').insert({
       tenant_id: tenantId,
       import_file_id: id,
@@ -285,7 +286,7 @@ NOTIFY pgrst, 'reload schema';`;
       supplier_id: this.text(body.supplierId),
       document_number: this.text(body.documentNumber),
       cost_date: String(body.costDate || '').slice(0, 10) || null,
-      currency: String(body.currency || 'INR').toUpperCase(),
+      currency: String(body.currency || runtimeBaseCurrency()).toUpperCase(),
       exchange_rate: this.num(body.exchangeRate) || 1,
       foreign_amount: this.num(body.foreignAmount),
       inr_amount: amount,
@@ -295,7 +296,7 @@ NOTIFY pgrst, 'reload schema';`;
       created_by: userId,
     }).select().single();
     if (error) throw new BadRequestException(error.message);
-    await this.event(tenantId, id, 'INWARD_COST_ADDED', `${costType} of INR ${amount.toFixed(2)} recorded`, userId, data.id);
+    await this.event(tenantId, id, 'INWARD_COST_ADDED', `${costType} of ${runtimeBaseCurrency()} ${amount.toFixed(2)} recorded`, userId, data.id);
     await this.supabase.from('import_files').update({ status: 'LANDED_COST_PENDING', updated_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', id).neq('status', 'CLOSED');
     return this.one(tenantId, id);
   }
@@ -420,7 +421,7 @@ NOTIFY pgrst, 'reload schema';`;
       const { error: insertError } = await this.supabase.from('import_file_assessment_lines').insert(rows);
       if (insertError) throw new BadRequestException(insertError.message);
     }
-    await this.event(tenantId, id, 'BOE_ASSESSMENT_UPDATED', `BOE assessment updated: assessed INR ${this.num(totals.assessed).toFixed(2)}, duty INR ${this.num(totals.duty).toFixed(2)}, cess INR ${this.num(totals.cess).toFixed(2)}, GST INR ${this.num(totals.gst).toFixed(2)}`, userId);
+    await this.event(tenantId, id, 'BOE_ASSESSMENT_UPDATED', `BOE assessment updated: assessed ${runtimeBaseCurrency()} ${this.num(totals.assessed).toFixed(2)}, duty ${runtimeBaseCurrency()} ${this.num(totals.duty).toFixed(2)}, cess ${runtimeBaseCurrency()} ${this.num(totals.cess).toFixed(2)}, GST ${runtimeBaseCurrency()} ${this.num(totals.gst).toFixed(2)}`, userId);
     return this.one(tenantId, id);
   }
 
@@ -485,7 +486,7 @@ NOTIFY pgrst, 'reload schema';`;
     if (error) throw new BadRequestException(error.message);
     await this.supabase.from('import_file_grns').update({ status: 'POSTED' }).eq('tenant_id', tenantId).eq('import_file_id', id);
     await this.supabase.from('import_files').update({ status: 'LANDED_COST_POSTED', final_landed_cost: pool, updated_at: new Date().toISOString() }).eq('tenant_id', tenantId).eq('id', id);
-    await this.event(tenantId, id, 'LANDED_COST_POSTED', `INR ${pool.toFixed(2)} posted across ${rows.length} GRN line(s) using ${basis} basis`, userId);
+    await this.event(tenantId, id, 'LANDED_COST_POSTED', `${runtimeBaseCurrency()} ${pool.toFixed(2)} posted across ${rows.length} GRN line(s) using ${basis} basis`, userId);
     return this.one(tenantId, id);
   }
 
@@ -493,14 +494,14 @@ NOTIFY pgrst, 'reload schema';`;
     await this.one(tenantId, id);
     const category = String(body.paymentCategory || '').trim().toUpperCase();
     const amount = this.num(body.inrAmount);
-    if (!category || amount <= 0) throw new BadRequestException('Payment category and INR amount are required.');
+    if (!category || amount <= 0) throw new BadRequestException(`Payment category and ${runtimeBaseCurrency()} amount are required.`);
     const { data, error } = await this.supabase.from('import_file_payments').insert({
       tenant_id: tenantId,
       import_file_id: id,
       supplier_id: this.text(body.supplierId),
       payment_category: category,
       document_number: this.text(body.documentNumber),
-      currency: String(body.currency || 'INR').toUpperCase(),
+      currency: String(body.currency || runtimeBaseCurrency()).toUpperCase(),
       exchange_rate: this.num(body.exchangeRate) || 1,
       foreign_amount: this.num(body.foreignAmount),
       inr_amount: amount,
@@ -511,7 +512,7 @@ NOTIFY pgrst, 'reload schema';`;
       created_by: userId,
     }).select().single();
     if (error) throw new BadRequestException(error.message);
-    await this.event(tenantId, id, 'PAYMENT_REQUESTED', `${category} payment of INR ${amount.toFixed(2)} recorded for approval`, userId, data.id);
+    await this.event(tenantId, id, 'PAYMENT_REQUESTED', `${category} payment of ${runtimeBaseCurrency()} ${amount.toFixed(2)} recorded for approval`, userId, data.id);
     return this.one(tenantId, id);
   }
 

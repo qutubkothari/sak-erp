@@ -818,7 +818,7 @@ export default function AccountsPage() {
                       item.template_name,
                       item.frequency,
                       date(item.next_run_date),
-                      `${item.transaction_currency_code || "INR"} @ ${Number(item.exchange_rate || 1).toLocaleString("en-IN", { maximumFractionDigits: 6 })}`,
+                      `${item.transaction_currency_code || TENANT_BASE_CURRENCY.currency} @ ${Number(item.exchange_rate || 1).toLocaleString("en-IN", { maximumFractionDigits: 6 })}`,
                       item.is_active ? "Active" : "Inactive",
                       <span key="actions" className="flex gap-3">
                         <button
@@ -881,7 +881,7 @@ export default function AccountsPage() {
                   label="New exchange rate"
                 />
                 <div className="px-4 py-2 text-xs text-gray-600 bg-[#fcfaf7]">
-                  Rates convert the transaction currency into the INR functional
+                  Rates convert the transaction currency into the {TENANT_BASE_CURRENCY.currency} functional
                   ledger currency. Saving the same currency pair and date
                   updates that controlled daily rate.
                 </div>
@@ -5218,11 +5218,11 @@ function RecurringJournalForm({ template, accounts, error, close, save }: any) {
             name="transaction_currency_code"
             label="Transaction currency"
             required
-            defaultValue={template?.transaction_currency_code || "INR"}
+            defaultValue={template?.transaction_currency_code || TENANT_BASE_CURRENCY.currency}
           />
           <Field
             name="exchange_rate"
-            label="Exchange rate to INR"
+            label={`Exchange rate to ${TENANT_BASE_CURRENCY.currency}`}
             type="number"
             required
             defaultValue={template?.exchange_rate || 1}
@@ -5596,7 +5596,7 @@ function AccountingForm({
             <Field
               name="currency_code"
               label="Currency"
-              defaultValue={initialAccount?.currency_code || "INR"}
+              defaultValue={initialAccount?.currency_code || TENANT_BASE_CURRENCY.currency}
               disabled={Boolean(initialAccount)}
             />
             <Field
@@ -5957,7 +5957,7 @@ function AccountingForm({
                   name="to_currency_code"
                   label="Functional currency"
                   required
-                  defaultValue="INR"
+                  defaultValue={TENANT_BASE_CURRENCY.currency}
                 />
               </>
             )}
@@ -5976,8 +5976,8 @@ function AccountingForm({
               placeholder="Bank, RBI, CB, contract rate"
             />
             <p className="md:col-span-2 text-xs text-gray-600">
-              Example: AED 1 = INR 22.65. Rates preserve transaction-currency
-              evidence while the current Mizantra general ledger reports in INR.
+              Example: AED 1 = {TENANT_BASE_CURRENCY.currency} 22.65. Rates preserve transaction-currency
+              evidence while the tenant general ledger reports in {TENANT_BASE_CURRENCY.currency}.
             </p>
           </div>
         )}
@@ -6028,13 +6028,13 @@ function AccountingForm({
                 label="Transaction currency"
                 required
                 defaultValue={
-                  initialJournal?.transaction_currency_code || "INR"
+                  initialJournal?.transaction_currency_code || TENANT_BASE_CURRENCY.currency
                 }
-                placeholder="INR"
+                placeholder={TENANT_BASE_CURRENCY.currency}
               />
               <Field
                 name="exchange_rate"
-                label="Exchange rate to INR"
+                label={`Exchange rate to ${TENANT_BASE_CURRENCY.currency}`}
                 type="number"
                 required
                 defaultValue={initialJournal?.exchange_rate || "1"}
@@ -6047,7 +6047,7 @@ function AccountingForm({
                 Line narration, cost centre / project, and tax code are
                 optional. Use them for audit evidence, project profitability and
                 tax-register reporting. Debit and credit are always recorded in
-                INR; the transaction currency and rate retain the original
+                {TENANT_BASE_CURRENCY.currency}; the transaction currency and rate retain the original
                 foreign-currency evidence.
               </p>
               {journalLines.map((line, index) => (
@@ -6143,7 +6143,7 @@ function AccountingForm({
                     type="number"
                     min="0"
                     step="0.01"
-                    placeholder="Debit (INR)"
+                    placeholder={`Debit (${TENANT_BASE_CURRENCY.currency})`}
                     value={line.debit}
                     onChange={(event) =>
                       setJournalLines((rows) =>
@@ -6164,7 +6164,7 @@ function AccountingForm({
                     type="number"
                     min="0"
                     step="0.01"
-                    placeholder="Credit (INR)"
+                    placeholder={`Credit (${TENANT_BASE_CURRENCY.currency})`}
                     value={line.credit}
                     onChange={(event) =>
                       setJournalLines((rows) =>
@@ -6260,7 +6260,7 @@ function AccountingForm({
               type="number"
               required
             />
-            <Field name="currency_code" label="Currency" defaultValue="INR" />
+            <Field name="currency_code" label="Currency" defaultValue={TENANT_BASE_CURRENCY.currency} />
             <label className="block text-sm">
               <span className="block mb-1">Source posted journal</span>
               <select

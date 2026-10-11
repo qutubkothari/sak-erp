@@ -1,5 +1,8 @@
 "use client";
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, BarChart3, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
@@ -11,7 +14,7 @@ type Metric = { key: string; label: string; value: number; displayValue?: string
 type Exception = { type: string; title: string; detail: string; severity: string; route?: string };
 type Cockpit = { generatedAt: string; metrics: Metric[]; summary: any; exceptions: Exception[]; currencyCode?: string; scope?: { mode?: string } };
 const number = (value: unknown) => new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Number(value || 0));
-const money = (value: unknown, currencyCode = "INR") => new Intl.NumberFormat("en-IN", { style: "currency", currency: currencyCode, maximumFractionDigits: 0 }).format(Number(value || 0));
+const money = (value: unknown, currencyCode = TENANT_BASE_CURRENCY.currency) => new Intl.NumberFormat("en-IN", { style: "currency", currency: currencyCode, maximumFractionDigits: 0 }).format(Number(value || 0));
 
 function scopedMetrics(domain: string, view: string, data: Cockpit): Metric[] {
   const s = data.summary || {};

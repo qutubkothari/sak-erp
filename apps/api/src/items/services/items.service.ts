@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import {
   BadRequestException,
   ConflictException,
@@ -1051,10 +1052,10 @@ export class ItemsService {
       itemData.oem_name ?? itemData.oemName,
     );
     const purchaseCurrency =
-      (itemData.purchase_currency ?? itemData.purchaseCurrency ?? "INR")
+      (itemData.purchase_currency ?? itemData.purchaseCurrency ?? runtimeBaseCurrency())
         .toString()
         .toUpperCase()
-        .trim() || "INR";
+        .trim() || runtimeBaseCurrency();
     const foreignUnitPrice = this.normalizeNumber(
       itemData.foreign_unit_price ?? itemData.foreignUnitPrice,
     );
@@ -1143,7 +1144,7 @@ export class ItemsService {
         ...commercialUomFields,
         purchase_currency: purchaseCurrency,
         foreign_unit_price:
-          purchaseCurrency === "INR" ? null : foreignUnitPrice,
+          purchaseCurrency === runtimeBaseCurrency() ? null : foreignUnitPrice,
         is_active: true,
         is_verified: false,
         created_by: userId,
@@ -1344,7 +1345,7 @@ export class ItemsService {
         item_type: "RAW_MATERIAL",
         is_rnd_item: true,
         is_variant: false,
-        purchase_currency: "INR",
+        purchase_currency: runtimeBaseCurrency(),
         is_active: true,
         is_verified: autoApproved,
         created_by: userId,
@@ -1969,12 +1970,12 @@ export class ItemsService {
       itemData.purchaseCurrency !== undefined
     ) {
       const currency =
-        (itemData.purchase_currency ?? itemData.purchaseCurrency ?? "INR")
+        (itemData.purchase_currency ?? itemData.purchaseCurrency ?? runtimeBaseCurrency())
           .toString()
           .toUpperCase()
-          .trim() || "INR";
+          .trim() || runtimeBaseCurrency();
       updateData.purchase_currency = currency;
-      if (currency === "INR") {
+      if (currency === runtimeBaseCurrency()) {
         updateData.foreign_unit_price = null;
       }
     }

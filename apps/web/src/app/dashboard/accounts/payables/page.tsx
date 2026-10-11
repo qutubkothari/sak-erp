@@ -1,4 +1,6 @@
 'use client';
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { apiClient } from '../../../../../lib/api-client';
@@ -520,7 +522,7 @@ export default function AccountsPayablePage() {
       setPageNotice({ title: 'Payment unavailable', message: 'The linked Subcontract PO or payable line could not be identified.', type: 'error' });
       return;
     }
-    const confirmed = window.confirm(`Record payment of Rs. ${fmtINR(outstanding)} against subcontract invoice ${payable.invoice_number || payable.grn_number}?`);
+    const confirmed = window.confirm(`Record payment of ${TENANT_BASE_CURRENCY.currency} ${fmtINR(outstanding)} against subcontract invoice ${payable.invoice_number || payable.grn_number}?`);
     if (!confirmed) return;
     try {
       await apiClient.post(`/production/subcontracting/orders/${orderId}/steps/${stepId}/pay`, {
@@ -713,7 +715,7 @@ export default function AccountsPayablePage() {
     if (advanceAdjustmentPaisa < 0) { setPaymentError('Advance adjustment cannot be negative'); return; }
     if (settlementTotalPaisa <= 0) { setPaymentError('Please enter a payment, advance adjustment, TDS, or short payment amount'); return; }
     if (advanceAdjustmentPaisa > availableAdvancePaisa) {
-      setPaymentError(`Advance adjustment exceeds available advance Rs. ${moneyInput(availableAdvance)}`);
+      setPaymentError(`Advance adjustment exceeds available advance ${TENANT_BASE_CURRENCY.currency} ${moneyInput(availableAdvance)}`);
       return;
     }
     if (tdsPaisa < 0 || shortPaisa < 0) { setPaymentError('TDS and short payment cannot be negative'); return; }
@@ -726,7 +728,7 @@ export default function AccountsPayablePage() {
       return;
     }
     if (settlementTotalPaisa > outstandingPaisa) {
-      setPaymentError(`Total settlement Rs. ${moneyInput(settlementTotal)} exceeds outstanding Rs. ${moneyInput(outstanding)}`);
+      setPaymentError(`Total settlement ${TENANT_BASE_CURRENCY.currency} ${moneyInput(settlementTotal)} exceeds outstanding ${TENANT_BASE_CURRENCY.currency} ${moneyInput(outstanding)}`);
       return;
     }
 
@@ -798,7 +800,7 @@ export default function AccountsPayablePage() {
       return;
     }
     if (newSettlement > originalOutstanding + 0.009) {
-      setEditPaymentError(`Total settlement ₹${newSettlement.toFixed(2)} exceeds net payable ₹${originalOutstanding.toFixed(2)}`);
+      setEditPaymentError(`Total settlement ${TENANT_BASE_CURRENCY.currency} ${newSettlement.toFixed(2)} exceeds net payable ${TENANT_BASE_CURRENCY.currency} ${originalOutstanding.toFixed(2)}`);
       return;
     }
 
@@ -910,7 +912,7 @@ export default function AccountsPayablePage() {
       .filter(x => x.outstanding > 0.009);
     const totalOutstanding = grnOutstandings.reduce((s, x) => s + x.outstanding, 0);
     if (grandTotal > totalOutstanding + 0.01) {
-      setSettlementError(`Settlement total ₹${fmtINR(grandTotal)} exceeds total outstanding ₹${fmtINR(totalOutstanding)}`);
+      setSettlementError(`Settlement total ${TENANT_BASE_CURRENCY.currency} ${fmtINR(grandTotal)} exceeds total outstanding ${TENANT_BASE_CURRENCY.currency} ${fmtINR(totalOutstanding)}`);
       return;
     }
     setSettlementSubmitting(true);
@@ -943,7 +945,7 @@ export default function AccountsPayablePage() {
         remainingTds = Math.max(0, remainingTds - grnTds);
         remainingShort = Math.max(0, remainingShort - grnShort);
         settled++;
-        messages.push(`✅ ${grn.grn_number}: ₹${fmtINR(grnSettled)} settled`);
+        messages.push(`✅ ${grn.grn_number}: ${TENANT_BASE_CURRENCY.currency} ${fmtINR(grnSettled)} settled`);
       } catch (e: any) {
         failed++;
         messages.push(`❌ ${grn.grn_number}: ${e?.message || 'Failed'}`);
@@ -975,10 +977,10 @@ export default function AccountsPayablePage() {
         <td>${grn.invoice_number || '—'}</td>
         <td>${grn.invoice_date ? new Date(grn.invoice_date).toLocaleDateString('en-IN') : '—'}</td>
         <td>${grn.grn_number}</td>
-        <td style="text-align:right">₹${fmtINR(gross)}</td>
-        <td style="text-align:right">₹${fmtINR(net)}</td>
-        <td style="text-align:right;color:#16a34a">₹${fmtINR(paid)}</td>
-        <td style="text-align:right;font-weight:700;color:#ea580c">₹${fmtINR(outstanding)}</td>
+        <td style="text-align:right">${TENANT_BASE_CURRENCY.currency} ${fmtINR(gross)}</td>
+        <td style="text-align:right">${TENANT_BASE_CURRENCY.currency} ${fmtINR(net)}</td>
+        <td style="text-align:right;color:#16a34a">${TENANT_BASE_CURRENCY.currency} ${fmtINR(paid)}</td>
+        <td style="text-align:right;font-weight:700;color:#ea580c">${TENANT_BASE_CURRENCY.currency} ${fmtINR(outstanding)}</td>
       </tr>`;
     }).join('');
 
@@ -1022,7 +1024,7 @@ export default function AccountsPayablePage() {
           ${rows}
           <tr class="total-row">
             <td colspan="8" style="text-align:right">Total Outstanding (${selected.length} invoice${selected.length > 1 ? 's' : ''})</td>
-            <td style="text-align:right;color:#ea580c">₹${fmtINR(totalOutstandingSelected)}</td>
+            <td style="text-align:right;color:#ea580c">${TENANT_BASE_CURRENCY.currency} ${fmtINR(totalOutstandingSelected)}</td>
           </tr>
         </tbody>
       </table>
@@ -1065,7 +1067,7 @@ export default function AccountsPayablePage() {
       id: 'total_gross',
       label: 'Invoice Value',
       accessor: (v) => v.total_gross,
-      cell: (v) => `₹${fmtINR(v.total_gross)}`,
+      cell: (v) => `${TENANT_BASE_CURRENCY.currency} ${fmtINR(v.total_gross)}`,
       sortAccessor: (v) => v.total_gross,
       align: 'right',
     },
@@ -1171,7 +1173,7 @@ export default function AccountsPayablePage() {
     { id: 'vendor', label: 'Vendor', accessor: (g) => g.vendor?.name || '—', sortAccessor: (g) => g.vendor?.name || '', searchAccessor: (g) => `${g.vendor?.name || ''} ${g.vendor?.code || ''}`, minWidth: 190 },
     { id: 'po_number', label: 'PO No.', accessor: (g) => g.purchase_order?.po_number || '—', sortAccessor: (g) => g.purchase_order?.po_number || '', searchAccessor: (g) => g.purchase_order?.po_number || '', cell: (g) => g.purchase_order?.po_number ? <a href={`/dashboard/purchase/orders?viewId=${g.purchase_order.id || g.po_id}`} target="_blank" className="text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.purchase_order.po_number}</a> : '—', minWidth: 150 },
     { id: 'receipt_date', label: 'Receipt Date', accessor: (g) => g.receipt_date ? new Date(g.receipt_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.receipt_date || '', minWidth: 130 },
-    { id: 'net', label: 'Net Payable', accessor: (g) => getPayableNet(g), cell: (g) => `Rs. ${fmtINR(getPayableNet(g))}`, sortAccessor: (g) => getPayableNet(g), align: 'right', minWidth: 140 },
+    { id: 'net', label: 'Net Payable', accessor: (g) => getPayableNet(g), cell: (g) => `${TENANT_BASE_CURRENCY.currency} ${fmtINR(getPayableNet(g))}`, sortAccessor: (g) => getPayableNet(g), align: 'right', minWidth: 140 },
     { id: 'settled', label: 'Settled', accessor: (g) => getPayableSettled(g), cell: (g) => <span className="font-semibold text-green-700">Rs. {fmtINR(getPayableSettled(g))}</span>, sortAccessor: (g) => getPayableSettled(g), align: 'right', minWidth: 130 },
     { id: 'outstanding', label: 'Outstanding', accessor: (g) => getPayableOutstanding(g), cell: (g) => <span className="font-bold text-orange-600">Rs. {fmtINR(getPayableOutstanding(g))}</span>, sortAccessor: (g) => getPayableOutstanding(g), align: 'right', minWidth: 140 },
     { id: 'status', label: 'Status', accessor: (g) => g.payment_status || 'UNPAID', cell: (g) => paymentStatusBadge(g.payment_status), sortAccessor: (g) => g.payment_status || '', minWidth: 120 },
@@ -1197,7 +1199,7 @@ export default function AccountsPayablePage() {
     { id: 'advance_type', label: 'Type', accessor: (a) => a.advance_type, sortAccessor: (a) => a.advance_type, cell: (a) => <span className={`px-2 py-0.5 rounded text-xs font-medium ${a.advance_type === 'PO' ? 'bg-blue-100 text-blue-800' : 'bg-teal-100 text-teal-800'}`}>{a.advance_type === 'PO' ? 'PO' : 'Blanket'}</span>, minWidth: 110 },
     { id: 'po_number', label: 'PO Number', accessor: (a) => a.purchase_order?.po_number || '—', sortAccessor: (a) => a.purchase_order?.po_number || '', searchAccessor: (a) => a.purchase_order?.po_number || '', minWidth: 160 },
     { id: 'vendor', label: 'Vendor', accessor: (a) => a.vendor?.name || '—', sortAccessor: (a) => a.vendor?.name || '', searchAccessor: (a) => `${a.vendor?.name || ''} ${a.vendor?.code || ''}`, minWidth: 190 },
-    { id: 'amount', label: 'Total', accessor: (a) => a.amount || 0, cell: (a) => `₹${fmtINR(a.amount || 0)}`, sortAccessor: (a) => a.amount || 0, align: 'right', minWidth: 130 },
+    { id: 'amount', label: 'Total', accessor: (a) => a.amount || 0, cell: (a) => `${TENANT_BASE_CURRENCY.currency} ${fmtINR(a.amount || 0)}`, sortAccessor: (a) => a.amount || 0, align: 'right', minWidth: 130 },
     { id: 'utilized_amount', label: 'Used', accessor: (a) => a.utilized_amount || 0, cell: (a) => <span className="text-amber-600">₹{fmtINR(a.utilized_amount || 0)}</span>, sortAccessor: (a) => a.utilized_amount || 0, align: 'right', minWidth: 130 },
     { id: 'balance_amount', label: 'Balance', accessor: (a) => a.balance_amount || 0, cell: (a) => <span className="font-bold text-green-700">₹{fmtINR(a.balance_amount || 0)}</span>, sortAccessor: (a) => a.balance_amount || 0, align: 'right', minWidth: 130 },
     { id: 'status', label: 'Status', accessor: (a) => (a.balance_amount || 0) > 0.009 ? 'Available' : 'Fully Used', cell: (a) => (a.balance_amount || 0) > 0.009 ? <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">Available</span> : <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">Fully Used</span>, minWidth: 130 },
@@ -1224,7 +1226,7 @@ export default function AccountsPayablePage() {
     { id: 'invoice_date', label: 'Invoice Date', accessor: (g) => g.invoice_date ? new Date(g.invoice_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.invoice_date || '', minWidth: 130 },
     { id: 'grn_number', label: 'GRN Number', accessor: (g) => g.grn_number, sortAccessor: (g) => g.grn_number, searchAccessor: (g) => g.grn_number, cell: (g) => <a href={`/dashboard/purchase/grn?viewId=${g.id}`} target="_blank" className="font-semibold text-blue-600 hover:text-blue-800 hover:underline" onClick={(e) => e.stopPropagation()}>{g.grn_number}</a>, minWidth: 150 },
     { id: 'receipt_date', label: 'Receipt Date', accessor: (g) => g.receipt_date ? new Date(g.receipt_date).toLocaleDateString('en-IN') : '—', sortAccessor: (g) => g.receipt_date || '', minWidth: 130 },
-    { id: 'gross', label: 'Gross', accessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), cell: (g) => <span title={((g.freight_amount || 0) > 0 || (g.freight_gst_amount || 0) > 0) ? `Items: ₹${fmtINR(g.gross_amount)} + Freight: ₹${fmtINR((g.freight_amount || 0) + (g.freight_gst_amount || 0))}` : undefined}>₹{fmtINR(+(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0))}</span>, sortAccessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), align: 'right', minWidth: 130 },
+    { id: 'gross', label: 'Gross', accessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), cell: (g) => <span title={((g.freight_amount || 0) > 0 || (g.freight_gst_amount || 0) > 0) ? `Items: ${TENANT_BASE_CURRENCY.currency} ${fmtINR(g.gross_amount)} + Freight: ${TENANT_BASE_CURRENCY.currency} ${fmtINR((g.freight_amount || 0) + (g.freight_gst_amount || 0))}` : undefined}>₹{fmtINR(+(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0))}</span>, sortAccessor: (g) => +(g.gross_amount || 0) + +(g.freight_amount || 0) + +(g.freight_gst_amount || 0), align: 'right', minWidth: 130 },
     { id: 'debit', label: 'Debit', accessor: (g) => g.debit_note_amount || 0, cell: (g) => <span className="text-red-600">-₹{fmtINR(g.debit_note_amount)}</span>, sortAccessor: (g) => g.debit_note_amount || 0, align: 'right', minWidth: 120 },
     { id: 'net', label: 'Net Invoice', accessor: (g) => getPayableNet(g), cell: (g) => <span className="font-semibold">Rs. {fmtINR(getPayableNet(g))}</span>, sortAccessor: (g) => getPayableNet(g), align: 'right', minWidth: 140 },
     { id: 'paid', label: 'Settled', accessor: (g) => getPayableSettled(g), cell: (g) => <span className="text-green-700">Rs. {fmtINR(getPayableSettled(g))}</span>, sortAccessor: (g) => getPayableSettled(g), align: 'right', minWidth: 120 },
@@ -1608,8 +1610,8 @@ export default function AccountsPayablePage() {
                               </td>
                               <td className="px-3 py-2 text-gray-500 text-xs">{e.payment_reference || '—'}</td>
                               <td className="px-3 py-2 font-semibold text-green-700">₹{fmtINR(e.amount)}</td>
-                              <td className="px-3 py-2 text-sky-700">{(e.tds_amount || 0) > 0 ? `₹${fmtINR(e.tds_amount)}` : '—'}</td>
-                              <td className="px-3 py-2 text-amber-700">{(e.short_payment_amount || 0) > 0 ? `₹${fmtINR(e.short_payment_amount)}` : '—'}</td>
+                              <td className="px-3 py-2 text-sky-700">{(e.tds_amount || 0) > 0 ? `${TENANT_BASE_CURRENCY.currency} ${fmtINR(e.tds_amount)}` : '—'}</td>
+                              <td className="px-3 py-2 text-amber-700">{(e.short_payment_amount || 0) > 0 ? `${TENANT_BASE_CURRENCY.currency} ${fmtINR(e.short_payment_amount)}` : '—'}</td>
                               <td className="px-3 py-2 text-xs text-gray-500">{e.payment_notes || (e.short_payment_reason ? `Short: ${e.short_payment_reason}` : '—')}</td>
                               <td className="px-3 py-2">
                                 {!isSystemPaymentEntry(e) && canRecordPayment && (
@@ -2385,9 +2387,9 @@ export default function AccountsPayablePage() {
             <div className="space-y-5 p-5">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {[
-                  { label: 'Advance paid', value: `₹${fmtINR(selectedAdvance.amount || 0)}`, tone: 'text-[#3F2D20]' },
-                  { label: 'Applied to invoices', value: `₹${fmtINR(selectedAdvance.utilized_amount || 0)}`, tone: 'text-amber-700' },
-                  { label: 'Available balance', value: `₹${fmtINR(selectedAdvance.balance_amount || 0)}`, tone: 'text-green-700' },
+                  { label: 'Advance paid', value: `${TENANT_BASE_CURRENCY.currency} ${fmtINR(selectedAdvance.amount || 0)}`, tone: 'text-[#3F2D20]' },
+                  { label: 'Applied to invoices', value: `${TENANT_BASE_CURRENCY.currency} ${fmtINR(selectedAdvance.utilized_amount || 0)}`, tone: 'text-amber-700' },
+                  { label: 'Available balance', value: `${TENANT_BASE_CURRENCY.currency} ${fmtINR(selectedAdvance.balance_amount || 0)}`, tone: 'text-green-700' },
                 ].map((summary) => (
                   <div key={summary.label} className="rounded-lg border border-[#E8DCC4] bg-[#FAF9F6] p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[#7A6756]">{summary.label}</p>

@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { DocumentBrandingService } from '../../common/services/document-branding.service';
@@ -45,7 +46,7 @@ interface POPdfData {
   companyAddress?: string;
 }
 
-const formatInr = (value: number): string => `INR ${Number(value || 0).toFixed(2)}`;
+const formatInr = (value: number): string => `${runtimeBaseCurrency()} ${Number(value || 0).toFixed(2)}`;
 
 @Injectable()
 export class PoPdfService {
@@ -181,7 +182,7 @@ export class PoPdfService {
 
     // Items Table
     yPosition -= 100;
-    
+
     // Table Header
     const tableStartY = yPosition;
     const colX = {

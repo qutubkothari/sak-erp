@@ -1,4 +1,6 @@
 "use client";
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -292,14 +294,14 @@ const badgeTone: Record<string, string> = {
 function fmt(n: any) {
   const value = Number(n || 0);
   return Number.isFinite(value)
-    ? value.toLocaleString("en-IN", { maximumFractionDigits: 3 })
+    ? value.toLocaleString(TENANT_BASE_CURRENCY.locale, { maximumFractionDigits: 3 })
     : "0";
 }
 
 function fmtMoney(n: any) {
   const value = Number(n || 0);
   return Number.isFinite(value)
-    ? value.toLocaleString("en-IN", {
+    ? value.toLocaleString(TENANT_BASE_CURRENCY.locale, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })
@@ -1536,7 +1538,7 @@ export default function SubcontractingPage() {
             const rate = Number(step.unit_price || 0);
             const discount = Number(step.discount_percent || 0);
             const amount = qty * rate * (1 - discount / 100);
-            return `<tr><td>${index + 1}</td><td><strong>${escapePrintHtml(itemLabel(printLookups.items, step.output_item_id))}</strong><br><span class="muted">${escapePrintHtml(step.operation_name || "Outside processing")}</span></td><td class="num">${escapePrintHtml(fmt(qty))}</td><td>${escapePrintHtml(stockItemUom(printLookups.items, step.output_item_id, step.output_uom) || "-")}</td><td class="num">Rs. ${escapePrintHtml(fmt(rate))}</td><td class="num">${escapePrintHtml(fmt(discount))}%</td><td class="num">Rs. ${escapePrintHtml(fmt(amount))}</td></tr>`;
+            return `<tr><td>${index + 1}</td><td><strong>${escapePrintHtml(itemLabel(printLookups.items, step.output_item_id))}</strong><br><span class="muted">${escapePrintHtml(step.operation_name || "Outside processing")}</span></td><td class="num">${escapePrintHtml(fmt(qty))}</td><td>${escapePrintHtml(stockItemUom(printLookups.items, step.output_item_id, step.output_uom) || "-")}</td><td class="num">${TENANT_BASE_CURRENCY.currency} ${escapePrintHtml(fmt(rate))}</td><td class="num">${escapePrintHtml(fmt(discount))}%</td><td class="num">${TENANT_BASE_CURRENCY.currency} ${escapePrintHtml(fmt(amount))}</td></tr>`;
           })
           .join("") || '<tr><td colspan="7">No service lines</td></tr>';
       const total = (full.steps || [])
@@ -1549,7 +1551,7 @@ export default function SubcontractingPage() {
               (1 - Number(step.discount_percent || 0) / 100),
           0,
         );
-      const html = `<!doctype html><html><head><meta charset="UTF-8"><title>Subcontract PO - ${escapePrintHtml(full.order_number)}</title><style>@page{margin:.55cm}body{font-family:Arial,sans-serif;color:#201a15;font-size:11px;padding:18px}.title{font-size:19px;font-weight:800;text-align:right}.meta{display:grid;grid-template-columns:1fr 1fr;border:1px solid #bda98c;margin:14px 0}.meta div,td,th{padding:8px;border:1px solid #bda98c}.label{font-size:9px;text-transform:uppercase;color:#6c4f32;font-weight:700}.value{font-weight:700;margin-top:3px}.muted{color:#6f5a45;font-size:10px}.notice{background:#fff8e8;border:1px solid #c9b28b;padding:10px;margin:12px 0}table{border-collapse:collapse;width:100%}th{background:#f2eadf;text-align:left;font-size:9px;text-transform:uppercase}.num{text-align:right}.sign{display:flex;gap:28px;margin-top:50px}.sign div{flex:1;border-top:1px solid #57412d;padding-top:7px;font-weight:700}</style></head><body>${renderStandardLetterheadHtml(branding, new Date().toLocaleString())}<div class="title">SUBCONTRACT PURCHASE ORDER</div><div class="meta"><div><div class="label">Subcontract PO No.</div><div class="value">${escapePrintHtml(full.order_number)}</div></div><div><div class="label">Subcontract PR No.</div><div class="value">${escapePrintHtml(full.requisition_number || "Legacy order")}</div></div><div><div class="label">Supplier / Subcontractor</div><div class="value">${escapePrintHtml(vendor)}</div></div><div><div class="label">Approval status</div><div class="value">${escapePrintHtml(full.approval_status || full.status || "-")}</div></div></div><div class="notice">Please process the services below only against this approved Subcontract PO. Material outward, receipt, quality disposition, supplier invoice and payment remain linked to this document.</div><table><thead><tr><th>No.</th><th>Service / output</th><th class="num">Qty</th><th>UOM</th><th class="num">Rate</th><th class="num">Disc.</th><th class="num">Amount</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><th colspan="6" class="num">Service value</th><th class="num">Rs. ${escapePrintHtml(fmt(total))}</th></tr></tfoot></table><div class="sign"><div>Prepared By</div><div>Approved By</div><div>Accepted by Subcontractor</div></div><script>window.onload=function(){window.focus();window.print();}</script></body></html>`;
+      const html = `<!doctype html><html><head><meta charset="UTF-8"><title>Subcontract PO - ${escapePrintHtml(full.order_number)}</title><style>@page{margin:.55cm}body{font-family:Arial,sans-serif;color:#201a15;font-size:11px;padding:18px}.title{font-size:19px;font-weight:800;text-align:right}.meta{display:grid;grid-template-columns:1fr 1fr;border:1px solid #bda98c;margin:14px 0}.meta div,td,th{padding:8px;border:1px solid #bda98c}.label{font-size:9px;text-transform:uppercase;color:#6c4f32;font-weight:700}.value{font-weight:700;margin-top:3px}.muted{color:#6f5a45;font-size:10px}.notice{background:#fff8e8;border:1px solid #c9b28b;padding:10px;margin:12px 0}table{border-collapse:collapse;width:100%}th{background:#f2eadf;text-align:left;font-size:9px;text-transform:uppercase}.num{text-align:right}.sign{display:flex;gap:28px;margin-top:50px}.sign div{flex:1;border-top:1px solid #57412d;padding-top:7px;font-weight:700}</style></head><body>${renderStandardLetterheadHtml(branding, new Date().toLocaleString())}<div class="title">SUBCONTRACT PURCHASE ORDER</div><div class="meta"><div><div class="label">Subcontract PO No.</div><div class="value">${escapePrintHtml(full.order_number)}</div></div><div><div class="label">Subcontract PR No.</div><div class="value">${escapePrintHtml(full.requisition_number || "Legacy order")}</div></div><div><div class="label">Supplier / Subcontractor</div><div class="value">${escapePrintHtml(vendor)}</div></div><div><div class="label">Approval status</div><div class="value">${escapePrintHtml(full.approval_status || full.status || "-")}</div></div></div><div class="notice">Please process the services below only against this approved Subcontract PO. Material outward, receipt, quality disposition, supplier invoice and payment remain linked to this document.</div><table><thead><tr><th>No.</th><th>Service / output</th><th class="num">Qty</th><th>UOM</th><th class="num">Rate</th><th class="num">Disc.</th><th class="num">Amount</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><th colspan="6" class="num">Service value</th><th class="num">${TENANT_BASE_CURRENCY.currency} ${escapePrintHtml(fmt(total))}</th></tr></tfoot></table><div class="sign"><div>Prepared By</div><div>Approved By</div><div>Accepted by Subcontractor</div></div><script>window.onload=function(){window.focus();window.print();}</script></body></html>`;
       printWindow.document.open();
       printWindow.document.write(html);
       printWindow.document.close();
@@ -1625,7 +1627,7 @@ export default function SubcontractingPage() {
       ]
         .map(
           ([label, amount]) =>
-            `<tr><td>${escapePrintHtml(label)}</td><td class="num">Rs. ${escapePrintHtml(fmtMoney(amount))}</td></tr>`,
+            `<tr><td>${escapePrintHtml(label)}</td><td class="num">${TENANT_BASE_CURRENCY.currency} ${escapePrintHtml(fmtMoney(amount))}</td></tr>`,
         )
         .join("");
       const html = `<!doctype html><html><head><meta charset="UTF-8"><title>Subcontract GRN - ${escapePrintHtml(receipt.document_number || order.order_number)}</title><style>@page{margin:.55cm}body{font-family:Arial,sans-serif;color:#201a15;margin:0;padding:18px;font-size:11px}.doc{font-size:19px;font-weight:800;text-align:right}.meta{display:grid;grid-template-columns:1fr 1fr;border:1px solid #bda98c;margin:14px 0}.meta>div{padding:8px 10px;border:1px solid #dfd1bd}.label{font-size:9px;text-transform:uppercase;color:#6c4f32;font-weight:700}.value{font-weight:700;margin-top:3px}.notice{background:#fff8e8;border:1px solid #c9b28b;padding:10px;margin:12px 0}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{padding:7px;border:1px solid #bda98c}th{background:#f2eadf;text-align:left;font-size:9px;text-transform:uppercase}.num{text-align:right}.cost{width:42%;margin-left:auto}.sign{display:flex;gap:28px;margin-top:48px}.sign div{flex:1;border-top:1px solid #57412d;padding-top:7px;font-weight:700}@media print{body{padding:0}}</style></head><body>${renderStandardLetterheadHtml(branding, new Date().toLocaleString())}<div class="doc">SUBCONTRACT GOODS RECEIPT NOTE</div><div class="meta"><div><div class="label">Subcontract GRN</div><div class="value">${escapePrintHtml(receipt.document_number || "-")}</div></div><div><div class="label">Receipt date</div><div class="value">${escapePrintHtml(fmtDate(receipt.created_at))}</div></div><div><div class="label">Subcontract PR / PO</div><div class="value">${escapePrintHtml(order.requisition_number || "Legacy PR")} / ${escapePrintHtml(order.order_number)}</div></div><div><div class="label">Supplier / Subcontractor</div><div class="value">${escapePrintHtml(supplier)}</div></div><div><div class="label">Supplier challan / reference</div><div class="value">${escapePrintHtml(receipt.external_reference || "-")}</div></div><div><div class="label">QC status</div><div class="value">${escapePrintHtml(receipt.qc_status || "PENDING_QC")}</div></div></div><div class="notice">This GRN records material received from the subcontractor against the linked Subcontract PO. Accepted stock and payable value remain governed by QC approval.</div><table><thead><tr><th>No.</th><th>Line type</th><th>Item</th><th class="num">Received</th><th>UOM</th><th class="num">Approved</th><th class="num">Rejected</th><th>QC status</th></tr></thead><tbody>${lineRows}</tbody></table><table class="cost"><tbody>${costRows}</tbody></table>${receipt.notes ? `<div class="notice"><span class="label">Receipt notes</span><br>${escapePrintHtml(receipt.notes)}</div>` : ""}<div class="sign"><div>Received By</div><div>Quality Approved By</div><div>Accounts Verification</div></div><script>window.onload=function(){window.focus();window.print();}</script></body></html>`;
@@ -3068,7 +3070,7 @@ export default function SubcontractingPage() {
               <div className="font-bold">
                 {pendingQc
                   ? "Pending QC"
-                  : `₹${fmtMoney(row.movement.payable_amount)}`}
+                  : `${TENANT_BASE_CURRENCY.currency} ${fmtMoney(row.movement.payable_amount)}`}
               </div>
               <div className="text-xs text-[#7b6753]">
                 Invoice: {row.movement.invoice_number || "Not recorded"}
@@ -3388,7 +3390,7 @@ export default function SubcontractingPage() {
         minWidth: 130,
         sortable: true,
         accessor: (row) => Number(row.processing_amount || 0),
-        cell: (row) => `Rs. ${fmtMoney(row.processing_amount)}`,
+        cell: (row) => `${TENANT_BASE_CURRENCY.currency} ${fmtMoney(row.processing_amount)}`,
       },
       {
         id: "tax",
@@ -3396,7 +3398,7 @@ export default function SubcontractingPage() {
         minWidth: 110,
         sortable: true,
         accessor: (row) => Number(row.tax_amount || 0),
-        cell: (row) => `Rs. ${fmtMoney(row.tax_amount)}`,
+        cell: (row) => `${TENANT_BASE_CURRENCY.currency} ${fmtMoney(row.tax_amount)}`,
       },
       {
         id: "deductions",
@@ -3406,7 +3408,7 @@ export default function SubcontractingPage() {
         accessor: (row) => Number(row.deduction_amount || 0),
         cell: (row) => (
           <span className="text-red-700">
-            Rs. {fmtMoney(row.deduction_amount)}
+            {TENANT_BASE_CURRENCY.currency} {fmtMoney(row.deduction_amount)}
           </span>
         ),
       },
@@ -3417,7 +3419,7 @@ export default function SubcontractingPage() {
         sortable: true,
         accessor: (row) => Number(row.payable_amount || 0),
         cell: (row) => (
-          <span className="font-bold">Rs. {fmtMoney(row.payable_amount)}</span>
+          <span className="font-bold">{TENANT_BASE_CURRENCY.currency} {fmtMoney(row.payable_amount)}</span>
         ),
       },
       {
@@ -3533,7 +3535,7 @@ export default function SubcontractingPage() {
             ["Active routes", dashboard.activeRoutes],
             ["Open steps", dashboard.openSteps],
             ["Vendor WIP qty", dashboard.vendorHeldQty],
-            ["Subcon payable", `Rs. ${fmtMoney(dashboard.subcontractPayable)}`],
+            ["Subcon payable", `${TENANT_BASE_CURRENCY.currency} ${fmtMoney(dashboard.subcontractPayable)}`],
           ].map(([label, value]) => (
             <div
               key={label}
@@ -3902,7 +3904,7 @@ export default function SubcontractingPage() {
                   ],
                   [
                     "Approved payable",
-                    `₹${fmtMoney(
+                    `${TENANT_BASE_CURRENCY.currency} ${fmtMoney(
                       subcontractGrns.reduce(
                         (sum, row) =>
                           sum + Number(row.movement.payable_amount || 0),
@@ -4193,7 +4195,7 @@ export default function SubcontractingPage() {
                 <p className="mt-1 text-sm text-[#7b6753]">
                   {invoiceModal.row.order?.order_number ||
                     "Subcontract service order"}{" "}
-                  · QC approved payable Rs.{" "}
+                  · QC approved payable {TENANT_BASE_CURRENCY.currency}{" "}
                   {fmtMoney(invoiceModal.row.payable_amount)}
                 </p>
               </div>
@@ -4310,13 +4312,13 @@ export default function SubcontractingPage() {
                     Payable
                   </div>
                   <div className="font-bold">
-                    Rs. {fmtMoney(paymentModal.row.payable_amount)}
+                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(paymentModal.row.payable_amount)}
                   </div>
                 </div>
                 <div className="rounded border border-[#eadcc8] bg-[#faf7f1] p-3">
                   <div className="text-xs uppercase text-[#7b6753]">Paid</div>
                   <div className="font-bold text-emerald-700">
-                    Rs. {fmtMoney(paymentModal.row.paid_amount)}
+                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(paymentModal.row.paid_amount)}
                   </div>
                 </div>
                 <div className="rounded border border-[#eadcc8] bg-[#fff8e8] p-3">
@@ -4324,7 +4326,7 @@ export default function SubcontractingPage() {
                     Outstanding
                   </div>
                   <div className="font-bold">
-                    Rs.{" "}
+                    {TENANT_BASE_CURRENCY.currency}{" "}
                     {fmtMoney(
                       Math.max(
                         0,
@@ -5761,7 +5763,7 @@ export default function SubcontractingPage() {
                           Payable
                         </div>
                         <div className="font-bold">
-                          Rs. {fmtMoney(serviceOrderPayablePreview())}
+                          {TENANT_BASE_CURRENCY.currency} {fmtMoney(serviceOrderPayablePreview())}
                         </div>
                       </div>
                     </div>
@@ -5904,14 +5906,14 @@ export default function SubcontractingPage() {
                                     {step.output_size || "-"}
                                   </td>
                                   <td className="px-4 py-3">
-                                    Rs. {fmtMoney(price)}
+                                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(price)}
                                   </td>
                                   <td className="px-4 py-3">
                                     {fmt(discount)}%
                                   </td>
                                   <td className="px-4 py-3">{fmt(gst)}%</td>
                                   <td className="px-4 py-3 font-semibold">
-                                    Rs. {fmtMoney(total)}
+                                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(total)}
                                   </td>
                                   <td className="px-4 py-3">
                                     {step.operation_name || "-"}
@@ -6180,7 +6182,7 @@ export default function SubcontractingPage() {
                         {stage(
                           "5. Payment",
                           payable > 0
-                            ? `Rs. ${fmtMoney(paid)} paid of Rs. ${fmtMoney(payable)}`
+                            ? `${TENANT_BASE_CURRENCY.currency} ${fmtMoney(paid)} paid of ${TENANT_BASE_CURRENCY.currency} ${fmtMoney(payable)}`
                             : "QC approval creates payable",
                           payable > 0 && paid >= payable - 0.01
                             ? "PAID"
@@ -6340,25 +6342,25 @@ export default function SubcontractingPage() {
                               <tbody>
                                 <tr>
                                   <td className="px-4 py-3">
-                                    Rs. {fmtMoney(processing)}
+                                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(processing)}
                                   </td>
                                   <td className="px-4 py-3">
-                                    Rs. {fmtMoney(freight)}
+                                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(freight)}
                                   </td>
                                   <td className="px-4 py-3">
-                                    Rs. {fmtMoney(otherCharges)}
+                                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(otherCharges)}
                                   </td>
                                   <td className="px-4 py-3">
-                                    Rs. {fmtMoney(gst)}
+                                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(gst)}
                                   </td>
                                   <td className="px-4 py-3 text-red-700">
-                                    Rs. {fmtMoney(deductions)}
+                                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(deductions)}
                                   </td>
                                   <td className="px-4 py-3 font-bold">
-                                    Rs. {fmtMoney(payable)}
+                                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(payable)}
                                   </td>
                                   <td className="px-4 py-3">
-                                    Rs. {fmtMoney(paid)}
+                                    {TENANT_BASE_CURRENCY.currency} {fmtMoney(paid)}
                                   </td>
                                 </tr>
                               </tbody>
@@ -6371,7 +6373,7 @@ export default function SubcontractingPage() {
                                   Standard service cost
                                 </div>
                                 <div className="mt-1 font-semibold">
-                                  Rs.{" "}
+                                  {TENANT_BASE_CURRENCY.currency}{" "}
                                   {fmtMoney(
                                     reconciliation.standard_service_cost,
                                   )}
@@ -6382,7 +6384,7 @@ export default function SubcontractingPage() {
                                   Actual service cost
                                 </div>
                                 <div className="mt-1 font-semibold">
-                                  Rs.{" "}
+                                  {TENANT_BASE_CURRENCY.currency}{" "}
                                   {fmtMoney(reconciliation.actual_service_cost)}
                                 </div>
                               </div>
@@ -6393,7 +6395,7 @@ export default function SubcontractingPage() {
                                 <div
                                   className={`mt-1 font-semibold ${Number(reconciliation.service_cost_variance || 0) > 0 ? "text-red-700" : "text-emerald-700"}`}
                                 >
-                                  Rs.{" "}
+                                  {TENANT_BASE_CURRENCY.currency}{" "}
                                   {fmtMoney(
                                     reconciliation.service_cost_variance,
                                   )}
@@ -6468,7 +6470,7 @@ export default function SubcontractingPage() {
                                   {fmt(step.output_size)}
                                 </td>
                                 <td className="px-4 py-3">
-                                  Rs. {fmtMoney(step.unit_price)}
+                                  {TENANT_BASE_CURRENCY.currency} {fmtMoney(step.unit_price)}
                                 </td>
                                 <td className="px-4 py-3">
                                   {fmt(step.tax_percent || 18)}%
@@ -6699,7 +6701,7 @@ export default function SubcontractingPage() {
                                       0 ? (
                                       <div>
                                         <div className="font-bold">
-                                          Rs.{" "}
+                                          {TENANT_BASE_CURRENCY.currency}{" "}
                                           {fmtMoney(movement.payable_amount)}
                                         </div>
                                         <div className="text-xs text-[#7b6753]">

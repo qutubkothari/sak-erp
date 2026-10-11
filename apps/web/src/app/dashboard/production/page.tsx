@@ -1,5 +1,8 @@
 "use client";
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
@@ -48,9 +51,9 @@ function number(value: unknown) {
 }
 
 function currency(value: unknown) {
-  return new Intl.NumberFormat("en-IN", {
+  return new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
     style: "currency",
-    currency: "INR",
+    currency: TENANT_BASE_CURRENCY.currency,
     maximumFractionDigits: 0,
   }).format(number(value));
 }

@@ -1,6 +1,6 @@
 /**
  * Payslip Generator Utility
- * 
+ *
  * Generates professional payslips in HTML and PDF formats
  * with support for multiple regions (UAE, India, Global)
  */
@@ -9,7 +9,7 @@ import { Payslip, Employee, HRModuleConfig } from '../types';
 
 /**
  * Generate HTML Payslip
- * 
+ *
  * @param payslip - Payslip data
  * @param employee - Employee details
  * @param config - HR module configuration
@@ -22,7 +22,7 @@ export function generatePayslipHTML(
 ): string {
   const { region, currency } = config;
   const currencySymbol = getCurrencySymbol(currency);
-  
+
   return `
 <!DOCTYPE html>
 <html>
@@ -34,38 +34,38 @@ export function generatePayslipHTML(
       body { margin: 0; }
       .no-print { display: none; }
     }
-    
+
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 20px;
       color: #333;
     }
-    
+
     .payslip-container {
       max-width: 800px;
       margin: 0 auto;
       border: 2px solid #2c3e50;
       padding: 0;
     }
-    
+
     .header {
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
       padding: 30px;
       text-align: center;
     }
-    
+
     .company-name {
       font-size: 28px;
       font-weight: bold;
       margin-bottom: 5px;
     }
-    
+
     .payslip-title {
       font-size: 20px;
       margin-top: 10px;
     }
-    
+
     .employee-info {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -74,26 +74,26 @@ export function generatePayslipHTML(
       background: #f8f9fa;
       border-bottom: 2px solid #e9ecef;
     }
-    
+
     .info-row {
       display: flex;
       margin-bottom: 10px;
     }
-    
+
     .info-label {
       font-weight: 600;
       width: 150px;
       color: #495057;
     }
-    
+
     .info-value {
       color: #212529;
     }
-    
+
     .salary-details {
       padding: 30px;
     }
-    
+
     .section-title {
       font-size: 18px;
       font-weight: 600;
@@ -102,13 +102,13 @@ export function generatePayslipHTML(
       padding-bottom: 10px;
       border-bottom: 2px solid #667eea;
     }
-    
+
     .salary-table {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 30px;
     }
-    
+
     .salary-table th {
       background: #667eea;
       color: white;
@@ -116,33 +116,33 @@ export function generatePayslipHTML(
       text-align: left;
       font-weight: 600;
     }
-    
+
     .salary-table td {
       padding: 10px 12px;
       border-bottom: 1px solid #e9ecef;
     }
-    
+
     .salary-table tr:hover {
       background: #f8f9fa;
     }
-    
+
     .amount-col {
       text-align: right;
       font-weight: 600;
     }
-    
+
     .subtotal-row {
       background: #e7f3ff;
       font-weight: 600;
     }
-    
+
     .total-row {
       background: #667eea;
       color: white;
       font-size: 16px;
       font-weight: bold;
     }
-    
+
     .net-salary {
       background: #28a745;
       color: white;
@@ -151,23 +151,23 @@ export function generatePayslipHTML(
       margin: 20px 0;
       border-radius: 5px;
     }
-    
+
     .net-salary-label {
       font-size: 16px;
       margin-bottom: 5px;
     }
-    
+
     .net-salary-amount {
       font-size: 32px;
       font-weight: bold;
     }
-    
+
     .net-salary-words {
       font-size: 14px;
       margin-top: 5px;
       font-style: italic;
     }
-    
+
     .footer {
       padding: 20px 30px;
       background: #f8f9fa;
@@ -175,7 +175,7 @@ export function generatePayslipHTML(
       font-size: 12px;
       color: #6c757d;
     }
-    
+
     .print-button {
       background: #667eea;
       color: white;
@@ -186,7 +186,7 @@ export function generatePayslipHTML(
       cursor: pointer;
       margin: 20px 0;
     }
-    
+
     .print-button:hover {
       background: #5568d3;
     }
@@ -196,7 +196,7 @@ export function generatePayslipHTML(
   <div class="no-print" style="text-align: center;">
     <button class="print-button" onclick="window.print()">🖨️ Print Payslip</button>
   </div>
-  
+
   <div class="payslip-container">
     <!-- Header -->
     <div class="header">
@@ -204,7 +204,7 @@ export function generatePayslipHTML(
       <div>Address Line 1, Address Line 2</div>
       <div class="payslip-title">SALARY SLIP - ${payslip.salary_month}</div>
     </div>
-    
+
     <!-- Employee Information -->
     <div class="employee-info">
       <div>
@@ -260,7 +260,7 @@ export function generatePayslipHTML(
         </div>
       </div>
     </div>
-    
+
     <!-- Salary Details -->
     <div class="salary-details">
       <table class="salary-table">
@@ -315,7 +315,7 @@ export function generatePayslipHTML(
           </tr>
         </tbody>
       </table>
-      
+
       <table class="salary-table">
         <thead>
           <tr>
@@ -368,7 +368,7 @@ export function generatePayslipHTML(
           </tr>
         </tbody>
       </table>
-      
+
       ${region === 'INDIA' && (payslip.pf_employer > 0 || payslip.esi_employer > 0) ? `
       <table class="salary-table">
         <thead>
@@ -392,13 +392,13 @@ export function generatePayslipHTML(
         </tbody>
       </table>
       ` : ''}
-      
+
       <div class="net-salary">
         <div class="net-salary-label">NET SALARY</div>
         <div class="net-salary-amount">${currencySymbol} ${formatCurrency(payslip.net_salary)}</div>
         <div class="net-salary-words">${numberToWords(payslip.net_salary, currency)} Only</div>
       </div>
-      
+
       ${payslip.hold_amount && payslip.hold_amount > 0 ? `
       <div style="background: #fff3cd; border: 2px solid #ffc107; padding: 15px; border-radius: 5px; margin: 20px 0;">
         <strong>⚠️ Hold Amount:</strong> ${currencySymbol} ${formatCurrency(payslip.hold_amount)}<br>
@@ -406,20 +406,20 @@ export function generatePayslipHTML(
       </div>
       ` : ''}
     </div>
-    
+
     <!-- Footer -->
     <div class="footer">
       <p><strong>Note:</strong> This is a computer-generated payslip and does not require a signature.</p>
       <p>Generated on: ${new Date().toLocaleDateString()}</p>
       ${region === 'INDIA' ? `
       <p style="margin-top: 10px; font-size: 11px;">
-        <strong>Statutory Compliance:</strong> PF & ESI contributions as per Government regulations. 
+        <strong>Statutory Compliance:</strong> PF & ESI contributions as per Government regulations.
         TDS deducted as per Income Tax Act, 1961.
       </p>
       ` : ''}
       ${region === 'UAE' ? `
       <p style="margin-top: 10px; font-size: 11px;">
-        <strong>WPS Compliance:</strong> Salary payment processed through Wage Protection System (WPS) 
+        <strong>WPS Compliance:</strong> Salary payment processed through Wage Protection System (WPS)
         as per UAE Ministry of Labour regulations.
       </p>
       ` : ''}
@@ -445,11 +445,17 @@ function getCurrencySymbol(currency: string): string {
   return symbols[currency] || currency;
 }
 
+
+function currencyLocaleForPayslip(): string {
+  const profile = String(process.env.NEXT_PUBLIC_ERP_TENANT_PROFILE || process.env.ERP_TENANT_PROFILE || "").toUpperCase();
+  return profile === "ARWA" ? "en-EG" : profile === "MIZANTRA" || profile === "SAIFSEAS" ? "en-AE" : "en-IN";
+}
+
 /**
  * Helper: Format currency amount
  */
 function formatCurrency(amount: number): string {
-  return amount.toLocaleString('en-IN', {
+  return amount.toLocaleString(currencyLocaleForPayslip(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
@@ -470,11 +476,11 @@ function formatAllowanceName(key: string): string {
  */
 function numberToWords(num: number, currency: string): string {
   if (num === 0) return 'Zero';
-  
+
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-  
+
   function convertLessThanThousand(n: number): string {
     if (n === 0) return '';
     if (n < 10) return ones[n];
@@ -482,12 +488,12 @@ function numberToWords(num: number, currency: string): string {
     if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '');
     return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + convertLessThanThousand(n % 100) : '');
   }
-  
+
   let integerPart = Math.floor(num);
   const decimalPart = Math.round((num - integerPart) * 100);
-  
+
   let result = '';
-  
+
   // For Indian numbering system (Lakhs, Crores)
   if (currency === 'INR') {
     if (integerPart >= 10000000) {
@@ -505,9 +511,9 @@ function numberToWords(num: number, currency: string): string {
     if (integerPart > 0) {
       result += convertLessThanThousand(integerPart);
     }
-    
+
     result += ` Rupees`;
-    
+
     if (decimalPart > 0) {
       result += ` and ${convertLessThanThousand(decimalPart)} Paisa`;
     }
@@ -528,22 +534,22 @@ function numberToWords(num: number, currency: string): string {
     if (integerPart > 0) {
       result += convertLessThanThousand(integerPart);
     }
-    
-    const currencyName = currency === 'AED' ? 'Dirhams' : currency === 'USD' ? 'Dollars' : currency;
+
+    const currencyName = currency === 'AED' ? 'Dirhams' : currency === 'USD' ? 'Dollars' : currency === 'EGP' ? 'Egyptian Pounds' : currency;
     result += ` ${currencyName}`;
-    
+
     if (decimalPart > 0) {
-      const subUnit = currency === 'AED' ? 'Fils' : currency === 'USD' ? 'Cents' : 'Cents';
+      const subUnit = currency === 'AED' ? 'Fils' : currency === 'EGP' ? 'Piastres' : 'Cents';
       result += ` and ${convertLessThanThousand(decimalPart)} ${subUnit}`;
     }
   }
-  
+
   return result.trim();
 }
 
 /**
  * Generate payslip as downloadable file
- * 
+ *
  * @param payslip - Payslip data
  * @param employee - Employee details
  * @param config - HR module configuration

@@ -1,4 +1,6 @@
 'use client';
+import { getProfileLocaleSettings } from '@/lib/profile-branding';
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
@@ -235,7 +237,7 @@ export default function ImportFilesPage() {
                       {row.shipment_reference || '-'}
                       <div className="text-xs text-[#7A6555]">{row.port_of_entry || '-'}</div>
                     </td>
-                    <td className="p-3 text-right font-semibold">Rs. {money(row.final_landed_cost)}</td>
+                    <td className="p-3 text-right font-semibold">{TENANT_BASE_CURRENCY.currency} {money(row.final_landed_cost)}</td>
                     <td className="p-3">
                       <button onClick={() => setUploadFor(row)} className="inline-flex items-center gap-1 text-[#7A542F] underline">
                         <Upload className="h-3.5 w-3.5" />{row.documents?.length || 0} file(s)
@@ -314,7 +316,7 @@ export default function ImportFilesPage() {
                 ['expectedArrivalDate', 'Expected arrival'],
                 ['billOfEntryNumber', 'Bill of Entry number'],
                 ['commercialInvoiceNumber', 'Commercial invoice number'],
-                ['assessableValueInr', 'Assessable value INR'],
+                ['assessableValueInr', `Assessable value ${TENANT_BASE_CURRENCY.currency}`],
                 ['bcdAmount', 'BCD amount'],
                 ['swsAmount', 'SWS amount'],
                 ['importIgstAmount', 'Import IGST amount'],

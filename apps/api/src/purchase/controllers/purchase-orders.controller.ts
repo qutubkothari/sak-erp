@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import {
   Controller,
   Get,
@@ -76,7 +77,7 @@ export class PurchaseOrdersController {
   @Post('check-duplicates')
   async checkDuplicates(@Request() req: any, @Body() poData: any) {
     const existing = await this.poService.findAll(req.user.tenantId, {});
-    
+
     // Check for same vendor + items within last 7 days
     const recentPOs = existing.filter((po: any) => {
       const vendorId = poData.vendorId ?? poData.vendor_id;
@@ -85,11 +86,11 @@ export class PurchaseOrdersController {
       const daysDiff = Math.abs(new Date().getTime() - new Date(po.created_at).getTime()) / (1000 * 3600 * 24);
       return daysDiff <= 7;
     });
-    
+
     if (recentPOs.length === 0) {
       return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
     }
-    
+
     const incomingLines = (poData.items ?? []).map((item: any) => {
       const code = item.itemCode ?? item.item_code ?? item.itemId ?? item.item_id ?? '';
       const qty = item.orderedQty ?? item.ordered_qty ?? item.quantity ?? 0;
@@ -122,7 +123,7 @@ export class PurchaseOrdersController {
         };
       }
     }
-    
+
     return { hasDuplicates: false, exactMatches: [], fuzzyMatches: [] };
   }
 
@@ -383,7 +384,7 @@ export class PurchaseOrdersController {
           return r || undefined;
         })(),
 
-        currency: 'INR',
+        currency: runtimeBaseCurrency(),
         projectName: po.project_name || '',
         preparedBy: po.created_by_name || '',
         reviewedBy: '',
@@ -649,9 +650,9 @@ export class PurchaseOrdersController {
       return res.send(pdfBuffer);
     } catch (error) {
       console.error('Error generating world-class PO PDF:', error);
-      return res.status(500).json({ 
-        message: 'Error generating PDF', 
-        error: error.message 
+      return res.status(500).json({
+        message: 'Error generating PDF',
+        error: error.message
       });
     }
   }

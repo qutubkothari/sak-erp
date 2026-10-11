@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import {
   BadRequestException,
   Injectable,
@@ -817,7 +818,7 @@ export class CrmService {
       product_interest: this.text(body.product_interest) || null,
       requirement: this.text(body.requirement) || null,
       expected_value: Math.max(0, this.number(body.expected_value)),
-      currency_code: this.text(body.currency_code).toUpperCase() || "INR",
+      currency_code: this.text(body.currency_code).toUpperCase() || runtimeBaseCurrency(),
       priority: this.text(body.priority).toUpperCase() || "MEDIUM",
       stage_id: initialStage.id,
       probability: initialStage.probability,
@@ -1733,7 +1734,7 @@ export class CrmService {
         product_interest: classification.product_interest,
         priority: classification.priority,
         expected_value: classification.expected_value || 0,
-        currency_code: classification.currency_code || "INR",
+        currency_code: classification.currency_code || runtimeBaseCurrency(),
       });
       if (existingCustomer?.id) {
         await this.db.from("crm_leads").update({ customer_id: existingCustomer.id }).eq("tenant_id", tenantId).eq("id", lead.id);

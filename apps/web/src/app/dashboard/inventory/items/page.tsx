@@ -1,4 +1,7 @@
 "use client";
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useBrainRecord } from '@/hooks/useBrainRecord';
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -444,7 +447,7 @@ export default function ItemsPage() {
     hsn_code: "",
     standard_cost: "",
     selling_price: "",
-    purchase_currency: "INR",
+    purchase_currency: TENANT_BASE_CURRENCY.currency,
     foreign_unit_price: "",
     reorder_level: "",
     reorder_quantity: "",
@@ -944,10 +947,10 @@ export default function ItemsPage() {
           ? parseFloat(formData.standard_cost)
           : null,
         selling_price: null,
-        purchase_currency: formData.purchase_currency || "INR",
+        purchase_currency: formData.purchase_currency || TENANT_BASE_CURRENCY.currency,
         foreign_unit_price:
           formData.purchase_currency &&
-          formData.purchase_currency !== "INR" &&
+          formData.purchase_currency !== TENANT_BASE_CURRENCY.currency &&
           formData.foreign_unit_price
             ? parseFloat(formData.foreign_unit_price)
             : null,
@@ -1045,7 +1048,7 @@ export default function ItemsPage() {
       ),
       standard_cost: item.standard_cost?.toString() || "",
       selling_price: item.selling_price?.toString() || "",
-      purchase_currency: item.purchase_currency || "INR",
+      purchase_currency: item.purchase_currency || TENANT_BASE_CURRENCY.currency,
       foreign_unit_price: item.foreign_unit_price?.toString() || "",
       reorder_level: item.reorder_level?.toString() || "",
       reorder_quantity: item.reorder_quantity?.toString() || "",
@@ -1152,7 +1155,7 @@ export default function ItemsPage() {
         ),
         standard_cost: detail.standard_cost?.toString() || "",
         selling_price: detail.selling_price?.toString() || "",
-        purchase_currency: detail.purchase_currency || "INR",
+        purchase_currency: detail.purchase_currency || TENANT_BASE_CURRENCY.currency,
         foreign_unit_price: detail.foreign_unit_price?.toString() || "",
         reorder_level: detail.reorder_level?.toString() || "",
         reorder_quantity: detail.reorder_quantity?.toString() || "",
@@ -1816,7 +1819,7 @@ export default function ItemsPage() {
       hsn_code: "",
       standard_cost: "",
       selling_price: "",
-      purchase_currency: "INR",
+      purchase_currency: TENANT_BASE_CURRENCY.currency,
       foreign_unit_price: "",
       reorder_level: "",
       reorder_quantity: "",
@@ -3427,7 +3430,7 @@ export default function ItemsPage() {
                   </div>
 
                   {formData.purchase_currency &&
-                    formData.purchase_currency !== "INR" && (
+                    formData.purchase_currency !== TENANT_BASE_CURRENCY.currency && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Unit Price ({formData.purchase_currency})
@@ -4974,10 +4977,10 @@ export default function ItemsPage() {
                     },
                     {
                       label: "Purchase Currency",
-                      value: viewingItem.purchase_currency || "INR",
+                      value: viewingItem.purchase_currency || TENANT_BASE_CURRENCY.currency,
                     },
                     ...(viewingItem.purchase_currency &&
-                    viewingItem.purchase_currency !== "INR" &&
+                    viewingItem.purchase_currency !== TENANT_BASE_CURRENCY.currency &&
                     viewingItem.foreign_unit_price != null
                       ? [
                           {

@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import {
   BadRequestException,
   Injectable,
@@ -770,7 +771,7 @@ export class ProductionStandardizationService {
           finished_item_id: current.data.finished_item_id,
           template_name: `${pack.name} - Draft`,
           currency_code: this.text(
-            mapping.currency_code || "INR",
+            mapping.currency_code || runtimeBaseCurrency(),
           ).toUpperCase(),
           output_quantity: this.number(mapping.output_quantity || 1),
           cost_lines: normalized,

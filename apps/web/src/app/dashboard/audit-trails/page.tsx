@@ -1,5 +1,8 @@
 'use client';
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, Calendar, ChevronLeft, ChevronRight, Filter, History, RefreshCw, Search, ShieldCheck, User } from 'lucide-react';
 import DateInput from '../../../components/ui/DateInput';
@@ -185,7 +188,7 @@ function getAreaName(log: AuditLog): string {
 function formatCurrency(value: unknown): string {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount === 0) return '';
-  return amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
+  return amount.toLocaleString('en-IN', { style: 'currency', currency: TENANT_BASE_CURRENCY.currency, maximumFractionDigits: 2 });
 }
 
 function getLogAmount(log: AuditLog): string {

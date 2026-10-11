@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from "../../common/utils/runtime-base-currency";
 import { Injectable } from "@nestjs/common";
 import { existsSync } from "fs";
 import { readFile } from "fs/promises";
@@ -654,7 +655,7 @@ export class WorldClassPoPdfService {
       26 + rowCount * 12 + 8,
       28 + remarkLines.length * 10 + 8,
     );
-    const words = `Amount in Words: INR ${this.amountInWords(data.grandTotal)} Only`;
+    const words = `Amount in Words: ${data.currency || runtimeBaseCurrency()} ${this.amountInWords(data.grandTotal)} Only`;
     const wordLines = this.wrapText(words, USABLE - 16, 7.5, fontBold);
     const wordBarH = wordLines.length * 10 + 8;
     const summaryConsumed = boxH + wordBarH + 12; // matches: top - boxH - 4 - wordBarH - 8
@@ -1288,7 +1289,7 @@ export class WorldClassPoPdfService {
       ]);
     rows.push([
       `Total Amount : ${this.amountInWords(data.grandTotal || 0)} Only`,
-      `Total Amount (INR) : ${this.fmtCur(data.grandTotal || 0)}`,
+      `Total Amount (${data.currency || runtimeBaseCurrency()}) : ${this.fmtCur(data.grandTotal || 0)}`,
     ]);
     return rows;
   }
@@ -2014,7 +2015,7 @@ export class WorldClassPoPdfService {
 
     // Amount in words bar
     state.y = top - boxH - 4;
-    const words = `Amount in Words: INR ${this.amountInWords(data.grandTotal)} Only`;
+    const words = `Amount in Words: ${data.currency || runtimeBaseCurrency()} ${this.amountInWords(data.grandTotal)} Only`;
     const wordLines = this.wrapText(words, USABLE - 16, 7.5, fontBold);
     const wordBarH = wordLines.length * 10 + 8;
     state.page.drawRectangle({
@@ -2730,7 +2731,7 @@ export class WorldClassPoPdfService {
 
   private fmtCur(value: number): string {
     const n = Number.isFinite(Number(value)) ? Number(value) : 0;
-    return this.indianFormat(n);
+    return `${runtimeBaseCurrency()} ${new Intl.NumberFormat(runtimeBaseCurrency() === "EGP" ? "en-EG" : "en-AE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)}`;
   }
 
   private makePdfValueSafe(value: unknown, font: PDFFont): unknown {
@@ -2868,7 +2869,7 @@ export class WorldClassPoPdfService {
     if (hund) p.push(ones[hund] + " Hundred");
     if (rem) p.push(twoDigit(rem));
 
-    return p.join(" ") + " Rupees";
+    return p.join(" ") + (runtimeBaseCurrency() === "EGP" ? " Egyptian Pounds" : " Rupees");
   }
 
   /* ═══════════════════════════════════════════════════════════════════════════

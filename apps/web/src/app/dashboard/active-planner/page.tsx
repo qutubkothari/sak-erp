@@ -1,4 +1,7 @@
 "use client";
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useAttentionHandoff, useUnifiedDrawer } from "../../../components/MizantraUnifiedAi";
 import { ASK_LIST_CONTEXT_KEY, readAskListContext, type AskListContext } from '@/lib/brain-context';
 import { attentionEntry, attentionTaskEpoch, beginAttentionTask, consumedAttentionUrl, hasExplicitAttentionEntry, clearDrawerSession, drawerOrigin, readDrawerSession, suspendDrawerSession, writeDrawerSession, type DrawerScope } from '@/lib/unified-drawer-session';
@@ -274,12 +277,12 @@ const VOICE_LANGUAGES = [
   ["ar", "العربية"],
 ] as const;
 const CURRENCY_ALIASES: Record<string, string> = {
-  RS: "INR",
-  "RS.": "INR",
+  RS: TENANT_BASE_CURRENCY.currency,
+  "RS.": TENANT_BASE_CURRENCY.currency,
   INR: "INR",
-  "₹": "INR",
-  RUPEE: "INR",
-  RUPEES: "INR",
+  "₹": TENANT_BASE_CURRENCY.currency,
+  RUPEE: TENANT_BASE_CURRENCY.currency,
+  RUPEES: TENANT_BASE_CURRENCY.currency,
   USD: "USD",
   $: "USD",
   AED: "AED",
@@ -292,34 +295,34 @@ const CURRENCY_ALIASES: Record<string, string> = {
 };
 
 const normalizeCurrencyCode = (value: unknown) => {
-  const raw = String(value || "INR").trim();
+  const raw = String(value || TENANT_BASE_CURRENCY.currency).trim();
   const normalized = CURRENCY_ALIASES[raw.toUpperCase()] || raw.toUpperCase();
   try {
-    new Intl.NumberFormat("en-IN", {
+    new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
       style: "currency",
       currency: normalized,
     });
     return normalized;
   } catch {
-    return "INR";
+    return TENANT_BASE_CURRENCY.currency;
   }
 };
 
-const money = (value: any, currency = "INR") =>
+const money = (value: any, currency = TENANT_BASE_CURRENCY.currency) =>
   value !== null && value !== undefined && value !== ""
-    ? new Intl.NumberFormat("en-IN", {
+    ? new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
         style: "currency",
         currency: normalizeCurrencyCode(currency),
         maximumFractionDigits: 2,
       }).format(Number(value))
     : "—";
 
-const analyticsValue = (value: any, format = "text", currency = "INR") => {
+const analyticsValue = (value: any, format = "text", currency = TENANT_BASE_CURRENCY.currency) => {
   if (value === null || value === undefined || value === "") return "—";
   if (format === "money") {
     if (String(currency).toUpperCase() === "MIXED")
       return `${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })} (mixed currencies)`;
-    return new Intl.NumberFormat("en-IN", {
+    return new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
       style: "currency",
       currency: normalizeCurrencyCode(currency),
       maximumFractionDigits: 2,

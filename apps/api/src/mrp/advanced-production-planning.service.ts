@@ -1441,7 +1441,7 @@ export class AdvancedProductionPlanningService {
     ]);
     const finishedItemId = this.t(b.finished_item_id);
     const templateName = this.t(b.template_name);
-    const currency = this.t(b.currency_code || "INR").toUpperCase();
+    const currency = this.t(b.currency_code || runtimeBaseCurrency()).toUpperCase();
     const outputQuantity = this.n(b.output_quantity);
     if (!finishedItemId) this.fail(null, "Finished item is required.");
     if (!templateName) this.fail(null, "Cost sheet name is required.");

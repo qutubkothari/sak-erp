@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { EmailService } from '../../email/email.service';
@@ -97,7 +98,7 @@ export class DebitNoteService {
       console.error('Error fetching debit note:', error);
       throw new NotFoundException('Debit note not found');
     }
-    
+
     console.log('Debit note data:', JSON.stringify(data, null, 2));
     return this.withDispositionReasonStatus(data);
   }
@@ -148,7 +149,7 @@ export class DebitNoteService {
     }
 
     console.log(`Debit note ${data.debit_note_number} approved by user ${userId}`);
-    
+
     // Trigger will automatically update GRN net_payable_amount
     return data;
   }
@@ -243,7 +244,7 @@ export class DebitNoteService {
       .single();
 
     if (error) throw error;
-    
+
     // Also update grn_items return_status
     if (data.grn_item_id) {
       const { error: grnItemError } = await this.supabase
@@ -628,7 +629,7 @@ export class DebitNoteService {
       const poAdvance = allocated?.advanceApplied ?? 0;
       const totalPaid = allocated?.totalSettled ?? paid + tds + shortPayment + poAdvance;
       const outstanding = allocated?.outstanding ?? Math.max(0, netPayable - totalPaid);
-      
+
       return { ...grn, _outstanding: outstanding, _totalPaid: totalPaid, _poAdvance: poAdvance };
     });
 
@@ -764,7 +765,7 @@ export class DebitNoteService {
 
     // Prepare email content
     const subject = `Debit Note ${debitNote.debit_note_number} - Material Rejection`;
-    
+
     let itemsHtml = '';
     let subtotal = 0;
     debitNote.debit_note_items?.forEach((item: any) => {
@@ -772,16 +773,16 @@ export class DebitNoteService {
       const itemTax = parseFloat(item.tax_amount || 0);
       const itemTotal = itemAmount + itemTax;
       subtotal += itemAmount;
-      
+
       itemsHtml += `
         <tr>
           <td style="border: 1px solid #ddd; padding: 8px;">${item.item.name} (${item.item.code})</td>
           <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.rejected_qty} ${item.item.unit}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${item.unit_price.toFixed(2)}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${itemAmount.toFixed(2)}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${runtimeBaseCurrency()} ${item.unit_price.toFixed(2)}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${runtimeBaseCurrency()} ${itemAmount.toFixed(2)}</td>
           <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.gst_percentage ?? debitNote.gst_percentage ?? 18}%</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">₹${itemTax.toFixed(2)}</td>
-          <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">₹${itemTotal.toFixed(2)}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${runtimeBaseCurrency()} ${itemTax.toFixed(2)}</td>
+          <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">${runtimeBaseCurrency()} ${itemTotal.toFixed(2)}</td>
           <td style="border: 1px solid #ddd; padding: 8px;">${item.rejection_reason}</td>
         </tr>
       `;
@@ -811,20 +812,20 @@ export class DebitNoteService {
           <h1 style="margin: 0; color: #dc3545;">Debit Note</h1>
           <p style="margin: 5px 0 0 0; font-size: 1.1em;">${debitNote.debit_note_number}</p>
         </div>
-        
+
         <div class="content">
           <p>Dear ${debitNote.vendor.name},</p>
-          
-          <p>Please find below the details of Debit Note <strong>${debitNote.debit_note_number}</strong> 
+
+          <p>Please find below the details of Debit Note <strong>${debitNote.debit_note_number}</strong>
           issued for rejected materials from GRN <strong>${debitNote.grn.grn_number}</strong>.</p>
-          
+
           <div class="summary">
             <strong>Summary:</strong><br>
             Date: ${formatShortDate(debitNote.debit_note_date)}<br>
             GRN Reference: ${debitNote.grn.grn_number}<br>
             Reason: ${debitNote.reason}
           </div>
-          
+
           <h3>Rejected Items:</h3>
           <table>
             <thead>
@@ -848,7 +849,7 @@ export class DebitNoteService {
                   Subtotal (Before Tax):
                 </td>
                 <td colspan="5" style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">
-                  ₹${grossAmount.toFixed(2)}
+                  ${runtimeBaseCurrency()} ${grossAmount.toFixed(2)}
                 </td>
               </tr>
               <tr>
@@ -856,7 +857,7 @@ export class DebitNoteService {
                   GST (${debitNote.gst_percentage ?? 18}%):
                 </td>
                 <td colspan="5" style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">
-                  ₹${taxAmount.toFixed(2)}
+                  ${runtimeBaseCurrency()} ${taxAmount.toFixed(2)}
                 </td>
               </tr>
               <tr>
@@ -864,23 +865,23 @@ export class DebitNoteService {
                   Total Debit Amount:
                 </td>
                 <td colspan="5" class="total" style="border: 1px solid #ddd; padding: 8px; background: #f8f9fa;">
-                  ₹${totalAmount.toFixed(2)}
+                  ${runtimeBaseCurrency()} ${totalAmount.toFixed(2)}
                 </td>
               </tr>
             </tfoot>
           </table>
-          
+
           <div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #0066cc; margin: 20px 0;">
             <strong>Action Required:</strong><br>
-            This amount of <strong>₹${totalAmount.toFixed(2)}</strong> (including GST) will be deducted from your next payment.
+            This amount of <strong>${runtimeBaseCurrency()} ${totalAmount.toFixed(2)}</strong> (including GST) will be deducted from your next payment.
             Please arrange for the collection or replacement of rejected materials at your earliest convenience.
           </div>
-          
+
           ${debitNote.notes ? `<p><strong>Additional Notes:</strong><br>${debitNote.notes}</p>` : ''}
-          
+
           <p>If you have any questions regarding this debit note, please contact us immediately.</p>
         </div>
-        
+
         <div class="footer">
           <p style="margin: 0; font-size: 0.9em; color: #666;">
             This is an automated message. Please do not reply directly to this email.
@@ -960,7 +961,7 @@ export class DebitNoteService {
     const requestedSettlement = entryAmount + tdsAmount + shortAmount + advanceAmount;
     if (requestedSettlement > outstanding + 0.009) {
       throw new BadRequestException(
-        `Total settlement (Rs. ${requestedSettlement.toFixed(2)}) exceeds outstanding balance (Rs. ${outstanding.toFixed(2)})`,
+        `Total settlement (${runtimeBaseCurrency()} ${requestedSettlement.toFixed(2)}) exceeds outstanding balance (${runtimeBaseCurrency()} ${outstanding.toFixed(2)})`,
       );
     }
 
@@ -1057,7 +1058,7 @@ export class DebitNoteService {
     const totalAvailable = availableAdvances.reduce((sum: number, advance: any) => sum + advance.balance_amount, 0);
     if (totalAvailable + 0.009 < amount) {
       throw new BadRequestException(
-        `Advance adjustment Rs. ${amount.toFixed(2)} exceeds available supplier advance Rs. ${totalAvailable.toFixed(2)}`,
+        `Advance adjustment ${runtimeBaseCurrency()} ${amount.toFixed(2)} exceeds available supplier advance ${runtimeBaseCurrency()} ${totalAvailable.toFixed(2)}`,
       );
     }
 
@@ -1675,7 +1676,7 @@ export class DebitNoteService {
       console.error('[getGrnPayableDetail] grn fetch error:', error.message);
       throw new Error(error.message);
     }
-    if (!grn) throw new NotFoundException(`GRN not found (id: ${grnId})`);  
+    if (!grn) throw new NotFoundException(`GRN not found (id: ${grnId})`);
 
     const entries = await this.getPaymentEntries(tenantId, grnId);
     const reversals = await this.getPaymentReversals(tenantId, grnId);
@@ -1766,7 +1767,7 @@ export class DebitNoteService {
     if (!amount || amount <= 0) throw new Error('Advance amount must be greater than 0');
 
     const advanceType = paymentData.advance_type || 'BLANKET';
-    
+
     let poNumber: string | null = null;
     let vendorId = paymentData.vendor_id;
 
@@ -1780,7 +1781,7 @@ export class DebitNoteService {
         .maybeSingle();
 
       if (!po) throw new Error('Purchase Order not found');
-      
+
       poNumber = po.po_number;
       vendorId = po.vendor_id;
     } else if (advanceType === 'BLANKET') {
@@ -1820,8 +1821,8 @@ export class DebitNoteService {
     // Update vendor advance balance summary
     await this.updateVendorAdvanceBalance(tenantId, vendorId, amount);
 
-    return { 
-      message: `${advanceType === 'PO' ? 'PO' : 'Blanket'} advance payment recorded successfully`, 
+    return {
+      message: `${advanceType === 'PO' ? 'PO' : 'Blanket'} advance payment recorded successfully`,
       po_number: poNumber,
       vendor_id: vendorId,
       amount,
@@ -2748,12 +2749,12 @@ export class DebitNoteService {
     const paidAmount = parseFloat(grn?.paid_amount || 0);
     const tdsAmount = parseFloat(grn?.tds_amount || 0);
     const shortAmount = parseFloat(grn?.short_payment_amount || 0);
-    
+
     const poAdvance = Math.max(0, Number(advanceApplied || 0));
     const totalSettled = Math.min(netPayable, paidAmount + tdsAmount + shortAmount + poAdvance);
     const outstanding = Math.max(0, netPayable - totalSettled);
     const isFullyPaid = totalSettled >= netPayable - 0.009 || (grn?.payment_status || '').toUpperCase() === 'PAID';
-    
+
     let paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';
     if (isFullyPaid) {
       paymentStatus = 'PAID';
@@ -2762,7 +2763,7 @@ export class DebitNoteService {
     } else {
       paymentStatus = 'UNPAID';
     }
-    
+
     return {
       net_payable: netPayable,
       paid_amount: paidAmount,

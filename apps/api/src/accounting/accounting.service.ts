@@ -189,7 +189,7 @@ export class AccountingService {
   async createExchangeRate(tenantId: string, userId: string, body: any) {
     const rateDate = String(body.rate_date || '').slice(0, 10);
     const from = String(body.from_currency_code || '').trim().toUpperCase();
-    const to = String(body.to_currency_code || 'INR').trim().toUpperCase();
+    const to = String(body.to_currency_code || runtimeBaseCurrency()).trim().toUpperCase();
     const rate = Number(body.exchange_rate || 0);
     if (!rateDate || !/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to) || from === to || !Number.isFinite(rate) || rate <= 0) {
       throw new BadRequestException('Enter a date, different three-letter currencies, and a positive exchange rate.');
@@ -240,7 +240,7 @@ export class AccountingService {
     const name = String(body.template_name || '').trim();
     const frequency = String(body.frequency || 'MONTHLY').toUpperCase();
     const nextRunDate = String(body.next_run_date || '').slice(0, 10);
-    const currency = String(body.transaction_currency_code || 'INR').trim().toUpperCase();
+    const currency = String(body.transaction_currency_code || runtimeBaseCurrency()).trim().toUpperCase();
     const rate = Number(body.exchange_rate || 1);
     const narration = String(body.narration || '').trim();
     const lines = Array.isArray(body.lines) ? body.lines : [];
@@ -434,7 +434,7 @@ export class AccountingService {
     const isGroup = body.is_group === true;
     if (isGroup && (openingDebit || openingCredit || body.is_control_account || body.is_suspense_account)) throw new BadRequestException('Account groups cannot hold opening balances or be control or suspense accounts.');
     await this.assertGroupParent(tenantId, body.parent_id, type);
-    const { data, error } = await this.supabase.from('accounting_accounts').insert({ tenant_id: tenantId, account_code: code, account_name: name, account_type: type, account_subtype: body.account_subtype || null, parent_id: body.parent_id || null, is_group: isGroup, is_control_account: Boolean(body.is_control_account), is_suspense_account: Boolean(body.is_suspense_account), currency_code: body.currency_code || 'INR', opening_debit: openingDebit, opening_credit: openingCredit, created_by: userId }).select().single();
+    const { data, error } = await this.supabase.from('accounting_accounts').insert({ tenant_id: tenantId, account_code: code, account_name: name, account_type: type, account_subtype: body.account_subtype || null, parent_id: body.parent_id || null, is_group: isGroup, is_control_account: Boolean(body.is_control_account), is_suspense_account: Boolean(body.is_suspense_account), currency_code: body.currency_code || runtimeBaseCurrency(), opening_debit: openingDebit, opening_credit: openingCredit, created_by: userId }).select().single();
     if (error || !data) throw new BadRequestException(error?.code === '23505' ? 'Account code already exists.' : error?.message || 'Account could not be created');
     return data;
   }
@@ -458,7 +458,7 @@ export class AccountingService {
       ['5100', 'Purchase expense', 'EXPENSE', 'PURCHASE', false, false],
       ['5200', 'Payroll expense', 'EXPENSE', 'PAYROLL', false, false],
       ['5300', 'Depreciation expense', 'EXPENSE', 'DEPRECIATION', false, false],
-    ].map(([account_code, account_name, account_type, account_subtype, is_control_account, is_suspense_account]) => ({ tenant_id: tenantId, account_code, account_name, account_type, account_subtype, is_control_account, is_suspense_account, currency_code: 'INR', created_by: userId }));
+    ].map(([account_code, account_name, account_type, account_subtype, is_control_account, is_suspense_account]) => ({ tenant_id: tenantId, account_code, account_name, account_type, account_subtype, is_control_account, is_suspense_account, currency_code: runtimeBaseCurrency(), created_by: userId }));
     const { data, error } = await this.supabase.from('accounting_accounts').upsert(starterAccounts, { onConflict: 'tenant_id,account_code', ignoreDuplicates: true }).select();
     if (error) throw new BadRequestException(error.message);
     return { created: data?.length || 0, message: data?.length ? 'Starter chart of accounts created.' : 'Starter chart of accounts was already present.' };
@@ -602,7 +602,7 @@ export class AccountingService {
     if (Math.round(debit * 100) !== Math.round(credit * 100) || debit <= 0) throw new BadRequestException('Journal debits and credits must balance and be greater than zero.');
     const date = String(body.journal_date || '').slice(0, 10);
     if (!date || !body.narration) throw new BadRequestException('Journal date and narration are required.');
-    const transactionCurrency = String(body.transaction_currency_code || 'INR').trim().toUpperCase();
+    const transactionCurrency = String(body.transaction_currency_code || runtimeBaseCurrency()).trim().toUpperCase();
     const exchangeRate = Number(body.exchange_rate || 1);
     if (!/^[A-Z]{3}$/.test(transactionCurrency) || !Number.isFinite(exchangeRate) || exchangeRate <= 0) throw new BadRequestException('Enter a valid three-letter transaction currency and positive exchange rate.');
     await this.assertActiveJournalAccounts(tenantId, lines);
@@ -699,7 +699,7 @@ export class AccountingService {
     const journalDate = String(body.journal_date || current.journal_date).slice(0, 10);
     const narration = String(body.narration || '').trim();
     if (!journalDate || !narration) throw new BadRequestException('Journal date and narration are required.');
-    const transactionCurrency = String(body.transaction_currency_code || current.transaction_currency_code || 'INR').trim().toUpperCase();
+    const transactionCurrency = String(body.transaction_currency_code || current.transaction_currency_code || runtimeBaseCurrency()).trim().toUpperCase();
     const exchangeRate = Number(body.exchange_rate || current.exchange_rate || 1);
     if (!/^[A-Z]{3}$/.test(transactionCurrency) || !Number.isFinite(exchangeRate) || exchangeRate <= 0) throw new BadRequestException('Enter a valid three-letter transaction currency and positive exchange rate.');
     await this.assertActiveJournalAccounts(tenantId, lines);
@@ -979,7 +979,7 @@ export class AccountingService {
       const { data: journal } = await this.supabase.from('accounting_journals').select('status').eq('tenant_id', tenantId).eq('id', body.journal_id).maybeSingle();
       if (!journal || journal.status !== 'POSTED') throw new BadRequestException('The source journal must be posted before an open item is created.');
     }
-    const { data, error } = await this.supabase.from('accounting_open_items').insert({ tenant_id: tenantId, party_id: body.party_id, document_type: body.document_type || 'INVOICE', document_id: body.document_id || null, document_number: body.document_number, document_date: body.document_date, due_date: body.due_date || null, direction: String(body.direction).toUpperCase(), original_amount: amount, currency_code: body.currency_code || 'INR', journal_id: body.journal_id || null }).select().single();
+    const { data, error } = await this.supabase.from('accounting_open_items').insert({ tenant_id: tenantId, party_id: body.party_id, document_type: body.document_type || 'INVOICE', document_id: body.document_id || null, document_number: body.document_number, document_date: body.document_date, due_date: body.due_date || null, direction: String(body.direction).toUpperCase(), original_amount: amount, currency_code: body.currency_code || runtimeBaseCurrency(), journal_id: body.journal_id || null }).select().single();
     if (error || !data) throw new BadRequestException(error?.message || 'Open item could not be created');
     return data;
   }
@@ -1758,7 +1758,7 @@ export class AccountingService {
 
   async fxRevaluationPreview(tenantId: string, query: any = {}) {
     const asOf = String(query.as_of || new Date().toISOString().slice(0, 10)).slice(0, 10);
-    const functionalCurrency = String(query.functional_currency_code || 'INR').toUpperCase();
+    const functionalCurrency = String(query.functional_currency_code || runtimeBaseCurrency()).toUpperCase();
     const { data: lines, error } = await this.supabase.from('accounting_journal_lines').select('account_id,foreign_debit,foreign_credit,debit,credit,journal:accounting_journals!inner(journal_date,status,transaction_currency_code,exchange_rate),account:accounting_accounts!inner(account_code,account_name,account_type)').eq('tenant_id', tenantId).eq('journal.status', 'POSTED').lte('journal.journal_date', asOf);
     if (error) throw new BadRequestException(error.message);
     const groups = new Map<string, any>();

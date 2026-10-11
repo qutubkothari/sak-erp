@@ -1,5 +1,8 @@
 'use client';
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, Loader2, RefreshCw, TrendingUp } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
@@ -12,7 +15,7 @@ type Action = {
 };
 type Overview = { signals: Signal[]; actions: Action[]; expected_value: number; realised_value: number };
 
-const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value || 0));
+const money = (value: number) => new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, { style: 'currency', currency: TENANT_BASE_CURRENCY.currency, maximumFractionDigits: 0 }).format(Number(value || 0));
 
 export default function MarginControlPage() {
   const [overview, setOverview] = useState<Overview | null>(null);

@@ -1,5 +1,8 @@
 "use client";
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -16,9 +19,9 @@ import { apiClient } from "../../../../lib/api-client";
 
 const field = "w-full rounded-lg border border-[#D8C8AA] px-3 py-2 text-sm";
 const money = (value: unknown) =>
-  new Intl.NumberFormat("en-IN", {
+  new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
     style: "currency",
-    currency: "INR",
+    currency: TENANT_BASE_CURRENCY.currency,
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
@@ -487,7 +490,7 @@ export default function BusinessTransformationPage() {
             <input
               required
               name="unit_of_measure"
-              placeholder="Unit: %, days, INR"
+              placeholder={`Unit: %, days, ${TENANT_BASE_CURRENCY.currency}`}
               className={field}
             />
             <select
@@ -721,7 +724,7 @@ export default function BusinessTransformationPage() {
             min="0"
             step="0.01"
             name="expected_benefit"
-            placeholder="Expected benefit INR (optional)"
+            placeholder={`Expected benefit ${TENANT_BASE_CURRENCY.currency} (optional)`}
             className={field}
           />
           <button className="rounded-lg bg-[#65452B] px-4 py-2 text-sm font-bold text-white">
@@ -825,7 +828,7 @@ export default function BusinessTransformationPage() {
               min="0.01"
               step="0.01"
               name="target_benefit"
-              placeholder="Target financial benefit INR"
+              placeholder={`Target financial benefit ${TENANT_BASE_CURRENCY.currency}`}
               className={field}
             />
             <input
@@ -833,7 +836,7 @@ export default function BusinessTransformationPage() {
               min="0"
               step="0.01"
               name="implementation_investment"
-              placeholder="Implementation investment INR"
+              placeholder={`Implementation investment ${TENANT_BASE_CURRENCY.currency}`}
               className={field}
             />
             <input

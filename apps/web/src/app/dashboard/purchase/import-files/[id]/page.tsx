@@ -1,5 +1,8 @@
 'use client';
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -40,7 +43,7 @@ type ImportFile = {
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
-const money = (value: any) => Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (value: any) => Number(value || 0).toLocaleString(TENANT_BASE_CURRENCY.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function ImportFileDetailPage() {
   const params = useParams<{ id: string }>();
@@ -50,8 +53,8 @@ export default function ImportFileDetailPage() {
   const [grns, setGrns] = useState<Grn[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [cost, setCost] = useState<any>({ costType: 'FREIGHT', currency: 'INR', exchangeRate: 1, costDate: today(), allocationBasis: 'VALUE' });
-  const [payment, setPayment] = useState<any>({ paymentCategory: 'FOREIGN_SUPPLIER', currency: 'INR', exchangeRate: 1, paymentDate: today() });
+  const [cost, setCost] = useState<any>({ costType: 'FREIGHT', currency: TENANT_BASE_CURRENCY.currency, exchangeRate: 1, costDate: today(), allocationBasis: 'VALUE' });
+  const [payment, setPayment] = useState<any>({ paymentCategory: 'FOREIGN_SUPPLIER', currency: TENANT_BASE_CURRENCY.currency, exchangeRate: 1, paymentDate: today() });
   const [grnLink, setGrnLink] = useState<any>({ allocationBasis: 'VALUE' });
   const [assessmentHeader, setAssessmentHeader] = useState<any>({ billOfEntryDate: today(), customsExchangeRate: 1 });
   const [assessmentRows, setAssessmentRows] = useState<any[]>([]);
@@ -136,10 +139,10 @@ export default function ImportFileDetailPage() {
     const paid = (data?.payments || []).filter((row: any) => row.status === 'PAID').reduce((sum: number, row: any) => sum + Number(row.inr_amount || 0), 0);
     const jumpTo = (id: string) => () => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return [
-      { label: 'Non-recoverable duty', value: `Rs. ${money(duty)}`, onClick: jumpTo('import-assessment') },
-      { label: 'Inward cost pool', value: `Rs. ${money(inward)}`, onClick: jumpTo('import-costs') },
-      { label: 'Allocated landed cost', value: `Rs. ${money(data?.final_landed_cost)}`, onClick: jumpTo('import-allocation-trail') },
-      { label: 'Import payments paid', value: `Rs. ${money(paid)}`, onClick: jumpTo('import-payments') },
+      { label: 'Non-recoverable duty', value: `${TENANT_BASE_CURRENCY.currency} ${money(duty)}`, onClick: jumpTo('import-assessment') },
+      { label: 'Inward cost pool', value: `${TENANT_BASE_CURRENCY.currency} ${money(inward)}`, onClick: jumpTo('import-costs') },
+      { label: 'Allocated landed cost', value: `${TENANT_BASE_CURRENCY.currency} ${money(data?.final_landed_cost)}`, onClick: jumpTo('import-allocation-trail') },
+      { label: 'Import payments paid', value: `${TENANT_BASE_CURRENCY.currency} ${money(paid)}`, onClick: jumpTo('import-payments') },
     ];
   }, [data]);
 
@@ -155,7 +158,7 @@ export default function ImportFileDetailPage() {
 
   const addCost = () => post(async () => {
     const next = await apiClient.post<ImportFile>(`/purchase/import-files/${id}/costs`, cost);
-    setCost({ costType: 'FREIGHT', currency: 'INR', exchangeRate: 1, costDate: today(), allocationBasis: 'VALUE' });
+    setCost({ costType: 'FREIGHT', currency: TENANT_BASE_CURRENCY.currency, exchangeRate: 1, costDate: today(), allocationBasis: 'VALUE' });
     return next;
   });
 
@@ -185,7 +188,7 @@ export default function ImportFileDetailPage() {
 
   const addPayment = () => post(async () => {
     const next = await apiClient.post<ImportFile>(`/purchase/import-files/${id}/payments`, payment);
-    setPayment({ paymentCategory: 'FOREIGN_SUPPLIER', currency: 'INR', exchangeRate: 1, paymentDate: today() });
+    setPayment({ paymentCategory: 'FOREIGN_SUPPLIER', currency: TENANT_BASE_CURRENCY.currency, exchangeRate: 1, paymentDate: today() });
     return next;
   });
 
@@ -271,7 +274,7 @@ export default function ImportFileDetailPage() {
             },
             {
               label: 'Landed Cost',
-              value: data?.final_landed_cost ? `Rs. ${money(data.final_landed_cost)}` : 'Not posted',
+              value: data?.final_landed_cost ? `${TENANT_BASE_CURRENCY.currency} ${money(data.final_landed_cost)}` : 'Not posted',
               tone: data?.final_landed_cost ? 'success' : 'warning',
               href: '',
             },
@@ -311,7 +314,7 @@ export default function ImportFileDetailPage() {
             ['billOfEntryNumber', 'BOE Number', 'text'],
             ['billOfEntryDate', 'BOE Date', 'date'],
             ['portOfEntry', 'Port of Discharge', 'text'],
-            ['customsExchangeRate', `${data?.currency || 'FCY'} → INR Rate`, 'number'],
+            ['customsExchangeRate', `${data?.currency || 'FCY'} → ${TENANT_BASE_CURRENCY.currency} Rate`, 'number'],
             ['commercialInvoiceNumber', 'Supplier Invoice No.', 'text'],
             ['commercialInvoiceDate', 'Supplier Invoice Date', 'date'],
           ].map(([key, label, type]) => (
@@ -335,7 +338,7 @@ export default function ImportFileDetailPage() {
                 <th className="p-3 text-right">Qty</th>
                 <th className="p-3 text-right">Foreign Value</th>
                 <th className="p-3 text-right">FX Rate</th>
-                <th className="p-3 text-right">Assessed INR</th>
+                <th className="p-3 text-right">Assessed {TENANT_BASE_CURRENCY.currency}</th>
                 <th className="p-3 text-right">Custom Duty</th>
                 <th className="p-3 text-right">Cess</th>
                 <th className="p-3 text-right">GST %</th>
@@ -369,7 +372,7 @@ export default function ImportFileDetailPage() {
                       />
                     </td>
                   ))}
-                  <td className="p-3 text-right font-semibold text-[#3D2B1F]">Rs. {money(row.gstAmount)}</td>
+                  <td className="p-3 text-right font-semibold text-[#3D2B1F]">{TENANT_BASE_CURRENCY.currency} {money(row.gstAmount)}</td>
                   <td className="p-3">
                     <input
                       value={row.notes || ''}
@@ -392,11 +395,11 @@ export default function ImportFileDetailPage() {
               <tfoot className="border-t border-[#E8DCC4] bg-[#FFFCF7] font-semibold text-[#3D2B1F]">
                 <tr>
                   <td className="p-3" colSpan={4}>Totals</td>
-                  <td className="p-3 text-right">Rs. {money(assessmentRows.reduce((sum, row) => sum + Number(row.assessedValueInr || 0), 0))}</td>
-                  <td className="p-3 text-right">Rs. {money(assessmentRows.reduce((sum, row) => sum + Number(row.customsDutyAmount || 0), 0))}</td>
-                  <td className="p-3 text-right">Rs. {money(assessmentRows.reduce((sum, row) => sum + Number(row.cessAmount || 0), 0))}</td>
+                  <td className="p-3 text-right">{TENANT_BASE_CURRENCY.currency} {money(assessmentRows.reduce((sum, row) => sum + Number(row.assessedValueInr || 0), 0))}</td>
+                  <td className="p-3 text-right">{TENANT_BASE_CURRENCY.currency} {money(assessmentRows.reduce((sum, row) => sum + Number(row.customsDutyAmount || 0), 0))}</td>
+                  <td className="p-3 text-right">{TENANT_BASE_CURRENCY.currency} {money(assessmentRows.reduce((sum, row) => sum + Number(row.cessAmount || 0), 0))}</td>
                   <td className="p-3"></td>
-                  <td className="p-3 text-right">Rs. {money(assessmentRows.reduce((sum, row) => sum + Number(row.gstAmount || 0), 0))}</td>
+                  <td className="p-3 text-right">{TENANT_BASE_CURRENCY.currency} {money(assessmentRows.reduce((sum, row) => sum + Number(row.gstAmount || 0), 0))}</td>
                   <td className="p-3"></td>
                 </tr>
               </tfoot>
@@ -418,7 +421,7 @@ export default function ImportFileDetailPage() {
               ['currency', 'Currency'],
               ['exchangeRate', 'Exchange rate'],
               ['foreignAmount', 'Foreign amount'],
-              ['inrAmount', 'INR amount'],
+              ['inrAmount', `${TENANT_BASE_CURRENCY.currency} amount`],
               ['recoverableTaxAmount', 'Recoverable tax'],
               ['costDate', 'Cost date'],
             ].map(([key, label]) => (
@@ -447,10 +450,10 @@ export default function ImportFileDetailPage() {
             </label>
             <div className="col-span-2 flex justify-end"><ErpButton variant="primary" onClick={addCost}><Plus className="h-4 w-4" />Add Cost</ErpButton></div>
           </div>
-          <SimpleTable headers={['Type', 'Supplier', 'Document', 'INR', 'Recoverable Tax']}>
+          <SimpleTable headers={['Type', 'Supplier', 'Document', TENANT_BASE_CURRENCY.currency, 'Recoverable Tax']}>
             {(data?.costs || []).map((row: any) => (
               <tr key={row.id} className="border-t border-[#F0E8DA]">
-                <td className="p-3">{row.cost_type}</td><td className="p-3">{row.supplier?.name || '-'}</td><td className="p-3">{row.document_number || '-'}</td><td className="p-3 text-right">Rs. {money(row.inr_amount)}</td><td className="p-3 text-right">Rs. {money(row.recoverable_tax_amount)}</td>
+                <td className="p-3">{row.cost_type}</td><td className="p-3">{row.supplier?.name || '-'}</td><td className="p-3">{row.document_number || '-'}</td><td className="p-3 text-right">{TENANT_BASE_CURRENCY.currency} {money(row.inr_amount)}</td><td className="p-3 text-right">{TENANT_BASE_CURRENCY.currency} {money(row.recoverable_tax_amount)}</td>
               </tr>
             ))}
             {!(data?.costs || []).length ? (
@@ -521,7 +524,7 @@ export default function ImportFileDetailPage() {
             <option value="">Select payee...</option>{vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name || vendor.code}</option>)}
           </select>
           <input placeholder="Document no." value={payment.documentNumber || ''} onChange={(e) => setPayment({ ...payment, documentNumber: e.target.value })} className="rounded-md border border-[#D8C8AA] px-3 py-2 text-sm" />
-          <input placeholder="INR amount" value={payment.inrAmount || ''} onChange={(e) => setPayment({ ...payment, inrAmount: e.target.value })} className="rounded-md border border-[#D8C8AA] px-3 py-2 text-sm" />
+          <input placeholder={`${TENANT_BASE_CURRENCY.currency} amount`} value={payment.inrAmount || ''} onChange={(e) => setPayment({ ...payment, inrAmount: e.target.value })} className="rounded-md border border-[#D8C8AA] px-3 py-2 text-sm" />
           <input placeholder="Payment ref" value={payment.paymentReference || ''} onChange={(e) => setPayment({ ...payment, paymentReference: e.target.value })} className="rounded-md border border-[#D8C8AA] px-3 py-2 text-sm" />
           <input type="date" value={payment.paymentDate || today()} onChange={(e) => setPayment({ ...payment, paymentDate: e.target.value })} className="rounded-md border border-[#D8C8AA] px-3 py-2 text-sm" />
           <input placeholder="Note / reason" value={payment.notes || ''} onChange={(e) => setPayment({ ...payment, notes: e.target.value })} className="rounded-md border border-[#D8C8AA] px-3 py-2 text-sm md:col-span-2" />
@@ -530,7 +533,7 @@ export default function ImportFileDetailPage() {
         <SimpleTable headers={['Category', 'Payee', 'Document', 'Amount', 'Status', 'Actions']}>
           {(data?.payments || []).map((row: any) => (
             <tr key={row.id} className="border-t border-[#F0E8DA]">
-              <td className="p-3">{row.payment_category}</td><td className="p-3">{row.supplier?.name || '-'}</td><td className="p-3">{row.document_number || '-'}</td><td className="p-3 text-right">Rs. {money(row.inr_amount)}</td><td className="p-3"><ErpStatusBadge status={row.status} /></td>
+              <td className="p-3">{row.payment_category}</td><td className="p-3">{row.supplier?.name || '-'}</td><td className="p-3">{row.document_number || '-'}</td><td className="p-3 text-right">{TENANT_BASE_CURRENCY.currency} {money(row.inr_amount)}</td><td className="p-3"><ErpStatusBadge status={row.status} /></td>
               <td className="p-3 text-right"><PaymentActions id={id} row={row} onDone={setData} setError={setError} /></td>
             </tr>
           ))}
@@ -547,7 +550,7 @@ export default function ImportFileDetailPage() {
       <section id="import-allocation-trail" className="scroll-mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Panel title="Landed Cost Allocation Trail" icon={<CheckCircle2 className="h-4 w-4" />}>
           <div className="max-h-80 overflow-auto text-sm">
-            {(data?.allocations || []).map((row: any) => <div key={row.id} className="grid grid-cols-[1fr_auto] gap-3 border-b border-[#F0E8DA] py-2"><span>{row.item_code || row.item_name}<br /><span className="text-xs text-[#7A6555]">Qty {row.received_qty} / Unit landed Rs. {money(row.landed_unit_cost)} / <Link href={`/dashboard/purchase/grn?viewId=${row.grn_id}`} className="text-[#7A542F] underline">Open GRN</Link></span></span><strong>Rs. {money(row.allocated_landed_cost)}</strong></div>)}
+            {(data?.allocations || []).map((row: any) => <div key={row.id} className="grid grid-cols-[1fr_auto] gap-3 border-b border-[#F0E8DA] py-2"><span>{row.item_code || row.item_name}<br /><span className="text-xs text-[#7A6555]">Qty {row.received_qty} / Unit landed {TENANT_BASE_CURRENCY.currency} {money(row.landed_unit_cost)} / <Link href={`/dashboard/purchase/grn?viewId=${row.grn_id}`} className="text-[#7A542F] underline">Open GRN</Link></span></span><strong>{TENANT_BASE_CURRENCY.currency} {money(row.allocated_landed_cost)}</strong></div>)}
             {!(data?.allocations || []).length ? <div className="rounded-md border border-[#E8DCC4] bg-[#FAF9F6] p-4 text-[#7A6555]">No landed cost allocation posted yet.</div> : null}
           </div>
         </Panel>

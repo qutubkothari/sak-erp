@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { ForbiddenException, Injectable, Optional } from "@nestjs/common";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { hasAnyPermissionForResource } from "../auth/utils/permission-utils";
@@ -592,7 +593,7 @@ export class ConversationalAnalyticsService {
         to: asOf,
         label: `Cumulative balances as of ${asOf}`,
       },
-      currency_code: "INR",
+      currency_code: runtimeBaseCurrency(),
       metrics: [
         {
           label: "Revenue",
@@ -782,7 +783,7 @@ export class ConversationalAnalyticsService {
         output_quantity: amount(row.output_quantity),
         total_cost: amount(row.calculated_total_cost),
         unit_cost: amount(row.calculated_unit_cost),
-        currency_code: row.currency_code || "INR",
+        currency_code: row.currency_code || runtimeBaseCurrency(),
         updated_at: row.updated_at,
       };
     });
@@ -1077,21 +1078,21 @@ export class ConversationalAnalyticsService {
       ...service.map((row: any) => ({
         ...row,
         source: "Service invoice",
-        currency_code: "INR",
+        currency_code: runtimeBaseCurrency(),
         net_sales: amount(row.net_amount),
       })),
     ].sort((left, right) =>
       String(right.invoice_date).localeCompare(String(left.invoice_date)),
     );
     const currencies = [
-      ...new Set(rows.map((row) => row.currency_code || "INR")),
+      ...new Set(rows.map((row) => row.currency_code || runtimeBaseCurrency())),
     ];
     const currency = currencies.length === 1 ? currencies[0] : "MIXED";
     const totalsByCurrency = new Map<string, number>();
     for (const row of rows)
       totalsByCurrency.set(
-        row.currency_code || "INR",
-        (totalsByCurrency.get(row.currency_code || "INR") || 0) + row.net_sales,
+        row.currency_code || runtimeBaseCurrency(),
+        (totalsByCurrency.get(row.currency_code || runtimeBaseCurrency()) || 0) + row.net_sales,
       );
     const total =
       currencies.length <= 1 ? [...totalsByCurrency.values()][0] || 0 : null;
@@ -1212,12 +1213,12 @@ export class ConversationalAnalyticsService {
       const vendorId = String(row.vendor?.id || row.vendor_id || "");
       const vendor = vendorById.get(vendorId) || row.vendor;
       if (!vendorId || !vendor) continue;
-      const key = `${vendorId}:INR`;
+      const key = `${vendorId}:${runtimeBaseCurrency()}`;
       const group = groups.get(key) || {
         supplier: vendor.name,
         supplier_code: vendor.code || "",
         vendor_id: vendorId,
-        currency_code: "INR",
+        currency_code: runtimeBaseCurrency(),
         total_outstanding: 0,
         overdue_amount: 0,
         open_documents: 0,
@@ -1339,7 +1340,7 @@ export class ConversationalAnalyticsService {
       const vendor =
         vendorById.get(String(party.party_id || "")) ||
         vendorByCode.get(normalized(party.party_code));
-      const currency = item.currency_code || "INR";
+      const currency = item.currency_code || runtimeBaseCurrency();
       const supplier = vendor?.name || party.party_name || party.party_code;
       const key = `${party.id}:${currency}`;
       const group = groups.get(key) || {
@@ -1384,11 +1385,11 @@ export class ConversationalAnalyticsService {
         const outstanding = Math.max(amount(original) - amount(settled), 0);
         const vendor = vendorById.get(String(vendorId || ""));
         if (!vendor || outstanding <= 0) return;
-        const key = `${vendor.id}:INR`;
+        const key = `${vendor.id}:${runtimeBaseCurrency()}`;
         const group = groups.get(key) || {
           supplier: vendor.name,
           supplier_code: vendor.code || "",
-          currency_code: "INR",
+          currency_code: runtimeBaseCurrency(),
           total_outstanding: 0,
           overdue_amount: 0,
           open_documents: 0,
@@ -1453,7 +1454,7 @@ export class ConversationalAnalyticsService {
       .join(" + ");
     const currencies = [...totals.keys()];
     const singleCurrency = currencies.length <= 1;
-    const currency = singleCurrency ? currencies[0] || "INR" : "MIXED";
+    const currency = singleCurrency ? currencies[0] || runtimeBaseCurrency() : "MIXED";
     const singleTotal = totals.get(currencies[0]) || {
       outstanding: 0,
       overdue: 0,
@@ -1734,7 +1735,7 @@ export class ConversationalAnalyticsService {
           due_date: null,
           original_amount: amount(row.net_payable_amount),
           settled_amount: amount(row.paid_amount),
-          currency_code: "INR",
+          currency_code: runtimeBaseCurrency(),
           outstanding: Math.max(
             0,
             amount(row.net_payable_amount) - amount(row.paid_amount),
@@ -1756,7 +1757,7 @@ export class ConversationalAnalyticsService {
           due_date: null,
           original_amount: amount(row.invoice_amount),
           settled_amount: amount(row.paid_amount),
-          currency_code: "INR",
+          currency_code: runtimeBaseCurrency(),
           outstanding: Math.max(
             0,
             amount(row.invoice_amount) - amount(row.paid_amount),
@@ -1767,13 +1768,13 @@ export class ConversationalAnalyticsService {
       sourceMode = "OPERATIONAL";
     }
     const currencies = [
-      ...new Set(rows.map((row) => row.currency_code || "INR")),
+      ...new Set(rows.map((row) => row.currency_code || runtimeBaseCurrency())),
     ];
-    const currency = currencies.length <= 1 ? currencies[0] || "INR" : "MIXED";
+    const currency = currencies.length <= 1 ? currencies[0] || runtimeBaseCurrency() : "MIXED";
     const totalsByCurrency = new Map<string, number>();
     const overdueByCurrency = new Map<string, number>();
     for (const row of rows) {
-      const code = row.currency_code || "INR";
+      const code = row.currency_code || runtimeBaseCurrency();
       totalsByCurrency.set(
         code,
         (totalsByCurrency.get(code) || 0) + row.outstanding,
@@ -1946,7 +1947,7 @@ export class ConversationalAnalyticsService {
         po_advances: 0,
         blanket_advances: 0,
         latest_advance_date: null,
-        currency_code: "INR",
+        currency_code: runtimeBaseCurrency(),
       };
       group.available_advance += available;
       group.original_advance += amount(advance.amount);
@@ -1977,7 +1978,7 @@ export class ConversationalAnalyticsService {
         ? `Available advances — ${selectedVendor.name}`
         : "Available supplier advances",
       headline: rows.length
-        ? `${rows.length} supplier${rows.length === 1 ? " has" : "s have"} ${availableTotal.toFixed(2)} INR available across ${recordCount} open advance record${recordCount === 1 ? "" : "s"}.`
+        ? `${rows.length} supplier${rows.length === 1 ? " has" : "s have"} ${availableTotal.toFixed(2)} ${runtimeBaseCurrency()} available across ${recordCount} open advance record${recordCount === 1 ? "" : "s"}.`
         : selectedVendor
           ? `No open advance balance is available for ${selectedVendor.name}.`
           : "No open supplier advance balances were found.",
@@ -1987,7 +1988,7 @@ export class ConversationalAnalyticsService {
         to: iso(new Date()),
         label: `Available as of ${iso(new Date())}`,
       },
-      currency_code: "INR",
+      currency_code: runtimeBaseCurrency(),
       metrics: [
         {
           label: "Available advances",
@@ -2111,10 +2112,10 @@ export class ConversationalAnalyticsService {
           ? `Latest supplier payment${subject}`
           : `Supplier payment history${subject}`,
       headline: latest
-        ? `Latest recorded supplier payment${subject}: ${latest.amount.toFixed(2)} INR to ${latest.supplier} on ${latest.payment_date}.`
+        ? `Latest recorded supplier payment${subject}: ${latest.amount.toFixed(2)} ${runtimeBaseCurrency()} to ${latest.supplier} on ${latest.payment_date}.`
         : `No recorded supplier payments were found${subject}.`,
       questions: [],
-      currency_code: "INR",
+      currency_code: runtimeBaseCurrency(),
       metrics: [
         { label: "Payments found", value: allRows.length, format: "number" },
         {
@@ -2247,7 +2248,7 @@ export class ConversationalAnalyticsService {
             document_number: row.invoice_number,
             document_date: row.invoice_date,
             due_date: row.due_date,
-            currency_code: row.currency_code || "INR",
+            currency_code: row.currency_code || runtimeBaseCurrency(),
             outstanding,
             overdue: Boolean(row.due_date && row.due_date < today),
           };
@@ -2257,14 +2258,14 @@ export class ConversationalAnalyticsService {
     }
     const totals = new Map<string, { total: number; overdue: number }>();
     for (const row of rows) {
-      const code = row.currency_code || "INR";
+      const code = row.currency_code || runtimeBaseCurrency();
       const bucket = totals.get(code) || { total: 0, overdue: 0 };
       bucket.total += row.outstanding;
       if (row.overdue) bucket.overdue += row.outstanding;
       totals.set(code, bucket);
     }
     const currencies = [...totals.keys()];
-    const currency = currencies.length <= 1 ? currencies[0] || "INR" : "MIXED";
+    const currency = currencies.length <= 1 ? currencies[0] || runtimeBaseCurrency() : "MIXED";
     const totalLabel = [...totals.entries()]
       .map(([code, bucket]) => `${bucket.total.toFixed(2)} ${code}`)
       .join(" + ");
@@ -2437,7 +2438,7 @@ export class ConversationalAnalyticsService {
           vendor_id: order.vendor_id,
           po_number: order.po_number,
           po_date: order.po_date,
-          currency_code: "INR",
+          currency_code: runtimeBaseCurrency(),
           uom: String(line.uom || item.match.uom || "").toUpperCase(),
           quantity: amount(line.ordered_qty),
           rate: amount(line.rate),
@@ -2468,7 +2469,7 @@ export class ConversationalAnalyticsService {
           : null,
         last_purchase: vendorLines[0]?.po_date || null,
         uom: vendorLines[0]?.uom || item.match.uom,
-        currency_code: vendorLines[0]?.currency_code || "INR",
+        currency_code: vendorLines[0]?.currency_code || runtimeBaseCurrency(),
         line_count: vendorLines.length,
       };
     });
@@ -2494,7 +2495,7 @@ export class ConversationalAnalyticsService {
       period,
       currency_code:
         new Set(rows.map((row) => row.currency_code)).size === 1
-          ? rows[0]?.currency_code || "INR"
+          ? rows[0]?.currency_code || runtimeBaseCurrency()
           : "MIXED",
       metrics: [
         { label: "Suppliers compared", value: 2, format: "number" },
@@ -3328,7 +3329,7 @@ export class ConversationalAnalyticsService {
       );
       const byCurrency = new Map<string, number>();
       for (const row of invoices) {
-        const code = row.currency_code || "INR";
+        const code = row.currency_code || runtimeBaseCurrency();
         byCurrency.set(
           code,
           (byCurrency.get(code) || 0) +
@@ -3342,7 +3343,7 @@ export class ConversationalAnalyticsService {
         value:
           [...byCurrency.entries()]
             .map(([code, total]) => `${total.toFixed(2)} ${code}`)
-            .join(" + ") || "0.00 INR",
+            .join(" + ") || `0.00 ${runtimeBaseCurrency()}`,
         state: "ACTUAL",
       });
       sources.push({

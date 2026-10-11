@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import {
   BadRequestException,
   ForbiddenException,
@@ -132,12 +133,12 @@ const number = (value: any) => {
 export const normalizePlannerCurrency = (value: unknown) => {
   const raw = text(value).toUpperCase();
   const aliases: Record<string, string> = {
-    "": "INR",
-    RS: "INR",
-    "RS.": "INR",
-    "₹": "INR",
-    RUPEE: "INR",
-    RUPEES: "INR",
+    "": runtimeBaseCurrency(),
+    RS: runtimeBaseCurrency(),
+    "RS.": runtimeBaseCurrency(),
+    "₹": runtimeBaseCurrency(),
+    RUPEE: runtimeBaseCurrency(),
+    RUPEES: runtimeBaseCurrency(),
     DHS: "AED",
     "د.إ": "AED",
     $: "USD",
@@ -147,7 +148,7 @@ export const normalizePlannerCurrency = (value: unknown) => {
   const currency = aliases[raw] || raw;
   return ["INR", "AED", "USD", "EUR", "GBP"].includes(currency)
     ? currency
-    : "INR";
+    : runtimeBaseCurrency();
 };
 export const normalizePlannerDate = (value: any) => {
   const raw = text(value);
@@ -182,7 +183,7 @@ const empty = (): Extracted => ({
   uom: "",
   unit_price: null,
   price_uom: "",
-  currency: "INR",
+  currency: runtimeBaseCurrency(),
   delivery_date: "",
   delivery_address: "",
   payment_terms: "",

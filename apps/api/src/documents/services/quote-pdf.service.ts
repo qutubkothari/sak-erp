@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../../common/utils/runtime-base-currency';
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { DOCUMENT_BRAND_COLORS, DocumentBrandingService } from '../../common/services/document-branding.service';
@@ -100,7 +101,7 @@ export class QuotePdfService {
     });
     const assets = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc, branding);
 
-    const currency = (input.currency || 'INR').toUpperCase();
+    const currency = (input.currency || runtimeBaseCurrency()).toUpperCase();
     const documentLabel = String(input.document_label || 'QUOTATION').trim().toUpperCase();
     const taxRate = typeof input.tax_rate === 'number' ? input.tax_rate : 0;
     const discount = typeof input.discount === 'number' ? input.discount : 0;
@@ -119,7 +120,7 @@ export class QuotePdfService {
 
     const money = (n: number) => {
       const safe = Number.isFinite(n) ? n : 0;
-      const formatted = new Intl.NumberFormat('en-IN', {
+      const formatted = new Intl.NumberFormat(currency === 'EGP' ? 'en-EG' : currency === 'INR' ? 'en-IN' : 'en-AE', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }).format(safe);
@@ -428,7 +429,7 @@ export class QuotePdfService {
     const PAGE_H = 595.28;
     const MARGIN = 32;
     const CONTENT_W = PAGE_W - MARGIN * 2;
-    const currency = String(input.currency || 'INR').toUpperCase();
+    const currency = String(input.currency || runtimeBaseCurrency()).toUpperCase();
     const brand = {
       light: DOCUMENT_BRAND_COLORS.light,
       text: DOCUMENT_BRAND_COLORS.text,
@@ -444,7 +445,7 @@ export class QuotePdfService {
     });
     const assets = await this.documentBrandingService.preparePdfBrandingAssets(pdfDoc, branding);
     const clean = (value: unknown) => String(value ?? '').normalize('NFKD').replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim();
-    const money = (value: unknown) => `${currency} ${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const money = (value: unknown) => `${currency} ${Number(value || 0).toLocaleString(currency === 'EGP' ? 'en-EG' : currency === 'INR' ? 'en-IN' : 'en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const shortDate = (value: unknown) => {
       const raw = String(value || '').slice(0, 10);
       const [year, month, day] = raw.split('-');

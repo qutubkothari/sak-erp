@@ -1,5 +1,8 @@
 "use client";
 
+
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useMemo, useState } from "react";
 import {
   Calculator,
@@ -261,7 +264,7 @@ export default function ProductionCostSheet({
   const [id, setId] = useState("");
   const [finishedItemId, setFinishedItemId] = useState("");
   const [templateName, setTemplateName] = useState("Standard production cost");
-  const [currency, setCurrency] = useState("INR");
+  const [currency, setCurrency] = useState(TENANT_BASE_CURRENCY.currency);
   const [outputQuantity, setOutputQuantity] = useState(1000);
   const [sellingPrice, setSellingPrice] = useState(0);
   const [lines, setLines] = useState<CostLine[]>(starterLines);
@@ -279,7 +282,7 @@ export default function ProductionCostSheet({
   const money = (value: number) =>
     new Intl.NumberFormat("en-IN", {
       style: "currency",
-      currency: /^[A-Z]{3}$/.test(currency) ? currency : "INR",
+      currency: /^[A-Z]{3}$/.test(currency) ? currency : TENANT_BASE_CURRENCY.currency,
       maximumFractionDigits: 2,
     }).format(value || 0);
 
@@ -298,7 +301,7 @@ export default function ProductionCostSheet({
     setId("");
     setFinishedItemId("");
     setTemplateName("Standard production cost");
-    setCurrency("INR");
+    setCurrency(TENANT_BASE_CURRENCY.currency);
     setOutputQuantity(1000);
     setSellingPrice(0);
     setLines(starterLines());
@@ -311,7 +314,7 @@ export default function ProductionCostSheet({
     setId(template.id);
     setFinishedItemId(template.finished_item_id);
     setTemplateName(template.template_name);
-    setCurrency(template.currency_code || "INR");
+    setCurrency(template.currency_code || TENANT_BASE_CURRENCY.currency);
     setOutputQuantity(Number(template.output_quantity || 1));
     setSellingPrice(Number(template.assumptions?.selling_price || 0));
     setLines(
