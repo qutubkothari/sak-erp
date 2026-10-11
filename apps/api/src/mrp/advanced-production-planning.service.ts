@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import {
   BadRequestException,
   Injectable,
@@ -1168,7 +1169,7 @@ export class AdvancedProductionPlanningService {
       : "";
     const programName = this.t(b.program_name || generatedName),
       currency = this.t(
-        salesDemand?.order.currency_code || b.currency_code || "AED",
+        salesDemand?.order.currency_code || b.currency_code || runtimeBaseCurrency(),
       ).toUpperCase();
     if (
       !finishedItemId ||

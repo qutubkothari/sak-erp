@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -1135,7 +1136,7 @@ export class AccountingService {
     const ar = rows.filter((x: any) => x.direction === 'RECEIVABLE'); const ap = rows.filter((x: any) => x.direction === 'PAYABLE'); const sum = (list: any[]) => Number(list.reduce((n, x) => n + x.outstanding, 0).toFixed(2));
     const arTotal = sum(ar), apTotal = sum(ap), overdueAr = sum(ar.filter((x: any) => x.overdue_days > 0)), overdueAp = sum(ap.filter((x: any) => x.overdue_days > 0));
     const since = new Date(today); since.setUTCDate(since.getUTCDate() - 90); const recent = rows.filter((x: any) => new Date(x.document_date).getTime() >= since.getTime()); const arCredit = recent.filter((x: any) => x.direction === 'RECEIVABLE').reduce((n: number, x: any) => n + Number(x.original_amount || 0), 0); const apCredit = recent.filter((x: any) => x.direction === 'PAYABLE').reduce((n: number, x: any) => n + Number(x.original_amount || 0), 0);
-    return { currency_code: 'AED', metrics: { receivables: arTotal, payables: apTotal, overdue_receivables: overdueAr, overdue_payables: overdueAp, net_working_capital_exposure: Number((arTotal - apTotal).toFixed(2)), immediately_addressable_cash: overdueAr, dso_days: arCredit ? Number((arTotal / arCredit * 90).toFixed(1)) : null, dpo_days: apCredit ? Number((apTotal / apCredit * 90).toFixed(1)) : null, suggested_allocations: (suggestions || []).length }, priorities: rows.sort((a: any,b: any) => b.priority_score - a.priority_score), suggestions: suggestions || [], methodology: 'DSO/DPO use current open balances divided by documents raised in the trailing 90 days. Immediately addressable cash is overdue AR, not a guaranteed benefit.' };
+    return { currency_code: runtimeBaseCurrency(), metrics: { receivables: arTotal, payables: apTotal, overdue_receivables: overdueAr, overdue_payables: overdueAp, net_working_capital_exposure: Number((arTotal - apTotal).toFixed(2)), immediately_addressable_cash: overdueAr, dso_days: arCredit ? Number((arTotal / arCredit * 90).toFixed(1)) : null, dpo_days: apCredit ? Number((apTotal / apCredit * 90).toFixed(1)) : null, suggested_allocations: (suggestions || []).length }, priorities: rows.sort((a: any,b: any) => b.priority_score - a.priority_score), suggestions: suggestions || [], methodology: 'DSO/DPO use current open balances divided by documents raised in the trailing 90 days. Immediately addressable cash is overdue AR, not a guaranteed benefit.' };
   }
 
   async suggestCashApplications(tenantId: string, actor: any) {
@@ -1174,7 +1175,7 @@ export class AccountingService {
 
   async createBankAccount(tenantId: string, actor: any, body: any) {
     if (!body.bank_name || !body.account_id) throw new BadRequestException('Bank name and ledger account are required.');
-    const currencyCode = String(body.currency_code || 'AED').trim().toUpperCase();
+    const currencyCode = String(body.currency_code || runtimeBaseCurrency()).trim().toUpperCase();
     const { data: ledger, error: ledgerError } = await this.supabase.from('accounting_accounts').select('id,currency_code,is_active').eq('tenant_id', tenantId).eq('id', body.account_id).maybeSingle();
     if (ledgerError || !ledger || !ledger.is_active) throw new BadRequestException('Select an active bank ledger.');
     if (String(ledger.currency_code || currencyCode).toUpperCase() !== currencyCode) throw new BadRequestException('Bank-account currency must match its general-ledger currency.');
@@ -1628,7 +1629,7 @@ export class AccountingService {
     if (Math.abs(debit - credit) > 0.005) lines.push(debit > credit ? { account_id: batch.suspense_account_id, description: 'Opening balance suspense', debit: 0, credit: debit - credit } : { account_id: batch.suspense_account_id, description: 'Opening balance suspense', debit: credit - debit, credit: 0 });
     let { data: journal, error: journalLookupError } = await this.supabase.from('accounting_journals').select('*').eq('tenant_id', tenantId).eq('source_type', 'OPENING_BALANCE').eq('source_id', batch.id).maybeSingle();
     if (journalLookupError) throw new BadRequestException(journalLookupError.message);
-    if (!journal) journal = await this.createJournal(tenantId, batch.prepared_by, { journal_number: `OB-${batch.batch_number}`, journal_date: batch.as_of_date, source_type: 'OPENING_BALANCE', source_id: batch.id, transaction_currency_code: 'AED', exchange_rate: 1, narration: `Opening balance batch ${batch.batch_number}${batch.source_reference ? ` — ${batch.source_reference}` : ''}`, lines });
+    if (!journal) journal = await this.createJournal(tenantId, batch.prepared_by, { journal_number: `OB-${batch.batch_number}`, journal_date: batch.as_of_date, source_type: 'OPENING_BALANCE', source_id: batch.id, transaction_currency_code: runtimeBaseCurrency(), exchange_rate: 1, narration: `Opening balance batch ${batch.batch_number}${batch.source_reference ? ` — ${batch.source_reference}` : ''}`, lines });
     if (journal.status === 'DRAFT') { await this.reviewJournal(tenantId, batch.validated_by, journal.id, { review_status: 'APPROVED', review_note: 'Opening balances independently validated.' }); journal = await this.getJournal(tenantId, journal.id); }
     if (journal.status === 'REVIEWED') { await this.approveJournal(tenantId, batch.approved_by, journal.id, { approval_status: 'APPROVED', approval_note: batch.approval_note }); journal = await this.getJournal(tenantId, journal.id); }
     const posted = journal.status === 'POSTED' ? journal : await this.postJournal(tenantId, journal.id, userId);

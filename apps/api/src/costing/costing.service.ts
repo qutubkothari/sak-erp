@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { AccountingService } from "../accounting/accounting.service";
@@ -481,7 +482,7 @@ export class CostingService {
     );
     const tenantSettings: any = tenantResult.data?.settings || {};
     const tenantCurrency = String(
-      tenantResult.data?.default_currency || tenantSettings.currency || "AED",
+      tenantResult.data?.default_currency || tenantSettings.currency || runtimeBaseCurrency(),
     ).toUpperCase();
     const tenantLocale = String(
       tenantResult.data?.locale || tenantSettings.locale || "en-AE",
@@ -990,7 +991,7 @@ export class CostingService {
       run_code: String(body.run_code || `INV-${end}-${Date.now()}`).trim(),
       period_start: start,
       period_end: end,
-      currency_code: "AED",
+      currency_code: runtimeBaseCurrency(),
       opening_value: opening,
       receipt_value: receiptValue,
       issue_value: issueValue,

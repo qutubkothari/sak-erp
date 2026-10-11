@@ -17,6 +17,14 @@ export function getProfileLocaleSettings(
   return { currency: 'AED', locale: 'en-GB' };
 }
 
+/** Currency used by tenant-base totals. Explicit transaction currencies stay on their records. */
+export function formatTenantBaseCurrency(value: number, fractionDigits = 2): string {
+  const { currency, locale } = getProfileLocaleSettings();
+  return new Intl.NumberFormat(locale, {
+    style: 'currency', currency, maximumFractionDigits: fractionDigits,
+  }).format(Number(value || 0));
+}
+
 export type ProfileBranding = {
   brand: string;
   companyName: string;

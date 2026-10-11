@@ -397,6 +397,16 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState(profileLocale.locale);
   const [taxLabel, setTaxLabel] = useState(profileLocale.currency === "INR" ? "GST" : "VAT");
 
+  // Legacy captions often spell out the UAE base currency. Change only generic
+  // captions for the Egyptian tenant; a standalone currency code or an amount
+  // with an explicit AED value remains transaction-currency evidence.
+  const localizeBaseCurrencyLabel = useCallback((value: string) => {
+    if (currency !== "EGP" || (typeof window !== "undefined" && /\/uae-compliance(?:\/|$)/.test(window.location.pathname))) return value;
+    if (!/\bAED\b/.test(value) || /^\s*AED\s*$/.test(value)) return value;
+    if (/\bAED\s*[\d.,]|[\d.,]\s*AED\b/.test(value)) return value;
+    return value.replace(/\bAED\b/g, "EGP");
+  }, [currency]);
+
   const setLanguage = useCallback((next: AppLanguage) => {
     setLanguageState(next);
     localStorage.setItem("mizantra-language", next);
@@ -437,7 +447,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
           originalText.set(node, currentValue);
         }
         const original = originalText.get(node) || "";
-        const next = translate(original, language);
+        const next = translate(localizeBaseCurrencyLabel(original), language);
         lastAppliedText.set(node, next);
         if (node.nodeValue !== next) node.nodeValue = next;
       };
@@ -472,7 +482,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
             saved.set(attribute, currentValue);
           }
           const original = saved.get(attribute) || currentValue;
-          const next = translate(original, language);
+          const next = translate(localizeBaseCurrencyLabel(original), language);
           applied.set(attribute, next);
           if (currentValue !== next) element.setAttribute(attribute, next);
         }
@@ -494,7 +504,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
       attributeFilter: ["placeholder", "title", "aria-label"],
     });
     return () => observer.disconnect();
-  }, [language]);
+  }, [language, localizeBaseCurrencyLabel]);
 
   const value = useMemo(() => ({
     language,
@@ -502,8 +512,8 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     currency,
     taxLabel,
     setLanguage,
-    t: (text: string) => translate(text, language),
-  }), [currency, language, locale, setLanguage, taxLabel]);
+    t: (text: string) => translate(localizeBaseCurrencyLabel(text), language),
+  }), [currency, language, locale, localizeBaseCurrencyLabel, setLanguage, taxLabel]);
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }

@@ -1,4 +1,6 @@
 "use client";
+import { getProfileLocaleSettings } from '@/lib/profile-branding';
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { RefreshCw, UsersRound } from "lucide-react";
@@ -6,9 +8,9 @@ import { apiClient } from "../../../../../lib/api-client";
 
 const field = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
 const money = (value: any) =>
-  new Intl.NumberFormat("en-AE", {
+  new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
     style: "currency",
-    currency: "AED",
+    currency: TENANT_BASE_CURRENCY.currency,
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 const number = (value: any) =>

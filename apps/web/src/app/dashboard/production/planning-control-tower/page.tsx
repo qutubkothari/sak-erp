@@ -1,4 +1,6 @@
 "use client";
+import { getProfileLocaleSettings } from '@/lib/profile-branding';
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -14,9 +16,9 @@ const num = (v: any) =>
     Number(v || 0),
   );
 const money = (v: any) =>
-  new Intl.NumberFormat("en-AE", {
+  new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
     style: "currency",
-    currency: "AED",
+    currency: TENANT_BASE_CURRENCY.currency,
     maximumFractionDigits: 0,
   }).format(Number(v || 0));
 export default function PlanningControlTower() {

@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
@@ -239,7 +240,7 @@ export class FpnaControlService {
         actual_period_from: from,
         actual_period_to: to,
         forecast_months: months,
-        currency_code: "AED",
+        currency_code: runtimeBaseCurrency(),
         actual_snapshot: snapshot,
         created_by: userId,
       })

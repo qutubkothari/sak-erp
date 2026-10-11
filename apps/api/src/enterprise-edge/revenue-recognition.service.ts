@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 @Injectable()
@@ -178,7 +179,7 @@ export class RevenueRecognitionService {
         end_date: end,
         transaction_price_ex_tax: price,
         billed_amount_ex_tax: billed,
-        currency_code: "AED",
+        currency_code: runtimeBaseCurrency(),
         contract_evidence: evidence,
         created_by: u,
       })

@@ -1,4 +1,6 @@
 'use client';
+import { getProfileLocaleSettings } from '@/lib/profile-branding';
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 import { useCallback, useEffect, useState } from 'react';
 import { Banknote, Loader2, RefreshCw, Sparkles } from 'lucide-react';
@@ -8,7 +10,7 @@ type InvoiceItem = { id:string; invoice_number:string; due_date?:string; balance
 type CollectionsData = { total_outstanding:number; overdue_amount:number; items:InvoiceItem[] };
 type Suggestion = { id:string; confidence_score:number; suggested_amount:number; match_reasons:string[]; bank_transaction?:{reference_number?:string}|null; open_item?:{document_number:string;party?:{party_name?:string}|null}|null };
 type ControlData = { metrics:{receivables:number;payables:number;overdue_receivables:number;immediately_addressable_cash:number;dso_days:number|null;dpo_days:number|null}; suggestions:Suggestion[]; methodology:string };
-const money=(value:number)=>new Intl.NumberFormat('en-AE',{style:'currency',currency:'AED',maximumFractionDigits:0}).format(Number(value||0));
+const money=(value:number)=>new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {style:'currency',currency: TENANT_BASE_CURRENCY.currency,maximumFractionDigits:0}).format(Number(value||0));
 
 export default function Collections(){
   const [data,setData]=useState<CollectionsData|null>(null); const [control,setControl]=useState<ControlData|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState(''); const [message,setMessage]=useState(''); const [saving,setSaving]=useState<string|null>(null);

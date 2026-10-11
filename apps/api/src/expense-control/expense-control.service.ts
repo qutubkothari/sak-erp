@@ -1,3 +1,4 @@
+import { runtimeBaseCurrency } from '../common/utils/runtime-base-currency';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
@@ -33,7 +34,7 @@ export class ExpenseControlService {
   async createClaim(tenantId: string, userId: string, b: any) {
     const title = this.text(b.title); if (!title) this.fail(null, 'Claim title is required.');
     const claim_number = `EXP-${new Date().toISOString().replace(/\D/g, '').slice(2, 14)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-    const { data, error } = await this.db.from('expense_claims').insert({ tenant_id: tenantId, claimant_user_id: userId, claim_number, title, currency: this.text(b.currency || 'AED').toUpperCase() }).select().single();
+    const { data, error } = await this.db.from('expense_claims').insert({ tenant_id: tenantId, claimant_user_id: userId, claim_number, title, currency: this.text(b.currency || runtimeBaseCurrency()).toUpperCase() }).select().single();
     if (error) this.fail(error, 'Unable to create claim.'); await this.event(tenantId, data.id, userId, 'CREATED'); return data;
   }
   async addItem(tenantId: string, userId: string, claimId: string, b: any) {

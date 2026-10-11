@@ -1,9 +1,11 @@
 'use client';
+import { getProfileLocaleSettings } from '@/lib/profile-branding';
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { RefreshCw, ShieldCheck } from 'lucide-react';
 import { apiClient } from '../../../../../lib/api-client';
 const field = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
-const money = (v: any) => new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED', maximumFractionDigits: 0 }).format(Number(v || 0));
+const money = (v: any) => new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, { style: 'currency', currency: TENANT_BASE_CURRENCY.currency, maximumFractionDigits: 0 }).format(Number(v || 0));
 const num = (v: any) => new Intl.NumberFormat('en-AE', { maximumFractionDigits: 1 }).format(Number(v || 0));
 
 export default function CapaControl() {

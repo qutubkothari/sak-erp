@@ -1,4 +1,6 @@
 "use client";
+import { getProfileLocaleSettings } from '@/lib/profile-branding';
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 import {
@@ -18,9 +20,9 @@ const number = (value: any) =>
     Number(value || 0),
   );
 const money = (value: any) =>
-  new Intl.NumberFormat("en-AE", {
+  new Intl.NumberFormat(TENANT_BASE_CURRENCY.locale, {
     style: "currency",
-    currency: "AED",
+    currency: TENANT_BASE_CURRENCY.currency,
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
