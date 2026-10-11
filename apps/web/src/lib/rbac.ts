@@ -600,13 +600,6 @@ export function isPathAllowedForUser(
   user: StoredUser | null,
   pathname: string,
 ): boolean {
-  if (pathname === "/dashboard/support/admin" || pathname.startsWith("/dashboard/support/admin/")) {
-    return hasSuperAdminRole(user);
-  }
-  // Support is a tenant-scoped entry point available to signed-in users;
-  // incident details and administrative actions remain protected by API guards.
-  if (pathname === "/dashboard/support" || pathname.startsWith("/dashboard/support/")) return Boolean(user);
-
   // My Day is a tenant-scoped personal shell. Its API independently filters
   // every section by the user's permissions, so it is safe for signed-in users.
   if (pathname === "/dashboard/my-day") return Boolean(user);
@@ -644,6 +637,17 @@ export function isPathAllowedForUser(
         return false;
     }
   }
+
+  if (pathname === "/dashboard/support/admin" || pathname.startsWith("/dashboard/support/admin/")) {
+    return hasSuperAdminRole(user);
+  }
+  // Support remains available to every signed-in role only while its tenant
+  // entitlement is enabled. Administrative support routes retain role checks.
+  if (pathname === "/dashboard/support" || pathname.startsWith("/dashboard/support/")) return Boolean(user);
+
+  // The public portal has no role assignment; this controls its signed-in
+  // navigation entry. Public token verification is governed separately.
+  if (pathname === "/warranty") return Boolean(user);
 
   if (!shouldEnforcePermissions(user)) return true;
   if (isAdminLike(user)) return true;
