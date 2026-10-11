@@ -92,7 +92,7 @@ describe('DebitNoteService payment reversal controls', () => {
       reversed_by: 'user-1',
       original_entry: expect.objectContaining(paymentEntry),
     }));
-    expect(deletePayment).toHaveBeenCalledWith('tenant-1', 'grn-1', 'pay-1');
+    expect(deletePayment).toHaveBeenCalledWith('tenant-1', 'grn-1', 'pay-1', true);
     expect(result).toEqual(expect.objectContaining({
       message: 'Payment reversed successfully',
       reversal_id: 'rev-1',
@@ -412,6 +412,24 @@ describe('DebitNoteService accounts payable payment posting controls', () => {
 
     return { service, entryQuery };
   }
+
+  it('requires a documented USD amount and settlement rate for an ARWA payable', async () => {
+    const priorProfile = process.env.ERP_TENANT_PROFILE;
+    process.env.ERP_TENANT_PROFILE = 'ARWA';
+    try {
+      const { service } = mockServiceWithPayableGrn({
+        id: 'grn-1', status: 'COMPLETED', invoice_approved: true,
+        transaction_currency_code: 'USD', transaction_net_payable_amount: 1,
+        booking_exchange_rate: 50, net_payable_amount: 50,
+        paid_amount: 0, tds_amount: 0, short_payment_amount: 0,
+      });
+      await expect(service.recordPayment('tenant-1', 'grn-1', {
+        amount: 50, payment_method: 'BANK_TRANSFER',
+      })).rejects.toThrow('USD payment amount and positive EGP/USD payment rate are required');
+    } finally {
+      process.env.ERP_TENANT_PROFILE = priorProfile;
+    }
+  });
 
   it('blocks payment before supplier invoice sanction', async () => {
     const { service } = mockServiceWithPayableGrn({

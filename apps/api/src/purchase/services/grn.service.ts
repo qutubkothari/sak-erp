@@ -632,12 +632,12 @@ export class GrnService {
     if (ids.length === 0)
       return new Map<
         string,
-        { rate: number; discountPercent: number; taxPercent: number }
+        { rate: number; transactionUnitPrice: number | null; discountPercent: number; taxPercent: number }
       >();
 
     const { data, error } = await this.supabase
       .from("purchase_order_items")
-      .select("id, rate, discount_percent, tax_percent")
+      .select("id, rate, transaction_unit_price, discount_percent, tax_percent")
       .in("id", ids);
 
     if (error) {
@@ -646,11 +646,12 @@ export class GrnService {
 
     const map = new Map<
       string,
-      { rate: number; discountPercent: number; taxPercent: number }
+      { rate: number; transactionUnitPrice: number | null; discountPercent: number; taxPercent: number }
     >();
     for (const row of data ?? []) {
       map.set(String((row as any).id), {
         rate: this.toNumber((row as any).rate),
+        transactionUnitPrice: (row as any).transaction_unit_price == null ? null : this.toNumber((row as any).transaction_unit_price),
         discountPercent: this.toNumber((row as any).discount_percent),
         taxPercent: this.toNumber((row as any).tax_percent),
       });
@@ -1504,6 +1505,33 @@ export class GrnService {
     }
     this.validateUniqueReceiptLines(rawItems);
 
+    const { data: sourcePo, error: sourcePoError } = await this.supabase
+      .from('purchase_orders')
+      .select('id, vendor_id, transaction_currency_code, functional_currency_code, booking_exchange_rate, terms_and_conditions')
+      .eq('tenant_id', tenantId)
+      .eq('id', poId)
+      .single();
+    if (sourcePoError || !sourcePo) throw new BadRequestException('Purchase order not found for this GRN.');
+    if (String(sourcePo.vendor_id) !== vendorId) throw new BadRequestException('GRN supplier does not match the PO.');
+    const poTerms = this.parseTermsMetadata(sourcePo.terms_and_conditions);
+    const transactionCurrency = String(sourcePo.transaction_currency_code || poTerms.supplierCurrency || runtimeBaseCurrency()).toUpperCase();
+    const bookingRate = Number(sourcePo.booking_exchange_rate);
+    const foreignArwaReceipt = runtimeBaseCurrency() === 'EGP' && transactionCurrency === 'USD';
+    const recognitionRate = Number(data.recognitionExchangeRate);
+    const recognitionRateSource = String(data.recognitionRateSource || '').trim();
+    const recognitionRateDate = String(data.recognitionRateDate || '').trim();
+    if (runtimeBaseCurrency() === 'EGP' && transactionCurrency !== 'EGP') {
+      if (transactionCurrency !== 'USD' || !Number.isFinite(bookingRate) || bookingRate <= 0) {
+        throw new BadRequestException('USD import PO needs a saved EGP booking rate before GRN receipt.');
+      }
+      if (!Number.isFinite(recognitionRate) || recognitionRate <= 0 || !recognitionRateSource ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(recognitionRateDate) ||
+          recognitionRateDate > String(data.invoiceDate) ||
+          recognitionRateDate > String(data.grnDate || new Date().toISOString().slice(0, 10))) {
+        throw new BadRequestException('USD GRN requires a positive recognition-date USD/EGP rate, its source, and a rate date no later than the invoice and receipt dates.');
+      }
+    }
+
     // A service is accepted through a Service Entry Sheet (SES), never a GRN.
     // This protects inventory from being increased for labour/maintenance/etc.
     const selectedPoItemIds = Array.from(
@@ -1515,6 +1543,16 @@ export class GrnService {
           .filter(Boolean),
       ),
     );
+    // Validate contractual USD prices before reserving an invoice or inserting a
+    // GRN header; a missing legacy PO price must not leave an orphan receipt.
+    const foreignPoPricing = foreignArwaReceipt
+      ? await this.getPoItemPricingMap(selectedPoItemIds)
+      : null;
+    if (foreignPoPricing && selectedPoItemIds.some((id) =>
+      !foreignPoPricing.has(id) ||
+      !(foreignPoPricing.get(id)?.transactionUnitPrice! > 0))) {
+      throw new BadRequestException('Every USD PO line needs a contractual USD unit price before receipt.');
+    }
     const servicePoItemIdSet = new Set<string>();
     if (selectedPoItemIds.length > 0) {
       const { data: selectedPoItems, error: selectedPoItemsError } =
@@ -1649,6 +1687,11 @@ export class GrnService {
         tenant_id: tenantId,
         grn_number: grnNumber,
         po_id: poId,
+        transaction_currency_code: transactionCurrency,
+        functional_currency_code: runtimeBaseCurrency(),
+        booking_exchange_rate: foreignArwaReceipt ? recognitionRate : 1,
+        recognition_rate_source: foreignArwaReceipt ? recognitionRateSource : null,
+        recognition_rate_date: foreignArwaReceipt ? recognitionRateDate : null,
         vendor_id: vendorId,
         receipt_date: data.grnDate || new Date().toISOString().split("T")[0],
         invoice_number: data.invoiceNumber || null,
@@ -1712,7 +1755,7 @@ export class GrnService {
         return uuidRegex.test(id.trim());
       };
 
-      const poItemPricingMap = await this.getPoItemPricingMap(poItemIds);
+      const poItemPricingMap = foreignPoPricing ?? await this.getPoItemPricingMap(poItemIds);
 
       const items = data.items
         .filter(
@@ -1727,7 +1770,12 @@ export class GrnService {
           // GRN receiving quantity can differ from the PO, but the commercial
           // rate is owned by the approved PO. Never trust a browser-submitted
           // rate here: it would allow a receiver to change inventory/AP value.
-          const rate = this.toNumber(poPricing?.rate);
+          if (foreignArwaReceipt && (poPricing?.transactionUnitPrice == null || poPricing.transactionUnitPrice <= 0)) {
+            throw new BadRequestException('USD PO line has no contractual USD unit price.');
+          }
+          const rate = foreignArwaReceipt
+            ? this.toNumber(poPricing?.transactionUnitPrice) * recognitionRate
+            : this.toNumber(poPricing?.rate);
           const discountPercent = this.toNumber(
             item.discountPercent ??
               item.discount_percent ??
@@ -2095,11 +2143,16 @@ export class GrnService {
     const { data: existingGrn, error: existingGrnError } = await this.supabase
       .from("grns")
       .select(
-        "receipt_date, po_id, warehouse_id, grn_number, status, qc_completed",
+        "receipt_date, po_id, warehouse_id, grn_number, status, qc_completed, transaction_currency_code",
       )
       .eq("tenant_id", tenantId)
       .eq("id", id)
       .single();
+
+    if (runtimeBaseCurrency() === 'EGP' && existingGrn?.transaction_currency_code === 'USD' &&
+        (Array.isArray(data?.items) || data?.invoiceDate || data?.grnDate || data?.receiptDate)) {
+      throw new BadRequestException('USD GRN commercial lines and recognition dates are locked. Cancel and recreate the receipt with a documented rate.');
+    }
 
     if (existingGrnError) {
       throw new NotFoundException("GRN not found");
@@ -4909,7 +4962,7 @@ export class GrnService {
     const { data: currentGRN } = await this.supabase
       .from("grns")
       .select(
-        "po_id, gst_percentage, debit_note_amount, freight_amount, freight_gst_amount",
+        "po_id, gst_percentage, debit_note_amount, freight_amount, freight_gst_amount, transaction_currency_code, booking_exchange_rate",
       )
       .eq("id", grnId)
       .single();
@@ -4928,13 +4981,16 @@ export class GrnService {
     const freightGstAmount = allocatedCharges
       ? allocatedCharges.freightGstAmount
       : parseFloat(currentGRN?.freight_gst_amount || 0) || 0;
-    const netPayableAmount = Math.round(
-      grossAmount +
-        taxAmount +
-        freightAmount +
-        freightGstAmount -
-        debitNoteAmount,
-    );
+    const netRaw = grossAmount + taxAmount + freightAmount + freightGstAmount - debitNoteAmount;
+    const netPayableAmount = runtimeBaseCurrency() === 'EGP'
+      ? this.roundMoney(netRaw)
+      : Math.round(netRaw);
+    const foreignGrn = runtimeBaseCurrency() === 'EGP' && currentGRN?.transaction_currency_code === 'USD';
+    const bookingRate = Number(currentGRN?.booking_exchange_rate);
+    const mixedCurrencyCharges = Math.abs(taxAmount) + Math.abs(freightAmount) + Math.abs(freightGstAmount) + Math.abs(debitNoteAmount) > 0.009;
+    const transactionGross = foreignGrn && Number.isFinite(bookingRate) && bookingRate > 0
+      ? this.roundMoney(grossAmount / bookingRate)
+      : null;
 
     // Update GRN with calculated amounts
     await this.supabase
@@ -4945,6 +5001,8 @@ export class GrnService {
         freight_amount: freightAmount,
         freight_gst_amount: freightGstAmount,
         net_payable_amount: netPayableAmount,
+        transaction_gross_amount: transactionGross,
+        transaction_net_payable_amount: foreignGrn && !mixedCurrencyCharges ? transactionGross : null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", grnId)

@@ -335,6 +335,9 @@ type PurchaseOrderFormData = {
   otherCharges: number;
   isImportPurchase: boolean;
   supplierCurrency: string;
+  bookingExchangeRate: number;
+  bookingExchangeRateSource: string;
+  bookingExchangeRateDate: string;
   customsExchangeRate: number;
   importNotes: string;
   trackingNumber: string;
@@ -531,6 +534,9 @@ function PurchaseOrdersContent() {
     otherCharges: 0,
     isImportPurchase: false,
     supplierCurrency: REGIONAL_PROFILE.currency,
+    bookingExchangeRate: 0,
+    bookingExchangeRateSource: '',
+    bookingExchangeRateDate: '',
     customsExchangeRate: 0,
     importNotes: '',
     trackingNumber: '',
@@ -1678,6 +1684,9 @@ function PurchaseOrdersContent() {
           otherCharges: otherCharges,
           isImportPurchase: formData.isImportPurchase,
           supplierCurrency: formData.supplierCurrency || REGIONAL_PROFILE.currency,
+          bookingExchangeRate: formData.bookingExchangeRate || 0,
+          bookingExchangeRateSource: formData.bookingExchangeRateSource,
+          bookingExchangeRateDate: formData.bookingExchangeRateDate,
           customsExchangeRate: formData.customsExchangeRate || 0,
           importNotes: formData.importNotes || undefined,
           status: poStatus,
@@ -1899,6 +1908,9 @@ function PurchaseOrdersContent() {
         otherCharges,
         isImportPurchase: formData.isImportPurchase,
         supplierCurrency: formData.supplierCurrency || REGIONAL_PROFILE.currency,
+        bookingExchangeRate: formData.bookingExchangeRate || 0,
+        bookingExchangeRateSource: formData.bookingExchangeRateSource,
+        bookingExchangeRateDate: formData.bookingExchangeRateDate,
         customsExchangeRate: formData.customsExchangeRate || 0,
         importNotes: formData.importNotes || undefined,
         ...(Array.isArray(formData.attachments) && formData.attachments.length > 0
@@ -2464,6 +2476,9 @@ function PurchaseOrdersContent() {
       otherCharges: 0,
       isImportPurchase: false,
       supplierCurrency: REGIONAL_PROFILE.currency,
+      bookingExchangeRate: 0,
+      bookingExchangeRateSource: '',
+      bookingExchangeRateDate: '',
       customsExchangeRate: 0,
       importNotes: '',
       trackingNumber: '',
@@ -2780,7 +2795,7 @@ function PurchaseOrdersContent() {
         uom: item.uom || item.item?.uom || 'NUMBER',
         vendorId: resolvedVendorId, // Use PO's vendor for all items
         quantity: item.ordered_qty || 0,
-        unitPrice: item.rate || 0,
+        unitPrice: item.transaction_unit_price ?? item.rate ?? 0,
         discount: item.discount_percent ?? item.discountPercent ?? item.discount ?? 0,
         taxRate: item.tax_percent != null ? item.tax_percent : 18,
         totalPrice: item.amount || 0,
@@ -2863,6 +2878,9 @@ function PurchaseOrdersContent() {
           } catch {}
           return REGIONAL_PROFILE.currency;
         })(),
+        bookingExchangeRate: Number(data.booking_exchange_rate || readPoTermsValue(data, 'bookingExchangeRate', 0)) || 0,
+        bookingExchangeRateSource: String(data.booking_exchange_rate_source || readPoTermsValue(data, 'bookingExchangeRateSource', '')),
+        bookingExchangeRateDate: String(data.exchange_rate_date || ''),
         customsExchangeRate: (() => {
           try {
             const tc = data.terms_and_conditions;
@@ -2965,7 +2983,7 @@ function PurchaseOrdersContent() {
       const sourceItems: any[] = Array.isArray(data?.purchase_order_items) ? data.purchase_order_items : [];
       const clonedItems: PurchaseOrderFormItem[] = sourceItems.map((item: any) => {
         const quantity = Number(item.ordered_qty || item.quantity || 0) || 0;
-        const unitPrice = Number(item.rate || item.unit_price || 0) || 0;
+        const unitPrice = Number(item.transaction_unit_price ?? item.rate ?? item.unit_price ?? 0) || 0;
         const discount = Number(item.discount_percent ?? item.discountPercent ?? item.discount ?? 0) || 0;
         const taxRate = Number(item.tax_percent ?? item.taxRate ?? 18) || 0;
         return {
@@ -3016,6 +3034,9 @@ function PurchaseOrdersContent() {
         otherCharges: data.other_charges || 0,
         isImportPurchase: readPoTermsValue(data, 'isImportPurchase', false) === true,
         supplierCurrency: readPoTermsValue(data, 'supplierCurrency', REGIONAL_PROFILE.currency) || REGIONAL_PROFILE.currency,
+        bookingExchangeRate: Number(data.booking_exchange_rate || readPoTermsValue(data, 'bookingExchangeRate', 0)) || 0,
+        bookingExchangeRateSource: String(data.booking_exchange_rate_source || readPoTermsValue(data, 'bookingExchangeRateSource', '')),
+        bookingExchangeRateDate: String(data.exchange_rate_date || ''),
         customsExchangeRate: Number(readPoTermsValue(data, 'customsExchangeRate', 0)) || 0,
         importNotes: readPoTermsValue(data, 'importNotes', ''),
         trackingNumber: '',
@@ -5109,6 +5130,9 @@ function PurchaseOrdersContent() {
                           ...formData,
                           isImportPurchase: isImport,
                           supplierCurrency: isImport ? (formData.supplierCurrency === REGIONAL_PROFILE.currency ? 'USD' : formData.supplierCurrency || 'USD') : REGIONAL_PROFILE.currency,
+                          bookingExchangeRate: isImport ? formData.bookingExchangeRate : 0,
+                          bookingExchangeRateSource: isImport ? formData.bookingExchangeRateSource : '',
+                          bookingExchangeRateDate: isImport ? formData.bookingExchangeRateDate : '',
                           customsExchangeRate: isImport ? formData.customsExchangeRate : 0,
                           freightGstApplicable: isImport ? false : formData.freightGstApplicable,
                           freightGstPercent: isImport ? 0 : formData.freightGstPercent,
@@ -5145,13 +5169,55 @@ function PurchaseOrdersContent() {
                           className="w-full rounded-lg border border-amber-200 bg-white px-4 py-2"
                         >
                           <option value="USD">USD</option>
-                          <option value="EUR">EUR</option>
-                          <option value="GBP">GBP</option>
-                          <option value="AED">AED</option>
-                          <option value="CNY">CNY</option>
-                          <option value="JPY">JPY</option>
-                          <option value={REGIONAL_PROFILE.currency}>{REGIONAL_PROFILE.currency}</option><option value="INR">INR</option><option value="EGP">EGP</option>
+                          <option value={REGIONAL_PROFILE.currency}>{REGIONAL_PROFILE.currency}</option>
+                          {REGIONAL_PROFILE.currency !== 'EGP' && <>
+                            <option value="EUR">EUR</option>
+                            <option value="GBP">GBP</option>
+                            <option value="CNY">CNY</option>
+                            <option value="JPY">JPY</option>
+                            <option value="INR">INR</option>
+                          </>}
                         </select>
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">PO booking rate ({REGIONAL_PROFILE.currency} per {formData.supplierCurrency})</label>
+                        <input
+                          type="number"
+                          step="0.00000001"
+                          min="0"
+                          value={formData.bookingExchangeRate}
+                          onChange={(e) => setFormData({ ...formData, bookingExchangeRate: parseFloat(e.target.value) || 0 })}
+                          className="w-full rounded-lg border border-amber-200 bg-white px-4 py-2"
+                          required={String(formData.supplierCurrency).toUpperCase() !== REGIONAL_PROFILE.currency}
+                        />
+                        {REGIONAL_PROFILE.currency === 'EGP' && formData.supplierCurrency === 'USD' && (
+                          <button type="button" className="mt-2 text-sm font-medium text-amber-800 underline" onClick={async () => {
+                            try {
+                              const quote: any = await apiClient.get('/purchase/orders/indicative-usd-egp-rate');
+                              setFormData((current) => ({ ...current,
+                                bookingExchangeRate: Number(quote.rate),
+                                bookingExchangeRateSource: `${quote.source} (${quote.date}, indicative midpoint)`,
+                                bookingExchangeRateDate: String(quote.date),
+                              }));
+                              setAlertMessage({ type: 'success', message: `CBE reference ${quote.date}: ${quote.rate} EGP/USD. Confirm the rate before saving.` });
+                            } catch (error: any) {
+                              setAlertMessage({ type: 'error', message: error?.message || 'Reference rate unavailable. Enter a documented manual rate.' });
+                            }
+                          }}>Pull latest CBE reference rate</button>
+                        )}
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">Booking rate source / bank quote reference</label>
+                        <input type="text" value={formData.bookingExchangeRateSource}
+                          onChange={(e) => setFormData({ ...formData, bookingExchangeRateSource: e.target.value })}
+                          placeholder="Manual bank quote reference or fetched CBE rate"
+                          className="w-full rounded-lg border border-amber-200 bg-white px-4 py-2" />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">Booking rate date</label>
+                        <input type="date" value={formData.bookingExchangeRateDate}
+                          onChange={(e) => setFormData({ ...formData, bookingExchangeRateDate: e.target.value })}
+                          className="w-full rounded-lg border border-amber-200 bg-white px-4 py-2" />
                       </div>
                       <div>
                         <label className="mb-2 block text-sm font-medium text-gray-700">Customs Exchange Rate</label>
@@ -5188,9 +5254,17 @@ function PurchaseOrdersContent() {
               <div className="ml-auto w-full max-w-xl bg-white p-4">
                 <div className="space-y-2 text-right">
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>Items Subtotal:</span>
-                    <span>{REGIONAL_PROFILE.currency} {fmtMoney(formData.items.reduce((sum, item) => sum + item.totalPrice, 0))}</span>
+                    <span>Supplier items subtotal:</span>
+                    <span>{formData.supplierCurrency} {fmtMoney(formData.items.reduce((sum, item) => sum + item.totalPrice, 0))}</span>
                   </div>
+                  {formData.supplierCurrency !== REGIONAL_PROFILE.currency && (
+                    <div className="flex justify-between text-sm font-medium text-gray-700">
+                      <span>Functional items subtotal at booking rate {formData.bookingExchangeRate || '—'}:</span>
+                      <span>{REGIONAL_PROFILE.currency} {formData.bookingExchangeRate > 0
+                        ? fmtMoney(formData.items.reduce((sum, item) => sum + item.totalPrice, 0) * formData.bookingExchangeRate)
+                        : 'Enter booking rate'}</span>
+                    </div>
+                  )}
                   {(formData.freightAmount > 0 || calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) > 0 || formData.customsDuty > 0 || formData.otherCharges > 0) && (
                     <>
                       {formData.freightAmount > 0 && (
@@ -5220,7 +5294,7 @@ function PurchaseOrdersContent() {
                     </>
                   )}
                   {Math.abs(calcRoundingAdjustment(
-                    formData.items.reduce((sum, item) => sum + item.totalPrice, 0) +
+                    formData.items.reduce((sum, item) => sum + item.totalPrice, 0) * (formData.supplierCurrency !== REGIONAL_PROFILE.currency ? formData.bookingExchangeRate : 1) +
                     (formData.freightAmount || 0) +
                     calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) +
                     (formData.customsDuty || 0) +
@@ -5229,7 +5303,7 @@ function PurchaseOrdersContent() {
                     <div className="flex justify-between text-sm text-gray-600">
                       <span>Rounding:</span>
                       <span>{REGIONAL_PROFILE.currency} {fmtMoney(calcRoundingAdjustment(
-                        formData.items.reduce((sum, item) => sum + item.totalPrice, 0) +
+                        formData.items.reduce((sum, item) => sum + item.totalPrice, 0) * (formData.supplierCurrency !== REGIONAL_PROFILE.currency ? formData.bookingExchangeRate : 1) +
                         (formData.freightAmount || 0) +
                         calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) +
                         (formData.customsDuty || 0) +
@@ -5240,7 +5314,7 @@ function PurchaseOrdersContent() {
                   <div className="flex justify-between text-xl font-bold text-gray-900 border-t pt-2">
                     <span>Grand Total:</span>
                     <span>{REGIONAL_PROFILE.currency} {fmtRoundedMoney(
-                      formData.items.reduce((sum, item) => sum + item.totalPrice, 0) +
+                      formData.items.reduce((sum, item) => sum + item.totalPrice, 0) * (formData.supplierCurrency !== REGIONAL_PROFILE.currency ? formData.bookingExchangeRate : 1) +
                       (formData.freightAmount || 0) +
                       calcFreightGstAmount(formData.freightAmount, formData.freightGstApplicable, formData.freightGstPercent) +
                       (formData.customsDuty || 0) +

@@ -297,6 +297,8 @@ export class DebitNoteController {
       short_payment_amount?: number;
       short_payment_reason?: string;
       close_invoice?: boolean;
+      transaction_amount?: number;
+      payment_exchange_rate?: number;
     },
   ) {
     const tenantId = req.user.tenantId;

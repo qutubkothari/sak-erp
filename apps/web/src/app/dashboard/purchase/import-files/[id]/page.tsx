@@ -3,6 +3,7 @@
 
 import { getProfileLocaleSettings } from "@/lib/profile-branding";
 const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
+const IS_ARWA_IMPORT = TENANT_BASE_CURRENCY.currency === 'EGP';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -230,7 +231,7 @@ export default function ImportFileDetailPage() {
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-[#8B6F47]">Valuation rule</div>
           <p className="mt-1 text-sm leading-6 text-[#5E4635]">
-            Landed cost should include non-recoverable customs duty and inward charges. Recoverable IGST stays as input credit and should not inflate stock value.
+            {IS_ARWA_IMPORT ? 'Landed cost includes approved nonrecoverable customs duty and direct inward costs. Recoverable import VAT stays outside stock value.' : 'Landed cost should include non-recoverable customs duty and inward charges. Recoverable IGST stays as input credit and should not inflate stock value.'}
           </p>
         </div>
         <div>
@@ -339,10 +340,10 @@ export default function ImportFileDetailPage() {
                 <th className="p-3 text-right">Foreign Value</th>
                 <th className="p-3 text-right">FX Rate</th>
                 <th className="p-3 text-right">Assessed {TENANT_BASE_CURRENCY.currency}</th>
-                <th className="p-3 text-right">Custom Duty</th>
-                <th className="p-3 text-right">Cess</th>
-                <th className="p-3 text-right">GST %</th>
-                <th className="p-3 text-right">GST Amount</th>
+                <th className="p-3 text-right">{IS_ARWA_IMPORT ? 'Customs duty' : 'Custom Duty'}</th>
+                <th className="p-3 text-right">{IS_ARWA_IMPORT ? 'Other levy' : 'Cess'}</th>
+                <th className="p-3 text-right">{IS_ARWA_IMPORT ? 'Import VAT %' : 'GST %'}</th>
+                <th className="p-3 text-right">{IS_ARWA_IMPORT ? 'Import VAT' : 'GST Amount'}</th>
                 <th className="p-3">Note</th>
               </tr>
             </thead>

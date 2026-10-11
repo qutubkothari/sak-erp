@@ -40,6 +40,9 @@ interface GRNPayable {
   freight_gst_amount?: number;
   debit_note_amount: number;
   net_payable_amount: number;
+  transaction_currency_code?: string | null;
+  transaction_net_payable_amount?: number | null;
+  booking_exchange_rate?: number | null;
   paid_amount: number;
   tds_amount?: number;
   short_payment_amount?: number;
@@ -64,6 +67,11 @@ interface PaymentEntry {
   short_payment_reason?: string | null;
   payment_notes?: string | null;
   entry_type?: string;
+  transaction_currency_code?: string | null;
+  transaction_amount?: number | null;
+  payment_exchange_rate?: number | null;
+  cash_amount_functional?: number | null;
+  realized_fx_amount_functional?: number | null;
 }
 
 interface PaymentReversal {
@@ -158,6 +166,8 @@ const moneyInputFromPaisa = (value: number) => fromPaisa(Math.max(0, value)).toF
 
 const BLANK_FORM = {
   amount: '',
+  transaction_amount: '',
+  payment_exchange_rate: '',
   advance_adjustment_amount: '',
   tds_amount: '',
   short_payment_amount: '',
@@ -578,7 +588,14 @@ export default function AccountsPayablePage() {
       return;
     }
     setPaymentError(null);
-    setPaymentForm({ ...BLANK_FORM, amount: moneyInput(detail.outstanding_amount) });
+    const usdPayable = detail.transaction_currency_code === 'USD';
+    const remainingUsd = Number(detail.transaction_net_payable_amount || 0)
+      - (detail.payment_entries || []).reduce((sum, entry) => sum + Number(entry.transaction_amount || 0), 0);
+    setPaymentForm({ ...BLANK_FORM,
+      amount: usdPayable ? '' : moneyInput(detail.outstanding_amount),
+      transaction_amount: usdPayable ? Math.max(0, remainingUsd).toFixed(2) : '',
+      payment_method: usdPayable ? 'BANK_TRANSFER' : BLANK_FORM.payment_method,
+    });
     setShowPaymentModal(true);
   };
 
@@ -696,6 +713,37 @@ export default function AccountsPayablePage() {
     if (!selectedGRNDetail) return;
     setPaymentError(null);
 
+    if (selectedGRNDetail.transaction_currency_code === 'USD') {
+      const transactionAmount = Number(paymentForm.transaction_amount);
+      const paymentRate = Number(paymentForm.payment_exchange_rate);
+      if (!Number.isFinite(transactionAmount) || transactionAmount <= 0 || !Number.isFinite(paymentRate) || paymentRate <= 0) {
+        setPaymentError('Enter the USD amount and a positive EGP/USD payment rate.');
+        return;
+      }
+      try {
+        setSubmitting(true);
+        await apiClient.post(`/purchase/debit-notes/grn/${selectedGRNDetail.id}/payment`, {
+          amount: 0,
+          transaction_amount: transactionAmount,
+          payment_exchange_rate: paymentRate,
+          payment_method: paymentForm.payment_method,
+          payment_reference: paymentForm.payment_reference || undefined,
+          payment_date: paymentForm.payment_date,
+          payment_notes: paymentForm.payment_notes || undefined,
+        });
+        setShowPaymentModal(false);
+        setShowGRNDetailModal(false);
+        setShowDetailsModal(false);
+        setPaymentForm({ ...BLANK_FORM });
+        await Promise.all([fetchVendorPayables(), fetchAdvances()]);
+      } catch (e: any) {
+        setPaymentError(e.message || 'Failed to record USD payment');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     const amountPaisa = toPaisa(paymentForm.amount);
     const advanceAdjustmentPaisa = toPaisa(paymentForm.advance_adjustment_amount);
     const tdsPaisa = toPaisa(paymentForm.tds_amount);
@@ -765,6 +813,8 @@ export default function AccountsPayablePage() {
     setEditPaymentError(null);
     setEditPaymentForm({
       amount: entry.amount.toString(),
+      transaction_amount: entry.transaction_amount?.toString() || '',
+      payment_exchange_rate: entry.payment_exchange_rate?.toString() || '',
       advance_adjustment_amount: '',
       tds_amount: (entry.tds_amount || 0).toString(),
       short_payment_amount: (entry.short_payment_amount || 0).toString(),
@@ -1609,20 +1659,26 @@ export default function AccountsPayablePage() {
                                   : e.payment_method}
                               </td>
                               <td className="px-3 py-2 text-gray-500 text-xs">{e.payment_reference || '—'}</td>
-                              <td className="px-3 py-2 font-semibold text-green-700">₹{fmtINR(e.amount)}</td>
+                              <td className="px-3 py-2 font-semibold text-green-700">
+                                {TENANT_BASE_CURRENCY.currency} {fmtINR(e.amount)}
+                                {e.transaction_currency_code === 'USD' && <div className="text-xs font-normal text-gray-600">
+                                  USD {fmtINR(e.transaction_amount)} at {Number(e.payment_exchange_rate || 0).toFixed(4)};
+                                  {' '}cash EGP {fmtINR(e.cash_amount_functional)}; FX EGP {fmtINR(e.realized_fx_amount_functional)}
+                                </div>}
+                              </td>
                               <td className="px-3 py-2 text-sky-700">{(e.tds_amount || 0) > 0 ? `${TENANT_BASE_CURRENCY.currency} ${fmtINR(e.tds_amount)}` : '—'}</td>
                               <td className="px-3 py-2 text-amber-700">{(e.short_payment_amount || 0) > 0 ? `${TENANT_BASE_CURRENCY.currency} ${fmtINR(e.short_payment_amount)}` : '—'}</td>
                               <td className="px-3 py-2 text-xs text-gray-500">{e.payment_notes || (e.short_payment_reason ? `Short: ${e.short_payment_reason}` : '—')}</td>
                               <td className="px-3 py-2">
                                 {!isSystemPaymentEntry(e) && canRecordPayment && (
                                   <div className="flex gap-2">
-                                    <button
+                                    {e.transaction_currency_code !== 'USD' && <button
                                       onClick={() => openEditPayment(e)}
                                       className="text-blue-600 hover:text-blue-800 text-xs font-medium"
                                       title="Edit payment"
                                     >
                                       Edit
-                                    </button>
+                                    </button>}
                                     <button
                                       onClick={() => openReversePaymentModal(e)}
                                       className="text-red-600 hover:text-red-800 text-xs font-medium"
@@ -1835,7 +1891,7 @@ export default function AccountsPayablePage() {
                 <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700">{paymentError}</div>
               )}
 
-              {canAdjustFreight && (
+              {canAdjustFreight && selectedGRNDetail.transaction_currency_code !== 'USD' && (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
                 <div>
                   <div className="text-xs font-semibold text-blue-800">Invoice Freight: Rs. {fmtINR((selectedGRNDetail.freight_amount || 0) + (selectedGRNDetail.freight_gst_amount || 0))}</div>
@@ -1855,7 +1911,7 @@ export default function AccountsPayablePage() {
               )}
 
               {/* Advance Payment Info */}
-              {(selectedGRNDetail.computed_advance || 0) > 0 && (
+              {selectedGRNDetail.transaction_currency_code !== 'USD' && (selectedGRNDetail.computed_advance || 0) > 0 && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <div className="text-xs font-semibold text-green-800 mb-1">Advance Payment Applied</div>
                   <div className="flex justify-between text-sm">
@@ -1873,7 +1929,7 @@ export default function AccountsPayablePage() {
                 </div>
               )}
 
-              {getAvailableAdvance(selectedGRNDetail) > 0 && (
+              {selectedGRNDetail.transaction_currency_code !== 'USD' && getAvailableAdvance(selectedGRNDetail) > 0 && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-3">
                   <div className="text-xs font-semibold text-green-800">Supplier Advance Available</div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1900,20 +1956,36 @@ export default function AccountsPayablePage() {
               )}
 
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Amount <span className="text-red-500">*</span></label>
+                {selectedGRNDetail.transaction_currency_code === 'USD' ? <div className="col-span-2 grid grid-cols-2 gap-4 rounded-lg border border-amber-200 p-3">
+                  <label className="text-xs font-semibold text-gray-700">USD supplier payment
+                    <input type="number" min="0" step="0.01" value={paymentForm.transaction_amount}
+                      onChange={(e) => setPaymentForm(f => ({ ...f, transaction_amount: e.target.value }))}
+                      className="mt-1 w-full rounded border border-amber-300 px-3 py-2 text-sm" />
+                  </label>
+                  <label className="text-xs font-semibold text-gray-700">Payment rate (EGP per USD)
+                    <input type="number" min="0" step="0.00000001" value={paymentForm.payment_exchange_rate}
+                      onChange={(e) => setPaymentForm(f => ({ ...f, payment_exchange_rate: e.target.value }))}
+                      className="mt-1 w-full rounded border border-amber-300 px-3 py-2 text-sm" />
+                  </label>
+                  <div className="col-span-2 text-xs text-gray-700">
+                    Booked at {Number(selectedGRNDetail.booking_exchange_rate || 0).toFixed(4)} EGP/USD.
+                    {' '}EGP cash equivalent {fmtINR(Number(paymentForm.transaction_amount || 0) * Number(paymentForm.payment_exchange_rate || 0))};
+                    {' '}FX difference {fmtINR(Number(paymentForm.transaction_amount || 0) * (Number(paymentForm.payment_exchange_rate || 0) - Number(selectedGRNDetail.booking_exchange_rate || 0)))} EGP.
+                  </div>
+                </div> : <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Amount ({TENANT_BASE_CURRENCY.currency}) <span className="text-red-500">*</span></label>
                   <input type="number" step="0.01" max={selectedGRNDetail.outstanding_amount}
                     value={paymentForm.amount}
                     onChange={(e) => setPaymentForm(f => ({ ...f, amount: e.target.value }))}
                     className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-400"
                     placeholder="0.00" />
-                </div>
+                </div>}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Payment Method <span className="text-red-500">*</span></label>
                   <select value={paymentForm.payment_method}
                     onChange={(e) => setPaymentForm(f => ({ ...f, payment_method: e.target.value }))}
                     className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-400">
-                    {['NEFT','RTGS','UPI','CHEQUE','CASH','IMPS','OTHER'].map(m => <option key={m} value={m}>{m}</option>)}
+                    {(TENANT_BASE_CURRENCY.currency === 'EGP' ? ['BANK_TRANSFER','CHEQUE','CASH','OTHER'] : ['NEFT','RTGS','UPI','CHEQUE','CASH','IMPS','OTHER']).map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
               </div>
@@ -1935,7 +2007,7 @@ export default function AccountsPayablePage() {
               </div>
 
               {/* TDS and Short Payment */}
-              <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 space-y-3">
+              {selectedGRNDetail.transaction_currency_code !== 'USD' && <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 space-y-3">
                 <div className="text-xs font-bold text-blue-800 uppercase tracking-wide">Deductions (TDS / Short Payment)</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -1984,7 +2056,7 @@ export default function AccountsPayablePage() {
                     </div>
                   ) : null;
                 })()}
-              </div>
+              </div>}
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">Accounts Intimation Note / Payment Remarks</label>
@@ -1998,12 +2070,12 @@ export default function AccountsPayablePage() {
               </div>
 
               {/* Close Invoice toggle */}
-              <label className="flex items-center gap-2 cursor-pointer select-none">
+              {selectedGRNDetail.transaction_currency_code !== 'USD' && <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input type="checkbox" checked={paymentForm.close_invoice}
                   onChange={(e) => setPaymentForm(f => ({ ...f, close_invoice: e.target.checked }))}
                   className="w-4 h-4 accent-orange-600" />
                 <span className="text-sm font-medium text-gray-700">Mark invoice as fully paid / closed after this entry</span>
-              </label>
+              </label>}
             </div>
 
             <div className="p-4 border-t flex justify-end gap-3">

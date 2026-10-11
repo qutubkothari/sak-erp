@@ -401,6 +401,11 @@ export class DebitNoteService {
 
     if (!error) return;
 
+    if (payload.transaction_currency_code === 'USD' &&
+      this.isSchemaMismatchError(error, ['transaction_currency_code', 'transaction_amount', 'payment_exchange_rate', 'cash_amount_functional', 'realized_fx_amount_functional'])) {
+      throw new BadRequestException('USD payment schema is not installed; no payment was recorded.');
+    }
+
     if (this.isSchemaMismatchError(error, ['entry_type', 'short_payment_reason'])) {
       const legacyPayload = { ...insertPayload };
       delete legacyPayload.entry_type;
@@ -496,15 +501,18 @@ export class DebitNoteService {
   private async fetchGrnForPayment(tenantId: string, grnId: string) {
     const full = await this.supabase
       .from('grns')
-      .select('id, po_id, vendor_id, status, invoice_approved, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, tds_amount, short_payment_amount, payment_status')
+      .select('id, po_id, vendor_id, status, invoice_approved, gross_amount, tax_amount, debit_note_amount, net_payable_amount, paid_amount, tds_amount, short_payment_amount, payment_status, transaction_currency_code, transaction_net_payable_amount, booking_exchange_rate')
       .eq('id', grnId)
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
     if (!full.error) return full.data;
 
-    if (!this.isSchemaMismatchError(full.error, ['tds_amount', 'short_payment_amount', 'payment_status', 'paid_amount'])) {
+    if (!this.isSchemaMismatchError(full.error, ['tds_amount', 'short_payment_amount', 'payment_status', 'paid_amount', 'transaction_currency_code', 'transaction_net_payable_amount', 'booking_exchange_rate'])) {
       throw new Error(`Database error: ${full.error.message}`);
+    }
+    if (runtimeBaseCurrency() === 'EGP') {
+      throw new BadRequestException('ARWA payment currency fields are unavailable; supplier settlement is blocked until the migration is installed.');
     }
 
     const legacy = await this.supabase
@@ -922,6 +930,8 @@ export class DebitNoteService {
       short_payment_reason?: string;
       advance_adjustment_amount?: number;
       close_invoice?: boolean;
+      transaction_amount?: number;
+      payment_exchange_rate?: number;
       created_by?: string;
     },
   ) {
@@ -945,9 +955,40 @@ export class DebitNoteService {
       ? parseFloat(grn.net_payable_amount)
       : gross + tax - debit;
 
+    const foreignPayable = runtimeBaseCurrency() === 'EGP' && grn.transaction_currency_code === 'USD';
+    let foreignSettlement: { transactionAmount: number; paymentRate: number; cashBase: number; fxDifference: number } | null = null;
+    if (foreignPayable) {
+      if (!Number.isFinite(Number(grn.transaction_net_payable_amount)) || Number(grn.transaction_net_payable_amount) <= 0) {
+        throw new BadRequestException('USD supplier payable needs a reconciled USD amount without mixed-currency charges.');
+      }
+      if (Number(paymentData.tds_amount || 0) || Number(paymentData.short_payment_amount || 0) || Number(paymentData.advance_adjustment_amount || 0)) {
+        throw new BadRequestException('USD settlement with deductions or advances needs a separately approved currency allocation.');
+      }
+      const transactionAmount = Number(paymentData.transaction_amount);
+      const paymentRate = Number(paymentData.payment_exchange_rate);
+      const bookingRate = Number(grn.booking_exchange_rate);
+      if (!Number.isFinite(transactionAmount) || transactionAmount <= 0 || !Number.isFinite(paymentRate) || paymentRate <= 0 || !Number.isFinite(bookingRate) || bookingRate <= 0) {
+        throw new BadRequestException('USD payment amount and positive EGP/USD payment rate are required.');
+      }
+      const { data: priorEntries, error: priorEntriesError } = await this.supabase
+        .from('grn_payment_entries')
+        .select('transaction_amount')
+        .eq('tenant_id', tenantId)
+        .eq('grn_id', grnId);
+      if (priorEntriesError) throw new BadRequestException(priorEntriesError.message);
+      const remainingUsd = Number(grn.transaction_net_payable_amount) - (priorEntries || []).reduce((sum: number, entry: any) => sum + Number(entry.transaction_amount || 0), 0);
+      if (transactionAmount > remainingUsd + 0.0001) {
+        throw new BadRequestException(`USD payment exceeds the remaining USD ${remainingUsd.toFixed(2)} supplier balance.`);
+      }
+      const bookedBase = Math.round(transactionAmount * bookingRate * 100) / 100;
+      const cashBase = Math.round(transactionAmount * paymentRate * 100) / 100;
+      foreignSettlement = { transactionAmount, paymentRate, cashBase, fxDifference: Math.round((cashBase - bookedBase) * 100) / 100 };
+    }
     const tdsAmount = parseFloat(String(paymentData.tds_amount || 0));
     const shortAmount = parseFloat(String(paymentData.short_payment_amount || 0));
-    const entryAmount = parseFloat(String(paymentData.amount || 0));
+    const entryAmount = foreignSettlement
+      ? Math.round(foreignSettlement.transactionAmount * Number(grn.booking_exchange_rate) * 100) / 100
+      : parseFloat(String(paymentData.amount || 0));
     const advanceAmount = parseFloat(String(paymentData.advance_adjustment_amount || 0));
     this.validateSettlementInput(entryAmount, tdsAmount, shortAmount, paymentData.short_payment_reason, advanceAmount);
 
@@ -969,12 +1010,27 @@ export class DebitNoteService {
       throw new BadRequestException('Short payment amount must cover the remaining balance before closing the invoice');
     }
 
+    if (foreignPayable) {
+      // A cash subledger entry without the AP/bank/FX journal would present a
+      // settled invoice while the EGP books remain unbalanced. Keep USD
+      // settlement closed until category-aware invoice and payment postings,
+      // their reversal, and the two-person ARWA approval path are complete.
+      throw new BadRequestException('USD supplier payment is awaiting the balanced AP, bank, and FX journal workflow. No payment was recorded.');
+    }
+
     const paymentDate = paymentData.payment_date || new Date().toISOString().split('T')[0];
     const cashSettlement = entryAmount + tdsAmount + shortAmount;
     if (cashSettlement > 0) {
       await this.insertGrnPaymentEntry(tenantId, grnId, {
         payment_date: paymentDate,
         amount: entryAmount,
+        ...(foreignSettlement ? {
+          transaction_currency_code: 'USD',
+          transaction_amount: foreignSettlement.transactionAmount,
+          payment_exchange_rate: foreignSettlement.paymentRate,
+          cash_amount_functional: foreignSettlement.cashBase,
+          realized_fx_amount_functional: foreignSettlement.fxDifference,
+        } : {}),
         payment_method: paymentData.payment_method,
         payment_reference: paymentData.payment_reference || null,
         tds_amount: tdsAmount,
@@ -1032,6 +1088,12 @@ export class DebitNoteService {
       total_settled: totalSettled,
       remaining_amount: remaining,
       payment_status: paymentStatus,
+      ...(foreignSettlement ? {
+        transaction_currency_code: 'USD',
+        transaction_amount: foreignSettlement.transactionAmount,
+        cash_amount_functional: foreignSettlement.cashBase,
+        realized_fx_amount_functional: foreignSettlement.fxDifference,
+      } : {}),
     };
   }
 
@@ -1168,6 +1230,9 @@ export class DebitNoteService {
 
       if (fetchError) throw new Error(`Database error: ${fetchError.message}`);
       if (!existingEntry) throw new NotFoundException(`Payment entry not found (id: ${paymentEntryId})`);
+      if (existingEntry.transaction_currency_code === 'USD') {
+        throw new BadRequestException('Reverse and re-enter a USD payment to correct its amount or exchange rate.');
+      }
       if (['ADVANCE', 'ADVANCE_APPLIED', 'VENDOR_ADVANCE'].includes(String(existingEntry.entry_type || '').toUpperCase())) {
         throw new BadRequestException('System advance entries cannot be edited from Accounts Payable');
       }
@@ -1279,6 +1344,7 @@ export class DebitNoteService {
     tenantId: string,
     grnId: string,
     paymentEntryId: string,
+    fromReversal = false,
   ) {
     // Verify payment entry exists
     const { data: existingEntry, error: fetchError } = await this.supabase
@@ -1291,6 +1357,9 @@ export class DebitNoteService {
 
     if (fetchError) throw new Error(`Database error: ${fetchError.message}`);
     if (!existingEntry) throw new NotFoundException(`Payment entry not found (id: ${paymentEntryId})`);
+    if (existingEntry.transaction_currency_code === 'USD' && !fromReversal) {
+      throw new BadRequestException('USD payments require an audited reversal.');
+    }
     if (this.isAdvanceEntry(existingEntry)) {
       throw new BadRequestException('Advance adjustment entries cannot be deleted from Accounts Payable');
     }
@@ -1446,7 +1515,7 @@ export class DebitNoteService {
       }
     }
 
-    const recalculated = await this.deletePayment(tenantId, grnId, paymentEntryId);
+    const recalculated = await this.deletePayment(tenantId, grnId, paymentEntryId, true);
     return {
       message: 'Payment reversed successfully',
       reversal_id: reversal?.id,

@@ -831,6 +831,7 @@ export class SalesService {
   async createQuotation(req: Request, quotationData: any) {
     const { tenantId, userId } = req.user as any;
     const regional = await this.getTenantRegionalDefaults(tenantId);
+    this.assertArwaSalesCurrency(quotationData.currency_code || regional.currency);
 
     const quotationNumber = await this.generateQuotationNumber(req);
     const { quotationDate, validUntil } = this.validateQuotationDates(
@@ -1008,6 +1009,7 @@ export class SalesService {
     if (fetchError || !existing) {
       throw new NotFoundException("Quotation not found");
     }
+    this.assertArwaSalesCurrency(quotationData.currency_code || existing.currency_code || regional.currency);
 
     if (existing.status !== "DRAFT") {
       throw new BadRequestException("Only draft quotations can be edited");
@@ -1338,6 +1340,7 @@ export class SalesService {
 
     if (sourceError) throw new BadRequestException(sourceError.message);
     if (!source) throw new NotFoundException("Quotation not found");
+    this.assertArwaSalesCurrency(source.currency_code);
     if (!["APPROVED", "REJECTED", "EXPIRED"].includes(source.status)) {
       throw new BadRequestException(
         "Only approved, rejected, or expired quotations can be revised",
@@ -1659,6 +1662,7 @@ export class SalesService {
       .single();
 
     if (!quotation) throw new NotFoundException("Quotation not found");
+    this.assertArwaSalesCurrency(quotation.currency_code);
 
     if (this.isQuotationExpired(quotation.valid_until)) {
       if (["APPROVED", "PARTIALLY_CONVERTED"].includes(quotation.status)) {
@@ -2649,6 +2653,7 @@ export class SalesService {
   async createDirectSalesOrder(req: Request, soData: any) {
     const { tenantId, userId } = req.user as any;
     const regional = await this.getTenantRegionalDefaults(tenantId);
+    this.assertArwaSalesCurrency(soData.currency_code || regional.currency);
 
     // Validate required fields
     if (!soData.customer_id) {
@@ -3041,6 +3046,13 @@ export class SalesService {
     return regionalDefaults(data.market_profile);
   }
 
+  private assertArwaSalesCurrency(currency: unknown) {
+    if (runtimeBaseCurrency() !== 'EGP') return;
+    if (String(currency || 'EGP').trim().toUpperCase() !== 'EGP') {
+      throw new BadRequestException('ARWA quotations, orders and invoices must be in EGP (LE).');
+    }
+  }
+
   private normalizeCustomerAddresses(
     addresses: unknown,
     fallback: unknown,
@@ -3300,6 +3312,7 @@ export class SalesService {
 
     if (fetchError || !existing)
       throw new NotFoundException("Sales order not found");
+    this.assertArwaSalesCurrency(soData.currency_code || existing.currency_code);
 
     if (existing.release_status === "RELEASED") {
       throw new BadRequestException(
@@ -6528,6 +6541,7 @@ export class SalesService {
       .eq("tenant_id", tenantId)
       .eq("id", dispatch.sales_order_id)
       .single();
+    this.assertArwaSalesCurrency(orderControl?.currency_code);
     if (orderControlError || !orderControl)
       throw new NotFoundException("Sales order not found for billing");
     if (
@@ -6656,6 +6670,12 @@ export class SalesService {
       };
     });
 
+    if (regional.marketProfile === 'EGYPT' && invoiceLines.some((line) => Number(line.tax_percentage) !== regional.defaultTaxRate)) {
+      throw new BadRequestException(
+        `ARWA invoice tax must use the configured ${regional.defaultTaxRate}% Egypt VAT rate; other treatments require an approved tax setup.`,
+      );
+    }
+
     const taxableAmount = this.roundMoney(
       invoiceLines.reduce((sum, line) => sum + line.taxable_amount, 0),
     );
@@ -6664,9 +6684,11 @@ export class SalesService {
     );
     const netAmount = this.roundMoney(taxableAmount + taxAmount);
     const allowedTaxTypes =
-      regional.marketProfile === "UAE" ? ["VAT"] : ["CGST_SGST", "IGST"];
+      regional.marketProfile === "UAE" || regional.marketProfile === "EGYPT"
+        ? ["VAT"]
+        : ["CGST_SGST", "IGST"];
     const taxType = String(
-      body.tax_type || (regional.marketProfile === "UAE" ? "VAT" : "IGST"),
+      body.tax_type || (regional.marketProfile === "UAE" || regional.marketProfile === "EGYPT" ? "VAT" : "IGST"),
     )
       .trim()
       .toUpperCase();

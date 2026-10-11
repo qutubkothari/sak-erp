@@ -107,6 +107,32 @@ describe("GrnService commercial amount controls", () => {
     expect(insert).not.toHaveBeenCalled();
   });
 
+  it("rejects a USD receipt that attempts to reuse the PO estimate without a recognition-date rate", async () => {
+    const priorProfile = process.env.ERP_TENANT_PROFILE;
+    process.env.ERP_TENANT_PROFILE = "ARWA";
+    try {
+    const service = new GrnService({} as any);
+    const insert = jest.fn();
+    (service as any).supabase = { from: jest.fn(() => ({
+      select: jest.fn(() => ({ eq: jest.fn(() => ({ eq: jest.fn(() => ({ single: jest.fn().mockResolvedValue({
+        data: { id: "11111111-1111-4111-8111-111111111111", vendor_id: "22222222-2222-4222-8222-222222222222", transaction_currency_code: "USD", booking_exchange_rate: 50 }, error: null,
+      }) })) })) })),
+      insert,
+    })) };
+    await expect(service.create("tenant-1", "user-1", {
+      poId: "11111111-1111-4111-8111-111111111111",
+      vendorId: "22222222-2222-4222-8222-222222222222",
+      invoiceNumber: "USD-DEMO-1", invoiceDate: "2026-10-11", grnDate: "2026-10-11",
+      invoiceFileUrl: "/uploads/demo.pdf",
+      items: [{ poItemId: "33333333-3333-4333-8333-333333333333", itemId: "44444444-4444-4444-8444-444444444444", receivedQty: 1 }],
+    })).rejects.toThrow("recognition-date USD/EGP rate");
+    expect(insert).not.toHaveBeenCalled();
+    } finally {
+      if (priorProfile === undefined) delete process.env.ERP_TENANT_PROFILE;
+      else process.env.ERP_TENANT_PROFILE = priorProfile;
+    }
+  });
+
   it("rejects duplicate receipt payload lines by PO item ID", () => {
     const service = new GrnService({} as any);
 

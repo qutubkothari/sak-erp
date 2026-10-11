@@ -7,6 +7,62 @@ process.env.SUPABASE_KEY = process.env.SUPABASE_KEY || 'test-key';
 describe('PurchaseOrdersService controls', () => {
   const makeService = () => new PurchaseOrdersService({} as any, {} as any, {} as any);
 
+  it('converts foreign PO line values to functional EGP and preserves the supplier amount', () => {
+    const previousProfile = process.env.ERP_TENANT_PROFILE;
+    process.env.ERP_TENANT_PROFILE = 'ARWA';
+    try {
+      const service = makeService();
+      const fx = (service as any).poCurrencyContext({ supplierCurrency: 'USD', bookingExchangeRate: 50, bookingExchangeRateSource: 'Synthetic test bank quote', customsExchangeRate: 52 }, true);
+      const totals = (service as any).calculatePoCommercialTotals(
+        [{ orderedQty: 1, rate: 1, discountPercent: 0, taxPercent: 0 }],
+        { supplierCurrency: 'USD', bookingExchangeRate: 50, bookingExchangeRateSource: 'Synthetic test bank quote', customsExchangeRate: 52 },
+      );
+      expect(fx).toMatchObject({ transactionCurrency: 'USD', functionalCurrency: 'EGP', rate: 50 });
+      expect(totals.items_subtotal).toBe(50);
+      expect(totals.grand_total).toBe(50);
+    } finally {
+      process.env.ERP_TENANT_PROFILE = previousProfile;
+    }
+  });
+
+  it('rejects a foreign PO without a positive booking rate', () => {
+    const previousProfile = process.env.ERP_TENANT_PROFILE;
+    process.env.ERP_TENANT_PROFILE = 'ARWA';
+    try {
+      const service = makeService();
+      expect(() => (service as any).poCurrencyContext({ supplierCurrency: 'USD', bookingExchangeRate: 0, bookingExchangeRateSource: 'Synthetic test bank quote', customsExchangeRate: 50 }, true))
+        .toThrow('A positive USD to EGP booking rate is required.');
+    } finally {
+      process.env.ERP_TENANT_PROFILE = previousProfile;
+    }
+  });
+
+  it('requires the provenance of a manual USD booking rate', () => {
+    const previousProfile = process.env.ERP_TENANT_PROFILE;
+    process.env.ERP_TENANT_PROFILE = 'ARWA';
+    try {
+      expect(() => (makeService() as any).poCurrencyContext({ supplierCurrency: 'USD', bookingExchangeRate: 50 }, true))
+        .toThrow('booking rate source or bank quote reference');
+    } finally {
+      process.env.ERP_TENANT_PROFILE = previousProfile;
+    }
+  });
+
+  it('rejects a stale CBE preview instead of silently using it', async () => {
+    const previousProfile = process.env.ERP_TENANT_PROFILE;
+    process.env.ERP_TENANT_PROFILE = 'ARWA';
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ date: '2020-01-01', base: 'USD', quote: 'EGP', rate: 50 }),
+    } as any);
+    try {
+      await expect(makeService().getIndicativeArwaUsdRate()).rejects.toThrow('more than seven days old');
+    } finally {
+      fetchSpy.mockRestore();
+      process.env.ERP_TENANT_PROFILE = previousProfile;
+    }
+  });
+
   it('rejects an empty PO before creating a header', async () => {
     const service = new PurchaseOrdersService({} as any, {} as any, { ensureSchema: jest.fn() } as any);
     const from = jest.fn();

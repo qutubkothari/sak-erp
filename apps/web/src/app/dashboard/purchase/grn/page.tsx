@@ -384,6 +384,7 @@ interface GRN {
 
 interface PurchaseOrder {
   id: string;
+  transaction_currency_code?: string;
   po_number: string;
   vendor_id: string;
   vendor: {
@@ -1061,6 +1062,9 @@ function GRNContent() {
     receiptDate: getTodayDateInputValue(),
     invoiceNumber: "",
     invoiceDate: "",
+    recognitionExchangeRate: "",
+    recognitionRateSource: "",
+    recognitionRateDate: "",
     invoiceFileUrl: "",
     invoiceFileName: "",
     invoiceFileType: "",
@@ -2326,6 +2330,9 @@ function GRNContent() {
     grnDate: formData.receiptDate,
     invoiceNumber: formData.invoiceNumber || null,
     invoiceDate: formData.invoiceDate || null,
+    recognitionExchangeRate: formData.recognitionExchangeRate || null,
+    recognitionRateSource: formData.recognitionRateSource || null,
+    recognitionRateDate: formData.recognitionRateDate || null,
     invoiceFileUrl: formData.invoiceFileUrl || null,
     invoiceFileName: formData.invoiceFileName || null,
     invoiceFileType: formData.invoiceFileType || null,
@@ -2536,6 +2543,15 @@ function GRNContent() {
           type: "error",
           message: "Invoice Date is required.",
         });
+        return;
+      }
+
+      if (selectedPO?.transaction_currency_code === "USD" &&
+          (!Number.isFinite(Number(formData.recognitionExchangeRate)) ||
+           Number(formData.recognitionExchangeRate) <= 0 ||
+           !formData.recognitionRateSource.trim() ||
+           !formData.recognitionRateDate)) {
+        setAlertMessage({ type: "error", message: "Enter the USD/EGP recognition rate, source, and date for this receipt." });
         return;
       }
 
@@ -2947,6 +2963,9 @@ function GRNContent() {
       receiptDate: getTodayDateInputValue(),
       invoiceNumber: "",
       invoiceDate: "",
+      recognitionExchangeRate: "",
+      recognitionRateSource: "",
+      recognitionRateDate: "",
       invoiceFileUrl: "",
       invoiceFileName: "",
       invoiceFileType: "",
@@ -3594,6 +3613,17 @@ function GRNContent() {
                     />
                   </div>
 
+                  {selectedPO?.transaction_currency_code === "USD" && (
+                    <div className="col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <div className="mb-2 text-sm font-semibold text-amber-950">USD import recognition rate</div>
+                      <p className="mb-3 text-xs text-amber-900">The PO rate is an estimate. This dated USD/EGP rate values the received stock and supplier payable.</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <input type="number" min="0.00000001" step="0.00000001" aria-label="USD to EGP recognition rate" placeholder="EGP per USD" value={formData.recognitionExchangeRate} onChange={(e) => setFormData({ ...formData, recognitionExchangeRate: e.target.value })} className="rounded border border-gray-300 px-2 py-2" />
+                        <input type="text" aria-label="Recognition rate source" placeholder="Bank quote or CBE reference" value={formData.recognitionRateSource} onChange={(e) => setFormData({ ...formData, recognitionRateSource: e.target.value })} className="rounded border border-gray-300 px-2 py-2" />
+                        <DateInput max={formData.invoiceDate || todayDate} value={formData.recognitionRateDate} onChange={(value) => setFormData({ ...formData, recognitionRateDate: value })} className="rounded border border-gray-300 px-2 py-2" />
+                      </div>
+                    </div>
+                  )}
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Purchase Invoice (File){" "}

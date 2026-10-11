@@ -1,6 +1,7 @@
 'use client';
 import { getProfileLocaleSettings } from '@/lib/profile-branding';
 const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
+const IS_ARWA_IMPORT = TENANT_BASE_CURRENCY.currency === 'EGP';
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
@@ -178,7 +179,7 @@ export default function ImportFilesPage() {
           {[
             ['1', 'Foreign PO', 'Create or link the foreign supplier PO with currency and incoterm.', Ship],
             ['2', 'Documents', 'Store invoice, packing list, BL/AWB, bill of entry, duty challan and freight documents.', FileText],
-            ['3', 'Customs valuation', 'Capture customs exchange rate, assessable value, duty, SWS and import IGST.', Calculator],
+            ['3', 'Customs valuation', IS_ARWA_IMPORT ? 'Capture the documented USD to EGP customs rate, assessable value, duty and import VAT.' : 'Capture customs exchange rate, assessable value, duty, SWS and import IGST.', Calculator],
             ['4', 'GRN link', 'Link received GRNs so stock and receipt history remain connected.', PackageCheck],
             ['5', 'Landed cost', 'Allocate non-recoverable duties and inward costs to stock valuation.', Upload],
             ['6', 'Payments & trail', 'Track supplier, customs, CHA, freight, insurance and bank payments.', WalletCards],
@@ -317,9 +318,9 @@ export default function ImportFilesPage() {
                 ['billOfEntryNumber', 'Bill of Entry number'],
                 ['commercialInvoiceNumber', 'Commercial invoice number'],
                 ['assessableValueInr', `Assessable value ${TENANT_BASE_CURRENCY.currency}`],
-                ['bcdAmount', 'BCD amount'],
-                ['swsAmount', 'SWS amount'],
-                ['importIgstAmount', 'Import IGST amount'],
+                ['bcdAmount', IS_ARWA_IMPORT ? 'Customs duty EGP' : 'BCD amount'],
+                ['swsAmount', IS_ARWA_IMPORT ? 'Other nonrecoverable levy EGP' : 'SWS amount'],
+                ['importIgstAmount', IS_ARWA_IMPORT ? 'Import VAT EGP' : 'Import IGST amount'],
               ].map(([key, label]) => (
                 <label key={key} className="text-xs font-semibold uppercase text-[#5E4635]">
                   {label}
@@ -333,7 +334,7 @@ export default function ImportFilesPage() {
               ))}
               <label className="flex items-center gap-2 text-sm text-[#5E4635] md:col-span-2">
                 <input type="checkbox" checked={form.recoverableIgst !== false} onChange={(e) => setForm({ ...form, recoverableIgst: e.target.checked })} />
-                Import IGST is recoverable input credit
+                {IS_ARWA_IMPORT ? 'Import VAT is recoverable under the approved tax treatment' : 'Import IGST is recoverable input credit'}
               </label>
               <div className="text-xs text-[#7A6555] md:col-span-2">
                 Selected supplier: {form.vendorId ? vendorName(form.vendorId) || 'Supplier selected' : 'None'}

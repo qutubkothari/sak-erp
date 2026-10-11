@@ -12,6 +12,22 @@ const mockReq = (userId = "checker-1") =>
     },
   }) as any;
 
+describe('ARWA sales currency control', () => {
+  it('accepts EGP and rejects USD while leaving other tenant profiles unchanged', () => {
+    const previousProfile = process.env.ERP_TENANT_PROFILE;
+    const service = new SalesService({} as any, {} as any);
+    try {
+      process.env.ERP_TENANT_PROFILE = 'ARWA';
+      expect(() => (service as any).assertArwaSalesCurrency('EGP')).not.toThrow();
+      expect(() => (service as any).assertArwaSalesCurrency('USD')).toThrow('must be in EGP');
+      process.env.ERP_TENANT_PROFILE = 'SAIFSEAS';
+      expect(() => (service as any).assertArwaSalesCurrency('USD')).not.toThrow();
+    } finally {
+      process.env.ERP_TENANT_PROFILE = previousProfile;
+    }
+  });
+});
+
 describe("sales ATP allocation", () => {
   it("allocates shared item stock once across multiple order lines and warehouses", () => {
     const result = allocateSalesAtpLines(

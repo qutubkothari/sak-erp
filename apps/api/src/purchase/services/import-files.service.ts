@@ -445,7 +445,8 @@ NOTIFY pgrst, 'reload schema';`;
       for (const line of lines || []) {
         const qty = this.num(line.accepted_qty ?? line.received_qty ?? line.quantity);
         const rate = this.num(line.rate);
-        const baseValue = this.num(line.total_amount || qty * rate);
+        if (qty <= 0) continue;
+        const baseValue = this.num(qty * rate);
         allLines.push({ ...line, import_file_grn_id: linked.id, allocation_basis: linked.allocation_basis || 'VALUE', qty, rate, baseValue });
       }
     }
@@ -455,7 +456,6 @@ NOTIFY pgrst, 'reload schema';`;
     const denominator = allLines.reduce((sum, line) => sum + (basis === 'QTY' ? Math.max(0, line.qty) : Math.max(0, line.baseValue)), 0);
     if (denominator <= 0) throw new BadRequestException('GRN lines do not have quantity/value for allocation.');
 
-    await this.supabase.from('import_file_grn_allocations').delete().eq('tenant_id', tenantId).eq('import_file_id', id);
     const rows = allLines.map((line, index) => {
       const weight = basis === 'QTY' ? line.qty : line.baseValue;
       const allocated = index === allLines.length - 1
@@ -482,6 +482,19 @@ NOTIFY pgrst, 'reload schema';`;
         created_by: userId,
       };
     });
+    if (runtimeBaseCurrency() === 'EGP') {
+      const { error: postingError } = await this.supabase.rpc('post_arwa_import_landed_cost', {
+        p_tenant_id: tenantId,
+        p_import_file_id: id,
+        p_user_id: userId,
+        p_allocations: rows,
+        p_pool: pool,
+      });
+      if (postingError) throw new BadRequestException(`Landed cost was not posted: ${postingError.message}`);
+      await this.event(tenantId, id, 'LANDED_COST_POSTED', `${runtimeBaseCurrency()} ${pool.toFixed(2)} posted to FIFO stock layers across ${rows.length} GRN line(s)`, userId);
+      return this.one(tenantId, id);
+    }
+    await this.supabase.from('import_file_grn_allocations').delete().eq('tenant_id', tenantId).eq('import_file_id', id);
     const { error } = await this.supabase.from('import_file_grn_allocations').insert(rows);
     if (error) throw new BadRequestException(error.message);
     await this.supabase.from('import_file_grns').update({ status: 'POSTED' }).eq('tenant_id', tenantId).eq('import_file_id', id);

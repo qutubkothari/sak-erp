@@ -435,8 +435,61 @@ export class PurchaseOrdersService {
     return Math.round(this.safeNumber(value));
   }
 
-  private calculatePoCommercialTotals(items: any[], source: any = {}) {
+  private poCurrencyContext(source: any = {}, requireRate = false) {
+    const terms = this.parseTermsMetadata(source?.terms_and_conditions);
+    const functionalCurrency = runtimeBaseCurrency();
+    const transactionCurrency = String(
+      source?.transaction_currency_code || source?.supplierCurrency || terms.supplierCurrency || functionalCurrency,
+    ).trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(transactionCurrency)) {
+      throw new BadRequestException('A valid three-letter supplier currency is required.');
+    }
+    const foreign = transactionCurrency !== functionalCurrency;
+    if (functionalCurrency === 'EGP' && foreign && transactionCurrency !== 'USD') {
+      throw new BadRequestException('ARWA imported purchase orders must be priced in USD.');
+    }
+    const rate = foreign
+      ? Number(source?.booking_exchange_rate ?? source?.bookingExchangeRate ?? terms.bookingExchangeRate)
+      : 1;
+    if (requireRate && (!Number.isFinite(rate) || rate <= 0)) {
+      throw new BadRequestException(
+        `A positive ${transactionCurrency} to ${functionalCurrency} booking rate is required.`,
+      );
+    }
+    const rateSource = String(source?.booking_exchange_rate_source || source?.bookingExchangeRateSource || terms.bookingExchangeRateSource || '').trim();
+    if (requireRate && foreign && functionalCurrency === 'EGP' && !rateSource) {
+      throw new BadRequestException('Record the USD to EGP booking rate source or bank quote reference.');
+    }
+    if (foreign && functionalCurrency === 'EGP') {
+      const mixedCharges = ['freightAmount', 'freight_amount', 'freightGstAmount', 'freight_gst_amount', 'customsDuty', 'customs_duty', 'otherCharges', 'other_charges'];
+      if (mixedCharges.some((key) => Number(source?.[key] || 0) !== 0)) {
+        throw new BadRequestException('Record EGP freight, duty and other import costs in the import file; a USD PO cannot mix them into the supplier payable.');
+      }
+    }
+    return { functionalCurrency, transactionCurrency, foreign, rate, rateSource };
+  }
+
+  async getIndicativeArwaUsdRate() {
+    if (runtimeBaseCurrency() !== 'EGP') throw new BadRequestException('The CBE USD/EGP preview is available to ARWA only.');
+    const response = await fetch('https://api.frankfurter.dev/v2/providers/cbe/rate/usd/egp', {
+      signal: AbortSignal.timeout(6000),
+      headers: { accept: 'application/json' },
+    });
+    if (!response.ok) throw new BadRequestException('The CBE reference rate is unavailable; enter a documented manual rate.');
+    const quote = await response.json() as any;
+    const rate = Number(quote?.rate);
+    const date = String(quote?.date || '');
+    const ageDays = (Date.now() - Date.parse(`${date}T00:00:00Z`)) / 86_400_000;
+    if (quote?.base !== 'USD' || quote?.quote !== 'EGP' || !Number.isFinite(rate) || rate <= 0 ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(ageDays) || ageDays < 0 || ageDays > 7) {
+      throw new BadRequestException('The CBE reference rate is invalid or more than seven days old; enter a documented manual rate.');
+    }
+    return { rate, date, source: 'CBE via Frankfurter', source_url: 'https://www.cbe.org.eg/en/economic-research/statistics/cbe-exchange-rates', indicative: true };
+  }
+
+  private calculatePoCommercialTotals(items: any[], source: any = {}, ratesAreFunctional = false) {
     const termsMetadata = this.parseTermsMetadata(source?.terms_and_conditions);
+    const fx = this.poCurrencyContext(source, !ratesAreFunctional);
     const isImportPo =
       source?.isImportPurchase === true ||
       termsMetadata.isImportPurchase === true ||
@@ -450,7 +503,8 @@ export class PurchaseOrdersService {
 
     for (const item of lines) {
       const qty = this.safeNumber(item?.orderedQty ?? item?.ordered_qty ?? item?.quantity ?? item?.qty);
-      const rate = this.safeNumber(item?.rate ?? item?.unitPrice ?? item?.unit_price ?? item?.price);
+      const inputRate = this.safeNumber(item?.rate ?? item?.unitPrice ?? item?.unit_price ?? item?.price);
+      const rate = fx.foreign && !ratesAreFunctional ? this.roundMoney(inputRate * fx.rate) : inputRate;
       const discountPercent = this.safeNumber(item?.discountPercent ?? item?.discount_percent ?? item?.discount);
       const taxPercent = isImportPo ? 0 : this.safeNumber(item?.taxPercent ?? item?.taxRate ?? item?.tax_percent ?? item?.tax_rate);
       const base = this.roundMoney(qty * rate);
@@ -493,7 +547,7 @@ export class PurchaseOrdersService {
   }
 
   private withPoAmountCalculation(po: any) {
-    const calculation = this.calculatePoCommercialTotals(po?.purchase_order_items || [], po || {});
+    const calculation = this.calculatePoCommercialTotals(po?.purchase_order_items || [], po || {}, true);
     const storedGrand = this.roundMoney(po?.grand_total ?? po?.total_amount ?? 0);
     const diff = this.roundMoney(storedGrand - calculation.grand_total);
     return {
@@ -1571,6 +1625,7 @@ export class PurchaseOrdersService {
     }
 
     const paymentTermsForStorage = this.normalizePoPaymentTermsForStorage(data.paymentTerms);
+    const fx = this.poCurrencyContext(data, true);
     const serverTotals = this.calculatePoCommercialTotals(data.items || [], data);
 
     const { data: po, error } = await this.supabase
@@ -1605,9 +1660,10 @@ export class PurchaseOrdersService {
           const isImportPurchase = data.isImportPurchase === true;
           const supplierCurrency = String(data.supplierCurrency || runtimeBaseCurrency()).trim().toUpperCase();
           const customsExchangeRate = this.safeNumber(data.customsExchangeRate);
+          const bookingExchangeRate = this.safeNumber(data.bookingExchangeRate);
           const importNotes = String(data.importNotes || '').trim();
           // Check if any freight-related field was explicitly provided (including 0 values)
-          const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.project_name !== undefined || data.projectId !== undefined || data.project_id !== undefined || data.otherCharges !== undefined || data.isImportPurchase !== undefined || data.supplierCurrency !== undefined || data.customsExchangeRate !== undefined || data.importNotes !== undefined || data.paymentTerms !== undefined;
+          const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.project_name !== undefined || data.projectId !== undefined || data.project_id !== undefined || data.otherCharges !== undefined || data.isImportPurchase !== undefined || data.supplierCurrency !== undefined || data.customsExchangeRate !== undefined || data.bookingExchangeRate !== undefined || data.importNotes !== undefined || data.paymentTerms !== undefined;
           if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses || isImportPurchase || supplierCurrency !== runtimeBaseCurrency() || customsExchangeRate || importNotes || paymentTermsForStorage.displayText) {
             return JSON.stringify({
               ...this.parseTermsMetadata(data.termsAndConditions),
@@ -1621,6 +1677,7 @@ export class PurchaseOrdersService {
               isImportPurchase,
               supplierCurrency,
               customsExchangeRate,
+              bookingExchangeRate,
               importNotes,
               paymentTermsText: paymentTermsForStorage.displayText || undefined,
             });
@@ -1632,6 +1689,19 @@ export class PurchaseOrdersService {
         tax_amount: serverTotals.tax_amount,
         discount_amount: serverTotals.discount_amount,
         grand_total: serverTotals.grand_total,
+        transaction_currency_code: fx.transactionCurrency,
+        functional_currency_code: fx.functionalCurrency,
+        booking_exchange_rate: fx.rate,
+        booking_exchange_rate_source: fx.rateSource || null,
+        exchange_rate_date: data.bookingExchangeRateDate || data.poDate || new Date().toISOString().split('T')[0],
+        transaction_items_subtotal: fx.foreign
+          ? this.roundMoney((data.items || []).reduce((sum: number, item: any) => {
+              const qty = this.safeNumber(item.orderedQty ?? item.quantity);
+              const price = this.safeNumber(item.rate ?? item.unitPrice);
+              const discount = this.safeNumber(item.discountPercent ?? item.discount_percent ?? item.discount);
+              return sum + qty * price * (1 - discount / 100);
+            }, 0))
+          : serverTotals.items_subtotal,
         customs_duty: serverTotals.customs_duty,
         other_charges: serverTotals.other_charges,
         remarks: data.remarks,
@@ -1660,7 +1730,8 @@ export class PurchaseOrdersService {
       const isImportPo = data.isImportPurchase === true || String(data.supplierCurrency || runtimeBaseCurrency()).trim().toUpperCase() !== runtimeBaseCurrency();
       const items = data.items.map((item: any) => {
         const orderedQty = this.safeNumber(item.orderedQty || item.quantity);
-        const rate = this.safeNumber(item.rate || item.unitPrice);
+        const transactionRate = this.safeNumber(item.rate ?? item.unitPrice);
+        const rate = fx.foreign ? this.roundMoney(transactionRate * fx.rate) : transactionRate;
         const taxPercent = isImportPo ? 0 : this.safeNumber(item.taxPercent ?? item.taxRate ?? 0);
         const discountPercent = this.safeNumber(item.discountPercent ?? item.discount_percent ?? item.discount ?? 0);
         const baseAmount = orderedQty * rate;
@@ -1679,9 +1750,11 @@ export class PurchaseOrdersService {
           uom: item.uom,
           ordered_qty: orderedQty,
           rate,
+          transaction_unit_price: transactionRate,
+          transaction_amount: this.roundMoney(orderedQty * transactionRate * (1 - discountPercent / 100)),
           tax_percent: taxPercent,
           discount_percent: discountPercent,
-          amount: item.amount || finalAmount,
+          amount: this.roundMoney(finalAmount),
           delivery_date: item.deliveryDate,
           payment_terms: item.paymentTerms ?? null,
           delivery_terms: item.deliveryTerms ?? null,
@@ -2198,6 +2271,9 @@ export class PurchaseOrdersService {
     }
 
     const existingTermsMetadata = this.parseTermsMetadata((existingPO as any)?.terms_and_conditions);
+    if (!Array.isArray(data.items) && (data.supplierCurrency !== undefined || data.bookingExchangeRate !== undefined)) {
+      throw new BadRequestException('Changing a PO currency or booking rate requires resubmitting its priced lines.');
+    }
     const hasPaymentTermsUpdate = data.paymentTerms !== undefined || data.payment_terms !== undefined;
     const paymentTermsForStorage = hasPaymentTermsUpdate
       ? this.normalizePoPaymentTermsForStorage(data.paymentTerms ?? data.payment_terms)
@@ -2219,6 +2295,7 @@ export class PurchaseOrdersService {
       'other_charges',
       'isImportPurchase',
       'supplierCurrency',
+      'bookingExchangeRate',
     ].some((key) => data[key] !== undefined);
 
     if (commercialTotalFieldsTouched) {
@@ -2235,8 +2312,12 @@ export class PurchaseOrdersService {
         ...(existingPO as any),
         ...data,
         terms_and_conditions: (existingPO as any)?.terms_and_conditions,
-      });
+      }, !Array.isArray(data.items));
     }
+
+    const updateFx = data.items || data.supplierCurrency !== undefined || data.bookingExchangeRate !== undefined
+      ? this.poCurrencyContext({ ...(existingPO as any), ...data }, true)
+      : null;
 
     const { error } = await this.supabase
       .from('purchase_orders')
@@ -2264,9 +2345,10 @@ export class PurchaseOrdersService {
           const isImportPurchase = data.isImportPurchase === true;
           const supplierCurrency = String(data.supplierCurrency || runtimeBaseCurrency()).trim().toUpperCase();
           const customsExchangeRate = this.safeNumber(data.customsExchangeRate);
+          const bookingExchangeRate = this.safeNumber(data.bookingExchangeRate);
           const importNotes = String(data.importNotes || '').trim();
           // Check if any freight-related field was explicitly provided (including 0 values for removal)
-          const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.project_name !== undefined || data.projectId !== undefined || data.project_id !== undefined || data.otherCharges !== undefined || data.isImportPurchase !== undefined || data.supplierCurrency !== undefined || data.customsExchangeRate !== undefined || data.importNotes !== undefined || hasPaymentTermsUpdate;
+          const hasFreightData = data.freightAmount !== undefined || data.freightGstApplicable !== undefined || data.freightGstPercent !== undefined || data.freightGstAmount !== undefined || data.freightTerms !== undefined || data.projectName !== undefined || data.project_name !== undefined || data.projectId !== undefined || data.project_id !== undefined || data.otherCharges !== undefined || data.isImportPurchase !== undefined || data.supplierCurrency !== undefined || data.customsExchangeRate !== undefined || data.bookingExchangeRate !== undefined || data.importNotes !== undefined || hasPaymentTermsUpdate;
           if (hasFreightData || project || freight || freightAmount || freightGstApplicable || freightGstPercent || freightGstAmount || additionalExpenses || isImportPurchase || supplierCurrency !== runtimeBaseCurrency() || customsExchangeRate || importNotes || paymentTermsForStorage?.displayText) {
             return JSON.stringify({
               ...existingTermsMetadata,
@@ -2281,6 +2363,7 @@ export class PurchaseOrdersService {
               isImportPurchase,
               supplierCurrency,
               customsExchangeRate,
+              bookingExchangeRate,
               importNotes,
               paymentTermsText: hasPaymentTermsUpdate
                 ? (paymentTermsForStorage?.displayText || undefined)
@@ -2301,6 +2384,19 @@ export class PurchaseOrdersService {
         tax_amount: serverTotalsForUpdate?.tax_amount,
         discount_amount: serverTotalsForUpdate?.discount_amount,
         grand_total: serverTotalsForUpdate?.grand_total,
+        transaction_currency_code: updateFx?.transactionCurrency,
+        functional_currency_code: updateFx?.functionalCurrency,
+        booking_exchange_rate: updateFx?.rate,
+        booking_exchange_rate_source: updateFx?.rateSource,
+        exchange_rate_date: updateFx ? (data.bookingExchangeRateDate || data.poDate || (existingPO as any).po_date) : undefined,
+        transaction_items_subtotal: updateFx && Array.isArray(data.items)
+          ? this.roundMoney(data.items.reduce((sum: number, item: any) => {
+              const qty = this.safeNumber(item.orderedQty ?? item.ordered_qty ?? item.quantity);
+              const price = this.safeNumber(item.rate ?? item.unitPrice ?? item.unit_price);
+              const discount = this.safeNumber(item.discountPercent ?? item.discount_percent ?? item.discount);
+              return sum + qty * price * (1 - discount / 100);
+            }, 0))
+          : undefined,
         customs_duty: serverTotalsForUpdate?.customs_duty,
         other_charges: serverTotalsForUpdate?.other_charges,
         updated_at: new Date().toISOString(),
@@ -2368,10 +2464,11 @@ export class PurchaseOrdersService {
         return matched?.id ? String(matched.id) : null;
       };
 
-      const isImportPo = data.isImportPurchase === true || String(data.supplierCurrency || runtimeBaseCurrency()).trim().toUpperCase() !== runtimeBaseCurrency();
+      const isImportPo = data.isImportPurchase === true || updateFx?.foreign === true;
       const normalizedItems = data.items.map((item: any) => {
         const orderedQty = this.safeNumber(item.orderedQty ?? item.ordered_qty ?? item.quantity);
-        const rate = this.safeNumber(item.rate ?? item.unitPrice ?? item.unit_price);
+        const transactionRate = this.safeNumber(item.rate ?? item.unitPrice ?? item.unit_price);
+        const rate = updateFx?.foreign ? this.roundMoney(transactionRate * updateFx.rate) : transactionRate;
         const taxPercent = isImportPo ? 0 : this.safeNumber(item.taxPercent ?? item.taxRate ?? item.tax_percent ?? 0);
         const discountPercent = this.safeNumber(item.discountPercent ?? item.discount_percent ?? item.discount ?? 0);
         const baseAmount = orderedQty * rate;
@@ -2389,6 +2486,8 @@ export class PurchaseOrdersService {
             uom: item.uom,
             ordered_qty: orderedQty,
             rate,
+            transaction_unit_price: transactionRate,
+            transaction_amount: this.roundMoney(orderedQty * transactionRate * (1 - discountPercent / 100)),
             tax_percent: taxPercent,
             discount_percent: discountPercent,
             amount: taxableAmount + taxableAmount * (taxPercent / 100),

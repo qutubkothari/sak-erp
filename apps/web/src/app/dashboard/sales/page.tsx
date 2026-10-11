@@ -410,7 +410,7 @@ function SalesPageContent() {
   const searchParams = useSearchParams();
   const salesQuery = searchParams.toString();
   const { profile: regionalProfile, loading: regionalProfileLoading } = useRegionalProfile();
-  const regionalCountry = regionalProfile.marketProfile === 'UAE' ? 'United Arab Emirates' : 'India';
+  const regionalCountry = regionalProfile.marketProfile === 'UAE' ? 'United Arab Emirates' : regionalProfile.marketProfile === 'EGYPT' ? 'Egypt' : 'India';
   const formatSalesAmount = (value: number | null | undefined) => formatRegionalCurrency(value, regionalProfile);
   const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
   const canCreate = hasModulePermission(currentUser, 'Sales Management', 'create');
@@ -917,7 +917,7 @@ function SalesPageContent() {
       const rows = (invoice.items || []).map((line: any, index: number) => `<tr><td>${index + 1}</td><td>${escapeHtml(line.item_description || line.item_id || '-')}</td><td class="num">${Number(line.sales_quantity ?? line.quantity ?? 0).toLocaleString('en-IN')} ${escapeHtml(line.ordered_uom || '')}</td><td class="num">${money(line.unit_price)} / ${escapeHtml(line.price_uom || line.ordered_uom || '')}</td><td class="num">${money(line.discount_amount)}</td><td class="num">${money(line.tax_percentage)}%</td><td class="num">${money(line.line_total)}</td></tr>`).join('');
       const customer: any = invoice.customer || {};
       const customerAddress = [customer.billing_address, customer.city, customer.state, customer.pincode].filter(Boolean).join(', ');
-      const html = `<!doctype html><html><head><meta charset="UTF-8"><title>${escapeHtml(invoice.invoice_number)}</title><style>@page{margin:.5cm}body{font-family:Arial,sans-serif;color:#1f2937;margin:0;padding:20px;font-size:11px}h1{text-align:center;font-size:20px;margin:20px 0}.meta{display:grid;grid-template-columns:1fr 1fr;border:1px solid #d1d5db;margin-bottom:16px}.meta>div{padding:8px 10px;border-bottom:1px solid #e5e7eb}.meta>div:nth-child(odd){border-right:1px solid #e5e7eb}.label{font-size:9px;text-transform:uppercase;color:#6b7280}.value{font-weight:700;margin-top:3px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #d1d5db;padding:7px}th{background:#f3f4f6;text-align:left;font-size:9px;text-transform:uppercase}.num{text-align:right}.totals{margin:14px 0 0 auto;width:360px}.totals div{display:flex;justify-content:space-between;padding:6px;border-bottom:1px solid #e5e7eb}.net{font-size:14px;font-weight:800}.sign{display:flex;justify-content:space-between;margin-top:55px}.sign span{width:220px;border-top:1px solid #111;padding-top:6px}</style></head><body>${renderStandardLetterheadHtml(branding, new Date().toLocaleDateString(regionalProfile.locale))}<h1>TAX INVOICE</h1><div class="meta"><div><div class="label">Invoice No.</div><div class="value">${escapeHtml(invoice.invoice_number)}</div></div><div><div class="label">Invoice Date</div><div class="value">${date(invoice.invoice_date)}</div></div><div><div class="label">Customer</div><div class="value">${escapeHtml(customer.customer_name || '-')}</div></div><div><div class="label">Customer GSTIN</div><div class="value">${escapeHtml(customer.gst_number || '-')}</div></div><div><div class="label">Billing Address</div><div class="value">${escapeHtml(customerAddress || '-')}</div></div><div><div class="label">Due Date</div><div class="value">${date(invoice.due_date)}</div></div><div><div class="label">Sales Order</div><div class="value">${escapeHtml(invoice.sales_order?.so_number || '-')}</div></div><div><div class="label">Dispatch Note</div><div class="value">${escapeHtml(invoice.dispatch_note?.dn_number || '-')}</div></div></div><table><thead><tr><th>No.</th><th>Item / Description</th><th>Qty</th><th>Rate</th><th>Discount</th><th>${regionalProfile.taxLabel}</th><th>Amount</th></tr></thead><tbody>${rows || '<tr><td colspan="7">No invoice lines</td></tr>'}</tbody></table><div class="totals"><div><span>Taxable Value</span><strong>${money(taxable)}</strong></div><div><span>GST</span><strong>${money(tax)}</strong></div><div class="net"><span>Invoice Total</span><span>${money(invoice.net_amount)}</span></div><div><span>Received / Adjusted</span><strong>${money(Number(invoice.paid_amount || 0) + Number(invoice.credited_amount || 0))}</strong></div><div><span>Outstanding</span><strong>${money(invoice.balance_amount)}</strong></div></div><div class="sign"><span>Customer Acknowledgement</span><span>Authorized Signatory</span></div><script>window.onload=function(){window.focus();window.print();}</script></body></html>`;
+      const html = `<!doctype html><html><head><meta charset="UTF-8"><title>${escapeHtml(invoice.invoice_number)}</title><style>@page{margin:.5cm}body{font-family:Arial,sans-serif;color:#1f2937;margin:0;padding:20px;font-size:11px}h1{text-align:center;font-size:20px;margin:20px 0}.meta{display:grid;grid-template-columns:1fr 1fr;border:1px solid #d1d5db;margin-bottom:16px}.meta>div{padding:8px 10px;border-bottom:1px solid #e5e7eb}.meta>div:nth-child(odd){border-right:1px solid #e5e7eb}.label{font-size:9px;text-transform:uppercase;color:#6b7280}.value{font-weight:700;margin-top:3px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #d1d5db;padding:7px}th{background:#f3f4f6;text-align:left;font-size:9px;text-transform:uppercase}.num{text-align:right}.totals{margin:14px 0 0 auto;width:360px}.totals div{display:flex;justify-content:space-between;padding:6px;border-bottom:1px solid #e5e7eb}.net{font-size:14px;font-weight:800}.sign{display:flex;justify-content:space-between;margin-top:55px}.sign span{width:220px;border-top:1px solid #111;padding-top:6px}</style></head><body>${renderStandardLetterheadHtml(branding, new Date().toLocaleDateString(regionalProfile.locale))}<h1>TAX INVOICE</h1><div class="meta"><div><div class="label">Invoice No.</div><div class="value">${escapeHtml(invoice.invoice_number)}</div></div><div><div class="label">Invoice Date</div><div class="value">${date(invoice.invoice_date)}</div></div><div><div class="label">Customer</div><div class="value">${escapeHtml(customer.customer_name || '-')}</div></div><div><div class="label">${regionalProfile.taxRegistrationLabel}</div><div class="value">${escapeHtml(customer.gst_number || '-')}</div></div><div><div class="label">Billing Address</div><div class="value">${escapeHtml(customerAddress || '-')}</div></div><div><div class="label">Due Date</div><div class="value">${date(invoice.due_date)}</div></div><div><div class="label">Sales Order</div><div class="value">${escapeHtml(invoice.sales_order?.so_number || '-')}</div></div><div><div class="label">Dispatch Note</div><div class="value">${escapeHtml(invoice.dispatch_note?.dn_number || '-')}</div></div></div><table><thead><tr><th>No.</th><th>Item / Description</th><th>Qty</th><th>Rate</th><th>Discount</th><th>${regionalProfile.taxLabel}</th><th>Amount</th></tr></thead><tbody>${rows || '<tr><td colspan="7">No invoice lines</td></tr>'}</tbody></table><div class="totals"><div><span>Taxable Value</span><strong>${money(taxable)}</strong></div><div><span>${regionalProfile.taxLabel}</span><strong>${money(tax)}</strong></div><div class="net"><span>Invoice Total</span><span>${money(invoice.net_amount)}</span></div><div><span>Received / Adjusted</span><strong>${money(Number(invoice.paid_amount || 0) + Number(invoice.credited_amount || 0))}</strong></div><div><span>Outstanding</span><strong>${money(invoice.balance_amount)}</strong></div></div><div class="sign"><span>Customer Acknowledgement</span><span>Authorized Signatory</span></div><script>window.onload=function(){window.focus();window.print();}</script></body></html>`;
       if (!printWindow) throw new Error('Allow popups to print or save this customer invoice as PDF.');
       printWindow.document.open(); printWindow.document.write(html); printWindow.document.close();
       printWindow.opener = null;
@@ -2270,7 +2270,7 @@ function SalesPageContent() {
           unit_price: Number(item.unit_price) || 0,
           discount_percentage:
             item.discount_percentage !== undefined ? Number(item.discount_percentage) : 0,
-          tax_percentage: item.tax_percentage !== undefined ? Number(item.tax_percentage) : 18,
+          tax_percentage: item.tax_percentage !== undefined ? Number(item.tax_percentage) : regionalProfile.defaultTaxRate,
           hsn_code: item.hsn_code || '',
           ordered_uom: item.ordered_uom || item.base_uom || 'PCS',
           price_uom: item.price_uom || item.ordered_uom || item.base_uom || 'PCS',
@@ -2616,7 +2616,7 @@ function SalesPageContent() {
           quantity: 1,
           unit_price: 0,
           discount_percentage: 0,
-          tax_percentage: 18,
+          tax_percentage: regionalProfile.defaultTaxRate,
           hsn_code: '',
           photos: [],
         },
@@ -4335,10 +4335,12 @@ function SalesPageContent() {
                         onChange={(e) => setQuotationForm({ ...quotationForm, currency_code: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
                       >
-                        <option value="INR">INR</option>
-                        <option value="USD">USD</option>
-                        <option value="EUR">EUR</option>
-                        <option value="AED">AED</option>
+                        {regionalProfile.currency === 'EGP' ? <option value="EGP">EGP (LE)</option> : <>
+                          <option value="INR">INR</option>
+                          <option value="USD">USD</option>
+                          <option value="EUR">EUR</option>
+                          <option value="AED">AED</option>
+                        </>}
                       </select>
                     </div>
                     <div>
@@ -6364,10 +6366,10 @@ function SalesPageContent() {
                     <DateInput max={todayDate} value={directSOForm.customer_po_date} onChange={(value) => setDirectSOForm({ ...directSOForm, customer_po_date: value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                   </label>
                   <label className="text-sm font-medium text-gray-700">Currency
-                    <select value={directSOForm.currency_code} onChange={(e) => setDirectSOForm({ ...directSOForm, currency_code: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"><option value="EGP">EGP</option><option value="INR">INR</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="AED">AED</option></select>
+                    <select value={directSOForm.currency_code} onChange={(e) => setDirectSOForm({ ...directSOForm, currency_code: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">{regionalProfile.currency === 'EGP' ? <option value="EGP">EGP (LE)</option> : <><option value="INR">INR</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="AED">AED</option></>}</select>
                   </label>
                   <label className="text-sm font-medium text-gray-700 md:col-span-2">Place of Supply
-                    <input value={directSOForm.place_of_supply} onChange={(e) => setDirectSOForm({ ...directSOForm, place_of_supply: e.target.value })} placeholder={regionalProfile.marketProfile === 'UAE' ? 'Emirate / place of supply' : 'State / territory for GST'} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                    <input value={directSOForm.place_of_supply} onChange={(e) => setDirectSOForm({ ...directSOForm, place_of_supply: e.target.value })} placeholder={regionalProfile.marketProfile === 'UAE' ? 'Emirate / place of supply' : regionalProfile.marketProfile === 'EGYPT' ? 'Egypt place of supply' : 'State / territory for GST'} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                   </label>
                   <label className="text-sm font-medium text-gray-700">Incoterm
                     <input value={directSOForm.incoterm} onChange={(e) => setDirectSOForm({ ...directSOForm, incoterm: e.target.value.toUpperCase() })} placeholder="EXW / FOB / CIF" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
@@ -6390,7 +6392,7 @@ function SalesPageContent() {
                           quantity: 1,
                           unit_price: 0,
                           discount_percentage: 0,
-                          tax_percentage: 18,
+                          tax_percentage: regionalProfile.defaultTaxRate,
                         }]
                       });
                     }}

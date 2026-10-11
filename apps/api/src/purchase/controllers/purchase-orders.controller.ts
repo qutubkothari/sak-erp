@@ -150,6 +150,11 @@ export class PurchaseOrdersController {
     response.send(workbook);
   }
 
+  @Get('indicative-usd-egp-rate')
+  async indicativeUsdEgpRate() {
+    return this.poService.getIndicativeArwaUsdRate();
+  }
+
   @Get(':id')
   async findOne(@Request() req: any, @Param('id') id: string) {
     return this.poService.findOne(req.user.tenantId, id);
