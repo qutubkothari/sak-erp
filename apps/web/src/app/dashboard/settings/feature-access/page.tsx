@@ -57,14 +57,14 @@ export default function FeatureAccessPage() {
       : supported === null || roleAllowed === null
         ? null
         : true;
-    const reason = !supported
+    const reason = supported === false
       ? `Not supported by the ${profile} profile.`
       : !tenantEnabled
         ? 'Tenant entitlement is disabled.'
         : roleAllowed === false
           ? 'Your role does not have access to this screen.'
           : supported === null
-            ? 'This feature has no explicit profile restriction in the entitlement catalog; runtime capability checks remain authoritative.'
+            ? 'No profile restriction is declared; runtime capability checks remain authoritative.'
             : roleAllowed === null
               ? 'Role permission is enforced by the capability API.'
               : 'Available to your role and tenant.';
