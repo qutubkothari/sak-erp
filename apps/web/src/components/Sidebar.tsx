@@ -258,6 +258,7 @@ const navigation: NavigationItem[] = [
       { name: "GRN", href: "/dashboard/purchase/grn" },
       { name: "SIV", href: "/dashboard/inventory/siv" },
       { name: "SRV", href: "/dashboard/inventory/srv" },
+      { name: "Store Vouchers", href: "/dashboard/inventory/store-vouchers" },
     ],
   },
   {
@@ -787,7 +788,7 @@ function groupNavigationChildren(
       return "Daily procurement";
     }
     if (section === "Inventory")
-      return /movement|alert|demo|grn|siv|srv|adjustment/.test(label)
+      return /movement|alert|demo|grn|siv|srv|store voucher|adjustment/.test(label)
         ? "Stock transactions"
         : "Planning & control";
     if (section === "Production") {
