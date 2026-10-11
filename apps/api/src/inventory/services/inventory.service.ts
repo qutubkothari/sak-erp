@@ -589,7 +589,8 @@ export class InventoryService {
         movementData.item_id,
         movementData.from_warehouse_id,
         movementData.from_location_id,
-        -quantity
+        -quantity,
+        movementData.category
       );
     }
 
