@@ -163,7 +163,7 @@ export default function ProductionStandardizationStudio() {
     );
     setMapping((current: any) => ({
       ...current,
-      currency_code: demo.cost_currency || "AED",
+      currency_code: demo.cost_currency || (process.env.NEXT_PUBLIC_ERP_TENANT_PROFILE === "ARWA" ? "EGP" : "AED"),
       operation_mappings: (current.operation_mappings || []).map((row: any) => {
         const benchmark: any = operationBySequence.get(Number(row.sequence));
         if (!benchmark) return row;
