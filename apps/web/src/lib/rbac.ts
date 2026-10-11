@@ -27,6 +27,10 @@ export type Permission = PermissionEntry;
 const SCREEN_PERMISSION_FALLBACKS: Record<string, string[]> = {
   "bom-routing": ["bom-overview"],
   "hr-payroll-setup": ["hr-management"],
+  // Store Vouchers is a combined landing page for the existing SIV and SRV
+  // screens. Tenants that predate this convenience route can access it when
+  // either underlying voucher workflow is enabled.
+  "inventory-store-vouchers": ["inventory-siv", "inventory-srv"],
 };
 
 const PRODUCTION_MANAGEMENT_DENYLIST = new Set(["production@mizantra.ae"]);
