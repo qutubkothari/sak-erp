@@ -555,6 +555,31 @@ export class AccountingService {
     });
   }
 
+  async prepareArwaUsdPurchaseInvoiceReversal(tenantId: string, userId: string, originalJournalId: string, reason: string) {
+    if (runtimeBaseCurrency() !== 'EGP' || !reason.trim()) throw new BadRequestException('ARWA USD invoice reversal needs a reason.');
+    const original = await this.getJournal(tenantId, originalJournalId);
+    if (original.status !== 'POSTED' || original.source_type !== 'PURCHASE_INVOICE' || original.transaction_currency_code !== 'USD') {
+      throw new BadRequestException('Only a posted ARWA USD purchase invoice journal can be reversed here.');
+    }
+    const { data: prior, error: priorError } = await this.supabase.from('accounting_journals')
+      .select('id,status,reversal_of_id').eq('tenant_id', tenantId)
+      .eq('reversal_of_id', originalJournalId).maybeSingle();
+    if (priorError) throw new BadRequestException(priorError.message);
+    if (prior) return prior;
+    return this.createJournal(tenantId, userId, {
+      journal_number: `REV-${original.journal_number}`.slice(0, 60),
+      journal_date: new Date().toISOString().slice(0, 10),
+      source_type: 'REVERSAL', source_id: originalJournalId,
+      reversal_of_id: originalJournalId, adjustment_type: 'REVERSAL',
+      transaction_currency_code: 'USD', exchange_rate: Number(original.exchange_rate),
+      narration: `Reverse ${original.journal_number}: ${reason.trim()}`,
+      lines: (original.lines || []).map((line: any) => ({
+        account_id: line.account_id, debit: Number(line.credit || 0), credit: Number(line.debit || 0),
+        description: `Reverse purchase invoice journal ${original.journal_number}`,
+      })),
+    });
+  }
+
   async listAccounts(tenantId: string, query: any = {}) {
     let q = this.supabase.from('accounting_accounts').select('*').eq('tenant_id', tenantId).order('account_code');
     if (query.type) q = q.eq('account_type', String(query.type).toUpperCase());

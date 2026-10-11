@@ -5867,13 +5867,14 @@ export class GrnService {
       );
     }
 
+    let postedUsdInvoiceJournalId: string | null = null;
     if (runtimeBaseCurrency() === 'EGP' && currentGrn.transaction_currency_code === 'USD') {
       const { data: invoiceJournal, error: journalError } = await this.supabase.from('accounting_journals')
         .select('id,status').eq('tenant_id', tenantId).eq('source_type', 'PURCHASE_INVOICE')
         .eq('source_id', grnId).maybeSingle();
       if (journalError) throw new BadRequestException(journalError.message);
       if (invoiceJournal?.status === 'POSTED') {
-        throw new BadRequestException('Reverse the posted supplier invoice journal before undoing sanction.');
+        postedUsdInvoiceJournalId = invoiceJournal.id;
       }
     }
 
@@ -5895,6 +5896,36 @@ export class GrnService {
     }
 
     const reversalNote = String(data?.notes || "").trim();
+    if (postedUsdInvoiceJournalId) {
+      if (!this.accountingService || !userId || !reversalNote) {
+        throw new BadRequestException('A reason and finance service are required to reverse a posted USD invoice.');
+      }
+      const reversal = await this.accountingService.prepareArwaUsdPurchaseInvoiceReversal(
+        tenantId, userId, postedUsdInvoiceJournalId, reversalNote,
+      );
+      if (!data?.reversal_journal_id) {
+        return { status: 'REVERSAL_JOURNAL_DRAFT', journal_id: reversal.id,
+          message: 'A different Super Admin must post the invoice reversal journal before sanction is undone.' };
+      }
+      if (String(data.reversal_journal_id) !== String(reversal.id)) {
+        throw new BadRequestException('Invoice reversal journal does not match the posted supplier invoice.');
+      }
+      const [original, postedReversal] = await Promise.all([
+        this.accountingService.getJournal(tenantId, postedUsdInvoiceJournalId),
+        this.accountingService.getJournal(tenantId, reversal.id),
+      ]);
+      const signature = (lines: any[], reverse = false) => (lines || [])
+        .map((line: any) => `${line.account_id}:${Number(reverse ? line.credit : line.debit).toFixed(2)}:${Number(reverse ? line.debit : line.credit).toFixed(2)}`)
+        .sort().join('|');
+      if (postedReversal.status !== 'POSTED' || postedReversal.source_type !== 'REVERSAL' ||
+          postedReversal.reversal_of_id !== postedUsdInvoiceJournalId ||
+          postedReversal.source_id !== postedUsdInvoiceJournalId ||
+          postedReversal.transaction_currency_code !== 'USD' ||
+          !postedReversal.created_by || postedReversal.created_by === postedReversal.posted_by ||
+          signature(postedReversal.lines || []) !== signature(original.lines || [], true)) {
+        throw new BadRequestException('A matching USD invoice reversal journal posted by a different Super Admin is required.');
+      }
+    }
     const { error } = await this.supabase
       .from("grns")
       .update({
