@@ -50,6 +50,9 @@ export default function FeatureAccessPage() {
   };
   const reasonFor = (feature: Feature) => {
     const tenantEnabled = feature.is_enabled !== false;
+    if (feature.feature_key.startsWith('nav-')) {
+      return { tenantEnabled, supported: null, roleAllowed: null, effective: tenantEnabled, reason: 'Sidebar link visibility only. Direct access is governed by the corresponding capability and role permissions.' };
+    }
     const supported = profileSupports(feature);
     const roleAllowed = feature.screen_route ? hasScreenPermission(user, feature.screen_route, 'view') : null;
     const effective = !tenantEnabled || supported === false || roleAllowed === false
@@ -150,14 +153,17 @@ export default function FeatureAccessPage() {
       );
       setFeatures(rows);
       setSaved(Object.fromEntries(rows.map((row) => [row.feature_key, row.is_enabled !== false])));
-      const currentUser = await apiClient.getCurrentUser();
-      setUser({
-        ...currentUser,
-        featureAccessConfigured: rows.length > 0,
-        enabledFeatures: rows
-          .filter((row) => row.is_enabled !== false)
-          .map((row) => row.feature_key),
-      });
+      if (!selectedTenantId) {
+        const currentUser = await apiClient.getCurrentUser();
+        setUser({
+          ...currentUser,
+          featureAccessConfigured: rows.length > 0,
+          configuredFeatures: rows.map((row) => row.feature_key),
+          enabledFeatures: rows
+            .filter((row) => row.is_enabled !== false)
+            .map((row) => row.feature_key),
+        });
+      }
       setMessage("Feature access saved. This menu is updated immediately; other signed-in users receive it on refresh.");
     } catch (error: any) {
       setMessage(error?.message || "Unable to save feature access.");
@@ -174,7 +180,7 @@ export default function FeatureAccessPage() {
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#E8DCC8]">Master Admin</p>
             <h1 className="mt-1 text-2xl font-bold">Client Feature & Screen Access</h1>
             <p className="mt-2 max-w-3xl text-sm text-slate-100">
-              Control which product capabilities are available in this client deployment. Role permissions remain a second layer for assigning enabled screens to individual users.
+              Control product capabilities and sidebar visibility for this client. Menu switches hide links; capability and role controls govern direct access and data.
             </p>
           </div>
           <ShieldCheck className="h-10 w-10 text-[#E8DCC8]" />
@@ -219,9 +225,10 @@ export default function FeatureAccessPage() {
                   {rows.map((feature) => {
                     const enabled = feature.is_enabled !== false;
                     const availability = reasonFor(feature);
+                    const menuOnly = feature.feature_key.startsWith('nav-');
                     return (
                       <article key={feature.feature_key} className="bg-white p-4">
-                        <div className="flex items-start gap-3"><button aria-label={`${enabled ? 'Disable' : 'Enable'} tenant entitlement for ${feature.feature_name}`} type="button" onClick={() => toggle(feature.feature_key)} className={`mt-0.5 flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition ${enabled ? "justify-end bg-emerald-600" : "justify-start bg-slate-300"}`}><span className="h-5 w-5 rounded-full bg-white shadow" /></button><div className="min-w-0 flex-1"><h3 className="font-semibold text-[#344C67]">{feature.feature_name}</h3><p className="mt-1 text-xs text-slate-600">{feature.description || feature.screen_route}</p><dl className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Tenant enabled</dt><dd className="font-semibold">{availability.tenantEnabled ? 'Yes' : 'No'}</dd></div><div><dt className="text-slate-500">Profile supports</dt><dd className="font-semibold">{availability.supported === null ? 'Not declared' : availability.supported ? 'Yes' : 'No'}</dd></div><div><dt className="text-slate-500">Role permitted</dt><dd className="font-semibold">{availability.roleAllowed === null ? 'Enforced by API' : availability.roleAllowed ? 'Yes' : 'No'}</dd></div><div><dt className="text-slate-500">Effective</dt><dd className="font-semibold">{availability.effective === null ? 'Capability API decides' : availability.effective ? 'Available' : 'Not available'}</dd></div></dl><p className="mt-2 rounded bg-slate-50 p-2 text-xs text-slate-600">{availability.reason}</p></div></div>
+                        <div className="flex items-start gap-3"><button aria-label={`${enabled ? 'Disable' : 'Enable'} ${menuOnly ? 'sidebar link' : 'tenant entitlement'} for ${feature.feature_name}`} type="button" onClick={() => toggle(feature.feature_key)} className={`mt-0.5 flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition ${enabled ? "justify-end bg-emerald-600" : "justify-start bg-slate-300"}`}><span className="h-5 w-5 rounded-full bg-white shadow" /></button><div className="min-w-0 flex-1"><h3 className="font-semibold text-[#344C67]">{feature.feature_name}</h3><p className="mt-1 text-xs text-slate-600">{feature.description || feature.screen_route}</p>{menuOnly ? <p className="mt-3 text-xs font-semibold text-[#344C67]">Sidebar visible: {enabled ? 'Yes' : 'No'}</p> : <dl className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><dt className="text-slate-500">Tenant enabled</dt><dd className="font-semibold">{availability.tenantEnabled ? 'Yes' : 'No'}</dd></div><div><dt className="text-slate-500">Profile supports</dt><dd className="font-semibold">{availability.supported === null ? 'Not declared' : availability.supported ? 'Yes' : 'No'}</dd></div><div><dt className="text-slate-500">Role permitted</dt><dd className="font-semibold">{availability.roleAllowed === null ? 'Enforced by API' : availability.roleAllowed ? 'Yes' : 'No'}</dd></div><div><dt className="text-slate-500">Effective</dt><dd className="font-semibold">{availability.effective === null ? 'Capability API decides' : availability.effective ? 'Available' : 'Not available'}</dd></div></dl>}<p className="mt-2 rounded bg-slate-50 p-2 text-xs text-slate-600">{availability.reason}</p></div></div>
                       </article>
                     );
                   })}

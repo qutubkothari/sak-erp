@@ -25,6 +25,7 @@ export class FeatureAccessController {
     const catalogue = await this.features.catalogueForTenant(req.user.tenantId);
     return {
       configured: catalogue.length > 0,
+      configured_features: catalogue.map((entry) => entry.feature_key),
       enabled_features: catalogue.filter((entry) => entry.is_enabled !== false).map((entry) => entry.feature_key),
     };
   }

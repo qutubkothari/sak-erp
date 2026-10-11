@@ -536,6 +536,7 @@ type StoredUser = {
   username?: string;
   email?: string;
   enabledFeatures?: string[];
+  configuredFeatures?: string[];
   featureAccessConfigured?: boolean;
 };
 
@@ -768,6 +769,14 @@ function getChildPath(href: string): string {
   return href.split("?")[0] || href;
 }
 
+// A stable key for each visible submenu choice, including choices that share
+// one page and differ only by tab/query. Master Feature Access is exempt so an
+// administrator can always restore hidden navigation.
+function submenuFeatureKey(section: string, child: string): string {
+  const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `nav-${slug(section)}-${slug(child)}`;
+}
+
 type NavigationGroup = { name: string; children: NavigationChild[] };
 
 // Keep every existing route, but present large modules as module → work area
@@ -882,6 +891,9 @@ function filterNavigationByRouteAccess(
     const children = Array.isArray(item.children)
       ? item.children.filter(
           (child) =>
+            (child.href === "/dashboard/settings/feature-access" ||
+              !user?.configuredFeatures?.includes(submenuFeatureKey(item.name, child.name)) ||
+              user.enabledFeatures?.includes(submenuFeatureKey(item.name, child.name))) &&
             (!enforcePermissions ||
               !child.roleTerms?.length ||
               isAdminLike(user) ||
