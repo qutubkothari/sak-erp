@@ -13,7 +13,7 @@ export class SpendIntelligenceService {
       this.db.from('purchase_orders').select('*,vendor:vendors(id,name,code),purchase_order_items(*)').eq('tenant_id', tenantId).order('po_date', { ascending: false }),
       this.db.from('grns').select('id,po_id,vendor_id,receipt_date,status,grn_items(accepted_qty,rejected_qty)').eq('tenant_id', tenantId),
       this.db.from('procurement_savings_opportunities').select('*,vendor:vendors(id,name,code)').eq('tenant_id', tenantId).order('created_at', { ascending: false }),
-      this.db.from('tenants').select('market_profile').eq('id', tenantId).maybeSingle(),
+      this.db.from('tenants').select('market_profile,default_currency').eq('id', tenantId).maybeSingle(),
     ]);
     if (orderError) this.fail(orderError, 'Unable to analyse purchase orders.'); if (receiptError) this.fail(receiptError, 'Unable to analyse receipts.'); if (opportunityError) this.fail(opportunityError, 'Unable to load savings pipeline.'); if (tenantError) this.fail(tenantError, 'Unable to load company market profile.');
     const validOrders = (orders || []).filter((po: any) => !['DRAFT', 'REJECTED', 'CANCELLED'].includes(this.t(po.status).toUpperCase()));
@@ -31,7 +31,7 @@ export class SpendIntelligenceService {
     for (const rows of priceGroups.values()) { const priced = rows.filter((x: any) => x.rate > 0 && x.qty > 0); const vendors = new Set(priced.map((x: any) => x.vendor_id)); if (priced.length < 2 || vendors.size < 2) continue; const best = Math.min(...priced.map((x: any) => x.rate)); const latest = priced[0]; const potential = priced.reduce((s: number, x: any) => s + Math.max(0, x.rate - best) * x.qty, 0); if (potential <= 0) continue; priceVariancePotential += potential; priceOpportunities.push({ item_code: latest.item_code, item_name: latest.item_name, best_rate: best, highest_rate: Math.max(...priced.map((x: any) => x.rate)), suppliers: vendors.size, potential_savings: potential }); }
     priceOpportunities.sort((a, b) => b.potential_savings - a.potential_savings);
     const pipeline = opportunities || []; const openExpected = pipeline.filter((x: any) => !['REALIZED', 'DISMISSED'].includes(x.status)).reduce((s: number, x: any) => s + this.n(x.expected_savings), 0); const realized = pipeline.filter((x: any) => x.status === 'REALIZED').reduce((s: number, x: any) => s + this.n(x.realized_savings), 0);
-    const currencyCode = String(tenant?.market_profile || 'INDIA').toUpperCase() === 'UAE' ? 'AED' : 'INR';
+    const currencyCode = String(tenant?.default_currency || (String(tenant?.market_profile || '').toUpperCase() === 'EGYPT' ? 'EGP' : String(tenant?.market_profile || '').toUpperCase() === 'UAE' ? 'AED' : 'INR')).toUpperCase();
     return { currency_code: currencyCode, kpis: { total_spend: totalSpend, supplier_count: suppliers.length, top_supplier_share_pct: suppliers[0]?.spend_share_pct || 0, price_variance_potential: priceVariancePotential, pipeline_expected: openExpected, realized_savings: realized }, suppliers, price_opportunities: priceOpportunities.slice(0, 25), opportunities: pipeline };
   }
   async createOpportunity(tenantId: string, userId: string, b: any) {

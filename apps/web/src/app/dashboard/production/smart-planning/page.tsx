@@ -14,6 +14,9 @@ import {
 } from "lucide-react";
 import SearchableSelect from "../../../../components/SearchableSelect";
 import { apiClient } from "../../../../../lib/api-client";
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 const field =
   "w-full rounded-lg border border-[#D9C8AA] bg-white px-3 py-2 text-sm";
@@ -23,8 +26,8 @@ const num = (v: any) =>
   new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(
     Number(v || 0),
   );
-const money = (v: any, c = "AED") =>
-  new Intl.NumberFormat(c === "INR" ? "en-IN" : "en-AE", {
+const money = (v: any, c = TENANT_BASE_CURRENCY.currency) =>
+  new Intl.NumberFormat(c === "INR" ? "en-IN" : c === "EGP" ? "en-EG" : "en-AE", {
     style: "currency",
     currency: c,
     maximumFractionDigits: 0,
@@ -390,7 +393,7 @@ export default function SmartPlanningPage() {
     setProgramField("target_quantity", qty);
     setProgramField("start_date", today);
     setProgramField("due_date", due);
-    setProgramField("currency_code", order.currency_code || "AED");
+    setProgramField("currency_code", order.currency_code || TENANT_BASE_CURRENCY.currency);
     setWaves([
       {
         wave_name: `${order.so_number} delivery`,
@@ -744,7 +747,8 @@ export default function SmartPlanningPage() {
           {advanced && (
             <label className={fieldLabel}>
               Cost currency
-              <select name="currency_code" className={`${field} mt-1`}>
+              <select name="currency_code" defaultValue={TENANT_BASE_CURRENCY.currency} className={`${field} mt-1`}>
+                <option>EGP</option>
                 <option>AED</option>
                 <option>INR</option>
                 <option>USD</option>
@@ -1132,7 +1136,7 @@ function Plan({
 }) {
   const r = detail.run,
     p = detail.program,
-    c = p.currency_code || "AED",
+    c = p.currency_code || TENANT_BASE_CURRENCY.currency,
     alternatives = r.explanation?.alternatives || [],
     calendar = r.explanation?.calendar || {};
   const [simulation, setSimulation] = useState<any>(null);

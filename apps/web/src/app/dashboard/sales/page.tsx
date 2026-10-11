@@ -779,14 +779,14 @@ function SalesPageContent() {
     if (!editingQuotationId) {
       setQuotationForm((current) => ({
         ...current,
-        currency_code: !current.currency_code || ['INR', 'AED'].includes(current.currency_code)
+        currency_code: !current.currency_code || ['INR', 'AED', 'EGP'].includes(current.currency_code)
           ? regionalProfile.currency
           : current.currency_code,
       }));
     }
     setDirectSOForm((current) => ({
       ...current,
-      currency_code: !current.currency_code || ['INR', 'AED'].includes(current.currency_code)
+      currency_code: !current.currency_code || ['INR', 'AED', 'EGP'].includes(current.currency_code)
         ? regionalProfile.currency
         : current.currency_code,
     }));
@@ -6361,7 +6361,7 @@ function SalesPageContent() {
                     <DateInput max={todayDate} value={directSOForm.customer_po_date} onChange={(value) => setDirectSOForm({ ...directSOForm, customer_po_date: value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                   </label>
                   <label className="text-sm font-medium text-gray-700">Currency
-                    <select value={directSOForm.currency_code} onChange={(e) => setDirectSOForm({ ...directSOForm, currency_code: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"><option value="INR">INR</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="AED">AED</option></select>
+                    <select value={directSOForm.currency_code} onChange={(e) => setDirectSOForm({ ...directSOForm, currency_code: e.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"><option value="EGP">EGP</option><option value="INR">INR</option><option value="USD">USD</option><option value="EUR">EUR</option><option value="AED">AED</option></select>
                   </label>
                   <label className="text-sm font-medium text-gray-700 md:col-span-2">Place of Supply
                     <input value={directSOForm.place_of_supply} onChange={(e) => setDirectSOForm({ ...directSOForm, place_of_supply: e.target.value })} placeholder={regionalProfile.marketProfile === 'UAE' ? 'Emirate / place of supply' : 'State / territory for GST'} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />

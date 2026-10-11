@@ -4,6 +4,9 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../../../lib/api-client";
 import { ErpActionableError } from "@/components/ui/ErpPrimitives";
 import { confirmDialog } from "@/components/ui/ConfirmDialog";
+import { getProfileLocaleSettings } from "@/lib/profile-branding";
+
+const TENANT_BASE_CURRENCY = getProfileLocaleSettings();
 
 type Tab =
   | "overview"
@@ -6291,7 +6294,7 @@ function AccountingForm({
             />
             <Field name="ifsc_or_swift" label="IFSC / SWIFT" />
             <Field name="iban_masked" label="IBAN (masked)" />
-            <Field name="currency_code" label="Currency" defaultValue="AED" />
+            <Field name="currency_code" label="Currency" defaultValue={TENANT_BASE_CURRENCY.currency} />
             <Field name="statement_format_code" label="Statement format code" placeholder="ENBD_CSV" />
             <label className="block text-sm"><span className="mb-1 block">Reconciliation owner</span><select name="reconciliation_owner_id" className="w-full rounded-lg border px-3 py-2"><option value="">Not assigned</option>{(data.workflowUsers || []).map((user: any) => <option key={user.id} value={user.id}>{[user.first_name, user.last_name].filter(Boolean).join(" ") || user.email}</option>)}</select></label>
             <Field
