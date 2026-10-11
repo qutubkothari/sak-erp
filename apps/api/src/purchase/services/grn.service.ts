@@ -3506,6 +3506,24 @@ export class GrnService {
       );
     }
 
+    if (runtimeBaseCurrency() === 'EGP') {
+      const { data: importLinks, error: importLinkError } = await this.supabase
+        .from('import_file_grns').select('import_file_id')
+        .eq('tenant_id', tenantId).eq('grn_id', grnId);
+      if (importLinkError) throw new BadRequestException(importLinkError.message);
+      const importIds = [...new Set((importLinks || []).map((link: any) => String(link.import_file_id || '')).filter(Boolean))];
+      if (importIds.length) {
+        const { data: importFiles, error: importFileError } = await this.supabase
+          .from('import_files').select('id,status,import_number')
+          .eq('tenant_id', tenantId).in('id', importIds);
+        if (importFileError) throw new BadRequestException(importFileError.message);
+        const postedFile = (importFiles || []).find((file: any) => file.status === 'LANDED_COST_POSTED');
+        if (postedFile) throw new BadRequestException(
+          `Reverse landed cost on import file ${postedFile.import_number} before reversing this GRN.`,
+        );
+      }
+    }
+
     const reversalLines = items
       .map((item: any) => ({
         grnItemId: String(item?.id || "").trim(),

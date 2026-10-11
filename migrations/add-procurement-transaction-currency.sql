@@ -64,7 +64,7 @@ ALTER TABLE public.inventory_cost_events
   ADD CONSTRAINT inventory_cost_events_event_type_check
   CHECK (event_type IN (
     'PURCHASE_RECEIPT', 'SALES_ISSUE', 'SALES_RETURN', 'PRODUCTION_ISSUE',
-    'PRODUCTION_RECEIPT', 'ADJUSTMENT', 'LANDED_COST'
+    'PRODUCTION_RECEIPT', 'ADJUSTMENT', 'LANDED_COST', 'LANDED_COST_REVERSAL'
   ));
 
 -- A sanctioned USD invoice must have exactly one finance voucher, even when
@@ -202,4 +202,76 @@ BEGIN
     SET status = 'LANDED_COST_POSTED', final_landed_cost = p_pool, updated_at = now()
     WHERE tenant_id = p_tenant_id AND id = p_import_file_id;
   RETURN jsonb_build_object('lines', row_count, 'landed_cost', total_allocated);
+END $$;
+
+-- A posted landed-cost allocation must have an auditable inverse before the
+-- linked receipt is reversed. This function also handles a receipt that was
+-- reversed by a prior release while its import file remained posted.
+CREATE OR REPLACE FUNCTION public.reverse_arwa_import_landed_cost(
+  p_tenant_id uuid, p_import_file_id uuid, p_user_id uuid, p_reason text
+) RETURNS jsonb LANGUAGE plpgsql AS $$
+DECLARE
+  file_row public.import_files%ROWTYPE;
+  cost_row record;
+  layer_row public.stock_entries%ROWTYPE;
+  grn_status text;
+  reversed_total numeric := 0;
+  reversed_count integer := 0;
+BEGIN
+  IF nullif(trim(coalesce(p_reason, '')), '') IS NULL THEN
+    RAISE EXCEPTION 'Landed-cost reversal reason is required';
+  END IF;
+  SELECT * INTO file_row FROM public.import_files
+    WHERE id = p_import_file_id AND tenant_id = p_tenant_id FOR UPDATE;
+  IF NOT FOUND OR file_row.status <> 'LANDED_COST_POSTED' THEN
+    RAISE EXCEPTION 'Only a posted ARWA import landed cost can be reversed';
+  END IF;
+  FOR cost_row IN
+    SELECT e.*, a.grn_id, a.grn_item_id FROM public.inventory_cost_events e
+    JOIN public.import_file_grn_allocations a
+      ON a.tenant_id = e.tenant_id AND a.import_file_id = p_import_file_id
+      AND a.grn_item_id::text = e.metadata->>'grn_item_id'
+    WHERE e.tenant_id = p_tenant_id AND e.event_type = 'LANDED_COST'
+      AND e.metadata->>'import_file_id' = p_import_file_id::text
+    ORDER BY e.id FOR UPDATE OF e
+  LOOP
+    SELECT * INTO layer_row FROM public.stock_entries
+      WHERE id = cost_row.stock_entry_id AND tenant_id = p_tenant_id FOR UPDATE;
+    IF NOT FOUND OR layer_row.metadata->>'landed_cost_import_file_id' <> p_import_file_id::text
+      OR layer_row.unit_price < cost_row.unit_cost THEN
+      RAISE EXCEPTION 'Landed-cost stock layer changed; manual reconciliation is required';
+    END IF;
+    SELECT status INTO grn_status FROM public.grns
+      WHERE id = cost_row.grn_id AND tenant_id = p_tenant_id;
+    IF (upper(coalesce(grn_status, '')) = 'REJECTED' AND layer_row.available_quantity <> 0)
+      OR (upper(coalesce(grn_status, '')) <> 'REJECTED'
+          AND layer_row.available_quantity <> layer_row.quantity) THEN
+      RAISE EXCEPTION 'Landed-cost stock layer has been consumed; reversal is blocked';
+    END IF;
+    UPDATE public.stock_entries
+      SET unit_price = round(unit_price - cost_row.unit_cost, 8),
+          metadata = metadata - 'landed_cost_import_file_id'
+      WHERE id = layer_row.id AND tenant_id = p_tenant_id;
+    INSERT INTO public.inventory_cost_events
+      (tenant_id, event_type, item_id, stock_entry_id, quantity, unit_cost,
+       total_cost, reference_type, reference_number, metadata)
+      VALUES (p_tenant_id, 'LANDED_COST_REVERSAL', cost_row.item_id,
+        layer_row.id, cost_row.quantity, -cost_row.unit_cost,
+        -cost_row.total_cost, 'IMPORT_FILE', file_row.import_number,
+        jsonb_build_object('import_file_id', p_import_file_id,
+          'grn_item_id', cost_row.grn_item_id,
+          'original_event_id', cost_row.id, 'reason', p_reason,
+          'reversed_by', p_user_id));
+    reversed_total := reversed_total + cost_row.total_cost;
+    reversed_count := reversed_count + 1;
+  END LOOP;
+  IF reversed_count = 0 OR abs(reversed_total - file_row.final_landed_cost) > 0.009 THEN
+    RAISE EXCEPTION 'Landed-cost events do not reconcile to the posted import file';
+  END IF;
+  UPDATE public.import_file_grns SET status = 'REVERSED'
+    WHERE tenant_id = p_tenant_id AND import_file_id = p_import_file_id;
+  UPDATE public.import_files
+    SET status = 'CANCELLED', final_landed_cost = 0, updated_at = now()
+    WHERE tenant_id = p_tenant_id AND id = p_import_file_id;
+  RETURN jsonb_build_object('lines', reversed_count, 'reversed_landed_cost', reversed_total);
 END $$;

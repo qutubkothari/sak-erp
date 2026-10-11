@@ -503,6 +503,18 @@ NOTIFY pgrst, 'reload schema';`;
     return this.one(tenantId, id);
   }
 
+  async reverseLandedCost(tenantId: string, id: string, userId: string, reason: string) {
+    if (runtimeBaseCurrency() !== 'EGP') throw new BadRequestException('This landed-cost reversal is available to ARWA only.');
+    const note = String(reason || '').trim();
+    if (!note) throw new BadRequestException('Landed-cost reversal reason is required.');
+    const { error } = await this.supabase.rpc('reverse_arwa_import_landed_cost', {
+      p_tenant_id: tenantId, p_import_file_id: id, p_user_id: userId, p_reason: note,
+    });
+    if (error) throw new BadRequestException(`Landed cost was not reversed: ${error.message}`);
+    await this.event(tenantId, id, 'LANDED_COST_REVERSED', `Landed cost reversed: ${note}`, userId);
+    return this.one(tenantId, id);
+  }
+
   async addPayment(tenantId: string, id: string, userId: string, body: any) {
     await this.one(tenantId, id);
     const category = String(body.paymentCategory || '').trim().toUpperCase();
