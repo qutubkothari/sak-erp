@@ -878,6 +878,19 @@ function filterNavigationByRouteAccess(
     role.toUpperCase().replace(/[_-]+/g, " "),
   );
 
+  // These sidebar-only switches are separate from the underlying UID
+  // capabilities. Keep them in sync with the Menu: UID Tracking catalogue.
+  const uidMenuFeatures: Record<string, string> = {
+    "/dashboard/uid": "nav-uid-tracking-uid-management",
+    "/dashboard/uid/trace": "nav-uid-tracking-trace-uid",
+    "/dashboard/uid/deployment": "nav-uid-tracking-deployment",
+  };
+  const isMenuEntryEnabled = (href: string) => {
+    if (!enforceFeatureAccess || !user) return true;
+    const featureKey = uidMenuFeatures[getChildPath(href)];
+    return !featureKey || user.enabledFeatures!.includes(featureKey);
+  };
+
   return items.flatMap((item) => {
     const children = Array.isArray(item.children)
       ? item.children.filter(
@@ -890,12 +903,15 @@ function filterNavigationByRouteAccess(
               )) &&
             (child.href !== "/dashboard/settings/feature-access" ||
               isAdminLike(user)) &&
+            isMenuEntryEnabled(child.href) &&
             isPathAllowedForUser(user, getChildPath(child.href)),
         )
       : undefined;
 
     const hasVisibleChildren = Array.isArray(children) && children.length > 0;
-    const canAccessItem = isPathAllowedForUser(user, getChildPath(item.href));
+    const canAccessItem =
+      isMenuEntryEnabled(item.href) &&
+      isPathAllowedForUser(user, getChildPath(item.href));
 
     // CRM is licensed as one workspace. Its convenience link to the Sales
     // customer register must not keep the CRM section visible after the CRM
