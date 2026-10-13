@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { apiClient } from "../../../../lib/api-client";
 import { ErpActionableError } from "@/components/ui/ErpPrimitives";
 import { ListTable, type ListTableColumn } from "@/components/ui/ListTable";
@@ -3163,9 +3164,14 @@ function JournalDrawer({ journal, accounts, close }: any) {
     (sum: number, line: any) => sum + Number(line.credit || 0),
     0,
   );
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 p-4 flex justify-end">
-      <section className="bg-white w-full max-w-5xl h-full overflow-auto shadow-2xl">
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, []);
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-white">
+      <section role="dialog" aria-modal="true" aria-label="Journal voucher" className="h-full max-h-[100dvh] w-full overflow-auto bg-white">
         <header className="sticky top-0 bg-white border-b p-4 flex justify-between items-start gap-3">
           <div>
             <p className="text-xs uppercase tracking-widest text-[#9a7445]">
@@ -3308,7 +3314,8 @@ function JournalDrawer({ journal, accounts, close }: any) {
           <JournalEvidence journal={journal} />
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 function JournalEvidence({ journal }: any) {
