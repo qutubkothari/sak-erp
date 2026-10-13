@@ -1121,9 +1121,19 @@ export default function AccountsPage() {
                     .toLowerCase()
                     .includes(search.toLowerCase()),
                 )}
+                journals={data.journals}
+                accounts={data.accounts}
                 search={search}
                 change={setSearch}
                 create={() => setForm("asset")}
+                viewJournal={async (id: string) => {
+                  try {
+                    setError("");
+                    setJournalView(await apiClient.get(`/accounting/journals/${id}`));
+                  } catch (caught: any) {
+                    setError(caught?.message || "Journal details could not be loaded.");
+                  }
+                }}
               />
             )}
             {tab === "budgets" && (
@@ -3426,12 +3436,40 @@ function JournalEvidence({ journal }: any) {
     </section>
   );
 }
-function AssetsPanel({ assets, search, change, create }: any) {
+function AssetsPanel({ assets, journals, accounts, search, change, create, viewJournal }: any) {
   const [schedule, setSchedule] = useState<any[] | null>(null);
   const [asOf, setAsOf] = useState(today());
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [posting, setPosting] = useState(false);
+  const assetAccountCodes = new Map(
+    (accounts || []).map((account: any) => [account.id, String(account.account_code)]),
+  );
+  const pendingAssets = (journals || [])
+    .filter((journal: any) =>
+      String(journal.source_type || "").startsWith("HISTORICAL_") &&
+      journal.status !== "POSTED",
+    )
+    .flatMap((journal: any) =>
+      (journal.lines || [])
+        .filter((line: any) =>
+          ["1211", "1212", "1213"].includes(String(assetAccountCodes.get(line.account_id))) &&
+          Number(line.debit || 0) > 0,
+        )
+        .map((line: any) => ({
+          ...line,
+          journal_id: journal.id,
+          journal_number: journal.journal_number,
+          journal_date: journal.journal_date,
+          journal_status: journal.status,
+          account_code: assetAccountCodes.get(line.account_id),
+        })),
+    )
+    .filter((line: any) =>
+      `${line.journal_number} ${line.description || ""} ${line.account_code}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
+    );
   async function depreciation() {
     try {
       setError("");
@@ -3481,6 +3519,33 @@ function AssetsPanel({ assets, search, change, create }: any) {
         create={create}
         label="New asset"
       />
+      {pendingAssets.length > 0 && (
+        <section className="mx-3 my-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <h3 className="font-semibold text-[#2e241d]">Historical asset candidates ({pendingAssets.length})</h3>
+          <p className="mt-1 mb-3 text-sm text-gray-700">
+            These are unposted import journal lines, including machinery. They are not fixed asset records and are excluded from depreciation until acquisition, ownership, capitalization and funding are confirmed.
+          </p>
+          <ListTable
+            storageKey="accounting-pending-historical-assets"
+            rows={pendingAssets}
+            getRowId={(item: any) => `${item.journal_id}-${item.line_number}`}
+            defaultSort={{ id: "journal_date", direction: "desc" }}
+            defaultPageSize={25}
+            searchPlaceholder="Search pending asset or voucher"
+            ariaLabel="Historical asset candidates"
+            fitToContainer
+            columns={([
+              { id: "journal_number", label: "Source voucher", accessor: (item: any) => item.journal_number, sortable: true, minWidth: 210 },
+              { id: "description", label: "Candidate asset", accessor: (item: any) => item.description || "-", sortable: true, minWidth: 300 },
+              { id: "account_code", label: "Proposed account", accessor: (item: any) => item.account_code, sortable: true, minWidth: 150 },
+              { id: "journal_date", label: "Draft date", accessor: (item: any) => date(item.journal_date), sortAccessor: (item: any) => item.journal_date, sortable: true, minWidth: 130 },
+              { id: "debit", label: "Provisional amount", accessor: (item: any) => Number(item.debit || 0), cell: (item: any) => money(item.debit), sortable: true, minWidth: 170, align: "right" },
+              { id: "status", label: "Status", accessor: (item: any) => item.journal_status, cell: (item: any) => <Status value={item.journal_status} />, sortable: true, minWidth: 110 },
+              { id: "actions", label: "Actions", hideable: false, minWidth: 130, cell: (item: any) => <button className="text-[#6b4d2e] underline" onClick={() => viewJournal(item.journal_id)}>View voucher</button> },
+            ] as ListTableColumn<any>[])}
+          />
+        </section>
+      )}
       <section className="mx-3 mb-3 rounded-xl border bg-[#fcfaf7] p-4 flex flex-wrap items-end gap-3">
         <div className="mr-auto">
           <p className="font-semibold text-[#2e241d]">Depreciation run</p>
@@ -3513,6 +3578,9 @@ function AssetsPanel({ assets, search, change, create }: any) {
         <Banner tone="success" text={notice} close={() => setNotice("")} />
       )}
       {error && <Banner tone="error" text={error} close={() => setError("")} />}
+      <h3 className="mx-3 mt-3 text-sm font-semibold text-[#2e241d]">
+        Registered fixed assets ({assets.length})
+      </h3>
       <Grid
         headers={["Asset code", "Asset", "Acquired", "Cost", "Life", "Status"]}
         rows={assets.map((item: any) => [
