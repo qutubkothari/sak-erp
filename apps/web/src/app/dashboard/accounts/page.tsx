@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { apiClient } from "../../../../lib/api-client";
 import { ErpActionableError } from "@/components/ui/ErpPrimitives";
+import { ListTable, type ListTableColumn } from "@/components/ui/ListTable";
 import { confirmDialog } from "@/components/ui/ConfirmDialog";
 
 type Tab =
@@ -1025,83 +1026,27 @@ export default function AccountsPage() {
                     close={() => setJournalActionError("")}
                   />
                 )}
-                <Toolbar
-                  placeholder="Search journal or narration"
-                  search={search}
-                  change={setSearch}
-                  create={() => {
-                    setEditingJournal(null);
-                    setJournalActionError("");
-                    setForm("journal");
-                  }}
-                  label="New journal"
-                />
-                <Grid
-                  headers={[
-                    "Journal",
-                    "Date",
-                    "Narration",
-                    "Source",
-                    "Adjustment",
-                    "Status",
-                    "Debit",
-                    "Credit",
-                    "Actions",
-                  ]}
-                  rows={data.journals
-                    .filter((item: any) =>
-                      `${item.journal_number} ${item.narration}`
-                        .toLowerCase()
-                        .includes(search.toLowerCase()),
-                    )
-                    .map((item: any) => [
-                      item.journal_number,
-                      date(item.journal_date),
-                      item.narration,
-                      item.source_type || "Manual",
-                      item.adjustment_type && item.adjustment_type !== "NONE"
-                        ? String(item.adjustment_type).replaceAll("_", " ")
-                        : "-",
-                      <Status key="s" value={item.status} />,
-                      money(item.total_debit),
-                      money(item.total_credit),
-                      <JournalActions
-                        key="a"
-                        row={item}
-                        action={action}
-                        setError={setJournalActionError}
-                        view={async () => {
-                          try {
-                            setJournalActionError("");
-                            setJournalView(
-                              await apiClient.get(
-                                `/accounting/journals/${item.id}`,
-                              ),
-                            );
-                          } catch (caught: any) {
-                            setJournalActionError(
-                              caught?.message ||
-                                "Journal details could not be loaded.",
-                            );
-                          }
-                        }}
-                        edit={async () => {
-                          try {
-                            setJournalActionError("");
-                            const journal = await apiClient.get(
-                              `/accounting/journals/${item.id}`,
-                            );
-                            setEditingJournal(journal);
-                            setForm("journal");
-                          } catch (caught: any) {
-                            setJournalActionError(
-                              caught?.message ||
-                                "Draft journal could not be loaded for editing.",
-                            );
-                          }
-                        }}
-                      />,
-                    ])}
+                <ListTable
+                  storageKey={process.env.NEXT_PUBLIC_ERP_TENANT_PROFILE === "ARWA" ? "arwa-accounting-journals" : "accounting-journals"}
+                  rows={data.journals}
+                  getRowId={(item: any) => String(item.id)}
+                  defaultSort={{ id: "date", direction: "desc" }}
+                  defaultPageSize={25}
+                  searchPlaceholder="Search journal, narration or source"
+                  ariaLabel="Journal entries"
+                  fitToContainer
+                  toolbarRight={<button className="rounded border border-[#9a7445] px-3 py-2 text-sm text-[#6b4d2e]" onClick={() => { setEditingJournal(null); setJournalActionError(""); setForm("journal"); }}>New journal</button>}
+                  columns={([
+                    { id: "journal", label: "Journal", accessor: (item: any) => item.journal_number, sortable: true, minWidth: 210 },
+                    { id: "date", label: "Date", accessor: (item: any) => date(item.journal_date), sortAccessor: (item: any) => item.journal_date, sortable: true, minWidth: 110 },
+                    { id: "narration", label: "Narration", accessor: (item: any) => item.narration, cell: (item: any) => <span className="block line-clamp-2 break-all" title={String(item.narration || "")}>{item.narration || "-"}</span>, sortable: true, minWidth: 320 },
+                    { id: "source", label: "Source", accessor: (item: any) => item.source_type || "Manual", sortable: true, minWidth: 140 },
+                    { id: "adjustment", label: "Adjustment", accessor: (item: any) => item.adjustment_type && item.adjustment_type !== "NONE" ? String(item.adjustment_type).replaceAll("_", " ") : "-", sortable: true, minWidth: 140, defaultVisible: false },
+                    { id: "status", label: "Status", accessor: (item: any) => item.status, cell: (item: any) => <Status value={item.status} />, sortable: true, minWidth: 110 },
+                    { id: "debit", label: "Debit", accessor: (item: any) => Number(item.total_debit || 0), cell: (item: any) => money(item.total_debit), sortable: true, minWidth: 140, align: "right" },
+                    { id: "credit", label: "Credit", accessor: (item: any) => Number(item.total_credit || 0), cell: (item: any) => money(item.total_credit), sortable: true, minWidth: 140, align: "right" },
+                    { id: "actions", label: "Actions", hideable: false, minWidth: 220, cell: (item: any) => <JournalActions row={item} action={action} setError={setJournalActionError} view={async () => { try { setJournalActionError(""); setJournalView(await apiClient.get(`/accounting/journals/${item.id}`)); } catch (caught: any) { setJournalActionError(caught?.message || "Journal details could not be loaded."); } }} edit={async () => { try { setJournalActionError(""); const journal = await apiClient.get(`/accounting/journals/${item.id}`); setEditingJournal(journal); setForm("journal"); } catch (caught: any) { setJournalActionError(caught?.message || "Draft journal could not be loaded for editing."); } }} /> },
+                  ] as ListTableColumn<any>[])}
                 />
               </>
             )}
