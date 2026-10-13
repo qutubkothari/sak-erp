@@ -175,6 +175,13 @@ const accountName = (accounts: any[], id: string | null | undefined) =>
     ? `${accounts.find((account) => account.id === id).account_code} — ${accounts.find((account) => account.id === id).account_name}`
     : "-";
 
+const historicalPaymentFrom = (journal: any, accounts: any[]) => {
+  if (journal.source_type !== "HISTORICAL_FACTORY_IMPORT") return "-";
+  const counter = (journal.lines || []).find((line: any) => Number(line.line_number) === 2);
+  const code = accounts.find((account: any) => account.id === counter?.account_id)?.account_code;
+  return code === "1113" ? "Bank" : code === "1112" ? "Petty Cash" : "Review";
+};
+
 export default function AccountsPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [form, setForm] = useState<FormKind>(null);
@@ -1042,6 +1049,7 @@ export default function AccountsPage() {
                     { id: "date", label: "Date", accessor: (item: any) => date(item.journal_date), sortAccessor: (item: any) => item.journal_date, sortable: true, minWidth: 110 },
                     { id: "narration", label: "Narration", accessor: (item: any) => item.narration, cell: (item: any) => <span className="block line-clamp-2 break-all" title={String(item.narration || "")}>{item.narration || "-"}</span>, sortable: true, minWidth: 320 },
                     { id: "source", label: "Source", accessor: (item: any) => item.source_type || "Manual", sortable: true, minWidth: 140 },
+                    ...(process.env.NEXT_PUBLIC_ERP_TENANT_PROFILE === "ARWA" ? [{ id: "payment_from", label: "Payment from", accessor: (item: any) => historicalPaymentFrom(item, data.accounts), sortable: true, minWidth: 135 }] : []),
                     { id: "adjustment", label: "Adjustment", accessor: (item: any) => item.adjustment_type && item.adjustment_type !== "NONE" ? String(item.adjustment_type).replaceAll("_", " ") : "-", sortable: true, minWidth: 140, defaultVisible: false },
                     { id: "status", label: "Status", accessor: (item: any) => item.status, cell: (item: any) => <Status value={item.status} />, sortable: true, minWidth: 110 },
                     { id: "amount", label: "Voucher amount", accessor: (item: any) => Number(item.total_debit || 0), cell: (item: any) => money(item.total_debit), sortable: true, minWidth: 160, align: "right" },
