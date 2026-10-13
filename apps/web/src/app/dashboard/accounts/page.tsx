@@ -3445,6 +3445,19 @@ function AssetsPanel({ assets, journals, accounts, search, change, create, viewJ
   const assetAccountCodes = new Map(
     (accounts || []).map((account: any) => [account.id, String(account.account_code)]),
   );
+  // The historical ledger used asset accounts for installation, consumables and
+  // services as well as equipment. Only source rows identifying a distinct
+  // durable item belong in this pre-registration list.
+  const factoryAssetRows = new Set([59, 76, 163, 164, 177, 183]);
+  const isIdentifiedHistoricalAsset = (journal: any, line: any) => {
+    if (String(journal.source_type) === "HISTORICAL_SHIPMENT_PENDING") {
+      return journal.journal_number === "ARWA-SHP-D26F7EC6-1" &&
+        String(assetAccountCodes.get(line.account_id)) === "1212";
+    }
+    const match = String(journal.journal_number || "").match(/^ARWA-FAC-F9C33803-R(\d+)$/);
+    return String(journal.source_type) === "HISTORICAL_FACTORY_IMPORT" &&
+      Boolean(match && factoryAssetRows.has(Number(match[1])));
+  };
   const pendingAssets = (journals || [])
     .filter((journal: any) =>
       String(journal.source_type || "").startsWith("HISTORICAL_") &&
@@ -3454,7 +3467,8 @@ function AssetsPanel({ assets, journals, accounts, search, change, create, viewJ
       (journal.lines || [])
         .filter((line: any) =>
           ["1211", "1212", "1213"].includes(String(assetAccountCodes.get(line.account_id))) &&
-          Number(line.debit || 0) > 0,
+          Number(line.debit || 0) > 0 &&
+          isIdentifiedHistoricalAsset(journal, line),
         )
         .map((line: any) => ({
           ...line,
@@ -3523,7 +3537,7 @@ function AssetsPanel({ assets, journals, accounts, search, change, create, viewJ
         <section className="mx-3 my-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
           <h3 className="font-semibold text-[#2e241d]">Historical asset candidates ({pendingAssets.length})</h3>
           <p className="mt-1 mb-3 text-sm text-gray-700">
-            These are unposted import journal lines, including machinery. They are not fixed asset records and are excluded from depreciation until acquisition, ownership, capitalization and funding are confirmed.
+            Identified equipment purchases from unposted import vouchers. Installation, supplies, operating costs and unresolved items are excluded. These are not fixed asset records or depreciable balances until source evidence is confirmed.
           </p>
           <ListTable
             storageKey="accounting-pending-historical-assets"
