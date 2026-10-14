@@ -402,6 +402,7 @@ function PurchaseOrdersContent() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [poViewSection, setPoViewSection] = useState('overview');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [detailSettlement, setDetailSettlement] = useState<{ summary?: { invoiced: number; cashPaid: number; outstanding: number; totalAdvance: number }; error?: boolean } | null>(null);
   useBrainRecord('purchase_order', showViewModal ? selectedPO?.id : null, selectedPO?.po_number);
   const [showPOEmailPreview, setShowPOEmailPreview] = useState(false);
   const [poEmailPreviewLoading, setPoEmailPreviewLoading] = useState(false);
@@ -2462,6 +2463,10 @@ function PurchaseOrdersContent() {
       const data = await response.json();
       setSelectedPO(data);
       setShowViewModal(true);
+      setDetailSettlement(null);
+      void apiClient.get<{ summary: { invoiced: number; cashPaid: number; outstanding: number; totalAdvance: number } }>(`/purchase/debit-notes/po/${poId}/settlement`)
+        .then((settlement) => setDetailSettlement({ summary: settlement.summary }))
+        .catch(() => setDetailSettlement({ error: true }));
 
       // Prefetch last purchase prices for inline display on the approval/details screen
       try {
@@ -5285,6 +5290,7 @@ function PurchaseOrdersContent() {
                 <MizantraReview entityType="purchase_order" document={selectedPO} />
                 <p className="text-sm font-medium text-[#7A6555]">{selectedPO.po_number?.startsWith('DRAFT-') ? 'Draft purchase order' : selectedPO.po_number}</p>
               </div>
+              <button type="button" onClick={() => void fetchTrailData(selectedPO)} className="rounded border border-[#A78B62] px-3 py-2 text-sm font-semibold text-[#4A3426] hover:bg-[#FAF9F6]">View full PO trail</button>
               <button onClick={() => setShowViewModal(false)} className="text-gray-500 hover:text-gray-700">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -5398,6 +5404,13 @@ function PurchaseOrdersContent() {
                     <p className="font-semibold">{(selectedPO as any).approved_by_name}</p>
                   </div>
                 )}
+              </section>
+              <section className="grid grid-cols-2 gap-3 border-b border-[#E8DCC4] bg-white p-4 md:grid-cols-4" aria-label="PO receipt and payment summary">
+                <div><p className="text-xs text-gray-600">Ordered quantity</p><p className="font-semibold">{Number(selectedPO.receipt_progress?.ordered_qty || 0).toLocaleString()}</p></div>
+                <div><p className="text-xs text-gray-600">Received quantity</p><p className="font-semibold">{Number(selectedPO.receipt_progress?.received_qty || 0).toLocaleString()}</p></div>
+                <div><p className="text-xs text-gray-600">Pending receipt</p><p className="font-semibold">{Number(selectedPO.receipt_progress?.remaining_qty || 0).toLocaleString()}</p></div>
+                <div><p className="text-xs text-gray-600">Invoice payment pending</p><p className="font-semibold">{!detailSettlement ? 'Loading…' : detailSettlement.error ? 'Unavailable' : Number(detailSettlement.summary?.invoiced || 0) === 0 ? 'Not invoiced' : `${REGIONAL_PROFILE.currency} ${fmtMoney(detailSettlement.summary?.outstanding)}`}</p></div>
+                {detailSettlement?.summary && Number(detailSettlement.summary.invoiced || 0) > 0 && <div className="col-span-2 text-xs text-gray-600 md:col-span-4">Invoiced {REGIONAL_PROFILE.currency} {fmtMoney(detailSettlement.summary.invoiced)} · Paid {REGIONAL_PROFILE.currency} {fmtMoney(detailSettlement.summary.cashPaid)}{Number(detailSettlement.summary.totalAdvance || 0) > 0 ? ` · Advance paid ${REGIONAL_PROFILE.currency} ${fmtMoney(detailSettlement.summary.totalAdvance)}` : ''}</div>}
               </section>
               <section className="grid grid-cols-1 gap-4 border-b border-[#E8DCC4] bg-white p-4 sm:grid-cols-2 xl:grid-cols-5">
                 <div>

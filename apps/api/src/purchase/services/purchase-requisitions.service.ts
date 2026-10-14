@@ -2553,6 +2553,7 @@ export class PurchaseRequisitionsService {
         grnCount: 0,
         completedGrnCount: 0,
         poNumbers: [],
+        poReferences: [],
         grnNumbers: [],
       };
       const poStatus = normalizeStatus(row?.status);
@@ -2566,10 +2567,12 @@ export class PurchaseRequisitionsService {
 
       const items = Array.isArray(row?.purchase_order_items) ? row.purchase_order_items : [];
       let poItemReceivedQty = 0;
+      let poOrderedQty = 0;
       items.forEach((item: any) => {
-        current.totalOrderedQty += Number(item?.ordered_qty || 0);
+        poOrderedQty += Number(item?.ordered_qty || 0);
         poItemReceivedQty += Number(item?.received_qty || 0);
       });
+      current.totalOrderedQty += poOrderedQty;
 
       const poGrns = grnsByPo.get(String(row?.id || '').trim()) || [];
       current.grnCount += poGrns.length;
@@ -2590,7 +2593,16 @@ export class PurchaseRequisitionsService {
         }, 0);
         grnReceivedQtyForPo += grnReceivedQty;
       });
-      current.totalReceivedQty += Math.max(poItemReceivedQty, grnReceivedQtyForPo);
+      const poReceivedQty = Math.max(poItemReceivedQty, grnReceivedQtyForPo);
+      current.totalReceivedQty += poReceivedQty;
+      current.poReferences.push({
+        id: row.id,
+        number: row.po_number,
+        status: row.status,
+        orderedQty: poOrderedQty,
+        receivedQty: poReceivedQty,
+        grnCount: poGrns.length,
+      });
       poSummaryByPr.set(prId, current);
     });
 
@@ -2616,6 +2628,7 @@ export class PurchaseRequisitionsService {
         grnCount: 0,
         completedGrnCount: 0,
         poNumbers: [],
+        poReferences: [],
         grnNumbers: [],
       };
 

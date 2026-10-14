@@ -126,6 +126,7 @@ interface Requisition {
     grnCount?: number;
     completedGrnCount?: number;
     poNumbers?: string[];
+    poReferences?: Array<{ id: string; number: string; status: string; orderedQty: number; receivedQty: number; grnCount: number }>;
     grnNumbers?: string[];
   };
 }
@@ -198,6 +199,7 @@ interface PRDetail {
     grnCount?: number;
     completedGrnCount?: number;
     poNumbers?: string[];
+    poReferences?: Array<{ id: string; number: string; status: string; orderedQty: number; receivedQty: number; grnCount: number }>;
     grnNumbers?: string[];
   };
   purchase_requisition_items: PRDetailItem[];
@@ -474,6 +476,7 @@ function PRContent() {
   const [filterVendor, setFilterVendor] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
   const [selectedPR, setSelectedPR] = useState<PRDetail | null>(null);
+  const [poSettlements, setPoSettlements] = useState<Record<string, { summary?: { invoiced: number; cashPaid: number; outstanding: number; totalAdvance: number; advanceAvailable: number }; error?: boolean }>>({});
   useBrainRecord('purchase_requisition', selectedPR?.id, selectedPR?.pr_number);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1383,6 +1386,16 @@ function PRContent() {
     try {
       const data = await apiClient.get(`/purchase/requisitions/${prId}`);
       setSelectedPR(data);
+      setPoSettlements({});
+      const references = (data as PRDetail)?.po_summary?.poReferences || [];
+      void Promise.all(references.map(async (po) => {
+        try {
+          const settlement = await apiClient.get<{ summary: { invoiced: number; cashPaid: number; outstanding: number; totalAdvance: number; advanceAvailable: number } }>(`/purchase/debit-notes/po/${po.id}/settlement`);
+          setPoSettlements((current) => ({ ...current, [po.id]: { summary: settlement.summary } }));
+        } catch {
+          setPoSettlements((current) => ({ ...current, [po.id]: { error: true } }));
+        }
+      }));
       setApprovalHistory(await fetchApprovalHistorySafely(prId));
     } catch (error) {
       toast.error('Failed to load PR details. Refresh the register and try again.');
@@ -3239,6 +3252,28 @@ function PRContent() {
                         </p>
                       </div>
                     </div>
+                    {(selectedPR.po_summary?.poReferences || []).length > 0 && (
+                      <div className="mt-4 space-y-3">
+                        <p className="text-xs font-semibold uppercase text-[#7A6555]">Linked purchase orders and settlement</p>
+                        {(selectedPR.po_summary?.poReferences || []).map((po) => {
+                          const settlement = poSettlements[po.id];
+                          return <div key={po.id} className="rounded border border-[#E8DCC4] p-3 text-sm">
+                            <a className="font-semibold text-blue-700 underline" href={`/dashboard/purchase/orders?viewId=${encodeURIComponent(po.id)}`}>{po.number} · View PO details</a>
+                            <span className="ml-3 text-[#7A6555]">{po.status}</span>
+                            <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+                              <span>Ordered: <strong>{Number(po.orderedQty || 0).toLocaleString()}</strong></span>
+                              <span>Received: <strong>{Number(po.receivedQty || 0).toLocaleString()}</strong></span>
+                              <span>Pending receipt: <strong>{Math.max(0, Number(po.orderedQty || 0) - Number(po.receivedQty || 0)).toLocaleString()}</strong></span>
+                              <span>GRNs: <strong>{po.grnCount}</strong></span>
+                            </div>
+                            <div className="mt-2 text-[#4A3426]">
+                              {!settlement ? 'Loading invoice and payment status…' : settlement.error ? 'Payment status unavailable; open PO trail to inspect.' : Number(settlement.summary?.invoiced || 0) === 0 ? 'Not invoiced yet' : `Invoiced ${formatMoney(settlement.summary?.invoiced)} · Paid ${formatMoney(settlement.summary?.cashPaid)} · Payment pending ${formatMoney(settlement.summary?.outstanding)}`}
+                              {settlement?.summary && Number(settlement.summary.totalAdvance || 0) > 0 ? ` · Advance paid ${formatMoney(settlement.summary.totalAdvance)}` : ''}
+                            </div>
+                          </div>;
+                        })}
+                      </div>
+                    )}
                     {((selectedPR.po_summary?.poNumbers || []).length > 0 || (selectedPR.po_summary?.grnNumbers || []).length > 0) && (
                       <div className="mt-3 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                         {(selectedPR.po_summary?.poNumbers || []).length > 0 && (
