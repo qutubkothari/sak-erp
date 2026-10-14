@@ -249,6 +249,7 @@ interface PurchaseOrder {
   receipt_progress?: {
     ordered_qty?: number;
     received_qty?: number;
+    accepted_qty?: number;
     remaining_qty?: number;
     received_percent?: number;
   };
@@ -5407,10 +5408,11 @@ function PurchaseOrdersContent() {
               </section>
               <section className="grid grid-cols-2 gap-3 border-b border-[#E8DCC4] bg-white p-4 md:grid-cols-4" aria-label="PO receipt and payment summary">
                 <div><p className="text-xs text-gray-600">Ordered quantity</p><p className="font-semibold">{Number(selectedPO.receipt_progress?.ordered_qty || 0).toLocaleString()}</p></div>
-                <div><p className="text-xs text-gray-600">Received quantity</p><p className="font-semibold">{Number(selectedPO.receipt_progress?.received_qty || 0).toLocaleString()}</p></div>
+                <div><p className="text-xs text-gray-600">Accepted received quantity</p><p className="font-semibold">{Number(selectedPO.receipt_progress?.accepted_qty ?? selectedPO.receipt_progress?.received_qty ?? 0).toLocaleString()}</p></div>
                 <div><p className="text-xs text-gray-600">Pending receipt</p><p className="font-semibold">{Number(selectedPO.receipt_progress?.remaining_qty || 0).toLocaleString()}</p></div>
                 <div><p className="text-xs text-gray-600">Invoice payment pending</p><p className="font-semibold">{!detailSettlement ? 'Loading…' : detailSettlement.error ? 'Unavailable' : Number(detailSettlement.summary?.invoiced || 0) === 0 ? 'Not invoiced' : `${REGIONAL_PROFILE.currency} ${fmtMoney(detailSettlement.summary?.outstanding)}`}</p></div>
                 {detailSettlement?.summary && Number(detailSettlement.summary.invoiced || 0) > 0 && <div className="col-span-2 text-xs text-gray-600 md:col-span-4">Invoiced {REGIONAL_PROFILE.currency} {fmtMoney(detailSettlement.summary.invoiced)} · Paid {REGIONAL_PROFILE.currency} {fmtMoney(detailSettlement.summary.cashPaid)}{Number(detailSettlement.summary.totalAdvance || 0) > 0 ? ` · Advance paid ${REGIONAL_PROFILE.currency} ${fmtMoney(detailSettlement.summary.totalAdvance)}` : ''}</div>}
+                <p className="col-span-2 text-xs text-gray-500 md:col-span-4">Quantities sum PO lines; open quantity follows accepted receipts and QC. See Items for each line and its unit.</p>
               </section>
               <section className="grid grid-cols-1 gap-4 border-b border-[#E8DCC4] bg-white p-4 sm:grid-cols-2 xl:grid-cols-5">
                 <div>
