@@ -6380,6 +6380,40 @@ function PurchaseOrdersContent() {
                     </div>
                   </div>
 
+                  <div className="overflow-x-auto rounded-lg border border-[#E8DCC4] bg-white" aria-label="PO item receipt quantities">
+                    <table className="w-full min-w-[760px] text-sm">
+                      <thead className="bg-[#FAF9F6] text-xs uppercase tracking-wide text-[#7A6555]">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Item</th>
+                          <th className="px-4 py-3 text-center">Unit</th>
+                          <th className="px-4 py-3 text-right">Ordered</th>
+                          <th className="px-4 py-3 text-right">Received</th>
+                          <th className="px-4 py-3 text-right">Accepted</th>
+                          <th className="px-4 py-3 text-right">Pending</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#EFE7D8]">
+                        {(trailPO.purchase_order_items || []).map((item: any, index: number) => (
+                          <tr key={item.id || index}>
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-[#4A3426]">{item.item?.name || item.item_name || item.description || item.item?.code || item.item_code || `Item ${index + 1}`}</div>
+                              {(item.item?.code || item.item_code) && <div className="text-xs text-gray-500">{item.item?.code || item.item_code}</div>}
+                            </td>
+                            <td className="px-4 py-3 text-center">{resolveUomFromPOLine(item) || '-'}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{Number(item.ordered_qty ?? item.quantity ?? 0).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{Number(item.received_qty ?? 0).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{Number(item.accepted_qty ?? item.received_qty ?? 0).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right font-semibold tabular-nums">{Number(item.remaining_qty ?? Math.max(0, Number(item.ordered_qty ?? item.quantity ?? 0) - Number(item.accepted_qty ?? item.received_qty ?? 0))).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                        {(!trailPO.purchase_order_items || trailPO.purchase_order_items.length === 0) && (
+                          <tr><td colSpan={6} className="px-4 py-4 text-center text-gray-500">No PO item quantities are available.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                    <p className="border-t border-[#EFE7D8] px-4 py-2 text-xs text-gray-500">Pending is calculated against accepted quantity; receipt quantities follow the recorded GRN and QC data.</p>
+                  </div>
+
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label="PO receipt progress">
                     {[
                       ['Ordered Qty', Number((trailPO as any).receipt_progress?.ordered_qty || 0)],
