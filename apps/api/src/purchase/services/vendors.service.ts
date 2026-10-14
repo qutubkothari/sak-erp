@@ -872,6 +872,9 @@ export class VendorsService {
   async create(tenantId: string, userId: string, data: any) {
     // Generate vendor code if not provided
     const code = data.code || await this.generateVendorCode(tenantId);
+    if (!/^VEN-\d{5}$/.test(String(code).trim().toUpperCase())) {
+      throw new BadRequestException('Vendor code must use VEN- followed by five digits (for example, VEN-00001).');
+    }
     const payload = this.buildVendorPayload({ ...data, code });
 
     await this.assertUniqueVendorCode(tenantId, payload.code);
@@ -1005,6 +1008,9 @@ export class VendorsService {
 
   async update(tenantId: string, userId: string, id: string, data: any) {
     const existing = await this.findOne(tenantId, id);
+    if (data.code !== undefined && String(data.code).trim().toUpperCase() !== String(existing.code).trim().toUpperCase()) {
+      throw new BadRequestException('Vendor codes cannot be changed through vendor edits.');
+    }
     const payload = this.buildVendorPayload(data, existing);
     const fromStatus = normalizeVendorApprovalStatus(existing.approval_status);
     const approvedVendorChanged = existing.is_verified === true || fromStatus === 'APPROVED';
@@ -1683,30 +1689,29 @@ export class VendorsService {
   }
 
   private async generateVendorCode(tenantId: string): Promise<string> {
-    const prefix = 'VEN';
+    const prefix = 'VEN-';
 
     const { data, error } = await this.supabase
       .from('vendors')
       .select('code')
       .eq('tenant_id', tenantId)
-      .ilike('code', `${prefix}%`);
+      .like('code', `${prefix}%`)
+      .order('code', { ascending: false })
+      .limit(1);
 
     if (error) {
-      return `${prefix}${Date.now().toString().slice(-6)}`;
+      throw new BadRequestException(`Unable to allocate a vendor code: ${error.message}`);
     }
 
-    const usedNumbers = new Set<number>();
-    for (const vendor of data || []) {
-      const code = String(vendor?.code || '').trim().toUpperCase();
-      const match = code.match(/^VEN(\d+)$/);
-      if (!match) continue;
-      const number = Number(match[1]);
-      if (Number.isInteger(number) && number > 0) usedNumbers.add(number);
+    const lastCode = String(data?.[0]?.code || '').trim().toUpperCase();
+    const lastNumber = /^VEN-(\d{5})$/.test(lastCode)
+      ? Number(lastCode.slice(prefix.length))
+      : 0;
+    const nextNumber = lastNumber + 1;
+    if (nextNumber > 99999) {
+      throw new BadRequestException('The five-digit vendor code range is exhausted.');
     }
 
-    let nextNumber = 1;
-    while (usedNumbers.has(nextNumber)) nextNumber += 1;
-
-    return `${prefix}${String(nextNumber).padStart(3, '0')}`;
+    return `${prefix}${String(nextNumber).padStart(5, '0')}`;
   }
 }
